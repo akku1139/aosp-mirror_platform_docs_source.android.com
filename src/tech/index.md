@@ -20,6 +20,12 @@ can find technical information useful to people and organizations who are
 looking to modify, contribute to, or port the Android software. This is "under
 the hood" information intended for engineers.
 
+## Build System Technical Information ##
+Blah blah blah
+
+[&raquo; Build System Information](/tech/build/index.html)
+
+
 ## Dalvik Technical Information ##
 The Dalvik Virtual Machine is the heart of Android. It's a fast, just-in-time
 compiled, optimized bytecode virtual machine. Android applications are
