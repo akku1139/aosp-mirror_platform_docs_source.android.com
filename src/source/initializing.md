@@ -68,17 +68,19 @@ To set up your development environment, install the following required packages.
 
 64-bit systems:
 
-    $ sudo apt-get install git-core gnupg flex bison gperf build-essential zip curl zlib1g-dev libc6-dev
-      lib32ncurses5-dev ia32-libs x11proto-core-dev libx11-dev lib32readline5-dev lib32z-dev libgl1-mesa-dev
+    $ sudo apt-get install git-core gnupg flex bison gperf build-essential zip curl
+      zlib1g-dev libc6-dev lib32ncurses5-dev ia32-libs x11proto-core-dev libx11-dev
+      lib32readline5-dev lib32z-dev libgl1-mesa-dev g++-multilib
 
 32-bit systems:
 
-    $ sudo apt-get install git-core gnupg flex bison gperf build-essential zip curl zlib1g-dev libc6-dev
-      libncurses5-dev x11proto-core-dev libx11-dev libreadline5-dev libz-dev libgl1-mesa-dev
+    $ sudo apt-get install git-core gnupg flex bison gperf build-essential zip curl
+      zlib1g-dev libc6-dev libncurses5-dev x11proto-core-dev libx11-dev
+      libreadline5-dev libz-dev libgl1-mesa-dev g++-multilib
 
 For building Froyo or an older release on a 64-bit system, several other packages are necessary to establish a 32-bit build environment:
 
-    $ sudo apt-get install gcc-multilib g++-multilib libc6-i386 libc6-dev-i386
+    $ sudo apt-get install gcc-multilib libc6-i386 libc6-dev-i386
 
 ## Configuring USB Access ##
 
