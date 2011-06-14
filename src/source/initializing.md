@@ -18,12 +18,31 @@
 
 The "Getting Started" section describes how to set up your local work environment, how to use Repo to get the Android files, and how to build the files on your machine.  To build the Android source files, you will need to use Linux or Mac OS. Building under Windows is not currently supported.
 
-*Note: The source is approximately 2.6GB in size. You will need 10GB free to complete the build.*
-
 For an overview of the entire code-review and code-update process, see [Life of a Patch](life-of-a-patch.html).
 
 To see snapshots and histories of the files available in the public Android repositories, visit the [GitWeb](http://android.git.kernel.org) web interface.
 
+
+# Space and bandwidth considerations #
+
+The following sizes are relevant when working with Android:
+
+ - The initial source download uses about 2.4GB of bandwidth.
+
+ - Completing a build requires a minimum of 12GB of disk space.
+20GB per codeline or more is recommended. An additional 10GB for
+ccache can significantly speed builds up.
+
+ - Completing a build requires a minimum of 8GB of RAM + swap.
+Additional physical RAM helps up to at least 16GB.
+
+ - Completing a build takes 3 to 4 hours of CPU time at 2GHz,
+not counting I/O time. Hyperthreading, multiple cores and multiple
+CPUs help.
+
+Those numbers were measured in mid 2011.
+They go up over time as Android evolves.
+Moving beyond Android 2.x is expected to double all those numbers.
 
 
 # Setting up a Linux build environment #
