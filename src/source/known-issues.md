@@ -45,3 +45,16 @@ locations and not all of them can deal with the complex value.
 **Fix**: None at present. The warning is harmless as that part of the build
 is only a sanity-check for the size of the system partition, and the system
 partition on crespo is only about 20% filled by an AOSP build.
+
+## Browser crashes at launch ##
+
+**Symptom**: In the AOSP master branch, the browser crashes at launch:
+
+    W/dalvikvm: No implementation found for native Landroid/webkit/JWebCoreJavaBridge;.nativeConstructor ()V
+
+**Cause**: Improvements in the handling of C++ destructors in shared
+libraries cause some symbols to be invisible even though they're mandatory.
+
+**Workaround**: Locally revert the change that causes the issue:
+
+    repo forall platform/bionic -c git checkout dc3bc87b43d0d73d89cca59692b80de878e11a5d^ libc/private/__dso_handle.S
