@@ -59,6 +59,7 @@ Java 6: for Gingerbread and newer
     $ sudo add-apt-repository "deb http://archive.canonical.com/ lucid partner"
     $ sudo apt-get update
     $ sudo apt-get install sun-java6-jdk
+    $ sudo update-alternatives --config java
 
 Java 5: for Froyo and older
 
