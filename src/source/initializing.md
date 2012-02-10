@@ -67,6 +67,8 @@ Java 5: for Froyo and older
     $ sudo apt-get update
     $ sudo apt-get install sun-java5-jdk
 
+*Note: after `apt-get install` JDK is ready to be used by Android, but you still have your previous JDK (OpenJDK) as default. To make Sun JDK your default JDK execute: `sudo update-alternatives --config java` and choose Sun JDK.*
+
 ## Installing required packages ##
 
 64-bit (recommended)
