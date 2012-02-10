@@ -67,6 +67,8 @@ Java 5: for Froyo and older
     $ sudo apt-get update
     $ sudo apt-get install sun-java5-jdk
 
+*Note: The `lunch` command in the build step will ensure that the Sun JDK is used instead of any previously installed JDK.*
+
 ## Installing required packages ##
 
 64-bit (recommended)
