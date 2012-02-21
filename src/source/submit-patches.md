@@ -108,7 +108,7 @@ After either automatic or manual rebase is complete, run `repo upload` to submit
 
 ## After a submission is approved ##
 
-After a submission makes it through the review and verification process, Gerrit automatically merges the change into the public repository. The change will now be visible in gitweb, and others users will be able to run `repo sync` to pull the update into their local client.
+After a submission makes it through the review and verification process, Gerrit automatically merges the change into the public repository. Other users will be able to run `repo sync` to pull the update into their local client.
 
 # For reviewers and verifiers #
 
