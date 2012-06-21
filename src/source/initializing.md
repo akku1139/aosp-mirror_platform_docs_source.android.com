@@ -60,31 +60,11 @@ In general you will need:
 
  - GNU Make 3.81 -- 3.82, which you can download from [gnu.org](http://ftp.gnu.org/gnu/make/),
 
- - JDK 6 if you wish to build Gingerbread or newer; JDK 5 for Froyo or older.  You can download both from [java.sun.com](http://java.sun.com/javase/downloads/).
+ - Sun JDK 6 if you wish to build Gingerbread or newer; Sun JDK 5 for Froyo or older; OpenJDK 6 for the master branch.
 
  - Git 1.7 or newer. You can find it at [git-scm.com](http://git-scm.com/download).
 
 Detailed instructions for Ubuntu 10.04+ follow.
-
-## Installing the JDK ##
-
-The Sun JDK is no longer in Ubuntu's main package repository.  In order to download it, you need to add the appropriate repository and indicate to the system which JDK should be used.
-
-Java 6: for Gingerbread and newer
-
-    $ sudo add-apt-repository "deb http://archive.canonical.com/ lucid partner"
-    $ sudo apt-get update
-    $ sudo apt-get install sun-java6-jdk
-
-Java 5: for Froyo and older
-
-    $ sudo add-apt-repository "deb http://archive.ubuntu.com/ubuntu hardy main multiverse"
-    $ sudo add-apt-repository "deb http://archive.ubuntu.com/ubuntu hardy-updates main multiverse"
-    $ sudo apt-get update
-    $ sudo apt-get install sun-java5-jdk
-
-*Note: The `lunch` command in the build step will ensure that the Sun JDK is
-used instead of any previously installed JDK.*
 
 ## Installing required packages (Ubuntu 10.04 -- 11.10) ##
 
@@ -96,7 +76,7 @@ supported and is not guaranteed to work on branches other than master.
       zip curl zlib1g-dev libc6-dev lib32ncurses5-dev ia32-libs \
       x11proto-core-dev libx11-dev lib32readline5-dev lib32z-dev \
       libgl1-mesa-dev g++-multilib mingw32 tofrodos python-markdown \
-      libxml2-utils xsltproc
+      libxml2-utils xsltproc openjdk-6-jdk
 
 On Ubuntu 10.10:
 
