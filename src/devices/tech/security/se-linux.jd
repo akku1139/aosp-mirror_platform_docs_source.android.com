@@ -2,7 +2,7 @@ page.title=Validating Security-Enhanced Linux in Android
 @jd:body
 
 <!--
-    Copyright 2013 The Android Open Source Project
+    Copyright 2014 The Android Open Source Project
 
     Licensed under the Apache License, Version 2.0 (the "License");
     you may not use this file except in compliance with the License.
@@ -27,13 +27,14 @@ page.title=Validating Security-Enhanced Linux in Android
 <h2 id="introduction">Introduction</h2>
 <p>
 As part of the Android <a href="{@docRoot}devices/tech/security/index.html">security
-model</a>, Android uses Security-Enhanced Linux (SELinux) to apply access
-control policies. SELinux enhances Android security, and contributions to it
+model</a>, Android uses Security-Enhanced Linux (SELinux) to enforce Mandatory
+Access Control (MAC) over all processes, including even processes running
+with root/superuser privileges (aka Linux capabilities).  SELinux enhances Android security, and contributions to it
 have been made by a number of companies and organizations; all Android code and
 contributors are publicly available for review on 
 <a href="https://android.googlesource.com/">android.googlesource.com</a>. With SELinux,
 Android can
-better control access to application data and system logs, reduce the effects of
+better protect and confine system services, control access to application data and system logs, reduce the effects of
 malicious software, and protect users from potential flaws in code on mobile
 devices.
 </p>
@@ -49,21 +50,27 @@ they may refine their software and SELinux policies before enforcing them.
 
 <h2 id="background">Background</h2>
 <p>
-Please note, Android upgraded its SELinux policy version to allow the SELinux
-mode to be set on a per-domain basis. For example, if you run all of your
-applications on a single domain, you could set that domain to be permissive and
-then have all other functions and their domains set to enforcement. Domains are
-associated with applications by the key used to sign each application. This
-setting is made at the top of each SELinux policy source (*.te) file.
+SELinux can operate in one of two global modes: permissive mode, in
+which permission denials are logged but not enforced, and enforcing
+mode, in which permission denials are both logged and
+enforced. SELinux also supports a per-domain permissive mode in which
+specific domains (processes) can be made permissive while placing the
+rest of the system in global enforcing mode. A domain is simply a
+label identifying a process or set of processes in the security
+policy, where all processes with the same domain are treated
+identically by the security policy. Per-domain permissive mode enables
+incremental application of SELinux to an ever increasing portion of
+the system.  Per-domain permissive mode also enables policy
+development for new services while keeping the rest of the system
+enforcing.
 </p>
+
 <p>
-Android follows this model of isolating applications to a single domain. With
-this, only the root domain and root-level processes (such as <code>initd</code>,
-<code>installd</code> and
-<code>vold</code>) are now set to enforcing mode. <em>The application domain remains in
-permissive mode to allow further evaluation and prevent failures. Still, an
-errant application could trigger an action in the root domain that is not
-allowed, thereby causing the application to crash.</em>
+In Android 4.3, SELinux was fully permissive.  In Android 4.4,
+SELinux was made enforcing for the domains for several root
+processes: <code>installd</code>, <code>netd</code>, <code>vold</code> and
+<code>zygote</code>.   <em>All other processes, including other services
+and all apps, remain in permissive mode to allow further evaluation and prevent failures in Android 4.4. Still, an errant application could trigger an action in a root process that is not allowed, thereby causing the process or the application to crash.</em>
 </p>
 <p>
 For this reason, device manufacturers should retain the default settings
@@ -90,8 +97,8 @@ discretionary access control (DAC) environments. For instance, software must
 typically run as the root user account to write to raw block devices. In a
 traditional DAC-based Linux environment, if the root user becomes compromised
 that user can write to every raw block device. However, SELinux can be used to
-label these devices so the user role assigned the root privilege can write to
-only those specified in the associated policy. In this way, root cannot
+label these devices so the process assigned the root privilege can write to
+only those specified in the associated policy. In this way, the process cannot
 overwrite data and system settings outside of the specific raw block
 device.
 </p>
@@ -113,9 +120,9 @@ SELinux for Android is accompanied by everything you need to enable SELinux
 now. You merely need to integrate the <a
 href="https://android.googlesource.com/kernel/common/">latest Android
 kernel</a> and then incorporate the files found in the
-~<a
-href="https://android.googlesource.com/platform/external/sepolicy/">platform/external/sepolicy</a>
-directory (where examples can also be found):<br/>
+<a
+href="https://android.googlesource.com/platform/external/sepolicy/">external/sepolicy</a>
+directory:<br/>
 <a
 href="https://android.googlesource.com/kernel/common/">https://android.googlesource.com/kernel/common/</a>
 <br/>
@@ -125,11 +132,14 @@ href="https://android.googlesource.com/platform/external/sepolicy/">https://andr
 
 </p>
  Those files when compiled comprise the SELinux kernel security policy and cover
-the upstream Android operating system. Place those files within the
+the upstream Android operating system. You should not need to modify
+the <root>external/sepolicy</root> files directly.  Instead, add your own
+device-specific policy files within the
 <root>/device/manufacturer/device-name/sepolicy directory.<br/>
 Then just update your <code>BoardConfig.mk</code> makefile - located in the <device-name>
 directory containing the sepolicy subdirectory - to reference the sepolicy
-subdirectory once created, like so:
+subdirectory and any policy file once created, as shown below.  The BOARD_SEPOLICY variables and their meaning is documented in the
+external/sepolicy/README file.
 </p>
 
 <pre>
@@ -174,8 +184,8 @@ Definition document for specific requirements:<br/>
 href="http://source.android.com/compatibility/index.html">http://source.android.com/compatibility/index.html</a>
 </p>
 <p>
-SELinux uses a whitelist approach, meaning it grants special privileges based
-upon role. Since Android's default SELinux policy already supports the Android
+SELinux uses a whitelist approach, meaning all access must be explicitly allowed
+in policy in order to be granted. Since Android's default SELinux policy already supports the Android
 Open Source Project, OEMs are not required to modify SELinux settings in any
 way. If they do customize SELinux settings, they should take great care not to
 break existing applications. Here is how we recommend proceeding:
@@ -200,9 +210,10 @@ tasks.</li>
 functions.</li>
 <li>Put those policies in *.te files (the extension for SELinux policy source
 files) within the <root>/device/manufacturer/device-name/sepolicy
-directory.</li>
-<li>Release your SELinux implementation in permissive mode first.</li>
-<li>Analyze results and refine policy settings.</li>
+directory and use BOARD_SEPOLICY variables to include them in your build.</li>
+<li>Use the permissive_or_unconfined() macro for new domains initially.</li>
+<li>Analyze results and refine your domain definitions.</li>
+<li>Remove the permissive_or_unconfined() macro when no further denials appear in userdebug builds.</li>
 </ol>
 
 <p>
@@ -269,16 +280,17 @@ customize the SELinux policy settings. See the <em>Customization</em> section
 for steps. We recommend device manufacturers start with the default Android
 SELinux policy and make the minimum possible set of changes to address their
 additions to Android. Existing Android SELinux policy files are found in the
-root of the ~<a
-href="https://android.googlesource.com/platform/external/sepolicy/">platform/external/sepolicy</a>
+root of the <a
+href="https://android.googlesource.com/platform/external/sepolicy/">external/sepolicy</a>
 directory.</p>
 
 <p>Android upgraded its SELinux policy version to allow the SELinux mode to be
 set to permissive on a per-domain basis. For example, if you run all of your
 applications on a single domain, you could set that domain to be permissive and
 then have all other functions and their domains set to enforcement. Domains are
-associated with applications by the key used to sign each application. This
-setting is made at the top of each SELinux policy source (*.te) file.</p>
+associated with applications by the key used to sign each application. The
+mapping of app certificates to domains is specified via the
+mac_permissions.xml and seapp_contexts configuration files.</p>
 
 <p>Here are the files you must create or edit in order to customize SELinux:</p>
 <ul> 
@@ -306,31 +318,29 @@ to be relabeled.</p>
 </li> </ul>
 
 <p>The remaining files in the sepolicy directory are either auto-generated or
-should remain static. The policy files come in the form: allow, domain, and
-context, for a set of actions:</p>
-
+should remain static. The policy rules come in the form: allow <em>domains</em> <em>types</em>:<em>classes</em> <em>permissions</em>;, where:</p>
 <ul>
 <li>
-<p><em>Allow</em> - Gives the role permission to carry out the action described
-in the context within the specified domain.</p> </li>
+<p><em>Domain</em> - A label for the process or set of processes.</p></li>
 <li>
-<p><em>Domain</em> - Domain
-represents scope of the rule and gets converted to a security identifier (SID)
-in the kernel.</p> </li>
+<p><em>Type</em> - A label for the object (e.g. file, socket) or set of objects.</p></li>
 <li>
-<p><em>Context</em> - An identifier for the rule, this is converted
-to an integer in the kernel.</p> </li> </ul>
+<p><em>Class</em> - The kind of object (e.g. file, socket) being accessed.</p></li>
+<li>
+<p><em>Permission</em> - The operation (e.g. read, write) being performed.</p></li>
 
 <p>And so the an example use of this would follow the structure:<br>
 <code>allow appdomain app_data_file:file rw_file_perms;</code></p>
 
 <p>This says an application is allowed to read and write files labeled
-app_data_file. During compilation, those overrides are concatenated to the
+app_data_file. Note that this rule relies upon macros defined in the
+global_macros file, and other helpful macros can also be found in the
+te_macros file.  Macros are provided for common groupings of classes, permissions and rules, and should be used whenever possible to help reduce the likelihood of failures due to denials on related permissions.  During compilation, those overrides are concatenated to the
 existing SELinux settings and into a single security policy. These overrides add
 to the base security policy rather than subtract from existing settings.</p>
 
 <p>Once the new policy files and <code>BoardConfig.mk</code> updates are in place, the new
-policy settings get automatically uploaded to the device.</p>
+policy settings are automatically built into the final kernel policy file.</p>
 
 <h2 id="validation">Validation</h2> <p>Android strongly encourages OEMs to test
 their SELinux implementations thoroughly. As manufacturers implement SELinux,
@@ -347,14 +357,14 @@ SELinux mode for each domain, you must examine the corresponding files.</p>
 <p>Then check for errors. Errors are routed as event logs to <code>dmesg</code> 
 and viewable locally on the device. Manufacturers should examine the SELinux output 
 to <code>dmesg</code> on these devices and refine settings prior to public release in 
-permissive mode and eventual switch to enforcing mode.</p>
+permissive mode and eventual switch to enforcing mode.  It is possible to capture the ongoing denial logs by running <code>cat /proc/kmsg</code> or to capture denial logs from the previous boot by running <code>cat /proc/last_kmsg</code></p>
 
 <p>With this output, manufacturers can readily identify when system users or
 components are in violation of SELinux policy. Manufacturers can then repair
 this bad behavior, either by changes to the software, SELinux policy, or
 both.</p>
 
-<p>Specifically, these log messages indicate what roles and processes would fail
+<p>Specifically, these log messages indicate what processes would fail
 under policy enforcement and why. Here is an example:</p>
 
 <pre>
