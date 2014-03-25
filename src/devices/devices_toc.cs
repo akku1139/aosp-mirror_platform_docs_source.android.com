@@ -239,7 +239,7 @@
 
       <li class="nav-section">
         <div class="nav-section-header empty">
-          <a href="<?cs var:toroot ?>devices/reference/files.html">
+          <a href="<?cs var:toroot ?>devices/halref/index.html">
             <span class="en">HAL File Reference</span>
           </a>
         </div>
