@@ -23,6 +23,7 @@
     <ul>
       <li><a href="<?cs var:toroot ?>source/code-lines.html">Codelines, Branches, and Releases</a></li>
       <li><a href="<?cs var:toroot ?>source/build-numbers.html">Codenames, Tags, and Build Numbers</a></li>
+      <li><a href="<?cs var:toroot ?>source/build-details.html">Source code details</a></li>
       <li><a href="<?cs var:toroot ?>source/roles.html">Project Roles</a></li>
       <li><a href="<?cs var:toroot ?>source/licenses.html">Licenses</a></li>
       <li><a href="<?cs var:toroot ?>source/faqs.html">FAQ</a></li>
