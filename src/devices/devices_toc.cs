@@ -95,7 +95,7 @@
         <ul>
           <li><a href="<?cs var:toroot ?>devices/graphics/architecture.html">Architecture</a></li>
           <li><a href="<?cs var:toroot ?>devices/graphics/implement.html">Implementation</a></li>
-          <li><a href="<?cs var:toroot ?>devices/graphics/DeqpUserGuide.pdf">OpenGL ES Testing</a></li>
+          <li><a href="<?cs var:toroot ?>devices/graphics/testing.html">OpenGL ES Testing</a></li>
         </ul>
       </li>
       <li class="nav-section">
