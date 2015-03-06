@@ -310,6 +310,25 @@
                 <span class="en">Encryption</span>
               </a>
             </li>
+
+
+	    <li class="nav-section">
+            <div class="nav-section-header">
+              <a href="<?cs var:toroot ?>devices/tech/security/ota/index.html">
+                <span class="en">OTA Updates</span>
+              </a>
+	    </div>
+	    <ul>
+              <li><a href="<?cs var:toroot ?>devices/tech/security/ota/tools.html">OTA Tools</a></li>
+              <li><a href="<?cs var:toroot ?>devices/tech/security/ota/block.html">Block-based OTA</a></li>
+	      <li><a href="<?cs var:toroot ?>devices/tech/security/ota/inside_packages.html">Inside OTA Packages</a></li>
+	      <li><a href="<?cs var:toroot ?>devices/tech/security/ota/device_code.html">Device-Specific Code</a></li>
+	      <li><a href="<?cs var:toroot ?>devices/tech/security/ota/sign_builds.html">Signing Builds for Release</a></li>
+            </ul>
+            </li>
+
+
+
           <li class="nav-section">
             <div class="nav-section-header">
               <a href="<?cs var:toroot ?>devices/tech/security/secureboot/index.html">
@@ -318,7 +337,6 @@
             </div>
             <ul>
               <li><a href="<?cs var:toroot ?>devices/tech/security/secureboot/verified-boot.html">Verified boot</a></li>
-              <li><a href="<?cs var:toroot ?>devices/tech/security/secureboot/block-ota.html">Block-based OTA</a></li>
             </ul>
           </li>
           <li class="nav-section">
