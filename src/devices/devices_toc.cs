@@ -310,6 +310,11 @@
                 <span class="en">Encryption</span>
               </a>
             </li>
+	    <li>
+              <a href="<?cs var:toroot ?>devices/tech/security/ota/index.html">
+                <span class="en">OTA Updates</span>
+              </a>
+            </li>
           <li class="nav-section">
             <div class="nav-section-header">
               <a href="<?cs var:toroot ?>devices/tech/security/secureboot/index.html">
