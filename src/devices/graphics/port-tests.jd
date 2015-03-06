@@ -1,0 +1,1208 @@
+page.title=OpenGL ES Testing
+@jd:body
+
+<!--
+    Copyright 2014 The Android Open Source Project
+
+    Licensed under the Apache License, Version 2.0 (the "License");
+    you may not use this file except in compliance with the License.
+    You may obtain a copy of the License at
+
+        http://www.apache.org/licenses/LICENSE-2.0
+
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    See the License for the specific language governing permissions and
+    limitations under the License.
+-->
+
+<div id="qv-wrapper">
+  <div id="qv">
+    <h2>In this document</h2>
+    <ol id="auto-toc">
+    </ol>
+  </div>
+</div>
+
+
+<p>This page provides an overview of the GPU testing suite
+called deqp (drawElements Quality Program) as well as instructions for porting
+and building the test modules.</p>
+
+<p>You can access the code for deqp in AOSP, in the following location: <a href="https://android.googlesource.com/platform/external/deqp">https://android.googlesource.com/platform/external/deqp</a></p>
+
+<p>To use the latest submitted code, use the <code>deqp-dev</code> branch. If you want the code that matches the Android 5.0 CTS release, use the <code>lollipop-release</code> branch. </p>
+
+<h2 id=deploying_deqp>Deploying deqp</h2>
+
+<p>Deploying the deqp test suite to a new environment involves four steps. The
+steps listed below are described in more detail later in this document.</p>
+
+<ol>
+  <li> Setting up build system
+  <li> Implementing platform port
+  <li> Deploying to target device(s)
+  <li> Automated test system integration
+</ol>
+
+<h2 id=source_layout>Source layout</h2>
+
+<p>The source code for the deqp test modules and supporting libraries are laid out
+as shown in the table below. The listing is not complete, but highlights the
+most important directories.</p>
+
+<p class="table-caption" id="table1">
+  <strong>Table 1.</strong> Important deqp directories.</p>
+<table>
+ <tr>
+   <th>Directory</th>
+   <th>Description</th>
+ </tr>
+
+ <tr>
+    <td><code>android</code></td>
+    <td><p>Android tester sources and build scripts</p></td>
+ </tr>
+ <tr>
+    <td><code>data</code></td>
+<td><p>Test data files</p>
+</td>
+ </tr>
+ 
+ <tr>
+    <td><code>modules</code></td>
+<td><p>Test module sources</p>
+</td>
+ </tr>
+ 
+ <tr>
+    <td><code>
+        modules/egl</code></td>
+<td><p>EGL module</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+        modules/gles2</code></td>
+<td><p>GLES2 module</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+        modules/gles3</code></td>
+<td><p>GLES3 module</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+        modules/gles31</code></td>
+<td><p>GLES3.1 module</p>
+</td>
+ </tr>
+
+ <tr>
+    <td><code>targets</code></td>
+<td><p>Target-specific build configuration files</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>framework</code></td>
+<td><p>deqp test module framework and utilities</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+        framework/delibs</code></td>
+<td><p>Base portability and build libraries</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+        framework/platform</code></td>
+<td><p>Platform ports</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+        framework/qphelper</code></td>
+<td><p>Test program integration library (C)</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+        framework/common</code></td>
+<td><p>Deqp framework (C++)</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+        framework/opengl, framework/egl</code></td>
+<td><p>API specific utilities</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+execserver</code></td>
+<td><p>Device-side ExecServer source</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+executor</code></td>
+<td><p>Host-side test executor shell tool and utilities</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+external</code></td>
+<td><p>Build stub dir for external libs libpng and zlib</p>
+</td>
+ </tr>
+</table>
+
+
+<h3 id=open-source_components>Open-Source components</h3>
+
+<p>The deqp uses <code>libpng</code> and <code>zlib</code>. They can be fetched from the web with the script <code>external/fetch_sources.py </code>or with git pulls from git repositories<code> platform/external/[libpng,zlib]</code>.<code> </code></p>
+
+
+<h2 id=building_test_programs>Building test programs </h2>
+
+<p>The test framework has been designed with portability in mind. The only
+mandatory requirements are full C++ support and standard system libraries for
+IO, threads and sockets.</p>
+
+<h3 id=cmake_build_system>CMake build system</h3>
+
+<p>The deqp sources have build scripts for CMake, which is the preferred tool for
+compiling the test programs.</p>
+
+<p>CMake is an open-source build system that supports multiple platforms and
+toolchains. CMake generates native makefiles or IDE project files from
+target-independent configuration files. For more information on CMake, please
+see documentation at <a href="http://www.cmake.org/cmake/help/documentation.html">http://www.cmake.org/cmake/help/documentation.html</a>.</p>
+
+<p>CMake supports and recommends out-of-source-tree builds, i.e., you should
+always create makefiles or project files into a separate build directory
+outside the source tree. CMake does not have any kind of "distclean" target, so
+removing any files generated by CMake must be done manually.</p>
+
+<p>Configuration options are given to CMake using <code>-D&lt;OPTION_NAME&gt;=&lt;VALUE&gt;</code> syntax. Some commonly used options for deqp are listed below.</p>
+
+<p class="table-caption" id="table2">
+  <strong>Table 2.</strong> Common configuration options for deqp.</p>
+<table>
+ <tr>
+   <th>Configuration option</th>
+   <th>Description</th>
+ </tr>
+
+ <tr>
+    <td><code>DEQP_TARGET</code></td>
+<td><p>Target name, for example "android". Deqp CMake scripts will include the file
+<code>targets/&lt;DEQP_TARGET&gt;/&lt;DEQP_TARGET&gt;.cmake</code> and expect to find target-specific build options from there.</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>CMAKE_TOOLCHAIN_FILE</code></td>
+<td><p>Path to toolchain file for CMake. Used for cross compilation.</p></td>
+ </tr>
+ <tr>
+    <td><code>CMAKE_BUILD_TYPE</code></td>
+<td><p>Build type for makefile targets. Valid values are "Debug" and "Release". Note
+that the interpretation and default type depend on the targeted build system.
+See the CMake documentation for details.</p>
+</td>
+ </tr>
+</table>
+
+
+<h3 id=creating_target_build_file>Creating a target build file</h3>
+
+<p>The deqp build system is configured for new targets using target build files.
+A target build file defines which features the platform supports and what libraries or
+additional include paths are required. Target file names follow the <code>targets/&lt;name&gt;/&lt;name&gt;.cmake</code> format and the target is selected using the <code>DEQP_TARGET</code> build parameter.</p>
+
+<p>File paths in target files are relative to the base <code>deqp</code> directory, not the <code>targets/&lt;name&gt;</code> directory. The following standard variables can be set by target build file.</p>
+
+<p class="table-caption" id="table3">
+  <strong>Table 3.</strong> Standard variables in the deqp target build file.</p>
+<table>
+ <tr>
+   <th>Variable</th>
+   <th>Description</th>
+ </tr>
+
+ <tr>
+    <td><code>
+DEQP_TARGET_NAME</code></td>
+<td><p>Target name (will be included into test logs)</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+DEQP_SUPPORT_GLES2</code></td>
+<td><p>Whether GLES2 is supported (default: OFF)</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+DEQP_GLES2_LIBRARIES</code></td>
+<td><p>GLES2 libraries (leave empty if not supported or dynamic loading is used)</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+DEQP_SUPPORT_GLES3</code></td>
+<td><p>Whether GLES3.x is supported (default: OFF)</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+DEQP_GLES3_LIBRARIES</code></td>
+<td><p>GLES3.x libraries (leave empty if not supported or dynamic loading is used)</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+DEQP_SUPPORT_VG</code></td>
+<td><p>Whether OpenVG is supported (default: OFF)</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+DEQP_OPENVG_LIBRARIES</code></td>
+<td><p>OpenVG libraries (leave empty if not supported or dynamic loading is used)</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+DEQP_SUPPORT_EGL</code></td>
+<td><p>Whether EGL is supported (default: OFF)</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+DEQP_EGL_LIBRARIES</code></td>
+<td><p>EGL libraries (leave empty if not supported or dynamic loading is used)</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+DEQP_PLATFORM_LIBRARIES</code></td>
+<td><p>Additional platform-specific libraries required for linking</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+DEQP_PLATFORM_COPY_LIBRARIES</code></td>
+<td><p>List of libraries that are copied to each test binary build directory. Can be
+used to copy libraries that are needed for running tests but are not in default
+search path.</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+TCUTIL_PLATFORM_SRCS</code></td>
+<td><p>Platform port source list. Default sources are determined based on the
+capabilities and OS.</p>
+
+<p>
+<strong>Note:</strong> Paths are relative to <code>framework/platform</code>.
+</p>
+</td>
+ </tr>
+</table>
+
+<p>The target build file can add additional include or link paths using the <code>include_directories()</code> and <code>link_directories()</code> CMake functions.</p>
+
+<h3 id=win32_build>Win32 build</h3>
+
+<p>The easiest way to build deqp modules for Windows is to use the CMake build
+system. You will need CMake 2.6.12 or newer and the Microsoft Visual C/C++
+compiler. The deqp has been tested with Visual Studio 2013. </p>
+
+<p>Visual Studio project files can be generated with a following command: </p>
+
+<pre>
+cmake path\to\src\deqp -G "Visual Studio 12"
+</pre>
+
+
+<p>A 64-bit build can be made by selecting "Visual Studio &lt;ver&gt; Win64" as build
+generator:</p>
+
+<pre>
+cmake path\to\src\deqp -G "Visual Studio 12 Win64"
+</pre>
+
+
+<p>You can also generate NMake makefiles with the <code>-G "NMake Makefiles"</code> option as well as the build type (<code>-DCMAKE_BUILD_TYPE="Debug"</code> or <code>"Release"</code>).</p>
+
+<h4 id=rendering_context_creation>Rendering context creation</h4>
+
+
+<p>Rendering context can be created either with WGL or with EGL on Windows.</p>
+
+<h5 id=wgl_support>WGL support</h5>
+
+
+<p>All Win32 binaries support GL context creation with WGL as it requires only
+standard libraries. WGL context can be selected using the <code>--deqp-gl-context-type=wgl</code> command line argument. In the WGL mode the deqp uses the <code>WGL_EXT_create_context_es_profile</code> extension to create OpenGL ES contexts. This has been tested to work with
+latest drivers from NVIDIA and Intel. AMD drivers do not support the required
+extension.</p>
+
+<h5 id=egl_support>EGL support</h5>
+
+
+<p>The deqp is built with dynamic loading for EGL on Windows if DEQP_SUPPORT_EGL
+is ON. This is the default in most targets. Then, if the host has EGL libraries
+available, it is possible to run tests with that with the command line
+parameter <code>--deqp-gl-context-type=egl</code>.</p>
+
+<h3 id=android_build>Android build</h3>
+
+
+<p>The Android build uses CMake build scripts for building the native test code.
+Java parts, i.e., the Test Execution Server and the Test Application Stub, are
+compiled using the standard Android build tools.</p>
+
+<p>To compile deqp test programs for Android with the provided build
+scripts, you will need:</p>
+
+<ul>
+  <li>The latest version of the <a href="http://developer.android.com/tools/sdk/ndk/index.html">Android NDK</a>; the <code>android/scripts/common.py</code> file lists the required version
+  <li>Android stand-alone SDK with API 13, SDK Tools, SDK Platform-tools, and SDK
+Build-tools packages installed (see <a href="http://developer.android.com/sdk/index.html#Other">http://developer.android.com/sdk/index.html#Other</a>)
+  <li><a href="http://ant.apache.org/bindownload.cgi">Apache Ant 1.9.4</a>
+ (required by the Java code build)
+  <li><a href="http://www.cmake.org/download/">CMake 2.8.12</a> or newer
+  <li><a href="https://www.python.org/downloads/">Python 2.6</a> or newer in 2.x series. Python 3.x is not supported.
+  <li> For Windows: Either NMake or JOM in <code>PATH</code>
+  <ul>
+    <li> JOM enables faster builds; available at <a href="http://qt-project.org/wiki/jom">http://qt-project.org/wiki/jom</a>
+  </ul>
+  <li> Optional: Ninja make is also supported on Linux
+</ul>
+
+<p>Ant and SDK binaries are located based on the PATH environment variable with
+certain overriding defaults. The logic is controlled by <code>android/scripts/common.py</code>. </p>
+
+<p>The NDK directory must be either <code>~/android-ndk-&lt;version&gt;</code> or <code>C:/android/android-ndk-&lt;version&gt;</code> or defined via the <code>ANDROID_NDK_PATH</code> environment variable.</p>
+
+<p>Deqp on-device components, the test execution service and test programs, are
+built by executing the <code>android/scripts/build.py</code> script. The final .apk is created into <code>android/package/bin</code> and it can be installed <code>install.py</code> script. If the <a href="#command_line_test_executor">Command Line Executor</a> is used, the ExecService is launched with <code>launch.py</code> script on the device via ADB. The scripts can be executed from any directory.</p>
+
+<h3 id=linux_build>Linux build</h3>
+
+<p>Test binaries and command line utilities can be built for Linux by generating Makefiles using CMake. There are multiple, pre-defined build targets that are useful when building for Linux.</p>
+
+
+<p class="table-caption" id="table4">
+  <strong>Table 4.</strong> Build targets for building for Linux.</p>
+
+<table>
+ <tr>
+   <th>Build target</th>
+   <th>Description</th>
+ </tr>
+
+ <tr>
+    <td><code>default</code></td>
+<td><p>Default target that uses CMake platform introspection to determine support for various APIs.</p>
+</td>
+ </tr>
+
+<tr>
+    <td><code>
+x11_glx</code></td>
+<td><p>Uses GLX to create OpenGL (ES) contexts.</p>
+</td>
+ </tr>
+
+<tr>
+    <td><code>
+x11_egl</code></td>
+<td><p>Uses EGL to create OpenGL (ES) contexts.</p>
+</td>
+ </tr>
+
+ <tr>
+    <td><code>
+x11_egl_glx</code></td>
+<td><p>Supports both GLX and EGL with X11.</p>
+</td>
+ </tr>
+
+</table>
+
+<p>Always use <code>-DCMAKE_BUILD_TYPE=&lt;Debug|Release&gt;</code> to define the build type. <code>Release</code> is a good default. Without it, a default, unoptimized release build is made.</p>
+
+<p>The <code>-DCMAKE_C_FLAGS</code> and <code>-DCMAKE_CXX_FLAGS</code> command-line arguments can be used to pass extra arguments to the compiler. For example the 32-bit or 64-bit build can be done by setting <code>-DCMAKE_C(XX)_FLAGS="-m32"</code> or <code>"-m64"</code> respectively. If not specified, the toolchain native architecture, typically 64-bit on the 64-bit toolchain, is used.</p>
+
+<p>The <code>-DCMAKE_LIBRARY_PATH</code> and <code>-DCMAKE_INCLUDE_PATH</code> arguments can be used for CMake, to give CMake additional library or include search paths.</p>
+
+<p>An example of a full command line used to do a 32-bit debug build against
+driver headers and libraries in a custom location is the following:</p>
+
+<pre>
+$ cmake &lt;path to src>/deqp -DDEQP_TARGET=x11_egl -DCMAKE_C_FLAGS="-m32"
+-DCMAKE_CXX_FLAGS="-m32" -DCMAKE_BUILD_TYPE=Debug
+-DCMAKE_LIBRARY_PATH="&lt;path to driver>/lib" 
+-DCMAKE_INCLUDE_PATH="&lt;path to driver>/inc"
+$ make -j4
+</pre>
+
+
+<h3 id=cross-compiling>Cross-compiling</h3>
+
+<p>Cross-compiling can be achieved by using a CMake toolchain file. The toolchain
+file specifies the compiler to use, along with custom search paths for
+libraries and headers. Several toolchain files for common scenarios are
+included in the release package in the <code>framework/delibs/cmake</code> directory.</p>
+
+<p>In addition to standard CMake variables, the following deqp-specific variables
+can be set by the toolchain file. CMake can usually detect <code>DE_OS</code>, <code>DE_COMPILER</code> and <code>DE_PTR_SIZE</code> correctly but <code>DE_CPU</code> must be set by the toolchain file.</p>
+
+<p class="table-caption" id="table5">
+  <strong>Table 5.</strong> Variables for cross-compiling.</p>
+<table>
+ <tr>
+   <th>Variable</th>
+   <th>Description</th>
+ </tr>
+ <tr>
+   <td><code>
+DE_OS</code></td>
+   <td><p>Operating system. Supported values are: <code>DE_OS_WIN32, DE_OS_UNIX, DE_OS_WINCE, DE_OS_OSX, DE_OS_ANDROID, DE_OS_SYMBIAN,
+DE_OS_IOS</code>.</p>
+   </td>
+ </tr>
+
+ <tr>
+    <td><code>
+DE_COMPILER</code></td>
+<td><p>Compiler type. Supported values are: <code>DE_COMPILER_GCC, DE_COMPILER_MSC, DE_COMPILER_CLANG</code>.</p>
+</td>
+ </tr>
+
+ <tr>
+    <td><code>
+DE_CPU</code></td>
+<td><p>CPU type. Supported values are: <code>DE_CPU_ARM, DE_CPU_X86</code>.</p>
+</td>
+ </tr>
+
+ <tr>
+    <td><code>
+DE_PTR_SIZE</code></td>
+<td><p>sizeof(void*) on the platform. Supported values are 4 and 8.</p>
+</td>
+ </tr>
+</table>
+
+<p>The toolchain file can be selected using the <code>CMAKE_TOOLCHAIN_FILE</code> build parameter. For example, the following would create makefiles for a build using the CodeSourcery cross-compiler for ARM/Linux:</p>
+
+<pre>
+cmake &lt;path to src>/deqp –DDEQP_BUILD_TYPE="Release"
+–DCMAKE_TOOLCHAIN_FILE=&lt;path to src>/delibs/cmake/toolchain-arm-cs.cmake
+–DARM_CC_BASE=&lt;path to cc directory>
+</pre>
+
+
+<h3 id=run-time_linking_of_gles_and_egl_libraries>Run-time linking of GLES and EGL libraries</h3>
+
+
+<p>The deqp does not need entry points of the API under test during linking. The
+test code always accesses the APIs through function pointers. Entry points can
+then be loaded dynamically at run time or the platform port can provide them at
+link time.</p>
+
+<p>If support for an API is turned on in the build settings and link libraries are
+not provided, the deqp will load the needed entry points at run time. If the
+static linking is desired, provide the needed link libraries in the <code>DEQP_&lt;API&gt;_LIBRARIES</code> build configuration variable.</p>
+
+<h2 id=porting_test_framework>Porting the test framework</h2>
+
+<p>Porting the deqp involves three steps: Adapting base portability libraries,
+implementing test-framework platform-integration interfaces, and porting the
+execution service.</p>
+
+<p>The table below lists locations for likely porting changes. Anything beyond
+them is likely to be exotic.</p>
+
+<p class="table-caption" id="table6">
+  <strong>Table 6.</strong> Locations for porting changes.</p>
+<table>
+ <tr>
+   <th>Location</th>
+   <th>Description</th>
+ </tr>
+
+ <tr>
+    <td><code>
+framework/delibs/debase<br/>
+framework/delibs/dethread<br/>
+framework/delibs/deutil</code></td>
+<td><p>Any necessary implementations of OS-specific code.</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+framework/qphelper/qpCrashHandler.c</code></td>
+<td><p>Optional: Implementation for your OS.</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+framework/qphelper/qpWatchDog.c</code></td>
+<td><p>Implementation for your OS. Current one is based on <code>dethread</code> and standard C library.</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+framework/platform</code></td>
+<td><p>New platform port and application stub can be implemented as described in <a href="#test_framework_platform_port">Test framework platform port</a>.</p>
+</td>
+ </tr>
+</table>
+
+<h3 id=base_portability_libraries>Base portability libraries</h3>
+
+<p>The base portability libraries already support Windows, most Linux variants, OS
+X, iOS, and Android. If the test target runs on one of those operating systems,
+most likely there is no need to touch the base portability libraries at all.</p>
+
+<h3 id=test_framework_platform_port>Test framework platform port</h3>
+
+<p>The deqp test framework platform port requires two components: An application
+entry point and a platform interface implementation. </p>
+
+<p>The application entry point is responsible for creating the platform object,
+creating a command line (<code>tcu::CommandLine</code>) object, opening a test log (<code>tcu::TestLog</code>), and iterating the test application (<code>tcu::App</code>). If the target OS supports a standard <code>main()</code> entry point, <code>tcuMain.cpp</code> can be used as the entry point implementation.</p>
+
+<p>The deqp platform API is described in detail in the following files.</p>
+
+<p class="table-caption" id="table7">
+  <strong>Table 7.</strong> Files describing the deqp platform API.</p>
+<table>
+ <tr>
+   <th>File</th>
+   <th>Description</th>
+ </tr>
+ <tr>
+    <td><code>
+framework/common/tcuPlatform.hpp</code></td>
+<td><p>Base class for all platform ports</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+framework/opengl/gluPlatform.hpp</code></td>
+<td><p>OpenGL platform interface</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+framework/egl/egluPlatform.hpp</code></td>
+<td><p>EGL platform interface</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+framework/platform/tcuMain.cpp</code></td>
+<td><p>Standard application entry point</p>
+</td>
+ </tr>
+</table>
+
+<p>The base class for all platform ports is <code>tcu::Platform</code>. The platform port can optionally support GL- and EGL-specific interfaces. See
+the following table for an overview of what needs to be implemented to
+run the tests.</p>
+
+<p class="table-caption" id="table8">
+  <strong>Table 8.</strong> Platform modules.</p>
+<table>
+ <tr>
+   <th>Module</th>
+   <th>Interface</th>
+ </tr>
+
+
+ <tr>
+    <td><p>OpenGL (ES) test modules</p>
+</td>
+    <td><p>GL platform interface</p>
+</td>
+ </tr>
+ <tr>
+    <td><p>EGL test module</p>
+</td>
+    <td><p>EGL platform interface</p>
+</td>
+ </tr>
+</table>
+
+
+<p>Detailed instructions for implementing platform ports are in the
+porting layer headers.</p>
+
+<h3 id=test_execution_service>Test execution service</h3>
+
+
+<p>To use the deqp test execution infrastructure or command line executor, the
+test execution service must be available on the target. A portable C++
+implementation of the service is provided in the <code>execserver</code> directory. The stand-alone binary is built as a part of the deqp test module
+build for PC targets. You can modify <code>execserver/CMakeLists.txt</code> to enable a build on other targets.</p>
+
+<p>The C++ version of the test execution service accepts two command line
+parameters:</p>
+
+<ul>
+  <li> <code>--port=&lt;port&gt;</code> will set the TCP port that the server listens on. The default is 50016.
+  <li> <code>--single</code> will terminate the server process when the client disconnects. By default, the
+server process will stay up to serve further test execution requests.
+</ul>
+
+<h2 id=running_the_tests>Running the tests</h2>
+
+<h3 id=linux_and_windows_environments>Linux and Windows environments</h3>
+
+<p>The following files and directories must be copied to the target.</p>
+
+<p class="table-caption" id="table9">
+  <strong>Table 9.</strong> Files and directories for deploying test programs.</p>
+<table>
+ <tr>
+   <th>Module</th>
+   <th>Directory</th>
+   <th>Target</th>
+ </tr>
+
+ <tr>
+    <td><p>Execution Server</p></td>
+    <td><code>build/execserver/execserver</code></td>
+    <td><code>&lt;dst>/execserver</code></td>
+ </tr>
+ 
+ <tr>
+    <td><p>EGL Module</p></td>
+    <td><code>build/modules/egl/deqp-egl</code></td>
+    <td><code>&lt;dst>/deqp-egl</code></td>
+ </tr>
+ 
+ <tr>
+    <td><p>GLES2 Module</p></td>
+    <td><code>build/modules/gles2/deqp-gles2data/gles2</code></td>
+    <td>
+    <code>
+&lt;dst>/deqp-gles2<br/>
+&lt;dst>/gles2
+    </code>
+    </td>
+ </tr>
+ 
+ <tr>
+    <td><p>GLES3 Module</p></td>
+    <td><code>build/modules/gles3/deqp-gles3data/gles3</code></td>
+    <td>
+    <code>
+&lt;dst>/deqp-gles3<br/>
+&lt;dst>/gles3
+</code>
+</td>
+ </tr>
+ 
+ <tr>
+    <td><p>GLES3.1 Module</p></td>
+    <td><code>build/modules/gles31/deqp-gles31data/gles31</code></td>
+    <td>
+    <code>
+&lt;dst>/deqp-gles31<br/>
+&lt;dst>/gles31
+    </code>
+    </td>
+ </tr>
+</table>
+
+
+<p>Execution service and test binaries can be deployed anywhere in the target file system. Test binaries expect to find data directories in the current working directory.</p>
+
+<p>Start the Test Execution Service on the target device. For more details on
+starting the service, see <a href="#test_execution_service">Test execution service</a>.</p>
+
+<h3 id=command_line_arguments>Command line arguments</h3>
+
+
+<p>The following table lists command line arguments that affect execution of all test programs. </p>
+
+
+<p class="table-caption" id="table10">
+  <strong>Table 10.</strong> Command-line arguments for all test programs.</p>
+<table width="100%">
+<col style="width:50%">
+<col style="width:50%">
+ <tr>
+   <th>Argument</th>
+   <th>Description</th>
+ </tr>
+
+ <tr>
+    <td><code>
+--deqp-case=&lt;casename></code></td>
+<td><p>Run cases that match a given pattern. Wildcard (*) is supported.</p>
+</td>
+ </tr>
+ 
+ <tr>
+    <td><code>
+--deqp-log-filename=&lt;filename></code></td>
+<td><p>Write test results to the file whose name you provide. </p>
+<p>The test execution service will set the filename when starting a test.</p>
+</td>
+ </tr>
+
+ <tr>
+ <td><code>
+--deqp-stdin-caselist<br/>
+--deqp-caselist=&lt;caselist><br/>
+--deqp-caselist-file=&lt;filename></code></td>
+<td><p>Read case list from stdin or from a given argument. The test execution service
+will set the argument according to the execution request received. See the next
+section for a description of the case list format.</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+--deqp-test-iteration-count=&lt;count></code></td>
+<td><p>Override iteration count for tests that support a variable number of
+iterations. </p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+--deqp-base-seed=&lt;seed></code></td>
+<td><p>Base seed for the test cases that use randomization.</p>
+</td>
+ </tr>
+</table>
+
+
+<h4 id=gles2_and_gles3-specific_arguments>GLES2 and GLES3-specific arguments</h4>
+
+The following table lists the GLES2 and GLES3-specific arguments.
+
+<p class="table-caption" id="table11">
+  <strong>Table 11.</strong> Arguments for GLES2 and GLES3.</p>
+<table>
+<table width="100%">
+<col style="width:50%">
+<col style="width:50%">
+ <tr>
+   <th>Argument</th>
+   <th>Description</th>
+ </tr>
+ <tr>
+    <td><code>
+--deqp-gl-context-type=&lt;type></code></td>
+<td><p>OpenGL context type. Available context types depend on the platform. On
+platforms supporting EGL, the value <code>egl</code> can be used to select the EGL context.</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+--deqp-gl-config-id=&lt;id></code></td>
+<td><p>Run tests for the provided GL configuration ID. Interpretation is
+platform-dependent. On the EGL platform this is the EGL configuration ID.</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+--deqp-gl-config-name=&lt;name></code></td>
+<td><p>Run tests for a named GL configuration. Interpretation is platform-dependent.
+For EGL the format is <code>rgb(a)&lt;bits&gt;d&lt;bits&gt;s&lt;bits&gt;</code>. For example, a value of <code>rgb888s8</code> will select the first configuration where the color buffer is RGB888 and the
+stencil buffer has 8 bits.</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+--deqp-gl-context-flags=&lt;flags></code></td>
+<td><p>Creates a context. Specify <code>robust</code> or <code>debug</code>.</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+--deqp-surface-width=&lt;width><br/>
+--deqp-surface-height=&lt;height></code></td>
+<td><p>Try to create a surface with a given size. Support for this is optional.</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+--deqp-surface-type=&lt;type></code></td>
+<td><p>Use a given surface type as the main test rendering target. Possible types are <code>window</code>, <code>pixmap</code>, <code>pbuffer</code>, and <code>fbo</code>.</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+--deqp-screen-rotation=&lt;rotation></code></td>
+<td><p>Screen orientation in increments of 90 degrees for platforms that support it.</p>
+</td>
+ </tr>
+</table>
+
+
+<h4 id=test_case_list_format>Test case list format</h4>
+
+
+<p>The test case list can be given in two formats. The first option is to list the
+full name of each test on a separate line in a standard ASCII file. As the test
+sets grow, the repetitive prefixes can be cumbersome. To avoid repeating the
+prefixes, use a trie (also known as a prefix tree) syntax shown below.</p>
+
+<pre>
+{nodeName{firstChild{…},…lastChild{…}}}
+</pre>
+
+
+<p>For example, please review the following:</p>
+
+<pre>
+{dEQP-EGL{config-list,create_context{rgb565_depth_stencil}}}
+</pre>
+
+
+<p>That list would translate into two test cases:</p>
+
+<pre>
+dEQP-EGL.config_list
+dEQP-EGL.create_context.rgb565_depth_stencil
+</pre>
+
+
+<h3 id=android>Android</h3>
+
+
+<p>The Android application package contains everything required, including the
+test execution service, test binaries, and data files. The test activity is a <code>NativeActivity </code>and it uses EGL, which requires Android 3.2 or later.</p>
+
+<p>The application package can be installed with the following command:</p>
+
+<pre>
+adb –d install –r com.drawelements.deqp.apk
+</pre>
+
+
+<p>To launch the test execution service and to setup port forwarding, use the
+following:</p>
+
+<pre>
+adb –d forward tcp:50016 tcp:50016
+adb –d shell am start –n com.drawelements.deqp/.execserver.ServiceStarter
+</pre>
+
+
+<p>Debug prints can be enabled by executing the following before starting the
+tests:</p>
+
+<pre>
+adb –d shell setprop log.tag.dEQP DEBUG 
+</pre>
+
+
+<h4 id=executing_tests_on_android_without_android_cts>Executing tests on Android without Android CTS</h4>
+
+
+<p>If you want to manually start the test execution activity, construct an Android
+intent that targets <code>android.app.NativeActivity</code>. The activities can be found in the <code>com.drawelements.deqp</code> package. The command line must be supplied as an extra string with key <code>"cmdLine"</code> in the Intent.</p>
+
+<p>A test log will be written to <code>/sdcard/dEQP-log.qpa</code>. If the test run does not start normally, additional debug information is
+available in the device log.</p>
+
+<p>The activity can be launched from the command line using the <code>"am"</code> utility. For example, to run <code>dEQP-GLES2.info</code> tests on a platform supporting <code>NativeActivity,</code> the following command can be used:</p>
+
+<pre>
+adb -d shell am start -n com.drawelements.deqp/android.app.NativeActivity -e
+cmdLine "deqp --deqp-case=dEQP-GLES2.info.*
+--deqp-log-filename=/sdcard/dEQP-Log.qpa
+</pre>
+
+
+<h4 id=debugging_on_android>Debugging on Android</h4>
+
+
+<p>To run the tests under the GDB debugger on Android, first compile and install
+the debug build by running the following two scripts:</p>
+
+<pre>
+python android/scripts/build.py --native-build-type=Debug
+python
+android/scripts/install.py
+</pre>
+
+
+<p>After the debug build is installed on the device, to launch the tests under GDB
+running on the host, run the following command:</p>
+
+<pre>
+pythonandroid/scripts/debug.py
+--deqp-commandline="--deqp-log-filename=/sdcard/TestLog.qpa
+--deqp-case=dEQP-GLES2.functional.*"
+</pre>
+
+
+<p>The deqp command line will depend on test cases to be executed and other
+required parameters. The script will add a default breakpoint into the
+beginning of the deqp execution (<code>tcu::App::App</code>).</p>
+
+<p>The <code>debug.py </code>script accepts multiple command line arguments, e.g. for the following:</p>
+
+<ul>
+  <li> Setting the breakpoints for debugging
+  <li> gdbserver connection parameters
+  <li> Paths to additional binaries to debug  
+</ul>
+
+<p>Running <code>debug.py --help</code> will list all command line parameters, with explanations.</p>
+
+<p>The script copies some default libraries from the target device to get symbol
+listings. </p>
+
+<p>More libraries to be included can be added via <code>debug.py</code> command line parameters. If there is a need to step through driver code, for
+example if the GDB needs to know the locations of the binaries with full debug
+information. The <code>debug.py</code> script writes out a configuration file for the GDB starting from line 132 of
+the script file. Additional paths to binaries, etc., can be added there, but
+supplying correct command line parameters should be enough.</p>
+
+<p><strong>Notes:</strong></p>
+
+<ul>
+  <li> On Windows, the gdb binary requires <code>libpython2.7.dll</code>. Add
+<code>&lt;path to ndk&gt;/prebuilt/windows/bin</code> to the PATH variable before launching <code>debug.py</code>.
+  <li> Native code debugging does not work on stock Android 4.3. See the Android bug
+report below for suggested workarounds. The bug has been fixed in Android 4.4;
+see the following: <a href="https://code.google.com/p/android/issues/detail?id=58373">https://code.google.com/p/android/issues/detail?id=58373</a>
+</ul>
+
+<h2 id=special_test_groups>Special test groups</h2>
+
+
+<p>Some test groups may need or support special command line options, or require
+special care when used on certain systems.</p>
+
+<h3 id=memory_allocation_stress_tests>Memory allocation stress tests</h3>
+
+
+<p>Memory allocation stress tests exercise out-of-memory conditions by repeatedly
+allocating certain resources until the driver reports an out-of-memory error.</p>
+
+<p>On certain platforms, such as Android and most Linux variants, the following
+can occur: The operating system may kill the test process instead of allowing a
+driver to handle or otherwise provide an out-of-memory error. On such
+platforms, tests that are designed to cause out-of-memory errors are disabled
+by default, and must be enabled using the  <code>--deqp-test-oom=enable</code> command line argument. It is recommended that you run such tests manually to
+check if the system behaves correctly under resource pressure. However, in such
+a situation, a test process crash should be interpreted as a pass.</p>
+
+<h4 id=test_groups>Test groups</h4>
+
+
+<pre>
+dEQP-GLES2.stress.memory.*
+dEQP-GLES3.stress.memory.*
+</pre>
+
+
+<h3 id=long-running_rendering_stress_tests>Long-running rendering stress tests</h3>
+
+
+<p>Rendering stress tests are designed to reveal robustness issues under sustained
+rendering load. By default the tests will execute only a few iterations, but
+they can be configured to run indefinitely by supplying the <code>--deqp-test-iteration-count=-1</code> command line argument. The test watchdog should be disabled (<code>--deqp-watchdog=disable</code>) when running these tests for a long period of time.</p>
+
+<h4 id=test_groups2>Test groups</h4>
+
+
+<pre>
+dEQP-GLES2.stress.long.*
+dEQP-GLES3.stress.long.*
+</pre>
+
+
+<h2 id=integration_to_automated_test_systems>Integration with automated test systems</h2>
+
+
+<p>Deqp test modules can be integrated to automated test systems in multiple ways.
+The best approach depends on the existing test infrastructure and target
+environment.</p>
+
+<p>The primary output from a test run is always the test log file, i.e. the file
+with an <code>.qpa</code> postfix. Full test results can be parsed from the test log. Console output is
+debug information only and may not be available on all platforms.</p>
+
+<p>Test binaries can be invoked directly from a test automation system. The test
+binary can be launched for a specific case, for a test set, or for all
+available tests. If a fatal error occurs during execution (such as certain API
+errors or a crash), the test execution will abort. For regression testing, the
+best approach is to invoke the test binaries for individual cases or small test
+sets separately, in order to have partial results available even in the event
+of hard failure.</p>
+
+<p>The deqp comes with command line test execution tools that can be used in
+combination with the execution service to achieve a more robust integration.
+The executor detects test process termination and will resume test execution on
+the next available case. A single log file is produced from the full test
+session. This setup is ideal for lightweight test systems that don’t provide
+crash recovery facilities.</p>
+
+<h2 id=command_line_test_execution_tools>Command line test execution tools</h2>
+
+
+<p>The current command line tool set includes a remote test execution tool, a test
+log comparison generator for regression analysis, a test-log-to-CSV converter,
+a test-log-to-XML converter, and a testlog-to-JUnit converter.</p>
+
+<p>The source code for these tools is in the <code>executor</code> directory, and the binaries are built into the <code>&lt;builddir&gt;/executor</code> directory.</p>
+
+<h3 id=command_line_test_executor>Command line Test Executor</h3>
+
+
+<p>The command line Test Executor is a portable C++ tool for launching a test run
+on a device and collecting the resulting logs from it over TCP/IP. The Executor
+communicates with the execution service (execserver) on the target device.
+Together they provide functionality such as recovery from test process crashes.
+The following examples demonstrate how to use the command line Test Executor
+(use <code>--help</code> for more details):</p>
+
+<h4 id=example_1_run_gles2_functional_tests_on_an_android_device>Example 1: Run GLES2 functional tests on an Android device:</h4>
+
+
+<pre>
+executor --connect=127.0.0.1 --port=50016 --binaryname=
+com.drawelements.deqp/android.app.NativeActivity 
+--caselistdir=caselists
+--testset=dEQP-GLES2.* --out=BatchResult.qpa
+--cmdline="--deqp-crashhandler=enable --deqp-watchdog=enable
+--deqp-gl-config-name=rgba8888d24s8"
+</pre>
+
+
+<h4 id=example_2_continue_a_partial_opengl_es_2_test_run_locally>Example 2: Continue a partial OpenGL ES 2 test run locally:</h4>
+
+
+<pre>
+executor --start-server=execserver/execserver --port=50016
+--binaryname=deqp-gles2 --workdir=modules/opengl 
+--caselistdir=caselists
+--testset=dEQP-GLES2.* --exclude=dEQP-GLES2.performance.* --in=BatchResult.qpa
+--out=BatchResult.qpa
+</pre>
+
+
+<h3 id=test_log_csv_export_and_compare>Test log CSV export and compare</h3>
+
+
+<p>The deqp has a tool for converting test logs (.<code>qpa </code>files) into CSV files. The CSV output contains a list of test cases and their
+results. The tool can also compare two or more batch results and list only the
+test cases that have different status codes in the input batch results. The
+comparison will also print the number of matching cases.</p>
+
+<p>The output in CSV format is very practical for further processing with standard
+command line utilities or with Microsoft Excel. An additional, human-readable,
+plain-text format can be selected using the following command line argument: <code>--format=text</code></p>
+
+<h4 id=example_1_export_test_log_in_csv_format>Example 1: Export test log in CSV format</h4>
+
+
+<pre>
+testlog-to-csv --value=code BatchResult.qpa > Result_statuscodes.csv
+testlog-to-csv --value=details BatchResult.qpa > Result_statusdetails.csv
+</pre>
+
+
+<h4 id=example_2_list_differences_of_test_results_between_two_test_logs>Example 2: List differences of test results between two test logs</h4>
+
+
+<pre>
+testlog-to-csv --mode=diff --format=text Device_v1.qpa Device_v2.qpa
+</pre>
+
+
+<p><strong>Note</strong>: The argument <code>--value=code</code> outputs the test result code, such as "Pass" or "Fail".
+The argument <code>--value=details</code> selects the further explanation of the result or numerical value produced by a
+performance, capability, or accuracy test.</p>
+
+<h3 id=test_log_xml_export>Test log XML export</h3>
+
+
+<p>Test log files can be converted to valid XML documents using the <code>testlog-to-xml</code> utility. Two output modes are supported: </p>
+
+<ul>
+  <li> Separate documents mode, where each test case and the <code>caselist.xml</code> summary document are written to a destination directory
+  <li> Single file mode, where all results in the <code>.qpa</code> file are written to single XML document.
+</ul>
+
+<p>Exported test log files can be viewed in a browser using an XML style sheet.
+Sample style sheet documents (<code>testlog.xsl</code> and <code>testlog.css</code>) are provided in the <code>doc/testlog-stylesheet</code> directory. To render the log files in a browser, copy the two style sheet
+files into the same directory where the exported XML documents are.</p>
+
+<p>If you are using Google Chrome, the files must be accessed over HTTP as Chrome
+limits local file access for security reasons. The standard Python installation
+includes a basic HTTP server that can be launched to serve the current
+directory with the <code>python –m SimpleHTTPServer 8000</code> command. After launching the server, just point the Chrome browser to <code>http://localhost:8000</code> to view the test log.</p>
+
+<h3 id=conversion_to_a_junit_test_log>Conversion to a JUnit test log</h3>
+
+
+<p>Many test automation systems can generate test run result reports from JUnit
+output. The deqp test log files can be converted to the JUnit output format
+using the testlog-to-junit tool. </p>
+
+<p>The tool currently supports translating the test case verdict only. As JUnit
+only supports "pass" and "fail" results, a passing result of the deqp is mapped
+to "JUnit pass" and other results are considered failures. The original deqp
+result code is available in the JUnit output. Other data, such as log messages
+and result images, are not preserved in the conversion.</p>
+
+<h2 id=android_cts_integration>Android CTS Integration</h2>
+
+
+<h3 id=duplicating_runs_without_cts>Duplicating runs without CTS</h3>
+
+
+<p>To replicate the CTS run, install the deqp APK of the CTS package and use the
+following command:</p>
+
+<pre>
+adb -d shell am start -n com.drawelements.deqp/android.app.NativeActivity -e
+cmdLine "deqp --deqp-case=dEQP-GLES3.some_group.*
+--deqp-gl-config-name=rgba8888d24s8 --deqp-log-filename=/sdcard/dEQP-Log.qpa
+</pre>
+
+
+<p>The important part of that command is the following:</p>
+
+<pre>
+--deqp-gl-config-name=rgba8888d24s8
+</pre>
+
+<p>This argument requests that the tests be run on an RGBA 8888 on-screen surface
+with a 24-bit depth buffer and an 8-bit stencil buffer. Also remember to set
+the desired tests, e.g. using the <code>--deqp-case </code>argument.</p>
+
+<h3 id=mapping_of_the_cts_results>Mapping of the CTS results</h3>
+
+
+<p>In the Android CTS, a test case can end up in three states: passed, failed, or
+not executed.</p>
+
+<p>The deqp has more result codes available. A mapping is automatically performed
+by the CTS. The following deqp result codes are mapped to a CTS pass: <code>Pass,</code> <code>NotSupported,</code> <code>QualityWarning,</code> and <code>CompatibilityWarning</code> </p>
+
+<p>The following results are interpreted as a CTS failure: <code>Fail,</code> <code>ResourceError,</code> <code>Crash,</code> <code>Timeout,</code> and <code>InternalError</code></p>
+
+
+
+
+
