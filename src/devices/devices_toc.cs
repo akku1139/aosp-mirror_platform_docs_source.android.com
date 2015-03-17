@@ -95,21 +95,7 @@
         <ul>
           <li><a href="<?cs var:toroot ?>devices/graphics/architecture.html">Architecture</a></li>
           <li><a href="<?cs var:toroot ?>devices/graphics/implement.html">Implementation</a></li>
-         <li class="nav-section">
-            <div class="nav-section-header">
-              <a href="<?cs var:toroot ?>devices/graphics/testing.html">
-                <span class="en">OpenGL ES Testing</span>
-              </a>
-            </div>
-            <ul>
-              <li><a href="<?cs var:toroot ?>devices/graphics/build-tests.html">Building test programs</a></li>
-              <li><a href="<?cs var:toroot ?>devices/graphics/port-tests.html">Porting the test framework</a></li>
-              <li><a href="<?cs var:toroot ?>devices/graphics/run-tests.html">Running the tests</a></li>
-              <li><a href="<?cs var:toroot ?>devices/graphics/automate-tests.html">Automating the tests</a></li>
-              <li><a href="<?cs var:toroot ?>devices/graphics/test-groups.html">Using special test groups</a></li>
-              <li><a href="<?cs var:toroot ?>devices/graphics/cts-integration.html">Integrating with Android CTS</a></li>
-            </ul>
-         </li>
+          <li><a href="<?cs var:toroot ?>devices/graphics/DeqpUserGuide.pdf">OpenGL ES Testing</a></li>
         </ul>
       </li>
       <li class="nav-section">
@@ -278,14 +264,14 @@
               <a href="<?cs var:toroot ?>devices/tech/ota/index.html">
                 <span class="en">OTA Updates</span>
               </a>
-	    </div>
-	    <ul>
-              <li><a href="<?cs var:toroot ?>devices/tech/ota/tools.html">OTA Tools</a></li>
-              <li><a href="<?cs var:toroot ?>devices/tech/ota/block.html">Block-based OTA</a></li>
-	      <li><a href="<?cs var:toroot ?>devices/tech/ota/inside_packages.html">Inside OTA Packages</a></li>
-	      <li><a href="<?cs var:toroot ?>devices/tech/ota/device_code.html">Device-Specific Code</a></li>
-	      <li><a href="<?cs var:toroot ?>devices/tech/ota/sign_builds.html">Signing Builds for Release</a></li>
-            </ul>
+            </div>
+        <ul>
+           <li><a href="<?cs var:toroot ?>devices/tech/ota/tools.html">OTA Tools</a></li>
+           <li><a href="<?cs var:toroot ?>devices/tech/ota/block.html">Block-based OTA</a></li>
+           <li><a href="<?cs var:toroot ?>devices/tech/ota/inside_packages.html">Inside OTA Packages</a></li>
+           <li><a href="<?cs var:toroot ?>devices/tech/ota/device_code.html">Device-Specific Code</a></li>
+      <li><a href="<?cs var:toroot ?>devices/tech/ota/sign_builds.html">Signing Builds for Release</a></li>
+       </ul>
       </li>
 
       <li>
@@ -341,13 +327,13 @@
             </li>
           <li class="nav-section">
             <div class="nav-section-header">
-              <a href="<?cs var:toroot ?>devices/tech/security/verifiedboot/index.html">
-                <span class="en">Verified Boot</span>
+              <a href="<?cs var:toroot ?>devices/tech/security/secureboot/index.html">
+                <span class="en">Secure Boot</span>
               </a>
             </div>
             <ul>
-              <li><a href="<?cs var:toroot ?>devices/tech/security/verifiedboot/verified-boot.html">Verifying boot</a></li>
-              <li><a href="<?cs var:toroot ?>devices/tech/security/verifiedboot/dm-verity.html">Implementing dm-verity</a></li>
+              <li><a href="<?cs var:toroot ?>devices/tech/security/secureboot/verified-boot.html">Verifying boot</a></li>
+              <li><a href="<?cs var:toroot ?>devices/tech/security/secureboot/dm-verity.html">Implementing dm-verity</a></li>
             </ul>
           </li>
           <li class="nav-section">
