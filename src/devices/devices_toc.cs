@@ -250,6 +250,17 @@
         </ul>
       </li>
 
+      <li class="nav-section">
+        <div class="nav-section-header">
+            <a href="<?cs var:toroot ?>devices/tech/ram/index.html">
+              <span class="en">Network</span>
+            </a>
+        </div>
+        <ul>
+          <li><a href="<?cs var:toroot ?>devices/tech/network/netstats.html">Viewing Network Data</a></li>
+        </ul>
+      </li>
+
       <li>
           <a href="<?cs var:toroot ?>devices/tech/power.html">
             <span class="en">Power</span>
