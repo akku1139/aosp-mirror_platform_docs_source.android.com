@@ -172,6 +172,20 @@
     <ul>
       <li class="nav-section">
         <div class="nav-section-header">
+          <a href="<?cs var:toroot ?>devices/tech/work/index.html">
+          <span class="en">Android for Work</span></a>
+        </div>
+        <ul>
+          <li><a href="<?cs var:toroot ?>devices/tech/work/implement.html">Implementation</a></li>
+          <li><a href="<?cs var:toroot ?>devices/tech/work/customize.html">Customization</a></li>
+          <li><a href="<?cs var:toroot ?>devices/tech/work/multi-user.html">Multiple Users</a></li>
+          <li><a href="<?cs var:toroot ?>devices/tech/work/managed-profiles.html">Managed Profiles</a></li>
+          <li><a href="<?cs var:toroot ?>devices/tech/work/testing-setup.html">Testing Setup</a></li>
+        </ul>
+      </li>
+
+      <li class="nav-section">
+        <div class="nav-section-header">
           <a href="<?cs var:toroot ?>devices/tech/dalvik/index.html">
           <span class="en">ART and Dalvik</span></a>
         </div>
