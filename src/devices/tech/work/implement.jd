@@ -1,0 +1,306 @@
+page.title=Implementing Android for Work
+@jd:body
+
+<!--
+    Copyright 2015 The Android Open Source Project
+
+    Licensed under the Apache License, Version 2.0 (the "License");
+    you may not use this file except in compliance with the License.
+    You may obtain a copy of the License at
+
+        http://www.apache.org/licenses/LICENSE-2.0
+
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    See the License for the specific language governing permissions and
+    limitations under the License.
+-->
+<div id="qv-wrapper">
+  <div id="qv">
+    <h2>In this document</h2>
+    <ol id="auto-toc">
+    </ol>
+  </div>
+</div>
+
+<p>This page walks you through the many features in Android 5.0 and higher
+platform release that need to be enabled and validated on devices to make them
+ready for Android for Work. In addition to the related Android Open Source
+Project (AOSP) code, there are a number of additional components required for a
+device to function with managed profiles.</p>
+
+<h2 id=requirements>Requirements</h2>
+
+<h3 id=cdd_requirements>CDD requirements</h3>
+
+<p>The device MUST meet requirements as described in <a href="http://source.android.com/compatibility/android-5.0-cdd.pdf">Android 5.0 CDD</a> sec 9.5.</p>
+
+<h3 id=device_image>Device image</h3>
+
+<p>The device image should meet the following requirements:</p>
+
+<p>The following uses-­feature MUST be define:</p>
+
+<pre>
+android.software.managed_users
+android.software.device_admin
+</pre>
+
+<p>Confirm with: <code>adb shell pm list features</code></p>
+
+<p>It MUST not be a low RAM device:</p>
+
+<p>ie. <code>ro.config.low_ram</code> must <strong>not</strong> be defined.</p>
+
+<p>It MUST be capable of supporting at least three users:
+ie. <code>framework overlay config_multiuserMaximumUsers>= 3</code>
+Confirm with: <code>adb shell pm get­-max­-users</code></p>
+
+<h2 id=applications>Applications</h2>
+
+<p>Required apps determine the apps enabled by default when a managed profiled is
+created; if there are OEM apps needed here, then they must be whitelisted. (CTS
+tests can’t cover this.)</p>
+
+<p>A special mime/content type for NFC exists to trigger the device owner
+bootstrapping from the setup wizard.</p>
+
+<h3 id=required_applications>Required applications</h3>
+
+<p>By default, only applications that are essential for correct operation of the
+profile are enabled as part of provisioning a managed device.</p>
+
+<p>OEMs must ensure the managed profile or device has all required applications by
+modifying:</p>
+
+<pre>
+vendor_required_apps_managed_profile.xml
+vendor_required_apps_managed_device.xml
+</pre>
+
+<p>You need instances of certain apps to make the managed user function, e.g.
+Google Play Services. Apps with no launcher icon are copied over to the managed
+user.</p>
+
+<p>OEMs need to whitelist packages that will be enabled when they create a
+default/aosp profile (for downloads and settings) and a vendor-specific profile
+(for Play, Google Mobile Services, contacts).</p>
+
+<h3 id=gms>GMS</h3>
+
+<p>The AndroidForWork Google Mobile Services (GMS Optional) APK must be
+pre­installed on the device.</p>
+
+<p>The Google Play Services (ie. GMSCore) version pre­installed MUST be v6.5.99+.</p>
+
+<p>The system launcher must support badging applications in managed profiles as
+covered in the CDD (see section 9.5).
+<strong>Important</strong>: The OEM launcher must support managed profiles.</p>
+
+<p>Key GMS components necessary to run a user need to be whitelisted in the <code>vendor_required_apps_managed_[profile|device].xml</code> files.</p>
+
+<p>Here are examples from a Nexus device:</p>
+
+<pre>
+packages/apps/ManagedProvisioning/res/values/vendor_required_apps_managed_device.xml
+
+&lt;resources&gt;
+  &lt;!­­ A list of apps to be retained on the managed device&gt;
+  &lt;string­array name="vendor_required_apps_managed_device"&gt;
+    &lt;item&gt;com.android.vending&lt;/item&gt; &lt;!­­ Google Play&gt;
+    &lt;item&gt;com.google.android.gms&lt;/item&gt; &lt;!­­ Required by Pla­y&gt;
+    &lt;item&gt;com.google.android.contacts&lt;/item&gt; &lt;!­­ Google or OEM Contacts­­&gt;
+    &lt;item&gt;com.google.android.googlequicksearchbox&lt;/item&gt; &lt;!­­ Google Launcher ­­&gt;
+    &lt;item&gt;com.google.android.launcher&lt;/item&gt; &lt;!­­ Google Launcher or OEM Launcher →
+    &lt;item&gt;com.google.android.dialer&lt;/item&gt; &lt;!­­ Google or OEM dialer to enable making
+phone calls ­&gt;
+  &lt;/string­array&gt;
+&lt;/resources&gt;
+</pre>
+
+<pre>
+packages/apps/ManagedProvisioning/res/values/vendor_required_apps_managed_profile.xml
+
+&lt;resources&gt;
+    &lt;!-- A list of apps to be retained in the managed profile. This includes any Google experience apps required. --&gt;
+    &lt;string-array name="vendor_required_apps_managed_profile"&gt;
+        &lt;item&gt;com.android.vending&lt;/item&gt; &lt;!-- Google Play --&gt;
+        &lt;item&gt;com.google.android.gms&lt;/item&gt; &lt;!-- Required by Play --&gt;
+        &lt;item&gt;com.google.android.contacts&lt;/item&gt; &lt;!-- Google or OEM Contacts --&gt;
+    &lt;/string-array&gt;
+&lt;/resources&gt;
+</pre>
+
+<h3 id=nfc>NFC</h3>
+
+<p>On devices with NFC, It must be enabled in the Android Setup Wizard and
+configured to accept managed provisioning intents:</p>
+
+<pre>
+packages/apps/Nfc/res/values/provisioning.xml
+
+&lt;bool name="enable_nfc_provisioning"&gt;true&lt;/bool&gt;
+&lt;item>application/com.android.managedprovisioning&lt;/item&gt;
+</pre>
+
+<h3 id=setup_wizard>Setup Wizard</h3>
+
+<p>The Android Setup Wizard needs to support device owner provisioning. When it
+opens, it needs to check if another process (such as device owner provisioning)
+has already finished the user setup. If this is the case, it needs to fire a
+home intent and finish the setup wizard. </p>
+
+<p>This intent will be caught by the provisioning application, which will then
+hand over control to the newly set device owner. This can be achieved by adding
+the following to your setup wizard’s main activity:</p>
+
+<pre>
+@Override
+   protected void onStart() {
+        super.onStart();
+
+        // When returning to a setup wizard activity, check to see if another setup process
+        // has intervened and, if so, complete an orderly exit
+        boolean completed = Settings.Secure.getInt(getContentResolver(),
+                Settings.Secure.USER_SETUP_COMPLETE, 0) != 0;
+        if (completed) {    
+           startActivity(new Intent(Intent.ACTION_MAIN, null)
+                .addCategory(Intent.CATEGORY_HOME)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
+                        | Intent.FLAG_ACTIVITY_CLEAR_TASK
+                        | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED));
+           finish();
+       }
+
+       ...
+   }
+</pre>
+
+<h2 id=provisioning>Provisioning</h2>
+
+<h3 id=managed_provisioning>Managed Provisioning</h3>
+
+<p>Managed Provisioning is a framework UI flow to ensure users are adequately
+informed of the implications of setting a device or profile owner. You can
+think of it as a setup wizard for managed profiles. (Remember, the device owner
+can be set only from an unprovisioned device.) Because of this power,
+manufacturers must guard against its misuse. </p>
+
+<p>Please note, pre-encrypted devices offer considerably simpler/quicker Android
+for Work provisioning flow. The managed provisioning component:</p>
+
+<ul>
+  <li> Encrypts the device</li>
+  <li> Creates the managed profile</li>
+  <li> Removes non-required applications</li>
+  <li> Sets the EMM as profile owner</li>
+</ul>
+
+<p>In turn, the EMM app:</p>
+
+<ul>
+  <li> Adds user accounts</li>
+  <li> Enforces device compliance</li>
+  <li> Enables any additional system applications</li>
+</ul>
+
+<p>In this flow, managed provisioning triggers device encryption. The framework
+  copies the EMM app into the managed profile as part of managed provisioning.
+  The instance of the EMM app inside of the work profile gets a callback from the
+framework when provisioning is done.</p>
+
+<p>The EMM can then add accounts and enforce policies; it then calls
+setProfileEnabled(), which makes the launcher icons visible.</p>
+
+<h3 id=profile_owner_provisioning>Profile Owner Provisioning</h3>
+
+<p>Profile owner provisioning assumes the user of the device oversees its
+management (and not a company IT department). To enable, profile owner
+provisioning, you must send an intent with appropriate extras. See the <a href="https://developer.android.com/samples/BasicManagedProfile/index.html">BasicManagedProfile.apk</a> for an example.</p>
+
+<p>Mobile Device Management (MDM) applications trigger the creation of the managed
+profile by sending an intent with action:</p>
+
+<p><a href="https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/app/admin/DevicePolicyManager.java">DevicePolicyManager.ACTION_PROVISION_MANAGED_PROFILE</a></p>
+
+<p>Here is a sample intent that will trigger the creation of the managed profile
+and set the DeviceAdminSample as the profile owner:</p>
+
+<pre>
+adb shell am start -a android.app.action.PROVISION_MANAGED_PROFILE \
+          -c android.intent.category.DEFAULT \
+	      -e wifiSsid $(printf '%q' \"GoogleGuest\") \
+          -e deviceAdminPackage "com.google.android.deviceadminsample" \
+	      -e android.app.extra.deviceAdminPackageName $(printf '%q'
+                        .DeviceAdminSample\$DeviceAdminSampleReceiver) \
+	      -e android.app.extra.DEFAULT_MANAGED_PROFILE_NAME "My Organisation"
+</pre>
+
+<h3 id=device_owner_provisioning_via_nfc>Device Owner Provisioning via NFC</h3>
+
+<p>Device owner provisioning via NFC is similar to the profile owner method but
+requires more bootstrapping before managed provisioning.</p>
+
+<p>To use this method, <a href="http://developer.android.com/guide/topics/connectivity/nfc/nfc.html">NFC bump</a> the device from the first page of setup wizard (SUW). This offers a low-touch
+flow and configures Wi-Fi, installs the DPC, and sets the DPC as device owner.</p>
+
+<p>Here is the typical NFC bundle:</p>
+
+<pre>
+		EXTRA_PROVISIONING_DEVICE_ADMIN_PACKAGE_NAME
+		EXTRA_PROVISIONING_DEVICE_ADMIN_PACKAGE_LOCATION
+		EXTRA_PROVISIONING_DEVICE_ADMIN_PACKAGE_CHECKSUM
+		EXTRA_PROVISIONING_WIFI_SSID
+		EXTRA_PROVISIONING_WIFI_SECURITY_TYPE
+</pre>
+
+<p>The device must have NFC configured to accept the managed provisioning mimetype
+from SUW:</p>
+
+<pre>
+/packages/apps/Nfc/res/values/provisioning.xml
+
+      &lt;bool name="enable_nfc_provisioning"&gt;true&lt;/bool&gt;
+      &lt;item&gt;application/com.android.managedprovisioning&lt;/item&gt;
+</pre>
+
+<h3 id=device_owner_provisioning_with_activation_code>Device Owner Provisioning with Activation Code</h3>
+
+<p>Select <em>Add Work Account</em> from setup wizard. This triggers the AndroidForWork
+component on the device, which looks up the EMM from Android servers.</p>
+
+<p>The device installs the EMM app and starts provisioning flow. As an extra
+option, Android for Work supports the option of using email address with a
+six-digit activation code to bootstrap the process as part of setup wizard.</p>
+
+<h3 id=emm_benefits>EMM benefits</h3>
+
+<p>An EMM can help by conducting these tasks for you:</p>
+
+<ul>
+  <li> Provision managed profile
+  <li> Apply security policies
+  <ul>
+    <li> Set password complexity
+    <li> Lockdowns: disable screenshots, sharing from work profile, etc.
+  </ul>
+  <li> Configure enterprise connectivity
+  <ul>
+    <li> Use WifiEnterpriseConfig to configure corporate Wi-Fi
+    <li> Push VPN app using Google Play APIs
+    <li> Use DPM.setApplicationRestrictions() to configure corporate VPN
+  </ul>
+  <li> Enable corporate app Single Sign-On (SSO)
+  <ul>
+    <li> Push desired corporate apps using Google Play APIs
+    <li> Use DPM.installKeyPair()to silently install corp client certs
+    <li> Use DPM.setApplicationRestrictions() to configure hostnames, cert alias’ of
+corporate apps
+  </ul>  
+</ul>
+
+<p>Managed provisioning is just one piece of the EMM end-to-end workflow, with the
+  end goal being to make corporate data accessible to apps in the work profile.</p>
+
+<p>See <a href="https://docs.google.com/document/d/1xWdZHjsDB_4FWQcHfPh84EuTvljoMgrc2JINGMBtDQg/edit#">Manual Setup for Device Owner Testing</a> for testing instructions.</p>
