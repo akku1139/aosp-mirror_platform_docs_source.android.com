@@ -56,7 +56,7 @@ their own discretion.</p>
 </td>
     <td>
 <p>The boot state of the device describes the level of protection provided to the
-end user if the device boots. Boot states are GREEN, YELLOW, ORANGE, and RED.</p>
+end user if the device boots. Boot states are GREEN, ORANGE, and RED.</p>
 </td>
  </tr>
  <tr>
@@ -65,7 +65,7 @@ end user if the device boots. Boot states are GREEN, YELLOW, ORANGE, and RED.</p
 </td>
     <td>
 <p>The device state indicates how freely software can be flashed to the device.
-Device states are LOCKED, UNLOCKED, or VERIFIED.</p>
+Device states are LOCKED or UNLOCKED.</p>
 </td>
  </tr>
  <tr>
@@ -96,7 +96,7 @@ must be used to verify the boot image.</p>
  </tr>
  <tr>
     <td>
-<p>User provided keystore</p>
+<p>User-provided keystore</p>
 </td>
     <td>
 <p>The user keystore is a keystore flashed to the device via <code>fastboot 
@@ -109,121 +109,82 @@ flash keystore &lt;path&gt;</code>.</p>
 
 <p>In addition to device state - which already exists in devices and controls
 whether the bootloader allows new software to be flashed - we introduce the
-concept of boot state that indicates the state of device integrity. We also
-add a third device state, which allows developers for example, to flash the
-software more frequently without a data wipe while still benefiting from
-verification.</p>
+concept of boot state that indicates the state of device integrity.</p>
+
+<h3 id=classes>Classes</h3>
+
+<p>We define two implementation classes for verified boot depending on how
+fully the device implements this specification, as follows:</p>
+
+<p><strong>Class A</strong>  implements verified boot with full chain of trust
+up to verified partitions. This implementation must support the LOCKED device
+state, and GREEN and RED boot states.</p>
+
+<p><strong>Class B</strong> implements Class A and additionally supports the
+UNLOCKED device state and the ORANGE boot state.</p>
 
 <h3 id=verification_keys>Verification keys</h3>
 
 <p>Bootloader integrity must be verified using a hardware root of trust. For
 verifying boot and recovery images, the bootloader must have a fixed OEM key
-available to it. It must always attempt to verify the boot image using the OEM
-key and only try other possible keys if this verification fails.</p>
-
-<p>It must be possible for the user to flash alternative image verification keys
-to the device, and the bootloader must try verification using these keys if
-verification using the OEM key fails. However, using an image signed with the
-user-provided keystore must result in a notification to be shown, as described
-below.</p>
+available to it.</p>
 
 <h3 id=boot_state>Boot state</h3>
 
-<p>A verified device will ultimately boot into one of four states during each boot
+<p>A verified device will ultimately boot into one of three states during each boot
 attempt:</p>
 
 <ul>
   <li> GREEN, indicating a full chain of trust extending from the bootloader to the
 system partition, including the bootloader, boot partition, and system
 partition.
-</ul>
 
-<ul>
-  <li> YELLOW, indicating a chain of trust starting from a user-provided keystore
-and extending up. To enable users to acquire trust in their keystore,
-bootloaders are required to display a partial hash of the verifying keystore
-during boot.
-</ul>
-
-<ul>
   <li> ORANGE, indicating a device may be freely modified. Device integrity is
-left to the user to verify out-of-band.
-</ul>
+left to the user to verify out-of-band.(Class B implementations only.)
 
-<ul>
   <li> RED, indicating the device has failed verification. This must display a
 warning to the user before allowing the boot process to continue.
 </ul>
 
-<p>The recovery partition must also be verified and should be verified in the
-exact same way.</p>
+<p>The recovery partition must also be verified in the exact same way.</p>
 
 <img src="../images/verified_boot.png" alt="Verified boot flow" id="figure1" />
 <p class="img-caption"><strong>Figure 1.</strong> Verified boot flow</p>
 
 <h3 id=device_state>Device state</h3>
 
-<p>The device is required to be in one of three states at all times:</p>
+<p>The device is required to be in one of two states at all times:</p>
 
 <ol>
-  <li>LOCKED, indicating the device cannot currently be flashed. In the image
-above, a LOCKED device must boot into the GREEN state, YELLOW state, or RED
-state during any attempted boot. It must not be possible to alter the user
-keystore in the LOCKED state.
-
-  <li>VERIFIED, indicating someone in physical control of the device may perform
-limited actions intended to change the state of the device but may not break
-its current chain of trust. In the image above, a VERIFIED device must boot
-into the GREEN state, YELLOW state, or RED state during each attempted boot. It
-must not be possible to alter the user keystore in the VERIFIED state. It must
-be possible to:
-   <ol>
-    <li> Flash the following partitions:
-    <ol>
-      <li> bootloader
-      <li> boot partition
-      <li> system partition
-      <li> vendor partition
-      <li> recovery partition
-    </ol>
-    <li> Erase the following partitions:
-    <ol>
-      <li> userdata
-      <li> cache
-    </ol>
-   </ol>
-
-<p>Boot and recovery image signatures may be verified during the flashing process,
-and the bootloader may reject images that do not validate against the OEM key
-or the user-provided keystore at this point. However, signatures must also be
-verified again at every boot.
+  <li>LOCKED, indicating the device cannot currently be flashed. A  LOCKED
+device must boot into the GREEN state or RED state during any attempted boot.
 
   <li>UNLOCKED, indicating the device may be flashed freely and is not intended
-to be verified.
+to be verified. An UNLOCKED device must always boot to the ORANGE boot state.
+(Class B implementations only.)
 </ol>
 
 <h2 id=detailed_design>Detailed design</h2>
 
 <p>Achieving full chain of trust requires support from both the bootloader and the
 software on the boot partition, specifically <code>init</code>, which is responsible for
-mounting additional partitions. Verification metadata must also be appended to the
+mounting further partitions. Verification metadata must also be appended to the
 system partition and any additional partitions whose integrity should be
 verified.</p>
 
 <h3 id=bootloader_requirements>Bootloader requirements</h3>
 
-<p>The bootloader is the guardian of the device state, manages the user-provided
-keystore, and is responsible for initializing the TEE and binding its root of
-trust.</p>
+<p>The bootloader is the guardian of the device state, and is responsible for
+initializing the TEE and binding its root of trust.</p>
 
 <p>Most importantly, the bootloader must verify the integrity of the boot and/or
-recovery partition before moving execution to the kernel and display the
-warnings or notifications in the section <a href="#boot_state">Boot state</a>.</p>
+recovery partition before moving execution to the kernel and display
+warnings or notifications specified in the section <a href="#boot_state">Boot state</a>.</p>
 
 <h4 id=changing_device_state><strong>Changing device state</strong></h4>
 
 <p>State changes are performed using the <code>fastboot flashing [unlock |
-verified | lock]</code> command. And to protect user data, <strong>all</strong>
+lock]</code> command. And to protect user data, <strong>all</strong>
 state transitions require a data wipe. Note the user must be asked for
 confirmation before data is deleted.</p>
 
@@ -237,18 +198,6 @@ confidence that it is in a state produced by the OEM.
 
   <li>The LOCKED to UNLOCKED transition is expected in the case where a developer
 wishes to disable verification on the device.
-
-  <li>The LOCKED to VERIFIED transition is expected in the case where a developer
-wishes to do development on the device and doesn’t want to wipe data frequently.
-
-  <li>The VERIFIED to LOCKED transition is idempotent with the above.
-
-  <li>The UNLOCKED to VERIFIED transition is anticipated when a user wishes to put a
-development device in a more secure state but may not want to prevent
-themselves from flashing new system images.
-
-  <li> The VERIFIED to UNLOCKED transition is idempotent with the above.
-</ol>
 
 <p>Requirements for <code>fastboot</code> commands that alter device state are listed in the table below:</p>
 <table>
@@ -268,7 +217,6 @@ flashing lock</code></td>
 <ul>
   <li>Wipe data after asking the user for confirmation     
   <li>Clear a write-protected bit indicating the device is unlocked
-  <li>Clear a write-protected bit indicating the device is verified
 </ul>
 </td>
  </tr>
@@ -280,19 +228,6 @@ flashing unlock</code></td>
 <ul>
   <li>Wipe data after asking the user for confirmation     
   <li>Set a write-protected bit indicating the device is unlocked
-  <li>Clear a write-protected bit indicating the device is verified
-</ul>
-</td>
- </tr>
- <tr>
-    <td>
-<code>
-flashing verified</code></td>
-    <td>
-<ul>
-  <li>Wipe data after asking the user for confirmation     
-  <li>Clear a write-protected bit indicating the device is unlocked
-  <li>Set a write-protected bit indicating the device is verified
 </ul>
 </td>
  </tr>
@@ -314,20 +249,16 @@ the above commands as described in the following table:</p>
 <code>
 flash &lt;partition&gt;</code></td>
     <td>
-<ul>
-  <li>If the bit set by <code>flashing unlock</code> is set, flash the partition as normal    
-  <li>If this bit is not set, check the bit set by <code>flashing verified</code>
-    <ul>
-      <li>If this bit is not set, exit with an error
-      <li>If this bit is set and &lt;partition&gt; is on the list provided in
-          the section <a href="#device_state">Device state</a>, flash the partition as normal.
-   </ul>
-</ul>
+<p>If the bit set by <code>flashing unlock</code> is set, flash the partition
+as normal. Otherwise, do not allow flashing. 
     </td>
  </tr>
 </table>
 
 <p>The same checks should be performed for any <code>fastboot</code> command that can be used to change the contents of partitions.</p>
+
+<p class="note"><strong>Note</strong>: Class B implementations must support
+changing device state.</p>
 
 <h4 id=managing_user_provided_keystore><strong>Managing user-provided keystore</strong></h4>
 
