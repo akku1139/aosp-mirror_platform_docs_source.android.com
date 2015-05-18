@@ -12,8 +12,11 @@
     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
     See the License for the specific language governing permissions and
     limitations under the License.
---><?cs # Table of contents for source.?>
+-->
+
+<?cs # Table of contents for source.?>
 <ul id="nav">
+<!-- Source -->
   <li class="nav-section">
     <div class="nav-section-header">
       <a href="<?cs var:toroot ?>source/index.html">
@@ -77,11 +80,16 @@
   </li>
 
   <li class="nav-section">
-    <div class="nav-section-header empty">
+    <div class="nav-section-header">
       <a href="<?cs var:toroot ?>source/community/index.html">
         <span class="en">Community</span>
       </a>
     </div>
+       <ul>
+        <li><a href="<?cs var:toroot ?>source/community/contact-us.html">Contact Us</a></li>
+	</ul>
+<!-- End Source -->
   </li>
+
 
 </ul>

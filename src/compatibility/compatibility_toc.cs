@@ -1,5 +1,5 @@
 <!--
-    Copyright 2013 The Android Open Source Project
+    Copyright 2015 The Android Open Source Project
 
     Licensed under the Apache License, Version 2.0 (the "License");
     you may not use this file except in compliance with the License.
@@ -40,7 +40,6 @@
         </ul>
       </li>
       <li><a href="<?cs var:toroot ?>compatibility/downloads.html">Downloads</a></li>
-      <li><a href="<?cs var:toroot ?>compatibility/contact-us.html">Contact Us</a></li>
     </ul>
 <!-- End Compatibility -->
   </li>
