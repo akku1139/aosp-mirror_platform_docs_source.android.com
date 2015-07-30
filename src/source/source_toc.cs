@@ -33,16 +33,16 @@
 
   <li class="nav-section">
       <div class="nav-section-header">
-        <a href="<?cs var:toroot ?>source/building.html">
+        <a href="<?cs var:toroot ?>source/requirements.html">
           <span class="en">Downloading and Building</span>
         </a>
       </div>
        <ul>
         <li><a href="<?cs var:toroot ?>source/initializing.html">Initializing the Build Environment</a></li>
         <li><a href="<?cs var:toroot ?>source/downloading.html">Downloading the Source</a></li>
-        <li><a href="<?cs var:toroot ?>source/configure-products.html">Configuring the Products</a></li>
-        <li><a href="<?cs var:toroot ?>source/building-running.html">Building and Running</a></li>
-        <li><a href="<?cs var:toroot ?>source/building-devices.html">Building for Devices</a></li>
+        <li><a href="<?cs var:toroot ?>source/add-device.html">Adding a New Device</a></li>
+        <li><a href="<?cs var:toroot ?>source/building.html">Building the System</a></li>
+        <li><a href="<?cs var:toroot ?>source/running.html">Running Builds</a></li>
         <li><a href="<?cs var:toroot ?>source/building-kernels.html">Building Kernels</a></li>
         <li><a href="<?cs var:toroot ?>source/64-bit-builds.html">64-bit Build Instructions</a></li>
         <li><a href="<?cs var:toroot ?>source/known-issues.html">Known Issues</a></li>
