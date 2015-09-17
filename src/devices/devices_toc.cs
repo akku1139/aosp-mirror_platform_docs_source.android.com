@@ -325,7 +325,7 @@
               </a>
             </div>
             <ul>
-              <li><a href="<?cs var:toroot ?>devices/tech/security/encryption/index.html">Encryption</a></li>
+              <li><a href="<?cs var:toroot ?>devices/tech/security/encryption/index.html">Full Disk Encryption</a></li>
               <li class="nav-section">
                 <div class="nav-section-header">
                   <a href="<?cs var:toroot ?>devices/tech/security/verifiedboot/index.html">
