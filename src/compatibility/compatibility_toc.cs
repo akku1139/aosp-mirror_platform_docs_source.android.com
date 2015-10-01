@@ -41,6 +41,7 @@
             </a>
             </div>
            <ul>
+            <li><a href="<?cs var:toroot ?>compatibility/cts/hifi-ultrasound.html">Hifi Ultrasound</a></li>
             <li><a href="<?cs var:toroot ?>compatibility/cts/rotation-vector.html">Rotation Vector Crosscheck</a></li>
            </ul>
           </li>
