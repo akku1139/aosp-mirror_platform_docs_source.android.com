@@ -24,7 +24,8 @@
     </div>
     <ul>
       <li><a href="<?cs var:toroot ?>compatibility/overview.html">Overview</a></li>
-      <li><a href="<?cs var:toroot ?>compatibility/android-cdd.pdf">Compatibility Definition Document (CDD)</a></li>
+      <li><a href="<?cs var:toroot ?>compatibility/android-cdd.pdf">Compatibility Definition Document (CDD) in PDF</a></li>
+      <li><a href="<?cs var:toroot ?>compatibility/android-cdd.html">Compatibility Definition Document (CDD) in HTML</a></li>
       <li class="nav-section">
         <div class="nav-section-header">
           <a href="<?cs var:toroot ?>compatibility/cts/index.html">
