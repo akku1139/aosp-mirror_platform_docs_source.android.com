@@ -29,7 +29,7 @@ set_stuff_for_environment
 
 # Note: if that stops working, try the lunch command with any build target,
 # For example:
-# lunch aosp_arm-eng
+lunch aosp_arm-eng
 
 # Make the docs
 make online-sac-docs
