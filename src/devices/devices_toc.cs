@@ -423,6 +423,7 @@
           <li><a href="<?cs var:toroot ?>devices/tech/ota/device_code.html">Device-Specific Code</a></li>
           <li><a href="<?cs var:toroot ?>devices/tech/ota/reduce_size.html">Reducing OTA Size</a></li>
           <li><a href="<?cs var:toroot ?>devices/tech/ota/sign_builds.html">Signing Builds for Release</a></li>
+          <li><a href="<?cs var:toroot ?>devices/tech/ota/update_engine.html">Update Engine</a></li>
         </ul>
       </li>
 
