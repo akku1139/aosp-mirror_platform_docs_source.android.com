@@ -34,12 +34,16 @@
 ## The script uses some environmental variables that can be set locally or
 ## in /etc/profile.d/build2stage-conf.sh, or passed via the command-line:
 ##
-## Change output directory used for generated files and to stage from:
-##   $ OUT_DIR=/path/to/dir build2stage.sh
+## Change output directory used for generated files:
+##   $ OUT_DIR=/path/to/dir build2stage.sh -b
 ## Change build target:
-##   $ BUILD_TARGET=aosp_x86_64 build2stage.sh
-## Location of staging tool:
-##   $ AE_STAGING=/path/to/ae_staging build2stage 13
+##   $ BUILD_TARGET=aosp_x86_64 build2stage.sh -b
+## Location of staging tool and output directory:
+##   $ AE_STAGING=/path/to/ae_staging OUT_DIR=/path/to/dir build2stage 13
+##
+## This script attempts to be smart about using a gitc client. If it's not
+## building correctly, you can try setting the REPO_ROOT and OUT_DIR variables
+## in your environment.
 
 usage() {
   echo "Usage: $(basename $0) [options] server-number"
@@ -62,13 +66,42 @@ fi
 # Sourced for env vars
 : ${AE_STAGING_CONF:="/etc/profile.d/build2stage-conf.sh"}
 
-# Retrieve App Engine staging config 'AE_STAGING' if it doesn't already exist
-if [ -z "$AE_STAGING" ] && [ -e "$AE_STAGING_CONF" ]; then
+# Retrieve App Engine staging config 'AE_STAGING' (and other vars if there)
+if [ -e "$AE_STAGING_CONF" ]; then
   source "$AE_STAGING_CONF"
 fi
 
-# Determine repo root relative to the location of this script
-REPO_ROOT="$(cd $(dirname $0)/../../..; pwd -P)"
+# gitc clients use a different output directory.
+# Determine if using gitc by the user's current dir or this script's location
+gitc_client_path="/gitc/manifest-rw"
+
+# If user is currently within a gitc client, set it as repo root
+if [[ -z "$REPO_ROOT" && "$(pwd -P)" == "${gitc_client_path}/"* ]]; then
+  gitc_client_name=$(echo "$(pwd -P)" | cut -d '/' -f4) #get 3rd dir
+  REPO_ROOT="${gitc_client_path}/${gitc_client_name}"
+fi
+
+# Determine repo root relative to the location of this script itself
+: ${REPO_ROOT:="$(cd $(dirname $0)/../../..; pwd -P)"}
+# Sanity check
+if [ ! -d "$REPO_ROOT" ]; then
+  echo "${LOG_NAME} Error: Repo directory doesn't exist: ${REPO_ROOT}" 1>&2
+  exit 1
+fi
+
+# If repo root within gitc client, set gitc output directory
+if [[ -z "$OUT_DIR" && "$REPO_ROOT" == "${gitc_client_path}/"* ]]; then
+  gitc_client_name=$(echo "$REPO_ROOT" | cut -d '/' -f4)
+  gitc_client_dest="/usr/local/google/gitc/${gitc_client_name}"
+  if [ ! -d "$gitc_client_dest" ]; then
+    echo "${LOG_NAME} Error: Using gitc client '${gitc_client_name}' "\
+         "but destination doesn't exist: ${gitc_client_dest}" 1>&2
+    exit 1
+  else
+    OUT_DIR="${gitc_client_dest}/out"
+  fi
+fi
+
 # Directory for output files
 : ${OUT_DIR:="${REPO_ROOT}/out"}
 # Lunch build config
@@ -122,6 +155,9 @@ fi
 ## BUILD DOCS
 ##
 
+echo "${LOG_NAME} Using repo: ${REPO_ROOT}"
+echo "${LOG_NAME} Output dir: ${OUT_DIR}"
+
 if [ -n "$STAGE_ONLY_FLAG" ]; then
   echo "${LOG_NAME} Not building"
 
@@ -138,7 +174,7 @@ else
   source build/make/envsetup.sh
 
   # Select a target and finish setting up the environment
-  lunch "$BUILD_TARGET"
+  OUT_DIR="$OUT_DIR" lunch "$BUILD_TARGET"
 
   # Build the docs and output to: out/target/common/docs/online-sac
   make online-sac-docs
