@@ -403,6 +403,7 @@
           <li><a href="<?cs var:toroot ?>devices/tech/display/hdr.html">HDR Video</a></li>
           <li><a href="<?cs var:toroot ?>devices/tech/display/launcher-shortcuts.html">Launcher Shortcuts</a></li>
           <li><a href="<?cs var:toroot ?>devices/tech/display/night-light.html">Night Light</a></li>
+          <li><a href="<?cs var:toroot ?>devices/tech/display/retail-mode.html">Retail Demo Mode</a></li>
         </ul>
       </li>
 
