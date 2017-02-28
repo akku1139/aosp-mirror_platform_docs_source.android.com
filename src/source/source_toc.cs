@@ -85,6 +85,9 @@
         <span class="en">Community</span>
       </a>
     </div>
+       <ul>
+        <li><a href="<?cs var:toroot ?>source/code_of_conduct.html">Code of Conduct</a></li>
+       </ul>
   </li>
 
 </ul>
