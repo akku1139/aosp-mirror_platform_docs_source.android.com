@@ -369,6 +369,19 @@
         </div>
         <ul>
           <li><a href="<?cs var:toroot ?>devices/tech/debug/native-crash.html">Diagnosing Native Crashes</a></li>
+          <li class="nav-section">
+            <div class="nav-section-header">
+              <a href="<?cs var:toroot ?>devices/tech/debug/eval_perf.html">
+                <span class="en">Evaluating Performance</span>
+              </a>
+            </div>
+            <ul>
+              <li><a href="<?cs var:toroot ?>devices/tech/debug/systrace.html">Understanding systrace</a></li>
+              <li><a href="<?cs var:toroot ?>devices/tech/debug/ftrace.html">Using ftrace</a></li>
+              <li><a href="<?cs var:toroot ?>devices/tech/debug/jank_capacity.html">Identifying Capacity Jank</a></li>
+              <li><a href="<?cs var:toroot ?>devices/tech/debug/jank_jitter.html">Identifying Jitter Jank</a></li>
+            </ul>
+         </li>
           <li><a href="<?cs var:toroot ?>devices/tech/debug/asan.html">AddressSanitizer</a></li>
           <li><a href="<?cs var:toroot ?>devices/tech/debug/dumpsys.html">Dumpsys</a></li>
           <li><a href="<?cs var:toroot ?>devices/tech/debug/native-memory.html">Native Memory Use</a></li>
