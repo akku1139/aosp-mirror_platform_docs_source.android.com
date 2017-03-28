@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html devsite>
+<head>
+  <title>Android Hardware Abstraction Layer: vr_module Struct Reference</title>
+  <meta name="project_path" value="/_project.yaml" />
+  <meta name="book_path" value="/_book.yaml" />
+  <meta name="hide_page_heading" value="true" />
+</head>
+<body>
+  <div id="top"><!-- do not remove this div --></div>
+  <h1><div class="title">vr_module Struct Reference</div></h1>
+
+<div id="doc-content">
+<div class="header">
+ <div class="summary">
+  <a href="#pub-attribs">
+   Data Fields
+  </a>
+ </div>
+ <div class="headertitle">
+  <div class="title">
+   vr_module Struct Reference
+  </div>
+ </div>
+</div>
+<!--header-->
+<div class="contents">
+ <p>
+  <code>
+   #include &lt;
+   <a class="el" href="https://android.googlesource.com/platform/hardware/libhardware/+/master/include/hardware/vr.h">
+    vr.h
+   </a>
+   &gt;
+  </code>
+ </p>
+ <table class="memberdecls">
+  <tr class="heading">
+   <td colspan="2">
+    <h2 class="groupheader">
+     <a name="pub-attribs">
+     </a>
+     Data Fields
+    </h2>
+   </td>
+  </tr>
+  <tr class="memitem:a71ea01183b3998cad6a2301a37a42fc7">
+   <td class="memItemLeft" align="right" valign="top">
+    struct
+    <a class="el" href="structhw__module__t.html">
+     hw_module_t
+    </a>
+    &#160;
+   </td>
+   <td class="memItemRight" valign="bottom">
+    <a class="el" href="structvr__module.html#a71ea01183b3998cad6a2301a37a42fc7">
+     common
+    </a>
+   </td>
+  </tr>
+  <tr class="separator:a71ea01183b3998cad6a2301a37a42fc7">
+   <td class="memSeparator" colspan="2">
+    &#160;
+   </td>
+  </tr>
+  <tr class="memitem:a1621887a15b003a1ba7be81d52b0abb0">
+   <td class="memItemLeft" align="right" valign="top">
+    void(*&#160;
+   </td>
+   <td class="memItemRight" valign="bottom">
+    <a class="el" href="structvr__module.html#a1621887a15b003a1ba7be81d52b0abb0">
+     init
+    </a>
+    )(struct
+    <a class="el" href="structvr__module.html">
+     vr_module
+    </a>
+    *module)
+   </td>
+  </tr>
+  <tr class="separator:a1621887a15b003a1ba7be81d52b0abb0">
+   <td class="memSeparator" colspan="2">
+    &#160;
+   </td>
+  </tr>
+  <tr class="memitem:a8c9e8990b6b65b068703cd615be68fb5">
+   <td class="memItemLeft" align="right" valign="top">
+    void(*&#160;
+   </td>
+   <td class="memItemRight" valign="bottom">
+    <a class="el" href="structvr__module.html#a8c9e8990b6b65b068703cd615be68fb5">
+     set_vr_mode
+    </a>
+    )(struct
+    <a class="el" href="structvr__module.html">
+     vr_module
+    </a>
+    *module, bool enabled)
+   </td>
+  </tr>
+  <tr class="separator:a8c9e8990b6b65b068703cd615be68fb5">
+   <td class="memSeparator" colspan="2">
+    &#160;
+   </td>
+  </tr>
+  <tr class="memitem:aa1a42885ba14c2168dc14d3f219b5e99">
+   <td class="memItemLeft" align="right" valign="top">
+    void *&#160;
+   </td>
+   <td class="memItemRight" valign="bottom">
+    <a class="el" href="structvr__module.html#aa1a42885ba14c2168dc14d3f219b5e99">
+     reserved
+    </a>
+    [8-2]
+   </td>
+  </tr>
+  <tr class="separator:aa1a42885ba14c2168dc14d3f219b5e99">
+   <td class="memSeparator" colspan="2">
+    &#160;
+   </td>
+  </tr>
+ </table>
+ <a name="details" id="details">
+ </a>
+ <h2 class="groupheader">
+  Detailed Description
+ </h2>
+ <div class="textblock">
+  <p>
+   Implement this HAL to receive callbacks when a virtual reality (VR) application is being used. VR applications characteristically have a number of special display and performance requirements, including:
+  </p>
+  <ul>
+   <li>
+    Low sensor latency - Total end-to-end latency from the IMU, accelerometer, and gyro to an application-visible callback must be extremely low (&lt;5ms typically). This is required for HIFI sensor support.
+   </li>
+   <li>
+    Low display latency - Total end-to-end latency from the GPU draw calls to the actual display update must be as low as possible. This is achieved by using SurfaceFlinger in a single-buffered mode, and assuring that draw calls are synchronized with the display scanout correctly. This behavior is exposed via an EGL extension to applications. See below for the EGL extensions needed for this.
+   </li>
+   <li>
+    Low-persistence display - Display persistence settings must be set as low as possible while still maintaining a reasonable brightness. For a typical display running at 60Hz, pixels should be illuminated for &lt;=3.5ms to be considered low-persistence. This avoids ghosting during movements in a VR setting, and should be enabled from the
+    <a class="el" href="https://android.googlesource.com/platform/hardware/libhardware/+/master/include/hardware/lights.h">
+     lights.h
+    </a>
+    HAL when BRIGHTNESS_MODE_LOW_PERSISTENCE is set.
+   </li>
+   <li>
+    Consistent performance of the GPU and CPU - When given a mixed GPU/CPU workload for a VR application with bursts of work at regular intervals several times a frame, the CPU scheduling should ensure that the application render thread work is run consistently within 1ms of when scheduled, and completed before the end of the draw window. To this end, a single CPU core must be reserved for solely for the currently running VR application's render thread while in VR mode, and made available in the "top-app" cpuset. Likewise, an appropriate CPU, GPU, and bus clockrate must be maintained to ensure that the rendering workload finishes within the time allotted to render each frame when the POWER_HINT_SUSTAINED_PERFORMANCE flag has been set in the
+    <a class="el" href="https://android.googlesource.com/platform/hardware/libhardware/+/master/include/hardware/power.h">
+     power.h
+    </a>
+    HAL while in VR mode when the device is not being thermally throttled.
+   </li>
+   <li>
+    Required EGL extensions must be present - Any GPU settings required to allow the above capabilities are required, including the EGL extensions: EGL_ANDROID_create_native_client_buffer, EGL_ANDROID_front_buffer_auto_refresh, EGL_EXT_protected_content, EGL_KHR_mutable_render_buffer, EGL_KHR_reusable_sync, and EGL_KHR_wait_sync.
+   </li>
+   <li>
+    Accurate thermal reporting - Accurate thermal temperatures and limits must be reported in the
+    <a class="el" href="https://android.googlesource.com/platform/hardware/libhardware/+/master/include/hardware/thermal.h">
+     thermal.h
+    </a>
+    HAL. Specifically, the current skin temperature must accurately be reported for DEVICE_TEMPERATURE_SKIN and the vr_throttling_threshold reported for this device must accurately report the temperature limit above which the device's thermal governor throttles the CPU, GPU, and/or bus clockrates below the minimum necessary for consistent performance (see previous bullet point).
+   </li>
+  </ul>
+  <p>
+   In general, vendors implementing this HAL are expected to use set_vr_mode as a hint to enable VR-specific performance tuning needed for any of the above requirements, and to turn on any device features optimal for VR display modes. The set_vr_mode call may simply do nothing if no optimizations are available or necessary to meet the above requirements.
+  </p>
+  <p>
+   No methods in this HAL will be called concurrently from the Android framework.
+  </p>
+  <p>
+   Definition at line
+   <a class="el" href="https://android.googlesource.com/platform/hardware/libhardware/+/master/include/hardware/vr.h">
+    82
+   </a>
+   of file
+   <a class="el" href="https://android.googlesource.com/platform/hardware/libhardware/+/master/include/hardware/vr.h">
+    vr.h
+   </a>
+   .
+  </p>
+ </div>
+ <h2 class="groupheader">
+  Field Documentation
+ </h2>
+ <a class="anchor" id="a71ea01183b3998cad6a2301a37a42fc7">
+ </a>
+ <div class="memitem">
+  <div class="memproto">
+   <table class="memname">
+    <tr>
+     <td class="memname">
+      struct
+      <a class="el" href="structhw__module__t.html">
+       hw_module_t
+      </a>
+      common
+     </td>
+    </tr>
+   </table>
+  </div>
+  <div class="memdoc">
+   <p>
+    Common methods of the module. This
+    <em>
+     must
+    </em>
+    be the first member of
+    <a class="el" href="structvr__module.html">
+     vr_module
+    </a>
+    as users of this structure may cast a
+    <a class="el" href="structhw__module__t.html">
+     hw_module_t
+    </a>
+    to a
+    <a class="el" href="structvr__module.html">
+     vr_module
+    </a>
+    pointer in contexts where it's known that the
+    <a class="el" href="structhw__module__t.html">
+     hw_module_t
+    </a>
+    references a
+    <a class="el" href="structvr__module.html">
+     vr_module
+    </a>
+    .
+   </p>
+   <p>
+    Definition at line
+    <a class="el" href="https://android.googlesource.com/platform/hardware/libhardware/+/master/include/hardware/vr.h">
+     89
+    </a>
+    of file
+    <a class="el" href="https://android.googlesource.com/platform/hardware/libhardware/+/master/include/hardware/vr.h">
+     vr.h
+    </a>
+    .
+   </p>
+  </div>
+ </div>
+ <a class="anchor" id="a1621887a15b003a1ba7be81d52b0abb0">
+ </a>
+ <div class="memitem">
+  <div class="memproto">
+   <table class="memname">
+    <tr>
+     <td class="memname">
+      void(* init)(struct
+      <a class="el" href="structvr__module.html">
+       vr_module
+      </a>
+      *module)
+     </td>
+    </tr>
+   </table>
+  </div>
+  <div class="memdoc">
+   <p>
+    Convenience method for the HAL implementation to set up any state needed at runtime startup. This is called once from the VrManagerService during its boot phase. No methods from this HAL will be called before init.
+   </p>
+   <p>
+    Definition at line
+    <a class="el" href="https://android.googlesource.com/platform/hardware/libhardware/+/master/include/hardware/vr.h">
+     96
+    </a>
+    of file
+    <a class="el" href="https://android.googlesource.com/platform/hardware/libhardware/+/master/include/hardware/vr.h">
+     vr.h
+    </a>
+    .
+   </p>
+  </div>
+ </div>
+ <a class="anchor" id="aa1a42885ba14c2168dc14d3f219b5e99">
+ </a>
+ <div class="memitem">
+  <div class="memproto">
+   <table class="memname">
+    <tr>
+     <td class="memname">
+      void* reserved[8-2]
+     </td>
+    </tr>
+   </table>
+  </div>
+  <div class="memdoc">
+   <p>
+    Definition at line
+    <a class="el" href="https://android.googlesource.com/platform/hardware/libhardware/+/master/include/hardware/vr.h">
+     110
+    </a>
+    of file
+    <a class="el" href="https://android.googlesource.com/platform/hardware/libhardware/+/master/include/hardware/vr.h">
+     vr.h
+    </a>
+    .
+   </p>
+  </div>
+ </div>
+ <a class="anchor" id="a8c9e8990b6b65b068703cd615be68fb5">
+ </a>
+ <div class="memitem">
+  <div class="memproto">
+   <table class="memname">
+    <tr>
+     <td class="memname">
+      void(* set_vr_mode)(struct
+      <a class="el" href="structvr__module.html">
+       vr_module
+      </a>
+      *module, bool enabled)
+     </td>
+    </tr>
+   </table>
+  </div>
+  <div class="memdoc">
+   <p>
+    Set the VR mode state. Possible states of the enabled parameter are: false - VR mode is disabled, turn off all VR-specific settings. true - VR mode is enabled, turn on all VR-specific settings.
+   </p>
+   <p>
+    This is called whenever the the Android system enters or leaves VR mode. This will typically occur when the user switches to or from a VR application that is doing stereoscopic rendering.
+   </p>
+   <p>
+    Definition at line
+    <a class="el" href="https://android.googlesource.com/platform/hardware/libhardware/+/master/include/hardware/vr.h">
+     107
+    </a>
+    of file
+    <a class="el" href="https://android.googlesource.com/platform/hardware/libhardware/+/master/include/hardware/vr.h">
+     vr.h
+    </a>
+    .
+   </p>
+  </div>
+ </div>
+ <hr />
+ The documentation for this struct was generated from the following file:
+ <ul>
+  <li>
+   hardware/libhardware/include/hardware/
+   <a class="el" href="https://android.googlesource.com/platform/hardware/libhardware/+/master/include/hardware/vr.h">
+    vr.h
+   </a>
+  </li>
+ </ul>
+</div>
+<!-- contents -->
+</div>
+
+</body>
+</html>
