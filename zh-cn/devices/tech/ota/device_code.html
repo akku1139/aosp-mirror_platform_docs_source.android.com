@@ -1,0 +1,760 @@
+<html devsite><head>
+    <title>设备专属代码</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>恢复系统包括一些用于插入设备专属代码的钩子，以便 OTA 更新还可以更新设备中除 Android 系统以外的其他部分（例如，基带或无线电处理器）。</p>
+<p>下面的部分和示例对 <b>yoyodyne</b> 供应商生产的 <b>tardis</b> 设备进行了自定义。</p>
+
+<h2>分区映射</h2>
+<p>自 Android 2.3 版本起，该平台就开始支持 eMMc 闪存设备以及在这些设备上运行的 ext4 文件系统。此外，该平台还支持内存技术设备 (MTD) 闪存设备以及较旧版本的 yaffs2 文件系统。</p>
+<p>分区映射文件由 TARGET_RECOVERY_FSTAB 指定；recovery 二进制文件和软件包编译工具均使用该文件。您可以在 BoardConfig.mk 中的 TARGET_RECOVERY_FSTAB 中指定映射文件的名称。</p>
+<p>分区映射文件示例可能如下所示：</p>
+
+<p><code>device/yoyodyne/tardis/recovery.fstab</code></p>
+
+<pre>
+# mount point       fstype  device       [device2]        [options (3.0+ only)]
+
+/sdcard     vfat    /dev/block/mmcblk0p1 /dev/block/mmcblk0
+/cache      yaffs2  cache
+/misc       mtd misc
+/boot       mtd boot
+/recovery   emmc    /dev/block/platform/s3c-sdhci.0/by-name/recovery
+/system     ext4    /dev/block/platform/s3c-sdhci.0/by-name/system length=-4096
+/data       ext4    /dev/block/platform/s3c-sdhci.0/by-name/userdata
+</pre>
+
+<p>除 <code>/sdcard</code>（可选）之外，本示例中的所有装载点都必须进行定义（设备也可以添加额外的分区）。支持的文件系统类型有下列 5 种：</p>
+<dl>
+<dt>yaffs2</dt>
+<dd>yaffs2 文件系统位于 MTD 闪存设备的顶部。MTD 分区的名称必须是“device”，且该名称必须显示在 <code>/proc/mtd</code> 中。</dd>
+<dt>mtd</dt>
+<dd>原始 MTD 分区，用于可引导分区（例如 boot 和 recovery）。MTD 实际上并未装载，但是装载点会被用作定位分区的键。<code>/proc/mtd</code> 中 MTD 分区的名称必须是“device”。</dd>
+<dt>ext4</dt>
+<dd>ext4 文件系统位于 eMMc 闪存设备的顶部。块设备的路径必须是“device”。</dd>
+<dt>emmc</dt>
+<dd>原始 eMMc 块设备，用于可引导分区（例如 boot 和 recovery）。与 mtd 类型相似，eMMc 从未实际装载，但装载点字符串会被用于定位表中的设备。</dd>
+<dt>vfat</dt>
+<dd>FAT 文件系统位于块设备的顶部，通常用于外部存储设备（如 SD 卡）。该设备是块设备；device2 是系统装载主设备失败时尝试装载的第二个块设备（旨在与可能（或可能没有）使用分区表进行格式化的 SD 卡兼容）。
+<p>所有分区都必须装载到根目录下（即装载点值必须以斜线开头，且不含其他斜线）。此限制仅适用于在 recovery 中装载文件系统；主系统可随意将其装载在任何位置。目录 <code>/boot</code>、<code>/recovery</code> 和 <code>/misc</code> 应为原始类型（mtd 或 emmc），而目录 <code>/system</code>、<code>/data</code>、<code>/cache</code> 和 <code>/sdcard</code>（如果有）则应为文件系统类型（yaffs2、ext4 或 vfat）。</p></dd></dl>
+
+<p>从 Android 3.0 开始，recovery.fstab 文件就新添了额外的可选字段，即“options”。<i></i>目前，唯一定义的选项是“length”，它可以让您明确指定分区的长度。<i></i>对分区重新进行格式化（例如，在执行数据清除/恢复出厂设置操作过程中对用户数据分区进行格式化，或在安装完整 OTA 更新包的过程中对系统分区进行格式化）时会使用此长度。如果长度值为负数，则将长度值与真正的分区大小相加，即可得出要格式化的大小。例如，设置“length=-16384”即表示在对该分区重新进行格式化时，该分区的最后 16k 将不会被覆盖。<i></i>该选项支持加密 userdata 分区（在这里，加密元数据会存储在不得被覆盖的分区的末尾部分）等功能。</p>
+
+<p class="note"><strong>注意</strong>：<b>device2</b> 和 <b>options</b> 字段均为可选字段，在解析时会产生歧义。如果该行第 4 个字段中的条目以“/”字符开头，则被视为 <b>device2</b> 条目；如果该条目不是以“/”字符开头，则被视为 <b>options</b> 字段。</p>
+
+<h2 id="boot-animation">启动动画</h2>
+
+<p>设备制造商可以自定义在启动 Android 设备时显示的动画。为此，请构建一个根据 <a href="https://android.googlesource.com/platform/frameworks/base/+/master/cmds/bootanimation/FORMAT.md">bootanimation 格式</a>中的规范组织和定位的 .zip 文件。</p>
+
+<p>对于 <a href="https://developer.android.com/things/hardware/index.html">Android Things</a> 设备，您可以在 Android Things 控制台中上传压缩文件，以便在所选产品中包含图片。</p>
+
+<p class="note"><strong>注意</strong>：这些图片必须符合 Android <a href="/source/brands">品牌指南</a>。</p>
+
+<h2 id="recovery-ui">恢复界面</h2>
+<p>要支持配备不同可用硬件（物理按钮、LED、屏幕等）的设备，您可以自定义恢复界面以显示状态，并访问每台设备的手动操作隐藏功能。</p>
+<p>您的目标是编译一个包含一些 C++ 对象的小型静态库，以提供设备专属功能。默认情况下会使用 <code>
+<b>bootable/recovery/default_device.cpp</b></code> 文件，该文件正好可在为设备编写此文件的版本时供您复制。</p>
+
+<p><code>device/yoyodyne/tardis/recovery/recovery_ui.cpp</code></p>
+
+<pre>
+#include &lt;linux/input.h&gt;
+
+#include "common.h"
+#include "device.h"
+#include "screen_ui.h"
+</pre>
+
+<h3 id="header-item-functions">Headers 和 Item 函数</h3>
+<p>Device 类需要相关函数来返回隐藏恢复菜单中出现的标头和项。Headers 介绍了如何操作菜单（例如，用于更改/选择突出显示项的控制功能）。</p>
+
+<pre>
+static const char* HEADERS[] = { "Volume up/down to move highlight;",
+                                 "power button to select.",
+                                 "",
+                                 NULL };
+
+static const char* ITEMS[] =  {"reboot system now",
+                               "apply update from ADB",
+                               "wipe data/factory reset",
+                               "wipe cache partition",
+                               NULL };
+</pre>
+
+<p class="note"><strong>注意</strong>：长行会被截断（而非换行），因此请留意您设备的屏幕宽度。</p>
+
+<h3 id="customize-checkkey">自定义 CheckKey</h3>
+<p>接下来，请定义您设备的 RecoveryUI 实现。本例假设 <b>tardis</b> 设备配有屏幕，因此，您可以沿用内置 ScreenRecoveryUIimplementation（请参阅有关<a href="#devices-without-screens">无屏幕设备</a>的说明）。可通过 ScreenRecoveryUI 自定义的唯一函数是 <code>CheckKey()</code>，该函数会执行初始异步键处理操作：</p>
+
+<pre>
+class TardisUI : public ScreenRecoveryUI {
+  public:
+    virtual KeyAction CheckKey(int key) {
+        if (key == KEY_HOME) {
+            return TOGGLE;
+        }
+        return ENQUEUE;
+    }
+};
+</pre>
+
+<h4 id="key-constants">KEY 常量</h4>
+<p>KEY_* 常量在 <code>linux/input.h</code> 中定义。无论后续恢复流程执行什么操作，都会调用 <code>
+CheckKey()</code>：菜单切换为关闭状态时、菜单处于打开状态时、软件包安装期间以及用户数据清除期间等。它会返回下列 4 个常量中的一个：</p>
+
+<ul>
+<li><b>TOGGLE</b>. 切换菜单的显示状态以及（或）开启/关闭文本日志</li>
+<li><b>REBOOT</b>. 立即重新启动设备</li>
+<li><b>IGNORE</b>. 忽略此按键</li>
+<li><b>ENQUEUE</b>. 向队列中添加此按键以同步使用（即在启用显示时供恢复菜单系统使用）</li>
+</ul>
+
+<p>每次在 key-down 事件后执行同一按键的 key-up 事件时都会调用 <code>CheckKey()</code>（事件 A-down B-down B-up A-up 序列只会调用 <code>CheckKey(B)</code>）。<code>CheckKey()
+</code> 可以调用 <code>IsKeyPressed()</code>，以确定是否有其他键被按下（在上述键事件的序列中，如果 <code>CheckKey(B)
+</code> 调用了 <code>IsKeyPressed(A)</code>，则会返回 true）。</p>
+<p><code>CheckKey()</code> 可以在其类中保持状态，这有助于检测键的序列。本示例展示的是一个稍微复杂的设置：按住电源键并按下音量提高键可切换显示状态，连续按五次电源按钮可立即重新启动设备（无需使用其他键）：</p>
+
+<pre>
+class TardisUI : public ScreenRecoveryUI {
+  private:
+    int consecutive_power_keys;
+
+  public:
+    TardisUI() : consecutive_power_keys(0) {}
+
+    virtual KeyAction CheckKey(int key) {
+        if (IsKeyPressed(KEY_POWER) &amp;&amp; key == KEY_VOLUMEUP) {
+            return TOGGLE;
+        }
+        if (key == KEY_POWER) {
+            ++consecutive_power_keys;
+            if (consecutive_power_keys &gt;= 5) {
+                return REBOOT;
+            }
+        } else {
+            consecutive_power_keys = 0;
+        }
+        return ENQUEUE;
+    }
+};
+</pre>
+
+<h3 id="screenrecoveryui">ScreenRecoveryUI</h3>
+<p>如果您将自己的图片（错误图标、安装动画、进度条）与 ScreenRecoveryUI 搭配使用，则可以设置变量 <code>animation_fps</code> 来控制动画的速度（以每秒帧数 (FPS) 为单位）。</p>
+
+<p class="note"><strong>注意</strong>：通过最新的 <code>interlace-frames.py</code> 脚本，您可以将 <code>animation_fps</code> 信息存储到图片中。在早期版本的 Android 中，您必须自行设置 <code>animation_fps</code>。</p>
+
+<p>要设置变量 <code>animation_fps</code>，请替换子类中的 <code>ScreenRecoveryUI::Init()</code> 函数。设置值，然后调用 <code>parent Init() </code> 函数以完成初始化。默认值 (20 FPS) 对应默认恢复图片；您在使用这些图片时无需提供 <code>Init()</code> 函数。
+有关图片的详细信息，请参阅<a href="#recovery-ui-images">恢复界面图片</a>。</p>
+
+<h3 id="device-class">Device 类</h3>
+<p>执行 RecoveryUI 实现后，请定义您的 Device 类（由内置 Device 类派生的子类）。它应该会创建您的 UI 类的单个实例，并通过 <code>GetUI()</code> 函数返回该实例：</p>
+
+<pre>
+class TardisDevice : public Device {
+  private:
+    TardisUI* ui;
+
+  public:
+    TardisDevice() :
+        ui(new TardisUI) {
+    }
+
+    RecoveryUI* GetUI() { return ui; }
+</pre>
+
+<h3 id="startrecovery">StartRecovery</h3>
+<p><code>StartRecovery()</code> 方法的调用时机是：恢复开始时，界面已初始化且参数已解析之后，但在执行任何操作之前。默认的实现不会执行任何操作，因此，如果您没有可执行的操作，则无需在子类中提供此项。</p>
+
+<pre>
+   void StartRecovery() {
+       // ... do something tardis-specific here, if needed ....
+    }
+</pre>
+
+<h3 id="supply-manage-recovery-menu">提供和管理恢复菜单</h3>
+<p>系统会调用两种方法来获取标头行列表和项列表。在此实现中，系统会返回文件顶部定义的静态数组：</p>
+
+<pre>
+const char* const* GetMenuHeaders() { return HEADERS; }
+const char* const* GetMenuItems() { return ITEMS; }
+</pre>
+
+<h4 id="handlemenukey">HandleMenuKey</h4>
+<p>接下来，提供 <code>HandleMenuKey()</code> 函数，该函数会提取按键和当前菜单可见性，并确定要执行哪项操作。</p>
+
+<pre>
+   int HandleMenuKey(int key, int visible) {
+        if (visible) {
+            switch (key) {
+              case KEY_VOLUMEDOWN: return kHighlightDown;
+              case KEY_VOLUMEUP:   return kHighlightUp;
+              case KEY_POWER:      return kInvokeItem;
+            }
+        }
+        return kNoAction;
+    }
+</pre>
+
+<p>该方法会提取按键代码（之前已通过界面对象的 <code>CheckKey()</code> 方法进行处理并加入队列），以及菜单/文本日志可见性的当前状态。返回值为整数。如果值不小于 0，则被视为会立即调用的菜单项的位置（请参阅下方的 <code>InvokeMenuItem()</code> 方法）。否则，它可能是以下预设常量之一：</p>
+
+<ul>
+<li><b>kHighlightUp</b>：将菜单突出显示移到上一项</li>
+<li><b>kHighlightDown</b>：将菜单突出显示移到下一项</li>
+<li><b>kInvokeItem</b>：调用当前突出显示的项</li>
+<li><b>kNoAction</b>：不使用此按键执行任何操作</li>
+</ul>
+
+<p>由于 <code>HandleMenuKey()</code> 隐含在可见参数中，因此，即使菜单不可见，也会进行调用。与 <code>CheckKey()</code> 不同的是，当恢复系统执行清除数据或安装软件包等操作时，系统不会调用该函数，只有恢复系统处于闲置状态或等待输入时才会调用该函数。<i></i></p>
+
+<h4 id="trackball-mechanism">轨迹球机制</h4>
+<p>如果您的设备采用类似于轨迹球的输入机制（生成类型为 EV_REL、代码为 REL_Y 的输入事件），那么，只要类似于轨迹球的输入设备报告 Y 轴的动作，恢复系统就会合成 KEY_UP 和 KEY_DOWN 按键。您只需将 KEY_UP 和 KEY_DOWN 事件映射到相应的菜单操作即可。无法针对 <code>CheckKey()</code> 实现此映射，因此，您无法将轨迹球动作用作重新启动或切换显示状态的触发器。<i></i></p>
+
+<h4 id="modifier-keys">辅助键</h4>
+<p>要查看作为辅助键按下的键，请调用您自己的界面对象的 <code>IsKeyPressed()
+</code> 方法。例如，在某些设备上，在恢复系统中按 Alt-W 会启动数据清除（无论菜单是否可见）。您可以按如下方式实现：</p>
+
+<pre>
+   int HandleMenuKey(int key, int visible) {
+        if (ui-&gt;IsKeyPressed(KEY_LEFTALT) &amp;&amp; key == KEY_W) {
+            return 2;  // position of the "wipe data" item in the menu
+        }
+        ...
+    }
+</pre>
+
+<p class="note"><strong>注意</strong>：如果 <b>visible</b> 为 false，则返回操作菜单（移动突出显示项、调用突出显示项）的特殊值将毫无意义，因为用户看不到突出显示项。不过，您可以视需要返回相应的值。</p>
+
+<h4 id="invokemenuitem">InvokeMenuItem</h4>
+<p>接下来，提供 <code>InvokeMenuItem()</code> 方法，将由 <code>GetMenuItems()</code> 返回的项数组中的整数位置映射到相应的操作。对于 tardis 示例中的项数组，请使用：</p>
+
+<pre>
+   BuiltinAction InvokeMenuItem(int menu_position) {
+        switch (menu_position) {
+          case 0: return REBOOT;
+          case 1: return APPLY_ADB_SIDELOAD;
+          case 2: return WIPE_DATA;
+          case 3: return WIPE_CACHE;
+          default: return NO_ACTION;
+        }
+    }
+</pre>
+
+<p>该方法可以返回 BuiltinAction 枚举的任何成员，以指示系统执行相应的操作（如果您不希望系统执行任何操作，则返回 NO_ACTION 成员）。您可以在这里提供除系统功能以外的其他恢复功能：在您的菜单中为其添加项，在调用菜单项时在此处执行此项，以及返回 NO_ACTION 以便让系统不执行其他任何操作。</p>
+<p>BuiltinAction 包含以下值：</p>
+<ul>
+<li><b>NO_ACTION</b>：不执行任何操作。</li>
+<li><b>REBOOT</b>：退出恢复系统，并正常重启设备。</li>
+<li><b>APPLY_EXT、APPLY_CACHE、APPLY_ADB_SIDELOAD</b>：从不同的位置安装更新程序包。如需了解详情，请参阅<a href="#sideloading">旁加载</a>。</li>
+<li><b>WIPE_CACHE</b>：仅将 cache 分区重新格式化。无需确认，因为此操作相对来说没有什么不良后果。</li>
+<li><b>WIPE_DATA</b>：将 userdata 和 cache 分区重新格式化，又称为恢复出厂设置。用户需要先确认这项操作，然后再继续。</li>
+</ul>
+<p>最后一种方法 <code>WipeData()</code> 是可选项，只要系统执行数据清除操作（通过菜单从退出恢复系统中执行，或当用户从主系统中选择恢复出厂设置时），就会调用此方法。该方法在清除 userdata 和 cache 分区之前调用。如果您的设备将用户数据存储在这两个分区之外的其他位置，您应在此处清空数据。您应返回 0 以表示成功，返回其他值以表示失败，不过目前系统会忽略返回值。无论您返回成功还是失败，userdata 和 cache 分区都会被清除。</p>
+
+<pre>
+   int WipeData() {
+       // ... do something tardis-specific here, if needed ....
+       return 0;
+    }
+</pre>
+
+<h4 id="make-device">生成设备</h4>
+<p>最后，在创建并返回您的 Device 类实例的 <code>make_device()</code> 函数的 recovery_ui.cpp 文件末尾包含一些样板文件。</p>
+
+<pre>
+class TardisDevice : public Device {
+   // ... all the above methods ...
+};
+
+Device* make_device() {
+    return new TardisDevice();
+}
+</pre>
+
+<h3 id="build-link-device-recovery">编译并链接到设备 recovery 分区</h3>
+<p>完成 recovery_ui.cpp 文件后，编译该文件并将其链接到您设备上的 recovery 分区。在 Android.mk 中，创建一个只包含此 C++ 文件的静态库：</p>
+
+<p><code>device/yoyodyne/tardis/recovery/Android.mk</code></p>
+
+<pre>
+LOCAL_PATH := $(call my-dir)
+include $(CLEAR_VARS)
+
+LOCAL_MODULE_TAGS := eng
+LOCAL_C_INCLUDES += bootable/recovery
+LOCAL_SRC_FILES := recovery_ui.cpp
+
+# should match TARGET_RECOVERY_UI_LIB set in BoardConfig.mk
+LOCAL_MODULE := librecovery_ui_tardis
+
+include $(BUILD_STATIC_LIBRARY)
+</pre>
+
+<p>然后，在该设备的板配置中，将静态库指定为 TARGET_RECOVERY_UI_LIB 的值。</p>
+
+<pre>
+device/yoyodyne/tardis/BoardConfig.mk
+ [...]
+
+# device-specific extensions to the recovery UI
+TARGET_RECOVERY_UI_LIB := librecovery_ui_tardis
+</pre>
+
+<h2 id="recovery-ui-images">恢复界面图片</h2>
+<p>恢复用户界面由图片组成。在理想情况下，用户从不与界面互动：在正常更新过程中，手机会启动进入恢复模式，填充安装进度条，并在无需用户输入任何内容的情况下启动返回新系统。如果系统更新出现问题，唯一可以执行的用户操作是呼叫客服中心。</p>
+<p>只含图片的界面无需进行本地化。不过，自 Android 5.0 起，更新会显示一串文本（如“正在安装系统更新…”）以及图片。如需了解详情，请参阅<a href="#recovery-text">经过本地化的恢复文本</a>。</p>
+
+<h3 id="recovery-5.x">Android 5.0 及更高版本</h3>
+<p>Android 5.0 及更高版本的恢复界面采用两种主要图片：<strong>错误</strong>图片和<strong>正在安装</strong>动画。</p>
+
+<table>
+<tbody>
+<tr>
+<td>
+<img src="../images/icon_error.png" alt="image shown during ota error"/>
+<p class="img-caption"><strong>图 1.</strong> icon_error.png</p>
+</td>
+<td>
+<img src="../images/icon_installing_5x.png" alt="image shown during ota install" height="275"/>
+<p class="img-caption"><strong>图 2.</strong> icon_installing.png</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+<p>“正在安装”动画由一张 PNG 图片表示，动画的各帧行行交错（这就是图 2 呈现挤压效果的原因）。例如，为 200x200 的七帧动画创建一张 200x1400 的图片，其中第一帧表示第 0、7、14、21...行，第二帧表示第 1、8、15、22...行，以此类推。合并的图片包含表示动画帧数和每秒帧数 (FPS) 的文本块。<code>bootable/recovery/interlace-frames.py</code> 工具需要处理一组输入帧，并将其合并到 recovery 所用的必要合成图片中。</p>
+
+<p>默认图片以不同密度提供，其所在位置是 <code>bootable/recovery/res-$DENSITY/images</code> （如 <code>bootable/recovery/res-hdpi/images</code>）。要在安装过程中使用静态图片，您只需提供 icon_installing.png 图片，并将动画中的帧数设置为 0（错误图标不是动画；该图片一律为静态图片）即可。</p>
+
+<h3 id="recovery-4.x">Android 4.x 及更早版本</h3>
+<p>Android 4.x 及更早版本的恢复界面会采用<b>错误</b>图片（如上图所示）、<b>正在安装</b>动画以及几张叠加图片：</p>
+
+<table>
+<tbody>
+<tr>
+<td rowspan="2">
+<img src="../images/icon_installing.png" alt="image shown during ota install"/>
+<p class="img-caption"><strong>图 3.</strong> icon_installing.png</p>
+</td>
+<td>
+<img src="../images/icon_installing_overlay01.png" alt="image shown as first overlay"/>
+<p class="img-caption"><strong>图 4.</strong> icon-installing_overlay01.png
+</p>
+</td>
+</tr>
+<tr>
+<td>
+<img src="../images/icon_installing_overlay07.png" alt="image shown as seventh overlay"/>
+<p class="img-caption"><strong>图 5.</strong> icon_installing_overlay07.png
+</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+<p>在安装过程中，屏幕显示通过绘制 icon_installing.png 图片进行构建，然后在适当的偏移量处绘制其中一张叠加帧。图中叠加的红色方框是用来突出显示叠加帧在基本图片上的放置位置：</p>
+
+<table style="border-collapse:collapse;">
+<tbody>
+<tr>
+<td><img align="center" src="../images/composite01.png" alt="composite image of install plus first overlay"/>
+<p class="img-caption"><strong>图 6.</strong> “正在安装”动画帧 1 (icon_installing.png + icon_installing_overlay01.png)
+</p></td>
+<td><img align="center" src="../images/composite07.png" alt="composite image of install plus seventh overlay"/>
+<p class="img-caption"><strong>图 7.</strong> “正在安装”动画帧 7 (icon_installing.png + icon_installing_overlay07.png)
+</p></td>
+</tr>
+</tbody>
+</table>
+
+<p>后续帧通过只绘制下一张已位于顶部的叠加图片显示；基本图片不会重新绘制。<i></i></p>
+
+<p>动画中的帧数，所需速度，以及叠加图片相对于基本图片的 x 轴和 y 轴偏移量均通过 ScreenRecoveryUI 类的成员变量来设置。如果您使用的是自定义图片，而不是默认图片，请通过替换您子类中的 <code>Init()</code> 方法来更改自定义图片的这些值（如需了解详情，请参阅 <a href="#screenrecoveryui">ScreenRecoveryUI</a>）。<code>bootable/recovery/make-overlay.py
+</code> 脚本可协助将一组图片帧转为 recovery 所需的“基本图片 + 叠加图片”，其中包括计算所需的偏移量。</p>
+
+<p>默认图片位于 <code>bootable/recovery/res/images</code> 中。要在安装过程中使用静态图片，您只需提供 icon_installing.png 图片，并将动画中的帧数设置为 0（错误图标不是动画；该图片一律为静态图片）即可。</p>
+
+<h3 id="recovery-text">经过本地化的恢复文本</h3>
+<p>Android 5.x 会显示一串文本（如“正在安装系统更新…”）以及图片。如果主系统启动进入恢复模式，系统会将用户当前的语言区域作为命令行选项传递到恢复系统。对于每条要显示的消息，恢复系统都会为每个语言区域中的相应消息添加第二张带有预呈现文本字符串的合成图片。</p>
+
+<p>恢复文本字符串的示例图片：</p>
+
+<img src="../images/installing_text.png" alt="image of recovery text"/>
+<p class="img-caption"><strong>图 8.</strong> 恢复消息的本地化文本</p>
+
+<p>恢复文本会显示以下消息：</p>
+<ul>
+<li>正在安装系统更新…</li>
+<li>出错了！</li>
+<li>正在清除…（执行数据清除/恢复出厂设置时）</li>
+<li>无命令（用户手动启动进入恢复模式时）</li>
+</ul>
+
+<p><code>development/tools/recovery_l10/</code> 中的 Android 应用会呈现经过本地化的消息并创建合成图片。要详细了解如何使用该应用，请参阅 <code>development/tools/recovery_l10n/
+src/com/android/recovery_l10n/Main.java</code> 中的注解。
+
+</p><p>如果用户手动启动进入恢复模式，则语言区域可能不可用，且不会显示任何文本。不要让文本消息对恢复流程产生太多制约影响。</p>
+
+<p class="note"><strong>注意</strong>：隐藏界面（可显示日志消息并允许用户从菜单中选择操作）仅提供英文版。</p>
+
+<h2 id="progress-bars">进度条</h2>
+<p>进度条会显示在主要图片（或动画）的下方。进度条由两张输入图片（大小必须相同）合并而成：</p>
+
+<img src="../images/progress_empty.png" alt="empty progress bar"/>
+<p class="img-caption"><strong>图 9.</strong> progress_empty.png</p>
+<img src="../images/progress_fill.png" alt="full progress bar"/>
+<p class="img-caption"><strong>图 10.</strong> progress_fill.png</p>
+
+<p>fill 图片的左端显示在 empty 图片右端的旁边，从而形成进度条。<i></i><i></i>两张图片之间的边界位置会不时变更，以表示相应的进度。以上述几对输入图片为例，显示效果为：</p>
+
+<img src="../images/progress_1.png" alt="progress bar at 1%"/>
+<p class="img-caption"><strong>图 11.</strong> 进度条显示为 1%&gt;</p>
+<img src="../images/progress_10.png" alt="progress bar at 10%"/>
+<p class="img-caption"><strong>图 12.</strong> 进度条显示为 10%</p>
+<img src="../images/progress_50.png" alt="progress bar at 50%"/>
+<p class="img-caption"><strong>图 13.</strong> 进度条显示为 50%</p>
+
+<p>您可以将这些图片的设备专属版本放入（在本例中）<code>device/yoyodyne/tardis/recovery/res/images</code> 中，以提供这类版本的图片。
+ 文件名必须与上面列出的文件名相符；如果可在该目录下找到文件，则编译系统会优先使用该文件，而非对应的默认图片。仅支持采用 8 位色深的 RGB 或 RGBA 格式的 PNG 文件。
+</p>
+
+<p class="note"><strong>注意</strong>：在 Android 5.x 中，如果恢复模式下的语言区域是已知的，且采用从右至左 (RTL) 的语言模式（例如阿拉伯语、希伯来语等），则进度条将会按照从右向左的顺序进行填充。</p>
+
+<h2 id="devices-without-screens">没有屏幕的设备</h2>
+<p>并非所有 Android 设备都有屏幕。如果您的设备是无头装置或具备只支持音频的界面，那么您可能需要对恢复界面进行更广泛的自定义。请勿创建 ScreenRecoveryUI 的子类，而是直接针对其父类 RecoveryUI 创建子类。</p>
+<p>RecoveryUI 具有处理低级界面操作（如“切换显示”、“更新进度条”、“显示菜单”、“更改菜单选项”等）的方法。您可以替换这些操作以提供适合您设备的界面。也许您的设备有 LED，这样您可以使用不同的颜色或闪烁图案来指示状态；或许您还可以播放音频（您可能完全不想支持菜单或“文本显示”模式；您可以通过 <code>CheckKey()</code> 和 <code>HandleMenuKey()</code> 实现（一律不开启显示或一律不选择菜单项）来阻止对其进行访问在这种情况下，您需要提供的很多 RecoveryUI 方法都可以只是空的存根）。</p>
+<p>请参阅 <code>bootable/recovery/ui.h</code>，了解 RecoveryUI 声明，以查看您必须支持哪些方法。RecoveryUI 是抽象的（有些方法是纯虚拟的，必须由子类提供），但它包含处理键输入内容的代码。如果您的设备没有键或者您希望通过其他方式处理这些内容，也可以将其替换掉。</p>
+
+<h2 id="updater">更新程序</h2>
+<p>您可以提供自己的扩展函数（可从您的更新程序脚本中调用），从而在安装更新程序包的过程中使用设备专属代码。以下是适用于 tardis 设备的示例函数：</p>
+
+<p><code>device/yoyodyne/tardis/recovery/recovery_updater.c</code></p>
+<pre>
+#include &lt;stdlib.h&gt;
+#include &lt;string.h&gt;
+
+#include "edify/expr.h"
+</pre>
+
+<p>每个扩展函数都采用相同的签名。具体参数即调用函数的名称，<code>State*</code> Cookie、传入参数的数量和表示参数的 <code>Expr*</code> 指针数组。返回值是新分配的 <code>Value*</code>。</p>
+
+<pre>
+Value* ReprogramTardisFn(const char* name, State* state, int argc, Expr* argv[]) {
+    if (argc != 2) {
+        return ErrorAbort(state, "%s() expects 2 args, got %d", name, argc);
+    }
+</pre>
+
+<p>您的参数在您调用函数时尚未进行评估，函数的逻辑决定了会对哪些参数进行评估以及评估多少次。因此，您可以使用扩展函数来实现自己的控制结构。<code>Call Evaluate()</code> 可用来评估 <code>Expr*
+</code> 参数，返回 <code>Value*</code>。如果 <code>Evaluate()</code> 可返回 NULL，您应该释放所持有的所有资源，并立即返回 NULL（此操作会将 abort 传播到 edify 堆栈中）。否则，您将获得所返回 Value 的所有权，并负责最终对其调用 <code>FreeValue()</code>。</p>
+
+<p>假设该函数需要两种参数：字符串值的 <b>key</b> 和 blob 值的 <b>image</b>。您可能会看到如下参数：</p>
+
+<pre>
+   Value* key = EvaluateValue(state, argv[0]);
+    if (key == NULL) {
+        return NULL;
+    }
+    if (key-&gt;type != VAL_STRING) {
+        ErrorAbort(state, "first arg to %s() must be string", name);
+        FreeValue(key);
+        return NULL;
+    }
+    Value* image = EvaluateValue(state, argv[1]);
+    if (image == NULL) {
+        FreeValue(key);    // must always free Value objects
+        return NULL;
+    }
+    if (image-&gt;type != VAL_BLOB) {
+        ErrorAbort(state, "second arg to %s() must be blob", name);
+        FreeValue(key);
+        FreeValue(image)
+        return NULL;
+    }
+</pre>
+
+<p>为多个参数检查 NULL 并释放之前评估的参数可能会很繁琐。<code>ReadValueArgs()</code> 函数会让此变得更简单。您可以不使用上面的代码，而是写入下面的代码：</p>
+
+<pre>
+   Value* key;
+    Value* image;
+    if (ReadValueArgs(state, argv, 2, &amp;key, &amp;image) != 0) {
+        return NULL;     // ReadValueArgs() will have set the error message
+    }
+    if (key-&gt;type != VAL_STRING || image-&gt;type != VAL_BLOB) {
+        ErrorAbort(state, "arguments to %s() have wrong type", name);
+        FreeValue(key);
+        FreeValue(image)
+        return NULL;
+    }
+</pre>
+
+<p><code>ReadValueArgs()</code> 不执行类型检查，因此您必须在这里执行这项检查；使用 <b>if</b> 语句执行这项检查会更方便，不过，这样做也有一个弊端，那就是操作失败时所显示的错误消息会不够具体。不过，如果有任何评估失败，<code>ReadValueArgs()</code> 会处理每个参数的评估操作，并释放之前评估的所有参数（以及设置有用的错误消息）。您可以使用 <code>
+ReadValueVarArgs()</code> 便捷函数来评估数量不定的参数（它会返回 <code>Value*</code> 的数组）。</p>
+
+<p>对参数进行评估后，执行以下函数：</p>
+
+<pre>
+   // key-&gt;data is a NUL-terminated string
+    // image-&gt;data and image-&gt;size define a block of binary data
+    //
+    // ... some device-specific magic here to
+    // reprogram the tardis using those two values ...
+</pre>
+
+<p>返回值必须是 <code>Value*</code> 对象；此对象的所有权将传递给调用程序。调用程序将获得此 <code>Value*</code> 所指向的所有数据的所有权，特别是数据成员。</p>
+<p>在这种情况下，您需要返回 true 或 false 值来表示成功。请记住以下惯例：空字符串为 false，所有其他字符串均为 true。<i></i><i></i>您必须使用要返回的常量字符串的经过 malloc 处理的副本来分配 Value 对象，因为调用程序会 <code>free()
+</code> 这两者。请切记对通过评估参数获得的对象调用 <code>FreeValue()</code>！</p>
+
+<pre>
+   FreeValue(key);
+    FreeValue(image);
+
+    Value* result = malloc(sizeof(Value));
+    result-&gt;type = VAL_STRING;
+    result-&gt;data = strdup(successful ? "t" : "");
+    result-&gt;size = strlen(result-&gt;data);
+    return result;
+}
+</pre>
+
+<p>便捷函数 <code>StringValue()</code> 会将字符串封装到新的 Value 对象中。使用此函数可使上述代码的编写更加简洁：</p>
+
+<pre>
+   FreeValue(key);
+    FreeValue(image);
+
+    return StringValue(strdup(successful ? "t" : ""));
+}
+</pre>
+
+<p>要将函数挂接到 edify 解释程序中，请提供函数 <code>Register_<i>foo</i></code>（其中 <i>foo</i> 是包含此代码的静态库的名称）。调用 <code>RegisterFunction()</code> 以注册各个扩展函数。按照惯例，需要对设备专属函数 <code><i>device</i>.<i>whatever</i></code> 进行命名，以免与将来添加的内置函数发生冲突。</p>
+
+<pre>
+void Register_librecovery_updater_tardis() {
+    RegisterFunction("tardis.reprogram", ReprogramTardisFn);
+}
+</pre>
+
+<p>现在，您可以配置 makefile，以使用您的代码编译静态库（此 makefile 即是之前的区段中用于自定义恢复界面的 makefile；您设备的两个静态库可能都是在此定义的）。</p>
+
+<p><code>device/yoyodyne/tardis/recovery/Android.mk</code></p>
+
+<pre>
+include $(CLEAR_VARS)
+LOCAL_SRC_FILES := recovery_updater.c
+LOCAL_C_INCLUDES += bootable/recovery
+</pre>
+
+<p>静态库的名称必须与其中所包含的 <code>Register_<i>libname</i></code> 函数的名称匹配。</p>
+
+<pre>
+LOCAL_MODULE := librecovery_updater_tardis
+include $(BUILD_STATIC_LIBRARY)
+</pre>
+
+<p>最后，配置 recovery 的版本号以拉入您的库。将您的库添加到 TARGET_RECOVERY_UPDATER_LIBS（它可能包含多个库；所有库均已注册）。如果您的代码依赖于本身不是 edify 扩展程序的其他静态库（即，它们没有 <code>Register_<i>libname</i></code> 函数），您可以将其列于 TARGET_RECOVERY_UPDATER_EXTRA_LIBS 中，以将其链接到更新程序，而无需调用其（不存在的）注册函数。例如，如果您的设备专属代码需要使用 zlib 解压缩数据，您可以在此处包含 libz。</p>
+
+<p><code>device/yoyodyne/tardis/BoardConfig.mk</code></p>
+
+<pre>
+ [...]
+
+# add device-specific extensions to the updater binary
+TARGET_RECOVERY_UPDATER_LIBS += librecovery_updater_tardis
+TARGET_RECOVERY_UPDATER_EXTRA_LIBS +=
+</pre>
+
+<p>您的 OTA 更新包中的更新程序脚本现已可以像其他脚本一样调用您的函数。要重新对您的 tardis 设备进行编程，更新脚本应包含：<code>tardis.reprogram("the-key", package_extract_file("tardis-image.dat"))
+</code>。它会使用单参数版本的内置函数 <code>
+package_extract_file()</code>，该函数会将从更新程序包中提取的文件内容作为 blob 返回，从而为新的扩展函数生成第二个参数。</p>
+
+<h2>生成 OTA 更新包</h2>
+<p>最终的组件是获取 OTA 更新包生成工具以了解您的设备专属数据，并发出 (emit) 包含对您的扩展函数进行调用的更新程序脚本。</p>
+<p>首先，让编译系统了解设备专属数据 blob。假设您的数据文件位于 <code>device/yoyodyne/tardis/tardis.dat</code> 中，请在您设备的 AndroidBoard.mk 中做出以下声明：</p>
+
+<p><code>device/yoyodyne/tardis/AndroidBoard.mk</code></p>
+<pre>
+  [...]
+
+$(call add-radio-file,tardis.dat)
+</pre>
+
+<p>您也可以将其放在 Android.mk 中，但是之后必须通过设备检查提供保护，因为无论编译什么设备，树中的所有 Android.mk 文件都会加载（如果您的树中包含多个设备，那么您只需要在编译 tardis 设备时添加 tardis.dat 文件即可）。</p>
+
+<p><code>device/yoyodyne/tardis/Android.mk</code></p>
+<pre>
+  [...]
+
+# an alternative to specifying it in AndroidBoard.mk
+ifeq (($TARGET_DEVICE),tardis)
+  $(call add-radio-file,tardis.dat)
+endif
+</pre>
+
+<p>由于历史原因，这些文件被称为无线电文件，但它们可能与设备无线电（如果存在）没有任何关系。它们只是编译系统复制到 OTA 生成工具所用的 target-files .zip 中的模糊数据 blob。在您执行编译时，tardis.dat 会作为 <code>RADIO/tardis.dat</code> 存储在 target-files.zip 中。您可以多次调用 <code>add-radio-file</code> 以根据需要添加任意数量的文件。</p>
+
+<h3 id="python-module">Python 模块</h3>
+<p>要扩展发布工具，请编写工具（如果有）可以调用的 Python 模块（必须命名为 releasetools.py）。示例：</p>
+
+<p><code>device/yoyodyne/tardis/releasetools.py</code></p>
+<pre>
+import common
+
+def FullOTA_InstallEnd(info):
+  # copy the data into the package.
+  tardis_dat = info.input_zip.read("RADIO/tardis.dat")
+  common.ZipWriteStr(info.output_zip, "tardis.dat", tardis_dat)
+
+  # emit the script code to install this data on the device
+  info.script.AppendExtra(
+      """tardis.reprogram("the-key", package_extract_file("tardis.dat"));""")
+</pre>
+
+<p>独立的函数可以处理生成增量 OTA 更新包的情况。在本例中，假设您只需要在两个版本号之间的 tardis.dat 文件发生更改时重新编程 tardis。</p>
+<pre>
+def IncrementalOTA_InstallEnd(info):
+  # copy the data into the package.
+  source_tardis_dat = info.source_zip.read("RADIO/tardis.dat")
+  target_tardis_dat = info.target_zip.read("RADIO/tardis.dat")
+
+  if source_tardis_dat == target_tardis_dat:
+      # tardis.dat is unchanged from previous build; no
+      # need to reprogram it
+      return
+
+  # include the new tardis.dat in the OTA package
+  common.ZipWriteStr(info.output_zip, "tardis.dat", target_tardis_dat)
+
+  # emit the script code to install this data on the device
+  info.script.AppendExtra(
+      """tardis.reprogram("the-key", package_extract_file("tardis.dat"));""")
+</pre>
+
+<h4 id="module-functions">模块函数</h4>
+<p>您可以在模块中提供以下函数（仅实现所需函数）。</p>
+<dl>
+<dt><code>FullOTA_Assertions()</code></dt>
+<dd>在即将开始生成完整 OTA 时调用。此时非常适合发出 (emit) 关于设备当前状态的断言。请勿发出 (emit) 对设备进行更改的脚本命令。</dd>
+<dt><code>FullOTA_InstallBegin()</code></dt>
+<dd>在关于设备状态的断言都已传递但尚未进行任何更改时调用。您可以发出 (emit) 用于设备专属更新的命令（必须在设备上的其他内容发生更改之前运行）。</dd>
+<dt><code>FullOTA_InstallEnd()</code></dt>
+<dd>在脚本生成流程结束且已发出 (emit) 脚本命令（用于更新 boot 和 boot 分区）后调用。您还可以发出 (emit) 用于设备专属更新的其他命令。</dd>
+<dt><code>IncrementalOTA_Assertions()</code></dt>
+<dd>与 <code>FullOTA_Assertions()</code> 类似，但在生成增量更新包时调用。</dd>
+<dt><code>IncrementalOTA_VerifyBegin()</code></dt>
+<dd>在关于设备状态的断言都已传递但尚未进行任何更改时调用。您可以发出 (emit) 用于设备专属更新的命令（必须在设备上的其他任何内容发生更改之前运行）。</dd>
+<dt><code>IncrementalOTA_VerifyEnd()</code></dt>
+<dd>在验证阶段结束且脚本确认即将接触的文件具有预期开始内容时调用。此时，设备上的内容尚未发生任何更改。您还可以发出 (emit) 用于其他设备专属验证的代码。</dd>
+<dt><code>IncrementalOTA_InstallBegin()</code></dt>
+<dd>在要修补的文件已被验证为具有预期 before 状态但尚未进行任何更改时调用。<i></i>您可以发出 (emit) 用于设备专属更新的命令（必须在设备上的其他任何内容发生更改之前运行）。</dd>
+<dt><code>IncrementalOTA_InstallEnd()</code></dt>
+<dd>与其完整的 OTA 更新包类似的是，这项函数在脚本生成结束阶段且已发出 (emit) 用于更新 boot 和 system 分区的脚本命令后调用。您还可以发出 (emit) 用于设备专属更新的其他命令。</dd>
+</dl>
+
+<p class="note"><strong>注意</strong>：如果设备电量耗尽了，OTA 安装可能会从头重新开始。请准备好针对已全部或部分运行这些命令的设备进行相应的操作。</p>
+
+<h4 id="pass-functions-to-info">将函数传递到 info 对象</h4>
+<p>将函数传递到包含各种实用项的单个 info 对象：
+</p>
+<ul>
+<li><b>info.input_zip</b>：（仅限完整 OTA）输入 target-files .zip 的 <code>zipfile.ZipFile</code> 对象。</li>
+<li><b>info.source_zip</b>：（仅限增量 OTA）源 target-files .zip 的 <code>zipfile.ZipFile
+</code> 对象（安装增量包时版本号已在设备上）。</li>
+<li><b>info.target_zip</b>：（仅限增量 OTA）目标 target-files .zip 的 <code>zipfile.ZipFile
+</code> 对象（增量包置于设备上的版本号）。</li>
+<li><b>info.output_zip</b>：正在创建的更新包；为进行写入而打开的 <code>zipfile.ZipFile
+</code> 对象。使用 common.ZipWriteStr（info.output_zip、<i>filename</i>、<i>data</i>）将文件添加到文件包。</li>
+<li><b>info.script</b>：可以附加命令的目标脚本对象。调用 <code>info.script.AppendExtra(<i>script_text</i>)</code> 以将文本输出到脚本。请确保输出文本以分号结尾，这样就不会运行到随后发出 (emit) 的命令中。</li>
+</ul>
+
+<p>有关 info 对象的详细信息，请参阅<a href="http://docs.python.org/library/zipfile.html">针对 ZIP 归档的 Python 软件基础文档</a>。</p>
+
+<h4 id="specify-module-location">指定模块位置</h4>
+<p>指定您设备的 releasetools.py 脚本在 BoardConfig.mk 文件中的位置：</p>
+
+<p><code>device/yoyodyne/tardis/BoardConfig.mk</code></p>
+
+<pre>
+ [...]
+
+TARGET_RELEASETOOLS_EXTENSIONS := device/yoyodyne/tardis
+</pre>
+
+<p>如果未设置 TARGET_RELEASETOOLS_EXTENSIONS，则默认位置为 <code>
+$(TARGET_DEVICE_DIR)/../common</code> 目录（在本例中为 <code>device/yoyodyne/common
+</code>）。最好明确指定 releasetools.py 脚本的位置。编译 tardis 设备时，releasetools.py 脚本会包含在 target-files .zip 文件 (<code>META/releasetools.py
+</code>) 中。</p>
+<p>当您运行发布工具（<code>img_from_target_files</code> 或 <code>ota_from_target_files</code>）时，target-files .zip 中的 releasetools.py 脚本（如果存在）将优先于 Android 源代码树中的脚本而执行。您还可以通过优先级最高的 <code>-s</code>（或 <code>--device_specific</code>）选项明确指定设备专属扩展程序的路径。这样一来，您就可以在发布工具扩展程序中更正错误及做出更改，并将这些更改应用于旧的目标文件。</p>
+<p>现在，当您运行 <code>ota_from_target_files</code> 时，它会自动从 target_files .zip 文件获取设备专属模块，并在生成 OTA 更新包时使用该模块：</p>
+
+<pre>
+% <b>./build/tools/releasetools/ota_from_target_files \
+    -i PREVIOUS-tardis-target_files.zip \
+    dist_output/tardis-target_files.zip incremental_ota_update.zip</b>
+unzipping target target-files...
+<b>using device-specific extensions from target_files</b>
+unzipping source target-files...
+   [...]
+done.
+</pre>
+
+<p>或者，您可以在运行 <code>ota_from_target_files</code> 时指定设备专属扩展程序。</p>
+
+<pre>
+% <b>./build/tools/releasetools/ota_from_target_files \
+    -s device/yoyodyne/tardis \  # specify the path to device-specific extensions
+    -i PREVIOUS-tardis-target_files.zip \
+    dist_output/tardis-target_files.zip incremental_ota_update.zip</b>
+unzipping target target-files...
+<b>loaded device-specific extensions from device/yoyodyne/tardis</b>
+unzipping source target-files...
+   [...]
+done.
+</pre>
+
+<p class="note"><strong>注意</strong>：如需查看完整的选项列表，请参阅 <code>
+build/tools/releasetools/ota_from_target_files</code> 中的 <code>ota_from_target_files</code> 注释。</p>
+
+<h2 id="sideloading">旁加载</h2>
+<p>恢复系统采用<b>旁加载</b>机制，可手动安装更新包（无需主系统通过无线方式下载）。旁加载有助于在主系统无法启动的设备上进行调试或更改。</p>
+<p>一直以来，旁加载都是通过将更新包下载到设备的 SD 卡上而完成，如果设备无法启动，则可以使用其他计算机将更新包放于 SD 卡上，然后将 SD 卡插入设备中。为了支持没有可拆卸外部存储设备的 Android 设备，恢复系统还支持另外两种旁加载机制：从 cache 分区加载更新包，以及使用 adb 通过 USB 进行加载。</p>
+<p>要调用每种旁加载机制，您设备的 <code>
+Device::InvokeMenuItem()</code> 方法可以返回以下 BuiltinAction 值：</p>
+
+<ul>
+<li><b>APPLY_EXT</b>：从外部存储设备（<code>
+/sdcard</code> 目录）旁加载更新包。您的 recovery.fstab 必须定义 <code>/sdcard
+</code> 装载点。这在通过符号链接到 <code>/data</code> 来模拟 SD 卡（或其他类似机制）的设备上不可用。<code>/data
+</code> 通常不可用于恢复系统，因为它可能会被加密。恢复界面会显示 <code>/sdcard</code> 中的 .zip 文件菜单，以便用户进行选择。</li>
+<li><b>APPLY_CACHE</b>：类似于从 <code>/sdcard</code> 加载更新包，不过使用的是 <code>/cache</code> 目录（一律可用于恢复系统）。<i></i>在常规系统中，<code>/cache
+</code> 只能由特权用户写入；如果设备不可启动，则完全无法写入 <code>/cache</code> 目录（这样一来，该机制的效用就会有所限制）。</li>
+<li><b>APPLY_ADB_SIDELOAD</b>：允许用户通过 USB 数据线和 adb 开发工具将软件包发送到设备。调用此机制时，恢复系统将启动自身的迷你版 adbd 守护程序，以便已连接的主机上的 adb 与其进行对话。该迷你版守护程序仅支持一个命令：<code>adb sideload <i>filename</i></code>。已命名的文件会从主机发送到设备，然后对其进行验证和安装（如同文件在本地存储区中一样）。</li>
+</ul>
+
+<p>一些注意事项：</p>
+<ul>
+<li>仅支持 USB 传输。</li>
+<li>如果您的恢复系统可以正常运行 adbd（对于 userdebug 和 eng 版本来说通常是这样），则会在设备处于 adb 旁加载模式时关闭，并将在 adb 旁加载完成接收更新包后重新启动。在 adb 旁加载模式下，只有 <code>sideload</code> 命令可以发挥作用（<code>logcat</code>、<code>reboot</code>、<code>push</code>、<code>pull</code>、<code>shell</code> 等都不起作用）。</li>
+<li>您无法在设备上退出 adb 旁加载模式。要终止，您可以将 <code>/dev/null</code>（或有效更新包以外的其他任何文件）作为更新包进行发送，然后设备将无法对其进行验证，并会停止安装程序。RecoveryUI 实现的 <code>CheckKey()</code> 方法将继续为按键所调用，因此，您可以提供可重新启动设备并在 adb 旁加载模式下运行的按键序列。</li>
+</ul>
+
+</body></html>
