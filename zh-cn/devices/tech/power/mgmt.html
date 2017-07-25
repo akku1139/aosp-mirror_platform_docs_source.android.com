@@ -1,0 +1,236 @@
+<html devsite><head>
+    <title>电源管理</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>电池续航时间是用户长期以来一直关注的问题。为了延长电池续航时间，Android 不断添加新功能和优化功能，以帮助平台优化应用和设备在非充电状态下的行为。</p>
+<p>Android 提供以下电池续航时间增强功能：</p>
+
+<ul>
+<li><a href="#app-standby">应用待机模式</a>。平台会使未使用的应用进入应用待机模式，从而暂时限制此类应用访问网络，并延迟其同步和作业。</li>
+<li><a href="#doze">低电耗模式</a>。如果用户长时间没有主动使用其设备（屏幕处于关闭和静止状态），则平台会使设备进入深度休眠状态（定期恢复正常操作）。此外，当用户关闭设备屏幕但仍处于移动状态时，Android 7.0 及更高版本还会启用低电耗模式，以触发一系列轻度优化。</li>
+<li><a href="#exempt-apps">豁免</a>。默认情况下，在设备上预加载的系统应用和云消息传递服务通常能够获得豁免，不会进入应用待机模式和低电耗模式（尽管应用开发者可以特意将这样的设置运用到其应用上）。用户可以通过“设置”菜单豁免应用。</li>
+</ul>
+
+<p>下列部分对这些增强功能进行了具体说明。</p>
+
+<h2 id="app-standby">应用待机模式</h2>
+<p>应用待机模式会针对用户未主动使用的应用延迟后台网络活动和作业，从而延长电池续航时间。</p>
+
+<h3 id="app-standby-life">应用待机模式生命周期</h3>
+<p>平台检测到未活动的应用，并使其进入应用待机模式，直到用户开始主动与相应应用互动为止。</p>
+
+<table>
+<tbody>
+<tr>
+<th width="46%">检测</th>
+<th width="23%">应用待机模式期间</th>
+<th width="31%">退出</th>
+</tr>
+
+<tr>
+<td><p>当设备未充电<strong>且</strong>用户在特定的时钟时间内以及特定的屏幕开启时间内未直接或间接地启动某个应用时，平台会检测到该应用处于未活动状态（当前台应用访问另一个应用中的服务时，便会间接启动该应用）。</p></td>
+<td><p>平台会阻止应用访问网络（一天多次），从而延迟应用同步和其他作业。</p></td>
+<td><p>当出现以下情况时，平台会使应用退出应用待机模式：</p>
+<ul>
+<li>应用变成活动状态。</li>
+<li>设备接通电源并充电。</li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
+
+<p>处于活动状态的应用不受应用待机模式影响。如果应用具有以下特点，则表示其处于活动状态：</p>
+<ul>
+<li>有目前在前台运行的进程（作为活动或前台服务，或者正在被其他活动或前台服务使用），例如通知侦听器、无障碍服务、动态壁纸等等。</li>
+<li>有用户要查看的通知，例如锁定屏幕或通知栏中的通知。</li>
+<li>明确由用户启动。</li>
+</ul>
+<p>如果某个应用在一段时间内未发生上述活动，则表示该应用处于非活动状态。
+</p>
+
+<h3 id="testing_app_standby">测试应用待机模式</h3>
+<p>您可以使用以下 <code>adb</code> 命令手动测试应用待机模式：</p>
+
+<pre>
+$ adb shell dumpsys battery unplug
+$ adb shell am set-idle packageName true
+$ adb shell am set-idle packageName false
+$ adb shell am get-idle packageName
+</pre>
+
+<h2 id="doze">低电耗模式</h2>
+
+<p>当用户长时间未使用设备时，低电耗模式会延迟应用后台 CPU 和网络活动，从而延长电池续航时间。</p>
+
+<p>处于低电耗模式的闲置设备会定期进入维护时段，在此期间，应用可以完成待进行的活动（同步、作业等）。然后，低电耗模式会使设备重新进入较长时间的休眠状态，接着进入下一个维护时段。在达到几个小时的休眠时间上限之前，平台会周而复始地重复低电耗模式休眠/维护的序列，且每一次都会延长闲置的时长。处于低电耗模式的设备始终可以感知到动作，且会在检测到动作时立即退出低电耗模式。</p>
+
+<p>每当用户关闭设备屏幕时，即使仍处于移动状态，Android 7.0 及更高版本都会延长设备处于低电耗模式的时间，以触发一系列轻度优化，从而延长电池续航时间。</p>
+
+<p>默认情况下，系统服务（如电话）可能已预加载且获得豁免，不会进入低电耗模式。用户还可以在“设置”菜单中豁免特定的应用，使其不进入低电耗模式。低电耗模式在 AOSP 中默认处于<strong>停用</strong>状态；要详细了解如何启用低电耗模式，请参阅<a href="#integrate-doze">集成低电耗模式</a>。</p>
+
+<h3 id="doze-reqs">低电耗模式的要求</h3>
+<p>要支持低电耗模式，设备必须具有云消息传递服务，例如，<a href="https://developers.google.com/cloud-messaging/">Google 云消息传递 (GCM)</a>。这样，设备才知道何时从低电耗模式中唤醒。</p>
+<p>此外，要全面支持低电耗模式，相应设备还必须具有<a href="/devices/sensors/sensor-types.html#significant_motion">大幅度动作检测器 (SMD)</a>；不过，Android 7.0 及更高版本中的轻度低电耗模式不要求具有 SMD。如果某台设备上启用了低电耗模式，且：</p>
+<ul>
+<li>该设备具有 SMD，则系统会进行全面的低电耗模式优化（包括轻度优化）。</li>
+<li>该设备没有 SMD，则系统仅会进行轻度低电耗模式优化。</li>
+</ul>
+
+<h3 id="doze-life">低电耗模式生命周期</h3>
+
+<p>当平台检测到设备处于闲置状态时，便会使其进入低电耗模式，并在一个或多个满足退出条件的活动发生时使设备退出低电耗模式。</p>
+
+<table>
+<tbody>
+<tr>
+<th width="20%">检测</th>
+<th width="60%">低电耗模式期间</th>
+<th width="20%">退出</th>
+</tr>
+<tr>
+<td><p>当设备具有以下特点时，平台会检测到其处于闲置状态：</p>
+<ul>
+<li>设备是静止的（使用大幅度动作检测器检测）。</li>
+<li>设备屏幕已关闭一段时间。</li>
+</ul>
+<p>当设备连接到充电器时，不会进入低电耗模式。
+</p>
+</td>
+<td><p>平台会尝试使系统处于休眠状态，定期进入维护时段并恢复正常操作，然后使设备返回休眠状态并在更长的重复时间内处于休眠状态。在休眠期间，设备会受到以下限制：</p>
+<ul>
+<li>应用无法访问网络。</li>
+<li>应用唤醒锁定被忽略。</li>
+<li>闹钟被延迟。闹钟响铃以及使用 <code>setAndAllowWhileIdle()</code> 设置的闹钟（当设备处于低电耗模式时，限于每个应用每 15 分钟 1 次）除外。此豁免适用于必须显示活动提醒通知的应用（如日历）。</li>
+<li>无法执行 WLAN 扫描。</li>
+<li>SyncAdapter 同步和 JobScheduler 作业被延迟，直到下一个维护时段才能恢复。</li>
+<li>接收短信和彩信的应用被暂时列入白名单，以便它们可以完成处理任务。</li>
+</ul>
+</td>
+<td><p>当平台检测到以下情况时，会使设备退出低电耗模式：</p>
+<ul>
+<li>用户与设备互动。</li>
+<li>设备移动。</li>
+<li>设备屏幕打开。</li>
+<li>AlarmClock 即将响铃。</li>
+</ul>
+<p>通知不会使设备退出低电耗模式。</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+<p>在屏幕关闭期间、设备处于闲置状态之前，Android 7.0 及更高版本通过启用轻度休眠模式来延长设备处于低电耗模式的时间。</p>
+<p><img src="../images/doze_lightweight.png"/></p>
+<p class="img-caption">图 1. 非静止和静止设备的低电耗模式。</p>
+
+<table>
+<tbody>
+<tr>
+<th>操作</th>
+<th>低电耗模式</th>
+<th>轻度低电耗模式</th>
+</tr>
+<tr>
+<td>触发因素</td>
+<td>屏幕关闭、电池供电、静止</td>
+<td>屏幕关闭、电池供电（未插电）</td>
+</tr>
+<tr>
+<td>时间</td>
+<td>随维护时段依次增加</td>
+<td>随维护时段反复持续 N 分钟</td>
+</tr>
+<tr>
+<td>限制</td>
+<td>无法进行网络访问、唤醒锁定和 GPS/WLAN 扫描。闹钟和作业/同步被延迟。</td>
+<td>无法进行网络访问。作业/同步被延迟（维护时段除外）。</td>
+</tr>
+<tr>
+<td>行为</td>
+<td>仅接收优先级较高的推送通知消息。</td>
+<td>接收所有实时消息（即时消息、致电等）。优先级较高的推送通知消息可以暂时访问网络。</td>
+</tr>
+<tr>
+<td>退出</td>
+<td>动作、屏幕开启或闹钟响铃。</td>
+<td>屏幕开启。</td>
+</tr>
+</tbody>
+</table>
+
+<h3 id="doze-interactions">与应用待机模式相集成</h3>
+<ul>
+<li>设备处于低电耗模式的时间不会计入应用待机模式。</li>
+<li>当设备处于低电耗模式时，闲置应用一天至少可以执行一次正常操作。</li>
+</ul>
+
+<h3 id="integrate-doze">集成低电耗模式</h3>
+
+<p>启用低电耗模式时，支持 <a href="/devices/sensors/sensor-types.html#significant_motion">SENSOR_TYPE_SIGNIFICANT_MOTION</a> 的设备会执行全面的低电耗模式优化（包括轻度优化）；没有 SMD 的设备仅执行轻度低电耗模式优化。Android 会自动选择适当的低电耗模式优化，无需供应商配置。</p>
+
+<p>要为设备启用低电耗模式，请执行以下任务：</p>
+
+<ol>
+<li>确认设备已安装云消息传递服务。</li>
+<li>在设备覆盖配置文件 <code>overlay/frameworks/base/core/res/res/values/config.xml</code> 中，将 <code>config_enableAutoPowerModes</code> 设置为 <strong>true</strong>：<pre>
+bool name="config_enableAutoPowerModes"&gt;true&lt;/bool&gt;
+</pre>
+<br />在 AOSP 中，该参数默认设为“false”（已停用低电耗模式）。<br />
+</li>
+<li>确认预加载的应用和服务满足以下要求：<ul>
+<li>遵循<a href="https://developer.android.com/training/monitoring-device-state/doze-standby.html">节电优化指南</a>。有关详情，请参阅<a href="#test-apps">测试和优化应用</a>。
+<p><strong>或</strong></p>
+</li><li>获得豁免，不会进入低电耗模式和应用待机模式。有关详情，请参阅<a href="#exempt-apps">豁免应用</a>。</li>
+</ul>
+</li>
+<li>确认必要的服务已获得豁免，不会进入低电耗模式。</li>
+</ol>
+
+<h4 id="doze-tips">提示</h4>
+<ul>
+<li>如果可能，请使用 GCM 进行<a href="https://developers.google.com/cloud-messaging/downstream">下游消息传递</a>。</li>
+<li>如果您的用户必须立即看到通知，请使用 <a href="https://developers.google.com/cloud-messaging/concept-options#setting-the-priority-of-a-message">GCM 高优先级消息</a>。</li>
+<li>在初始<a href="https://developers.google.com/cloud-messaging/concept-options#payload">消息有效负载</a>内提供充足的信息（以避免不必要的后续网络访问）。</li>
+<li>使用 <a href="http://developer.android.com/reference/android/app/AlarmManager.html#setAndAllowWhileIdle(int,%20long,%20android.app.PendingIntent)">setAndAllowWhileIdle()</a> 和 <a href="http://developer.android.com/reference/android/app/AlarmManager.html#setExactAndAllowWhileIdle(int,%20long,%20android.app.PendingIntent)">setExactAndAllowWhileIdle()</a> 设置重要闹钟。
+</li>
+</ul>
+
+<h4 id="test-apps">测试和优化应用</h4>
+<p>在低电耗模式中测试所有应用（尤其是预加载的应用）。有关详情，请参阅<a href="https://developer.android.com/training/monitoring-device-state/doze-standby.html#testing_doze_and_app_standby">测试低电耗模式和应用待机模式</a>。</p>
+
+<p class="note"><strong>注意</strong>：彩信/短信/电话服务独立于低电耗模式发挥作用，即使设备处于低电耗模式，此类服务也一定会唤醒客户端应用。</p>
+
+<h2 id="exempt-apps">豁免应用</h2>
+<p>您可以豁免应用，使其不受低电耗模式和应用待机模式的影响。豁免功能可能适用于下列情况：</p>
+<ul>
+<li>使用非 GCM 云消息传递平台的原始设备制造商 (OEM)</li>
+<li>使用非 GCM 云消息传递平台的运营商</li>
+<li>使用非 GCM 云消息传递平台的第三方应用</li>
+</ul>
+
+<p class="warning"><strong>警告</strong>：请勿为了规避测试和优化而豁免应用。不必要的豁免会削弱低电耗模式和应用待机模式的优势，且有损于用户体验，因此我们强烈建议尽可能不要进行此类豁免（因为这样做会让应用破坏平台对耗电量的有益控制）。如果用户开始对这些应用的耗电量感到不满，则会导致令人失望的糟糕体验（和针对该应用的负面用户评价）并引发客户支持问题。出于这些原因，我们强烈建议您不要豁免第三方应用，而仅豁免云消息传递服务或功能相似的应用。</p>
+
+<p>豁免的应用默认在“设置”&gt;“电池”中的一个视图内列出。<em></em>该列表用于豁免应用，使其不会进入低电耗模式和应用待机模式。为使用户清楚知道哪些应用已被豁免，“设置”菜单<strong>必须</strong>显示所有豁免的应用。</p>
+
+<p>用户可以转到“设置”&gt;“电池”&gt;“电池优化”&gt;“所有应用”，然后选择要关闭（或重新开启）优化的应用，以此来手动豁免应用。<em></em>不过，用户无法取消豁免系统映像中默认豁免的任何应用或服务。</p>
+
+</body></html>

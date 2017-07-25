@@ -1,0 +1,2719 @@
+<html devsite><head>
+    <title>Dalvik 可执行文件格式</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>本文档介绍了 <code>.dex</code> 文件的版式和内容，这类文件用于保存一系列类定义及其关联的辅助数据。</p>
+
+<h2 id="types">类型指南</h2>
+
+<table class="guide">
+<thead>
+<tr>
+  <th>名称</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>byte</td>
+  <td>8 位有符号整数</td>
+</tr>
+<tr>
+  <td>ubyte</td>
+  <td>8 位无符号整数</td>
+</tr>
+<tr>
+  <td>short</td>
+  <td>16 位有符号整数，采用小端字节序</td>
+</tr>
+<tr>
+  <td>ushort</td>
+  <td>16 位无符号整数，采用小端字节序</td>
+</tr>
+<tr>
+  <td>int</td>
+  <td>32 位有符号整数，采用小端字节序</td>
+</tr>
+<tr>
+  <td>uint</td>
+  <td>32 位无符号整数，采用小端字节序</td>
+</tr>
+<tr>
+  <td>long</td>
+  <td>64 位有符号整数，采用小端字节序</td>
+</tr>
+<tr>
+  <td>ulong</td>
+  <td>64 位无符号整数，采用小端字节序</td>
+</tr>
+<tr>
+  <td>sleb128</td>
+  <td>有符号 LEB128，可变长度（见下文）</td>
+</tr>
+<tr>
+  <td>uleb128</td>
+  <td>无符号 LEB128，可变长度（见下文）</td>
+</tr>
+<tr>
+  <td>uleb128p1</td>
+  <td>无符号 LEB128 加 <code>1</code>，可变长度（见下文）</td>
+</tr>
+</tbody>
+</table>
+
+<h3 id="leb128">LEB128</h3>
+
+<p>LEB128（“<b>L</b>ittle-<b>E</b>ndian <b>B</b>ase <b>128</b>”）表示任意有符号或无符号整数的可变长度编码。该格式借鉴了 <a href="http://dwarfstd.org/Dwarf3Std.php">DWARF3</a> 规范。在 <code>.dex</code> 文件中，LEB128 仅用于对 32 位数字进行编码。</p>
+
+<p>每个 LEB128 编码值均由 1-5 个字节组成，共同表示一个 32 位的值。每个字节均已设置其最高有效位（序列中的最后一个字节除外，其最高有效位已清除）。每个字节的剩余 7 位均为有效负荷，即第一个字节中有 7 个最低有效位，第二个字节中也是 7 个，依此类推。对于有符号 LEB128 (<code>sleb128</code>)，序列中最后一个字节的最高有效负荷位会进行符号扩展，以生成最终值。在无符号情况 (<code>uleb128</code>) 下，任何未明确表示的位都会被解译为 <code>0</code>。
+
+<table class="leb128Bits">
+<thead>
+<tr><th colspan="16">双字节 LEB128 值的按位图</th></tr>
+<tr>
+  <th colspan="8">第一个字节</th><th colspan="8">第二个字节</th></tr>
+</thead>
+<tbody>
+<tr>
+  <td class="start1"><code>1</code></td>
+  <td>bit<sub>6</sub></td>
+  <td>bit<sub>5</sub></td>
+  <td>bit<sub>4</sub></td>
+  <td>bit<sub>3</sub></td>
+  <td>bit<sub>2</sub></td>
+  <td>bit<sub>1</sub></td>
+  <td>bit<sub>0</sub></td>
+  <td class="start2"><code>0</code></td>
+  <td>bit<sub>13</sub></td>
+  <td>bit<sub>12</sub></td>
+  <td>bit<sub>11</sub></td>
+  <td>bit<sub>10</sub></td>
+  <td>bit<sub>9</sub></td>
+  <td>bit<sub>8</sub></td>
+  <td class="end2">bit<sub>7</sub></td>
+</tr>
+</tbody>
+</table>
+
+</p><p>变量 <code>uleb128p1</code> 用于表示一个有符号值，其表示法是<i></i>编码为 <code>uleb128</code> 的值加 1。这使得编码 <code>-1</code>（或被视为无符号值 <code>0xffffffff</code>）成为一个单字节（但没有任何其他负数），并且该编码在下面这些明确说明的情况下非常实用：所表示的数值必须为非负数或 <code>-1</code>（或 <code>0xffffffff</code>）；不允许任何其他负值（或不太可能需要使用较大的无符号值）。</p>
+
+<p>以下是这类格式的一些示例：</p>
+
+<table class="leb128">
+<thead>
+<tr>
+  <th>编码序列</th>
+  <th>As <code>sleb128</code></th>
+  <th>As <code>uleb128</code></th>
+  <th>As <code>uleb128p1</code></th>
+</tr>
+</thead>
+<tbody>
+  <tr><td>00</td><td>0</td><td>0</td><td>-1</td></tr>
+  <tr><td>01</td><td>1</td><td>1</td><td>0</td></tr>
+  <tr><td>7f</td><td>-1</td><td>127</td><td>126</td></tr>
+  <tr><td>80 7f</td><td>-128</td><td>16256</td><td>16255</td></tr>
+</tbody>
+</table>
+
+<h2 id="file-layout">文件版式</h2>
+
+<table class="format">
+<thead>
+<tr>
+  <th>名称</th>
+  <th>格式</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>header</td>
+  <td>header_item</td>
+  <td>标头</td>
+</tr>
+<tr>
+  <td>string_ids</td>
+  <td>string_id_item[]</td>
+  <td>字符串标识符列表。这些是此文件使用的所有字符串的标识符，用于内部命名（例如类型描述符）或用作代码引用的常量对象。此列表必须使用 UTF-16 代码点值按字符串内容进行排序（不采用语言区域敏感方式），且不得包含任何重复条目。
+  </td>
+</tr>
+<tr>
+  <td>type_ids</td>
+  <td>type_id_item[]</td>
+  <td>类型标识符列表。这些是此文件引用的所有类型（类、数组或原始类型）的标识符（无论文件中是否已定义）。此列表必须按 <code>string_id</code> 索引进行排序，且不得包含任何重复条目。
+  </td>
+</tr>
+<tr>
+  <td>proto_ids</td>
+  <td>proto_id_item[]</td>
+  <td>方法原型标识符列表。这些是此文件引用的所有原型的标识符。此列表必须按返回类型（按 <code>type_id</code> 索引排序）主要顺序进行排序，然后按参数列表（按 <code>type_id</code> 索引排序的各个参数，采用字典排序方法）进行排序。该列表不得包含任何重复条目。
+  </td>
+</tr>
+<tr>
+  <td>field_ids</td>
+  <td>field_id_item[]</td>
+  <td>字段标识符列表。这些是此文件引用的所有字段的标识符（无论文件中是否已定义）。此列表必须进行排序，其中定义类型（按 <code>type_id</code> 索引排序）是主要顺序，字段名称（按 <code>string_id</code> 索引排序）是中间顺序，而类型（按 <code>type_id</code> 索引排序）是次要顺序。该列表不得包含任何重复条目。
+  </td>
+</tr>
+<tr>
+  <td>method_ids</td>
+  <td>method_id_item[]</td>
+  <td>方法标识符列表。这些是此文件引用的所有方法的标识符（无论文件中是否已定义）。此列表必须进行排序，其中定义类型（按 <code>type_id</code> 索引排序）是主要顺序，方法名称（按 <code>string_id</code> 索引排序）是中间顺序，而方法原型（按 <code>proto_id</code> 索引排序）是次要顺序。该列表不得包含任何重复条目。
+  </td>
+</tr>
+<tr>
+  <td>class_defs</td>
+  <td>class_def_item[]</td>
+  <td>类定义列表。这些类必须进行排序，以便所指定类的超类和已实现的接口比引用类更早出现在该列表中。此外，对于在该列表中多次出现的同名类，其定义是无效的。
+  </td>
+</tr>
+<tr>
+  <td>call_site_ids</td>
+  <td>call_site_id_item[]</td>
+  <td>调用站点标识符列表。这些是此文件引用的所有调用站点的标识符（无论文件中是否已定义）。此列表必须按 <code>call_site_off</code> 的升序进行排序。
+</td></tr>
+<tr>
+  <td>method_handles</td>
+  <td>method_handle_item[]</td>
+  <td>方法句柄列表。此文件引用的所有方法句柄的列表（无论文件中是否已定义）。此列表未进行排序，而且可能包含将在逻辑上对应于不同方法句柄实例的重复项。
+</td></tr>
+<tr>
+  <td>data</td>
+  <td>ubyte[]</td>
+  <td>数据区，包含上面所列表格的所有支持数据。不同的项有不同的对齐要求；如有必要，则在每个项之前插入填充字节，以实现所需的对齐效果。
+  </td>
+</tr>
+<tr>
+  <td>link_data</td>
+  <td>ubyte[]</td>
+  <td>静态链接文件中使用的数据。本文档尚未指定本区段中数据的格式。此区段在未链接文件中为空，而运行时实现可能会在适当的情况下使用这些数据。
+  </td>
+</tr>
+</tbody>
+</table>
+
+<h2 id="definitions">位字段、字符串和常量的定义</h2>
+
+<h3 id="dex-file-magic">DEX_FILE_MAGIC</h3>
+<h4>在 header_item 中嵌入</h4>
+
+<p>常量数组/字符串 <code>DEX_FILE_MAGIC</code> 是字节列表，这类字节必须出现在 <code>.dex</code> 文件的开头，以便系统将其原样识别。该值会特意包含一个换行符（<code>"\n"</code> 或 <code>0x0a</code>）和空字节（<code>"\0"</code> 或 <code>0x00</code>），以便协助检测某些形式的损坏问题。该值还可以将格式版本号编码为 3 个十进制数字；随着格式的演变，预计该值会单调递增。</p>
+
+<pre>
+ubyte[8] DEX_FILE_MAGIC = { 0x64 0x65 0x78 0x0a 0x30 0x33 0x38 0x00 }
+                        = "dex\n038\0"
+</pre>
+
+<p class="note"><strong>注意</strong>：至少有两种早期版本的格式已在广泛提供的公开软件版本中使用。例如，<code>009</code> 版本已用于 M3 版 Android 平台（2007 年 11 月至 12 月），<code>013</code> 版本已用于 M5 版 Android 平台（2008 年 2 月至 3 月）。在有些方面，这些早期版本的格式与本文档中所述的版本存在很大差异。</p>
+
+<p class="note"><strong>注意</strong>：Android 8.0 版本中新增了对 <code>038</code> 版格式的支持。<code>038</code> 版本中添加了新字节码（<code>invoke-polymorphic</code> 和 <code>invoke-custom</code>）和用于方法句柄的数据。
+
+</p><p class="note"><strong>注意</strong>：Android 7.0 版本中新增了对 <code>037</code> 版格式的支持。在 <code>037</code> 版本之前，大多数 Android 版本都使用过 <code>035</code> 版格式。<code>035</code> 版与 <code>037</code> 版之间的唯一区别是，是否添加默认方法以及是否调整 <code>invoke</code>。
+
+</p><h3 id="endian-constant">ENDIAN_CONSTANT 和 REVERSE_ENDIAN_CONSTANT</h3>
+<h4>在 header_item 中嵌入</h4>
+
+<p>常量 <code>ENDIAN_CONSTANT</code> 用于表示在文件中发现的字节序。虽然标准的 <code>.dex</code> 格式采用小端字节序，但具体实现可能会选择执行字节交换。如果实现遇到其 <code>endian_tag</code> 为 <code>REVERSE_ENDIAN_CONSTANT</code>（而非 <code>ENDIAN_CONSTANT</code>）的标头，则会识别该文件已从预期格式进行过字节交换。</p>
+
+<pre>
+uint ENDIAN_CONSTANT = 0x12345678;
+uint REVERSE_ENDIAN_CONSTANT = 0x78563412;
+</pre>
+
+<h3 id="no-index">NO_INDEX</h3>
+<h4>在 class_def_item 和 debug_info_item 中嵌入</h4>
+
+<p>常量 <code>NO_INDEX</code> 用于表示索引值不存在。</p>
+
+<p class="note"><strong>注意</strong>：此值不会被定义为 <code>0</code>，因为一般来说，此值通常是一个有效索引。</p>
+
+<p><code>NO_INDEX</code> 的选定值可表示为 <code>uleb128p1</code> 编码中的单个字节。</p>
+
+<pre>
+uint NO_INDEX = 0xffffffff;    // == -1 if treated as a signed int
+</pre>
+
+<h3 id="access-flags">access_flags 定义</h3>
+<h4>在 class_def_item、encoded_field、encoded_method 和 InnerClass 中嵌入</h4>
+
+<p>这些标记的位字段用于表示类和类成员的可访问性和整体属性。</p>
+
+<table class="accessFlags">
+<thead>
+<tr>
+  <th>名称</th>
+  <th>值</th>
+  <th>对于类（和 <code>InnerClass</code> 注释）</th>
+  <th>对于字段</th>
+  <th>对于方法</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>ACC_PUBLIC</td>
+  <td>0x1</td>
+  <td><code>public</code>：全部可见</td>
+  <td><code>public</code>：全部可见</td>
+  <td><code>public</code>：全部可见</td>
+</tr>
+<tr>
+  <td>ACC_PRIVATE</td>
+  <td>0x2</td>
+  <td><super>*</super> <code>private</code>：仅对定义类可见</td>
+  <td><code>private</code>：仅对定义类可见</td>
+  <td><code>private</code>：仅对定义类可见</td>
+</tr>
+<tr>
+  <td>ACC_PROTECTED</td>
+  <td>0x4</td>
+  <td><super>*</super> <code>protected</code>：对软件包和子类可见</td>
+  <td><code>protected</code>：对软件包和子类可见</td>
+  <td><code>protected</code>：对软件包和子类可见</td>
+</tr>
+<tr>
+  <td>ACC_STATIC</td>
+  <td>0x8</td>
+  <td><super>*</super> <code>static</code>：未通过外部 <code>this</code> 引用进行构建</td>
+  <td><code>static</code>：对定义类全局可见</td>
+  <td><code>static</code>：不采用 <code>this</code> 参数</td>
+</tr>
+<tr>
+  <td>ACC_FINAL</td>
+  <td>0x10</td>
+  <td><code>final</code>：不可子类化</td>
+  <td><code>final</code>：构建后不可变</td>
+  <td><code>final</code>：不可覆盖</td>
+</tr>
+<tr>
+  <td>ACC_SYNCHRONIZED</td>
+  <td>0x20</td>
+  <td> </td>
+  <td> </td>
+  <td><code>synchronized</code>：调用此方法时自动获得关联锁定。<p class="note"><strong>注意</strong>：这一项仅在同时设置 <code>ACC_NATIVE</code> 的情况下才有效。</p></td>
+</tr>
+<tr>
+  <td>ACC_VOLATILE</td>
+  <td>0x40</td>
+  <td> </td>
+  <td><code>volatile</code>：有助于确保线程安全的特殊访问规则</td>
+  <td> </td>
+</tr>
+<tr>
+  <td>ACC_BRIDGE</td>
+  <td>0x40</td>
+  <td> </td>
+  <td> </td>
+  <td>桥接方法，由编译器自动添加为类型安全桥</td>
+</tr>
+<tr>
+  <td>ACC_TRANSIENT</td>
+  <td>0x80</td>
+  <td> </td>
+  <td><code>transient</code>：不会通过默认序列化保存</td>
+  <td> </td>
+</tr>
+<tr>
+  <td>ACC_VARARGS</td>
+  <td>0x80</td>
+  <td> </td>
+  <td> </td>
+  <td>最后一个参数应被编译器解译为“rest”参数</td>
+</tr>
+<tr>
+  <td>ACC_NATIVE</td>
+  <td>0x100</td>
+  <td> </td>
+  <td> </td>
+  <td><code>native</code>：在本机代码中实现</td>
+</tr>
+<tr>
+  <td>ACC_INTERFACE</td>
+  <td>0x200</td>
+  <td><code>interface</code>：可多倍实现的抽象类</td>
+  <td> </td>
+  <td> </td>
+</tr>
+<tr>
+  <td>ACC_ABSTRACT</td>
+  <td>0x400</td>
+  <td><code>abstract</code>：不可直接实例化</td>
+  <td> </td>
+  <td><code>abstract</code>：不通过此类实现</td>
+</tr>
+<tr>
+  <td>ACC_STRICT</td>
+  <td>0x800</td>
+  <td> </td>
+  <td> </td>
+  <td><code>strictfp</code>：严格的浮点运算规则</td>
+</tr>
+<tr>
+  <td>ACC_SYNTHETIC</td>
+  <td>0x1000</td>
+  <td>不在源代码中直接定义</td>
+  <td>不在源代码中直接定义</td>
+  <td>不在源代码中直接定义</td>
+</tr>
+<tr>
+  <td>ACC_ANNOTATION</td>
+  <td>0x2000</td>
+  <td>声明为注释类</td>
+  <td> </td>
+  <td> </td>
+</tr>
+<tr>
+  <td>ACC_ENUM</td>
+  <td>0x4000</td>
+  <td>声明为枚举类型</td>
+  <td>声明为枚举值</td>
+  <td> </td>
+</tr>
+<tr>
+  <td><i>（未使用）</i></td>
+  <td>0x8000</td>
+  <td> </td>
+  <td> </td>
+  <td> </td>
+</tr>
+<tr>
+  <td>ACC_CONSTRUCTOR</td>
+  <td>0x10000</td>
+  <td> </td>
+  <td> </td>
+  <td>构造函数方法（类或实例初始化器）</td>
+</tr>
+<tr>
+  <td>ACC_DECLARED_<br />SYNCHRONIZED</td>
+  <td>0x20000</td>
+  <td> </td>
+  <td> </td>
+  <td>声明了 <code>synchronized</code>。<p class="note"><strong>注意</strong>：此项对执行没有任何影响（除了反映此标记本身之外）。</p>
+  </td>
+</tr>
+</tbody>
+</table>
+
+<p><super>*</super> 仅允许用于 <code>InnerClass</code> 注释，且一律不得在 <code>class_def_item</code> 中使用。</p>
+
+<h3 id="mutf-8">MUTF-8（修改后的 UTF-8）编码</h3>
+
+<p>考虑到继续对旧版提供支持，<code>.dex</code> 格式会采用按实际标准修改后的 UTF-8 形式（下文称为 MUTF-8）对其字符串数据进行编码。除以下几点以外，此形式与标准 UTF-8 形式是完全相同的：</p>
+
+<ul>
+  <li>仅使用单字节、双字节和三字节编码。</li>
+  <li><code>U+10000</code> … <code>U+10ffff</code> 范围中的代码点被编码为代理对，其中每个代码点均表示为一个三字节编码值。</li>
+  <li>代码点 <code>U+0000</code> 采用双字节形式进行编码。</li>
+  <li>纯 Null 字节（值 <code>0</code>）表示字符串的末尾，这是标准的 C 语言解释。</li>
+</ul>
+
+<p>上述前两项可以概括为：MUTF-8 是用于 UTF-16 的编码格式，而不是用于 Unicode 字符的更直接的编码格式。</p>
+
+<p>后两项说明，MUTF-8 既可在字符串中包含代码点 <code>U+0000</code>，同时仍可将其作为 C 样式的 Null 终止字符串进行操作。<i></i></p>
+
+<p>不过，特殊编码 <code>U+0000</code> 意味着，与一般 UTF-8 不同的是，针对一对 MUTF-8 字符串调用标准 C 函数 <code>strcmp()</code> 的结果并不一定表示不相等字符串的带有正确符号的比较结果。<i></i>当需要考虑排序问题（而不仅仅是相等问题）时，用于比较 MUTF-8 字符串的最简单方法是对其字符进行逐个解码，然后比较解码后的值（不过，也许会有更智能的实现方法）。</p>
+
+<p>有关字符编码的详情，请参阅 <a href="http://unicode.org">Unicode 标准</a>。实际上，MUTF-8 比 UTF-8 本身更接近相对而言不太为人熟知的编码 <a href="http://www.unicode.org/reports/tr26/">CESU-8</a>。</p>
+
+<h3 id="encoding">encoded_value 编码</h3>
+<h4>在 annotation_element 和 encoded_array_item 中嵌入</h4>
+
+<p><code>encoded_value</code> 是（几乎）任意层次结构数据的编码片。这种编码非常精简，易于解析。</p>
+
+<table class="format">
+<thead>
+<tr>
+  <th>名称</th>
+  <th>格式</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>(value_arg &lt;&lt; 5) | value_type</td>
+  <td>ubyte</td>
+  <td>一种字节，用于表示紧跟后面的 <code>value</code> 及高 3 位中可选澄清参数的类型。请参阅下文，了解各种 <code>value</code> 定义。在大多数情况下，<code>value_arg</code> 会以字节为单位将紧跟后面的 <code>value</code> 的长度编码为 <code>(size - 1)</code>；例如，<code>0</code> 表示该值需要 1 个字节，<code>7</code> 表示该值需要 8 个字节；不过，也存在下述例外情况。
+  </td>
+</tr>
+<tr>
+  <td>value</td>
+  <td>ubyte[]</td>
+  <td>用于表示值的字节，不同 <code>value_type</code> 字节的长度不同且采用不同的解译方式；不过一律采用小端字节序。有关详情，请参阅下文中的各种值定义。
+  </td>
+</tr>
+</tbody>
+</table>
+
+<h3 id="value-formats">值格式</h3>
+
+<table class="encodedValue">
+<thead>
+<tr>
+  <th>类型名称</th>
+  <th><code>value_type</code></th>
+  <th><code>value_arg</code> 格式</th>
+  <th><code>value</code> 格式</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>VALUE_BYTE</td>
+  <td>0x00</td>
+  <td><i>（无；必须为 <code>0</code>）</i></td>
+  <td>ubyte[1]</td>
+  <td>有符号的单字节整数值</td>
+</tr>
+<tr>
+  <td>VALUE_SHORT</td>
+  <td>0x02</td>
+  <td>size - 1 (0…1)</td>
+  <td>ubyte[size]</td>
+  <td>有符号的双字节整数值，符号扩展</td>
+</tr>
+<tr>
+  <td>VALUE_CHAR</td>
+  <td>0x03</td>
+  <td>size - 1 (0…1)</td>
+  <td>ubyte[size]</td>
+  <td>无符号的双字节整数值，零扩展</td>
+</tr>
+<tr>
+  <td>VALUE_INT</td>
+  <td>0x04</td>
+  <td>size - 1 (0…3)</td>
+  <td>ubyte[size]</td>
+  <td>有符号的四字节整数值，符号扩展</td>
+</tr>
+<tr>
+  <td>VALUE_LONG</td>
+  <td>0x06</td>
+  <td>size - 1 (0…7)</td>
+  <td>ubyte[size]</td>
+  <td>有符号的八字节整数值，符号扩展</td>
+</tr>
+<tr>
+  <td>VALUE_FLOAT</td>
+  <td>0x10</td>
+  <td>size - 1 (0…3)</td>
+  <td>ubyte[size]</td>
+  <td>四字节位模式，向右零扩展，系统会将其解译为 IEEE754 32 位浮点值<i></i></td>
+</tr>
+<tr>
+  <td>VALUE_DOUBLE</td>
+  <td>0x11</td>
+  <td>size - 1 (0…7)</td>
+  <td>ubyte[size]</td>
+  <td>八字节位模式，向右零扩展，系统会将其解译为 IEEE754 64 位浮点值<i></i></td>
+</tr>
+<tr>
+  <td>VALUE_METHOD_TYPE</td>
+  <td>0x15</td>
+  <td>size - 1 (0…3)</td>
+  <td>ubyte[size]</td>
+  <td>无符号（零扩展）四字节整数值，会被解译为要编入 <code>proto_ids</code> 节的索引；表示方法类型值</td>
+</tr>
+<tr>
+  <td>VALUE_METHOD_HANDLE</td>
+  <td>0x16</td>
+  <td>size - 1 (0…3)</td>
+  <td>ubyte[size]</td>
+  <td>无符号（零扩展）四字节整数值，会被解译为要编入 <code>method_handles</code> 节的索引；表示方法句柄值</td>
+</tr>
+<tr>
+  <td>VALUE_STRING</td>
+  <td>0x17</td>
+  <td>size - 1 (0…3)</td>
+  <td>ubyte[size]</td>
+  <td>无符号（零扩展）四字节整数值，会被解译为要编入 <code>string_ids</code> 节的索引；表示字符串值</td>
+</tr>
+<tr>
+  <td>VALUE_TYPE</td>
+  <td>0x18</td>
+  <td>size - 1 (0…3)</td>
+  <td>ubyte[size]</td>
+  <td>无符号（零扩展）四字节整数值，会被解译为要编入 <code>type_ids</code> 节的索引；表示反射类型/类值</td>
+</tr>
+<tr>
+  <td>VALUE_FIELD</td>
+  <td>0x19</td>
+  <td>size - 1 (0…3)</td>
+  <td>ubyte[size]</td>
+  <td>无符号（零扩展）四字节整数值，会被解译为要编入 <code>field_ids</code> 节的索引；表示反射字段值</td>
+</tr>
+<tr>
+  <td>VALUE_METHOD</td>
+  <td>0x1a</td>
+  <td>size - 1 (0…3)</td>
+  <td>ubyte[size]</td>
+  <td>无符号（零扩展）四字节整数值，会被解译为要编入 <code>method_ids</code> 节的索引；表示反射方法值</td>
+</tr>
+<tr>
+  <td>VALUE_ENUM</td>
+  <td>0x1b</td>
+  <td>size - 1 (0…3)</td>
+  <td>ubyte[size]</td>
+  <td>无符号（零扩展）四字节整数值，会被解译为要编入 <code>field_ids</code> 节的索引；表示枚举类型常量的值</td>
+</tr>
+<tr>
+  <td>VALUE_ARRAY</td>
+  <td>0x1c</td>
+  <td><i>（无；必须为 <code>0</code>）</i></td>
+  <td>encoded_array</td>
+  <td>值的数组，采用下文“<code>encoded_array</code> 格式”所指定的格式。<code>value</code> 的大小隐含在编码中。
+  </td>
+</tr>
+<tr>
+  <td>VALUE_ANNOTATION</td>
+  <td>0x1d</td>
+  <td><i>（无；必须为 <code>0</code>）</i></td>
+  <td>encoded_annotation</td>
+  <td>子注释，采用下文“<code>encoded_annotation</code> 格式”所指定的格式。<code>value</code> 的大小隐含在编码中。
+  </td>
+</tr>
+<tr>
+  <td>VALUE_NULL</td>
+  <td>0x1e</td>
+  <td><i>（无；必须为 <code>0</code>）</i></td>
+  <td><i>（无）</i></td>
+  <td><code>null</code> 引用值</td>
+</tr>
+<tr>
+  <td>VALUE_BOOLEAN</td>
+  <td>0x1f</td>
+  <td>布尔值 (0…1)</td>
+  <td><i>（无）</i></td>
+  <td>一位值；<code>0</code> 表示 <code>false</code>，<code>1</code> 表示 <code>true</code>。该位在 <code>value_arg</code> 中有所表示。
+  </td>
+</tr>
+</tbody>
+</table>
+
+<h3 id="encoded-array">encoded_array 格式</h3>
+
+<table class="format">
+<thead>
+<tr>
+  <th>名称</th>
+  <th>格式</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>size</td>
+  <td>uleb128</td>
+  <td>数组中的元素数量</td>
+</tr>
+<tr>
+  <td>values</td>
+  <td>encoded_value[size]</td>
+  <td>采用本节所指定格式的一系列 <code>size</code> <code>encoded_value</code> 字节序列；依序连接。
+  </td>
+</tr>
+</tbody>
+</table>
+
+<h3 id="encoded-annotation">encoded_annotation 格式</h3>
+
+<table class="format">
+<thead>
+<tr>
+  <th>名称</th>
+  <th>格式</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>type_idx</td>
+  <td>uleb128</td>
+  <td>注释的类型。这种类型必须是“类”（而非“数组”或“基元”）。
+  </td>
+</tr>
+<tr>
+  <td>size</td>
+  <td>uleb128</td>
+  <td>此注释中 name-value 映射的数量</td>
+</tr>
+<tr>
+  <td>elements</td>
+  <td>annotation_element[size]</td>
+  <td>注释的元素，直接以内嵌形式（不作为偏移量）表示。元素必须按 <code>string_id</code> 索引以升序进行排序。
+  </td>
+</tr>
+</tbody>
+</table>
+
+<h3 id="annotation-element">annotation_element 格式</h3>
+
+<table class="format">
+<thead>
+<tr>
+  <th>名称</th>
+  <th>格式</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>name_idx</td>
+  <td>uleb128</td>
+  <td>元素名称，表示为要编入 <code>string_ids</code> 节的索引。该字符串必须符合上文定义的 MemberName 的语法。<i></i>
+  </td>
+</tr>
+<tr>
+  <td>value</td>
+  <td>encoded_value</td>
+  <td>元素值</td>
+</tr>
+</tbody>
+</table>
+
+<h2 id="string-syntax">字符串语法</h2>
+
+<p><code>.dex</code> 文件中有几种类型的项最终会引用字符串。以下 BNF 样式的定义指出了这些字符串可接受的语法。</p>
+
+<h3 id="simplename"><i>SimpleName</i></h3>
+
+<p><i></i>SimpleName 是其他内容的名称语法的基础。<code>.dex</code> 格式在这方面具有相当大的宽容度（比大多数常见源语言更大）。简而言之，一个简单的名称包含任意低 ASCII 范围的字母字符或数字、几个特定的低 ASCII 范围的符号，以及不属于控件、空格或特殊字符的大多数非 ASCII 代码点。请注意，代理代码点（位于 <code>U+d800</code> … <code>U+dfff</code> 范围内）本身不会被视为有效名称字符，但 Unicode 补充字符会被视为有效字符（由 SimpleNameChar 规则的最终替代方案表示），它们应在文件中表示为 MUTF-8 编码中的代理代码点对。<i></i><i></i></p>
+
+<table class="bnf">
+  <tbody><tr><td colspan="2" class="def"><i>SimpleName</i> →</td></tr>
+  <tr>
+    <td>
+    </td><td><i>SimpleNameChar</i> (<i>SimpleNameChar</i>)*</td>
+  </tr>
+
+  <tr><td colspan="2" class="def"><i>SimpleNameChar</i> →</td></tr>
+  <tr>
+    <td>
+    </td><td><code>'A'</code> … <code>'Z'</code></td>
+  </tr>
+  <tr>
+    <td class="bar">|</td>
+    <td><code>'a'</code> … <code>'z'</code></td>
+  </tr>
+  <tr>
+    <td class="bar">|</td>
+    <td><code>'0'</code> … <code>'9'</code></td>
+  </tr>
+  <tr>
+    <td class="bar">|</td>
+    <td><code>'$'</code></td>
+  </tr>
+  <tr>
+    <td class="bar">|</td>
+    <td><code>'-'</code></td>
+  </tr>
+  <tr>
+    <td class="bar">|</td>
+    <td><code>'_'</code></td>
+  </tr>
+  <tr>
+    <td class="bar">|</td>
+    <td><code>U+00a1</code> … <code>U+1fff</code></td>
+  </tr>
+  <tr>
+    <td class="bar">|</td>
+    <td><code>U+2010</code> … <code>U+2027</code></td>
+  </tr>
+  <tr>
+    <td class="bar">|</td>
+    <td><code>U+2030</code> … <code>U+d7ff</code></td>
+  </tr>
+  <tr>
+    <td class="bar">|</td>
+    <td><code>U+e000</code> … <code>U+ffef</code></td>
+  </tr>
+  <tr>
+    <td class="bar">|</td>
+    <td><code>U+10000</code> … <code>U+10ffff</code></td>
+  </tr>
+</tbody></table>
+
+<h3 id="membername"><i>MemberName</i></h3>
+<h4>由 field_id_item 和 method_id_item 使用</h4>
+
+<p><i></i>MemberName 是某个类的成员的名称，成员是指字段、方法和内部类。</p>
+
+<table class="bnf">
+  <tbody><tr><td colspan="2" class="def"><i></i>MemberName →</td></tr>
+  <tr>
+    <td>
+    </td><td><i>SimpleName</i></td>
+  </tr>
+  <tr>
+    <td class="bar">|</td>
+    <td><code>'&lt;'</code> <i></i>SimpleName <code>'&gt;'</code></td>
+  </tr>
+</tbody></table>
+
+<h3 id="fullclassname"><i>FullClassName</i></h3>
+
+<p><i></i>FullClassName 是完全限定的类名称，包含一个可选的软件包说明符，后跟一个必需名称。</p>
+
+<table class="bnf">
+  <tbody><tr><td colspan="2" class="def"><i></i>FullClassName →</td></tr>
+  <tr>
+    <td>
+    </td><td><i></i><i></i>OptionalPackagePrefix SimpleName</td>
+  </tr>
+
+  <tr><td colspan="2" class="def"><i></i>OptionalPackagePrefix →</td></tr>
+  <tr>
+    <td>
+    </td><td><i></i>(SimpleName <code>'/'</code>)*</td>
+  </tr>
+</tbody></table>
+
+<h3 id="typedescriptor"><i>TypeDescriptor</i></h3>
+<h4>由 type_id_item 使用</h4>
+
+<p><i></i>TypeDescriptor 是任何类型的表示形式，包括基元、类、数组和 <code>void</code>。请参阅下文，了解各版本的含义。</p>
+
+<table class="bnf">
+  <tbody><tr><td colspan="2" class="def"><i></i>TypeDescriptor →</td></tr>
+  <tr>
+    <td>
+    </td><td><code>'V'</code></td>
+  </tr>
+  <tr>
+    <td class="bar">|</td>
+    <td><i>FieldTypeDescriptor</i></td>
+  </tr>
+
+  <tr><td colspan="2" class="def"><i></i>FieldTypeDescriptor →</td></tr>
+  <tr>
+    <td>
+    </td><td><i>NonArrayFieldTypeDescriptor</i></td>
+  </tr>
+  <tr>
+    <td class="bar">|</td>
+    <td>(<code>'['</code> * 1…255)
+      NonArrayFieldTypeDescriptor<i></i></td>
+  </tr>
+
+  <tr>
+    <td colspan="2" class="def"><i></i>NonArrayFieldTypeDescriptor→</td>
+  </tr>
+  <tr>
+    <td>
+    </td><td><code>'Z'</code></td>
+  </tr>
+  <tr>
+    <td class="bar">|</td>
+    <td><code>'B'</code></td>
+  </tr>
+  <tr>
+    <td class="bar">|</td>
+    <td><code>'S'</code></td>
+  </tr>
+  <tr>
+    <td class="bar">|</td>
+    <td><code>'C'</code></td>
+  </tr>
+  <tr>
+    <td class="bar">|</td>
+    <td><code>'I'</code></td>
+  </tr>
+  <tr>
+    <td class="bar">|</td>
+    <td><code>'J'</code></td>
+  </tr>
+  <tr>
+    <td class="bar">|</td>
+    <td><code>'F'</code></td>
+  </tr>
+  <tr>
+    <td class="bar">|</td>
+    <td><code>'D'</code></td>
+  </tr>
+  <tr>
+    <td class="bar">|</td>
+    <td><code>'L'</code> <i></i>FullClassName <code>';'</code></td>
+  </tr>
+</tbody></table>
+
+<h3 id="shortydescriptor"><i>ShortyDescriptor</i></h3>
+<h4>由 proto_id_item 使用</h4>
+
+<p><i></i>ShortyDescriptor 是方法原型的简写形式，包括返回类型和参数类型，只不过各种引用（类或数组）类型之间没有区别，而是所有引用类型均由一个 <code>'L'</code> 字符表示。</p>
+
+<table class="bnf">
+  <tbody><tr><td colspan="2" class="def"><i></i>ShortyDescriptor →</td></tr>
+  <tr>
+    <td>
+    </td><td><i></i>ShortyReturnType <i></i>(ShortyFieldType)*</td>
+  </tr>
+
+  <tr><td colspan="2" class="def"><i></i>ShortyReturnType →</td></tr>
+  <tr>
+    <td>
+    </td><td><code>'V'</code></td>
+  </tr>
+  <tr>
+    <td class="bar">|</td>
+    <td><i>ShortyFieldType</i></td>
+  </tr>
+
+  <tr><td colspan="2" class="def"><i></i>ShortyFieldType →</td></tr>
+  <tr>
+    <td>
+    </td><td><code>'Z'</code></td>
+  </tr>
+  <tr>
+    <td class="bar">|</td>
+    <td><code>'B'</code></td>
+  </tr>
+  <tr>
+    <td class="bar">|</td>
+    <td><code>'S'</code></td>
+  </tr>
+  <tr>
+    <td class="bar">|</td>
+    <td><code>'C'</code></td>
+  </tr>
+  <tr>
+    <td class="bar">|</td>
+    <td><code>'I'</code></td>
+  </tr>
+  <tr>
+    <td class="bar">|</td>
+    <td><code>'J'</code></td>
+  </tr>
+  <tr>
+    <td class="bar">|</td>
+    <td><code>'F'</code></td>
+  </tr>
+  <tr>
+    <td class="bar">|</td>
+    <td><code>'D'</code></td>
+  </tr>
+  <tr>
+    <td class="bar">|</td>
+    <td><code>'L'</code></td>
+  </tr>
+</tbody></table>
+
+<h3 id="typedescriptor"><i></i>TypeDescriptor 语义</h3>
+
+<p>以下是 TypeDescriptor 各个变体的含义。<i></i></p>
+
+<table class="descriptor">
+<thead>
+<tr>
+  <th>语法</th>
+  <th>含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>V</td>
+  <td><code>void</code>；仅对返回类型有效</td>
+</tr>
+<tr>
+  <td>Z</td>
+  <td><code>boolean</code></td>
+</tr>
+<tr>
+  <td>B</td>
+  <td><code>byte</code></td>
+</tr>
+<tr>
+  <td>S</td>
+  <td><code>short</code></td>
+</tr>
+<tr>
+  <td>C</td>
+  <td><code>char</code></td>
+</tr>
+<tr>
+  <td>I</td>
+  <td><code>int</code></td>
+</tr>
+<tr>
+  <td>J</td>
+  <td><code>long</code></td>
+</tr>
+<tr>
+  <td>F</td>
+  <td><code>float</code></td>
+</tr>
+<tr>
+  <td>D</td>
+  <td><code>double</code></td>
+</tr>
+<tr>
+  <td>L<i></i>fully/qualified/Name;</td>
+  <td>类 <code><i>fully.qualified.Name</i></code></td>
+</tr>
+<tr>
+  <td>[descriptor<i></i></td>
+  <td><code><i>descriptor</i></code> 的数组，可递归地用于“数组的数组”，但维数不能超过 255。
+  </td>
+</tr>
+</tbody>
+</table>
+
+<h2 id="items">项和相关结构</h2>
+
+<p>本部分包含可能在 <code>.dex</code> 文件中出现的各个顶级项的定义。
+
+</p><h3 id="header-item">header_item</h3>
+<h4>在标头区段中显示</h4>
+<h4>对齐：4 个字节</h4>
+
+<table class="format">
+<thead>
+<tr>
+  <th>名称</th>
+  <th>格式</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>magic</td>
+  <td>ubyte[8] = DEX_FILE_MAGIC</td>
+  <td>魔法值。更多详情，请参阅上文中“<code>DEX_FILE_MAGIC</code>”下的讨论。
+  </td>
+</tr>
+<tr>
+  <td>checksum</td>
+  <td>uint</td>
+  <td>文件剩余内容（除 <code>magic</code> 和此字段之外的所有内容）的 adler32 校验和；用于检测文件损坏情况</td>
+</tr>
+<tr>
+  <td>signature</td>
+  <td>ubyte[20]</td>
+  <td>文件剩余内容（除 <code>magic</code>、<code>checksum</code> 和此字段之外的所有内容）的 SHA-1 签名（哈希）；用于对文件进行唯一标识</td>
+</tr>
+<tr>
+  <td>file_size</td>
+  <td>uint</td>
+  <td>整个文件（包括标头）的大小，以字节为单位</td></tr>
+<tr>
+  <td>header_size</td>
+  <td>uint = 0x70</td>
+  <td>标头（整个区段）的大小，以字节为单位。这一项允许至少一定程度的向后/向前兼容性，而不必让格式失效。
+  </td>
+</tr>
+<tr>
+  <td>endian_tag</td>
+  <td>uint = ENDIAN_CONSTANT</td>
+  <td>字节序标记。更多详情，请参阅上文中“<code>ENDIAN_CONSTANT</code> 和 <code>REVERSE_ENDIAN_CONSTANT</code>”下的讨论。
+  </td>
+</tr>
+<tr>
+  <td>link_size</td>
+  <td>uint</td>
+  <td>链接区段的大小；如果此文件未进行静态链接，则该值为 <code>0</code></td>
+</tr>
+<tr>
+  <td>link_off</td>
+  <td>uint</td>
+  <td>从文件开头到链接区段的偏移量；如果 <code>link_size == 0</code>，则该值为 <code>0</code>。该偏移量（如果为非零值）应该是到 <code>link_data</code> 区段的偏移量。本文档尚未指定此处所指的数据格式；此标头字段（和之前的字段）会被保留为钩子，以供运行时实现使用。
+  </td>
+</tr>
+<tr>
+  <td>map_off</td>
+  <td>uint</td>
+  <td>从文件开头到映射项的偏移量。该偏移量（必须为非零）应该是到 <code>data</code> 区段的偏移量，而数据应采用下文中“<code>map_list</code>”指定的格式。
+  </td>
+</tr>
+<tr>
+  <td>string_ids_size</td>
+  <td>uint</td>
+  <td>字符串标识符列表中的字符串数量</td>
+</tr>
+<tr>
+  <td>string_ids_off</td>
+  <td>uint</td>
+  <td>从文件开头到字符串标识符列表的偏移量；如果 <code>string_ids_size == 0</code>（不可否认是一种奇怪的极端情况），则该值为 <code>0</code>。该偏移量（如果为非零值）应该是到 <code>string_ids</code> 区段开头的偏移量。
+  </td>
+</tr>
+<tr>
+  <td>type_ids_size</td>
+  <td>uint</td>
+  <td>类型标识符列表中的元素数量，最多为 65535</td>
+</tr>
+<tr>
+  <td>type_ids_off</td>
+  <td>uint</td>
+  <td>从文件开头到类型标识符列表的偏移量；如果 <code>type_ids_size == 0</code>（不可否认是一种奇怪的极端情况），则该值为 <code>0</code>。该偏移量（如果为非零值）应该是到 <code>type_ids</code> 区段开头的偏移量。
+  </td>
+</tr>
+<tr>
+  <td>proto_ids_size</td>
+  <td>uint</td>
+  <td>原型标识符列表中的元素数量，最多为 65535</td>
+</tr>
+<tr>
+  <td>proto_ids_off</td>
+  <td>uint</td>
+  <td>从文件开头到原型标识符列表的偏移量；如果 <code>proto_ids_size == 0</code>（不可否认是一种奇怪的极端情况），则该值为 <code>0</code>。该偏移量（如果为非零值）应该是到 <code>proto_ids</code> 区段开头的偏移量。
+  </td>
+</tr>
+<tr>
+  <td>field_ids_size</td>
+  <td>uint</td>
+  <td>字段标识符列表中的元素数量</td>
+</tr>
+<tr>
+  <td>field_ids_off</td>
+  <td>uint</td>
+  <td>从文件开头到字段标识符列表的偏移量；如果 <code>field_ids_size == 0</code>，则该值为 <code>0</code>。该偏移量（如果为非零值）应该是到 <code>field_ids</code> 区段开头的偏移量。</td>
+
+</tr>
+<tr>
+  <td>method_ids_size</td>
+  <td>uint</td>
+  <td>方法标识符列表中的元素数量</td>
+</tr>
+<tr>
+  <td>method_ids_off</td>
+  <td>uint</td>
+  <td>从文件开头到方法标识符列表的偏移量；如果 <code>method_ids_size == 0</code>，则该值为 <code>0</code>。该偏移量（如果为非零值）应该是到 <code>method_ids</code> 区段开头的偏移量。</td>
+</tr>
+<tr>
+  <td>class_defs_size</td>
+  <td>uint</td>
+  <td>类定义列表中的元素数量</td>
+</tr>
+<tr>
+  <td>class_defs_off</td>
+  <td>uint</td>
+  <td>从文件开头到类定义列表的偏移量；如果 <code>class_defs_size == 0</code>（不可否认是一种奇怪的极端情况），则该值为 <code>0</code>。该偏移量（如果为非零值）应该是到 <code>class_defs</code> 区段开头的偏移量。
+  </td>
+</tr>
+<tr>
+  <td>data_size</td>
+  <td>uint</td>
+  <td><code>data</code> 区段的大小（以字节为单位）。该数值必须是 sizeof(uint) 的偶数倍。</td>
+</tr>
+<tr>
+  <td>data_off</td>
+  <td>uint</td>
+  <td>从文件开头到 <code>data</code> 区段开头的偏移量。
+  </td>
+</tr>
+</tbody>
+</table>
+
+<h3 id="map-list">map_list</h3>
+<h4>在数据区段中显示</h4>
+<h4>引用自 header_item</h4>
+<h4>对齐：4 个字节</h4>
+
+<p>这是文件全部内容（依序显示）的列表。该列表包含关于 <code>header_item</code> 的一些冗余信息，但这些冗余信息存在的目的是提供一种用于遍历整个文件的简单方式。指定类型在映射中最多只能出现一次，但除了格式其余部分所隐含的限制条件（例如，<code>header</code> 区段必须先显示，随后是 <code>string_ids</code> 区段等等）之外，对于类型可以什么顺序显示，则没有任何限制。此外，映射条目必须按初始偏移量进行排序，不得重叠。</p>
+
+<table class="format">
+<thead>
+<tr>
+  <th>名称</th>
+  <th>格式</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>size</td>
+  <td>uint</td>
+  <td>列表的大小（以条目数表示）</td>
+</tr>
+<tr>
+  <td>list</td>
+  <td>map_item[size]</td>
+  <td>该列表的元素数量</td>
+</tr>
+</tbody>
+</table>
+
+<h3 id="map-item">map_item 格式</h3>
+
+<table class="format">
+<thead>
+<tr>
+  <th>名称</th>
+  <th>格式</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>type</td>
+  <td>ushort</td>
+  <td>项的类型；见下表</td>
+</tr>
+<tr>
+  <td>unused</td>
+  <td>ushort</td>
+  <td><i>（未使用）</i></td>
+</tr>
+<tr>
+  <td>size</td>
+  <td>uint</td>
+  <td>在指定偏移量处找到的项数量</td>
+</tr>
+<tr>
+  <td>offset</td>
+  <td>uint</td>
+  <td>从文件开头到相关项的偏移量</td>
+</tr>
+</tbody>
+</table>
+
+<h3 id="type-codes">类型代码</h3>
+
+<table class="typeCodes">
+<thead>
+<tr>
+  <th>项类型</th>
+  <th>常量</th>
+  <th>值</th>
+  <th>项大小（以字节为单位）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>header_item</td>
+  <td>TYPE_HEADER_ITEM</td>
+  <td>0x0000</td>
+  <td>0x70</td>
+</tr>
+<tr>
+  <td>string_id_item</td>
+  <td>TYPE_STRING_ID_ITEM</td>
+  <td>0x0001</td>
+  <td>0x04</td>
+</tr>
+<tr>
+  <td>type_id_item</td>
+  <td>TYPE_TYPE_ID_ITEM</td>
+  <td>0x0002</td>
+  <td>0x04</td>
+</tr>
+<tr>
+  <td>proto_id_item</td>
+  <td>TYPE_PROTO_ID_ITEM</td>
+  <td>0x0003</td>
+  <td>0x0c</td>
+</tr>
+<tr>
+  <td>field_id_item</td>
+  <td>TYPE_FIELD_ID_ITEM</td>
+  <td>0x0004</td>
+  <td>0x08</td>
+</tr>
+<tr>
+  <td>method_id_item</td>
+  <td>TYPE_METHOD_ID_ITEM</td>
+  <td>0x0005</td>
+  <td>0x08</td>
+</tr>
+<tr>
+  <td>class_def_item</td>
+  <td>TYPE_CLASS_DEF_ITEM</td>
+  <td>0x0006</td>
+  <td>0x20</td>
+</tr>
+<tr>
+  <td>call_site_id_item</td>
+  <td>TYPE_CALL_SITE_ID_ITEM</td>
+  <td>0x0007</td>
+  <td>0x04</td>
+</tr>
+<tr>
+  <td>method_handle_item</td>
+  <td>TYPE_METHOD_HANDLE_ITEM</td>
+  <td>0x0008</td>
+  <td>0x08</td>
+</tr>
+<tr>
+  <td>map_list</td>
+  <td>TYPE_MAP_LIST</td>
+  <td>0x1000</td>
+  <td>4 + (item.size * 12)</td>
+</tr>
+<tr>
+  <td>type_list</td>
+  <td>TYPE_TYPE_LIST</td>
+  <td>0x1001</td>
+  <td>4 + (item.size * 2)</td>
+</tr>
+<tr>
+  <td>annotation_set_ref_list</td>
+  <td>TYPE_ANNOTATION_SET_REF_LIST</td>
+  <td>0x1002</td>
+  <td>4 + (item.size * 4)</td>
+</tr>
+<tr>
+  <td>annotation_set_item</td>
+  <td>TYPE_ANNOTATION_SET_ITEM</td>
+  <td>0x1003</td>
+  <td>4 + (item.size * 4)</td>
+</tr>
+<tr>
+  <td>class_data_item</td>
+  <td>TYPE_CLASS_DATA_ITEM</td>
+  <td>0x2000</td>
+  <td><i>隐式；必须解析</i></td>
+</tr>
+<tr>
+  <td>code_item</td>
+  <td>TYPE_CODE_ITEM</td>
+  <td>0x2001</td>
+  <td><i>隐式；必须解析</i></td>
+</tr>
+<tr>
+  <td>string_data_item</td>
+  <td>TYPE_STRING_DATA_ITEM</td>
+  <td>0x2002</td>
+  <td><i>隐式；必须解析</i></td>
+</tr>
+<tr>
+  <td>debug_info_item</td>
+  <td>TYPE_DEBUG_INFO_ITEM</td>
+  <td>0x2003</td>
+  <td><i>隐式；必须解析</i></td>
+</tr>
+<tr>
+  <td>annotation_item</td>
+  <td>TYPE_ANNOTATION_ITEM</td>
+  <td>0x2004</td>
+  <td><i>隐式；必须解析</i></td>
+</tr>
+<tr>
+  <td>encoded_array_item</td>
+  <td>TYPE_ENCODED_ARRAY_ITEM</td>
+  <td>0x2005</td>
+  <td><i>隐式；必须解析</i></td>
+</tr>
+<tr>
+  <td>annotations_directory_item</td>
+  <td>TYPE_ANNOTATIONS_DIRECTORY_ITEM</td>
+  <td>0x2006</td>
+  <td><i>隐式；必须解析</i></td>
+</tr>
+</tbody>
+</table>
+
+<h3 id="string-item">string_id_item</h3>
+<h4>在 string_ids 区段中显示</h4>
+<h4>对齐：4 个字节</h4>
+
+<table class="format">
+<thead>
+<tr>
+  <th>名称</th>
+  <th>格式</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>string_data_off</td>
+  <td>uint</td>
+  <td>从文件开头到此项的字符串数据的偏移量。该偏移量应该是到 <code>data</code> 区段中某个位置的偏移量，而数据应采用下文中“<code>string_data_item</code>”指定的格式。没有偏移量对齐要求。
+  </td>
+</tr>
+</tbody>
+</table>
+
+<h3 id="string-data-item">string_data_item</h3>
+<h4>在数据区段中显示</h4>
+<h4>对齐：无（字节对齐）</h4>
+
+<table class="format">
+<thead>
+<tr>
+  <th>名称</th>
+  <th>格式</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>utf16_size</td>
+  <td>uleb128</td>
+  <td>此字符串的大小；以 UTF-16 代码单元（在许多系统中为“字符串长度”）为单位。也就是说，这是该字符串的解码长度（编码长度隐含在 <code>0</code> 字节的位置）。</td>
+</tr>
+<tr>
+  <td>data</td>
+  <td>ubyte[]</td>
+  <td>一系列 MUTF-8 代码单元（又称八位字节），后跟一个值为 <code>0</code> 的字节。请参阅上文中的“MUTF-8（修改后的 UTF-8）编码”，了解有关该数据格式的详情和讨论。
+    <p class="note"><strong>注意</strong>：在 UTF-16 中进行 Unicode 常规编码时，字符串可以包含（编码形式的）UTF-16 代理代码单元（即 <code>U+d800</code> … <code>U+dfff</code>），这些代码单元既可以单独出现，也可以乱序显示。在适用的情况下，可以进阶使用字符串来拒绝这类无效编码。</p>
+  </td>
+</tr>
+</tbody>
+</table>
+
+<h3 id="type-id-item">type_id_item</h3>
+<h4>在 type_ids 区段中显示</h4>
+<h4>对齐：4 个字节</h4>
+
+<table class="format">
+<thead>
+<tr>
+  <th>名称</th>
+  <th>格式</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>descriptor_idx</td>
+  <td>uint</td>
+  <td>此类描述符字符串的 <code>string_ids</code> 列表中的索引。该字符串必须符合上文定义的 TypeDescriptor 的语法。<i></i>
+  </td>
+</tr>
+</tbody>
+</table>
+
+<h3 id="proto-id-item">proto_id_item</h3>
+<h4>在 proto_ids 区段中显示</h4>
+<h4>对齐：4 个字节</h4>
+
+<table class="format">
+<thead>
+<tr>
+  <th>名称</th>
+  <th>格式</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>shorty_idx</td>
+  <td>uint</td>
+  <td>此原型的简短式描述符字符串的 <code>string_ids</code> 列表中的索引。该字符串必须符合上文定义的 ShortyDescriptor 的语法，而且必须与该项的返回类型和参数相对应。<i></i>
+  </td>
+</tr>
+<tr>
+  <td>return_type_idx</td>
+  <td>uint</td>
+  <td>此原型的返回类型的 <code>type_ids</code> 列表中的索引。</td>
+</tr>
+<tr>
+  <td>parameters_off</td>
+  <td>uint</td>
+  <td>从文件开头到此原型的参数类型列表的偏移量；如果此原型没有参数，则该值为 <code>0</code>。该偏移量（如果为非零值）应该位于 <code>data</code> 区段中，且其中的数据应采用下文中“<code>"type_list"</code>”指定的格式。此外，不得对列表中的类型 <code>void</code> 进行任何引用。
+  </td>
+</tr>
+</tbody>
+</table>
+
+<h3 id="field-id-item">field_id_item</h3>
+<h4>在 field_ids 区段中显示</h4>
+<h4>对齐：4 个字节</h4>
+
+<table class="format">
+<thead>
+<tr>
+  <th>名称</th>
+  <th>格式</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>class_idx</td>
+  <td>ushort</td>
+  <td>此字段的定义符的 <code>type_ids</code> 列表中的索引。此项必须是“类”类型，而不能是“数组”或“基元”类型。
+  </td>
+</tr>
+<tr>
+  <td>type_idx</td>
+  <td>ushort</td>
+  <td>此字段的类型的 <code>type_ids</code> 列表中的索引。</td>
+</tr>
+<tr>
+  <td>name_idx</td>
+  <td>uint</td>
+  <td>此字段的名称的 <code>string_ids</code> 列表中的索引。该字符串必须符合上文定义的 MemberName 的语法。<i></i>
+  </td>
+</tr>
+</tbody>
+</table>
+
+<h3 id="method-id-item">method_id_item</h3>
+<h4>在 method_ids 区段中显示</h4>
+<h4>对齐：4 个字节</h4>
+
+<table class="format">
+<thead>
+<tr>
+  <th>名称</th>
+  <th>格式</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>class_idx</td>
+  <td>ushort</td>
+  <td>此方法的定义符的 <code>type_ids</code> 列表中的索引。此项必须是“类”或“数组”类型，而不能是“基元”类型。
+  </td>
+</tr>
+<tr>
+  <td>proto_idx</td>
+  <td>ushort</td>
+  <td>此方法的原型的 <code>proto_ids</code> 列表中的索引。</td>
+</tr>
+<tr>
+  <td>name_idx</td>
+  <td>uint</td>
+  <td>此方法名称的 <code>string_ids</code> 列表中的索引。该字符串必须符合上文定义的 MemberName 的语法。<i></i>
+  </td>
+</tr>
+</tbody>
+</table>
+
+<h3 id="class-def-item">class_def_item</h3>
+<h4>在 class_defs 区段中显示</h4>
+<h4>对齐：4 个字节</h4>
+
+<table class="format">
+<thead>
+<tr>
+  <th>名称</th>
+  <th>格式</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>class_idx</td>
+  <td>uint</td>
+  <td>此类的 <code>type_ids</code> 列表中的索引。此项必须是“类”类型，而不能是“数组”或“基元”类型。
+  </td>
+</tr>
+<tr>
+  <td>access_flags</td>
+  <td>uint</td>
+  <td>类的访问标记（<code>public</code>、<code>final</code> 等）。有关详情，请参阅“<code>access_flags</code> 定义”。
+  </td>
+</tr>
+<tr>
+  <td>superclass_idx</td>
+  <td>uint</td>
+  <td>超类的 <code>type_ids</code> 列表中的索引。如果此类没有超类（即它是根类，例如 <code>Object</code>），则该值为常量值 <code>NO_INDEX</code>。如果此类存在超类，则此项必须是“类”类型，而不能是“数组”或“基元”类型。
+  </td>
+</tr>
+<tr>
+  <td>interfaces_off</td>
+  <td>uint</td>
+  <td>从文件开头到接口列表的偏移量；如果没有接口，则该值为 <code>0</code>。该偏移量应该位于 <code>data</code> 区段，且其中的数据应采用下文中“<code>type_list</code>”指定的格式。该列表的每个元素都必须是“类”类型（而不能是“数组”或“基元”类型），并且不得包含任何重复项。
+  </td>
+</tr>
+<tr>
+  <td>source_file_idx</td>
+  <td>uint</td>
+  <td>文件（包含这个类（至少大部分）的原始来源）名称的 <code>string_ids</code> 列表中的索引；或者该值为特殊值 <code>NO_INDEX</code>，以表示缺少这种信息。任何指定方法的 <code>debug_info_item</code> 都可以覆盖此源文件，但预期情况是大多数类只能来自一个源文件。
+  </td>
+</tr>
+<tr>
+  <td>annotations_off</td>
+  <td>uint</td>
+  <td>从文件开头到此类的注释结构的偏移量；如果此类没有注释，则该值为 <code>0</code>。该偏移量（如果为非零值）应该位于 <code>data</code> 区段，且其中的数据应采用下文中“<code>annotations_directory_item</code>”指定的格式，同时所有项将此类作为定义符进行引用。
+  </td>
+</tr>
+<tr>
+  <td>class_data_off</td>
+  <td>uint</td>
+  <td>从文件开头到此项的关联类数据的偏移量；如果此类没有类数据，则该值为 <code>0</code>（这种情况有可能出现，例如，如果此类是标记接口）。该偏移量（如果为非零值）应该位于 <code>data</code> 区段，且其中的数据应采用下文中“<code>class_data_item</code>”指定的格式，同时所有项将此类作为定义符进行引用。
+  </td>
+</tr>
+<tr>
+  <td>static_values_off</td>
+  <td>uint</td>
+  <td>从文件开头到 <code>static</code> 字段的初始值列表的偏移量；如果没有该列表（并且所有 <code>static</code> 字段都将使用 <code>0</code> 或 <code>null</code> 进行初始化），则该值为 <code>0</code>。该偏移量应该位于 <code>data</code> 区段，且其中的数据应采用下文中“<code>encoded_array_item</code>”指定的格式。该数组的大小不得超出此类所声明的 <code>static</code> 字段的数量，且 <code>static</code> 字段所对应的元素应采用相对应的 <code>field_list</code> 中所声明的顺序每个数组元素的类型均必须与其相应字段的声明类型相匹配。如果该数组中的元素比 <code>static</code> 字段中的少，则剩余字段将使用适当类型 <code>0</code> 或 <code>null</code> 进行初始化。
+  </td>
+</tr>
+</tbody>
+</table>
+
+<h3 id="call-site-id-item">call_site_id_item</h3>
+<h4>在 call_site_ids 区段中显示</h4>
+<h4>对齐：4 个字节</h4>
+
+<table class="format">
+<thead>
+<tr>
+  <th>名称</th>
+  <th>格式</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>call_site_off</td>
+  <td>uint</td>
+  <td>从文件开头到调用点定义的偏移量。该偏移量应位于数据区段中，且其中的数据应采用下文中“call_site_item”指定的格式。
+  </td>
+</tr>
+</tbody>
+</table>
+
+<h3 id="call-site-item">call_site_item</h3>
+<h4>在数据区段中显示</h4>
+<h4>对齐：无（字节对齐）</h4>
+
+<p>call_site_item 是一个 encoded_array_item，其元素与提供给引导程序链接器方法的参数相对应。前 3 个参数为：</p><ol>
+<li>表示引导程序链接器方法的方法句柄 (VALUE_METHOD_HANDLE)。</li>
+<li>引导程序链接器应解析的方法名称 (VALUE_STRING)。</li>
+<li>与要解析的方法名称类型相对应的方法类型 (VALUE_METHOD_TYPE)。</li>
+</ol>
+
+<p>所有附加参数均为传递给引导程序链接器方法的常量值。这些参数会按顺序传递，而不进行任何类型转换。
+
+</p><p>表示引导程序链接器方法的方法句柄必须具有返回类型 <code>java.lang.invoke.CallSite</code>。前 3 个参数类型为：</p><ol>
+<li><code>java.lang.invoke.Lookup</code></li>
+<li><code>java.lang.String</code></li>
+<li><code>java.lang.invoke.MethodType</code></li>
+</ol>
+
+<p>任何附加参数的参数类型均由其常量值确定。
+
+</p><h3 id="method-handle-item">method_handle_item</h3>
+<h4>在 method_handles 区段中显示</h4>
+<h4>对齐：4 个字节</h4>
+
+<table class="format">
+<thead>
+<tr>
+  <th>名称</th>
+  <th>格式</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>method_handle_type</td>
+  <td>ushort</td>
+  <td>方法句柄的类型；见下表</td>
+</tr>
+<tr>
+  <td>unused</td>
+  <td>ushort</td>
+  <td><i>（未使用）</i></td>
+</tr>
+<tr>
+  <td>field_or_method_id</td>
+  <td>ushort</td>
+  <td>字段或方法 ID 取决于方法句柄类型是访问器还是方法调用器</td>
+</tr>
+<tr>
+  <td>unused</td>
+  <td>ushort</td>
+  <td><i>（未使用）</i></td>
+</tr>
+</tbody>
+</table>
+
+<h3 id="method-handle-type-codes">方法句柄类型代码</h3>
+
+<table class="format">
+<thead>
+<tr>
+  <th>常量</th>
+  <th>值</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>METHOD_HANDLE_TYPE_STATIC_PUT</td>
+  <td>0x00</td>
+  <td>方法句柄是静态字段设置器（访问器）</td>
+</tr>
+<tr>
+  <td>METHOD_HANDLE_TYPE_STATIC_GET</td>
+  <td>0x01</td>
+  <td>方法句柄是静态字段获取器（访问器）</td>
+</tr>
+<tr>
+  <td>METHOD_HANDLE_TYPE_INSTANCE_PUT</td>
+  <td>0x02</td>
+  <td>方法句柄是实例字段设置器（访问器）</td>
+</tr>
+<tr>
+  <td>METHOD_HANDLE_TYPE_INSTANCE_GET</td>
+  <td>0x03</td>
+  <td>方法句柄是实例字段获取器（访问器）</td>
+</tr>
+<tr>
+  <td>METHOD_HANDLE_TYPE_INVOKE_STATIC</td>
+  <td>0x04</td>
+  <td>方法句柄是静态方法调用器</td>
+</tr>
+<tr>
+  <td>METHOD_HANDLE_TYPE_INVOKE_INSTANCE</td>
+  <td>0x05</td>
+  <td>方法句柄是实例方法调用器</td>
+</tr>
+</tbody>
+</table>
+
+<h3 id="class-data-item">class_data_item</h3>
+<h4>引用自 class_def_item</h4>
+<h4>在数据区段中显示</h4>
+<h4>对齐：无（字节对齐）</h4>
+
+<table class="format">
+<thead>
+<tr>
+  <th>名称</th>
+  <th>格式</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>static_fields_size</td>
+  <td>uleb128</td>
+  <td>此项中定义的静态字段的数量</td>
+</tr>
+<tr>
+  <td>instance_fields_size</td>
+  <td>uleb128</td>
+  <td>此项中定义的实例字段的数量</td>
+</tr>
+<tr>
+  <td>direct_methods_size</td>
+  <td>uleb128</td>
+  <td>此项中定义的直接方法的数量</td>
+</tr>
+<tr>
+  <td>virtual_methods_size</td>
+  <td>uleb128</td>
+  <td>此项中定义的虚拟方法的数量</td>
+</tr>
+<tr>
+  <td>static_fields</td>
+  <td>encoded_field[static_fields_size]</td>
+  <td>定义的静态字段；以一系列编码元素的形式表示。这些字段必须按 <code>field_idx</code> 以升序进行排序。
+  </td>
+</tr>
+<tr>
+  <td>instance_fields</td>
+  <td>encoded_field[instance_fields_size]</td>
+  <td>定义的实例字段；以一系列编码元素的形式表示。这些字段必须按 <code>field_idx</code> 以升序进行排序。
+  </td>
+</tr>
+<tr>
+  <td>direct_methods</td>
+  <td>encoded_method[direct_methods_size]</td>
+  <td>定义的直接（<code>static</code>、<code>private</code> 或构造函数的任何一个）方法；以一系列编码元素的形式表示。这些方法必须按 <code>method_idx</code> 以升序进行排序。
+  </td>
+</tr>
+<tr>
+  <td>virtual_methods</td>
+  <td>encoded_method[virtual_methods_size]</td>
+  <td>定义的虚拟（非 <code>static</code>、<code>private</code> 或构造函数）方法；以一系列编码元素的形式表示。<i></i>此列表不得包括继承方法，除非被此项所表示的类覆盖。这些方法必须按 <code>method_idx</code> 以升序进行排序。虚拟方法的 <code>method_idx</code> 不得与任何直接方法相同。<i></i>
+  </td>
+</tr>
+</tbody>
+</table>
+
+<p class="note"><strong>注意</strong>：所有元素的 <code>field_id</code> 和 <code>method_id</code> 都必须引用相同的定义类。</p>
+
+<h3 id="encoded-field-format">encoded_field 格式</h3>
+
+<table class="format">
+<thead>
+<tr>
+  <th>名称</th>
+  <th>格式</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>field_idx_diff</td>
+  <td>uleb128</td>
+  <td>此字段标识（包括名称和描述符）的 <code>field_ids</code> 列表中的索引；它会表示为与列表中前一个元素的索引之间的差值。列表中第一个元素的索引则直接表示出来。
+  </td>
+</tr>
+<tr>
+  <td>access_flags</td>
+  <td>uleb128</td>
+  <td>字段的访问标记（<code>public</code>、<code>final</code> 等）。有关详情，请参阅“<code>access_flags</code> 定义”。
+  </td>
+</tr>
+</tbody>
+</table>
+
+<h3 id="encoded-method">encoded_method 格式</h3>
+
+<table class="format">
+<thead>
+<tr>
+  <th>名称</th>
+  <th>格式</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>method_idx_diff</td>
+  <td>uleb128</td>
+  <td>此方法标识（包括名称和描述符）的 <code>method_ids</code> 列表中的索引；它会表示为与列表中前一个元素的索引之间的差值。列表中第一个元素的索引则直接表示出来。
+  </td>
+</tr>
+<tr>
+  <td>access_flags</td>
+  <td>uleb128</td>
+  <td>方法的访问标记（<code>public</code>、<code>final</code> 等）。有关详情，请参阅“<code>access_flags</code> 定义”。
+  </td>
+</tr>
+<tr>
+  <td>code_off</td>
+  <td>uleb128</td>
+  <td>从文件开头到此方法代码结构的偏移量；如果此方法是 <code>abstract</code> 或 <code>native</code>，则该值为 <code>0</code>。该偏移量应该是到 <code>data</code> 区段中某个位置的偏移量。数据格式由下文的“<code>code_item</code>”指定。
+  </td>
+</tr>
+</tbody>
+</table>
+
+<h3 id="type-list">type_list</h3>
+<h4>引用自 class_def_item 和 proto_id_item</h4>
+<h4>在数据区段中显示</h4>
+<h4>对齐：4 个字节</h4>
+
+<table class="format">
+<thead>
+<tr>
+  <th>名称</th>
+  <th>格式</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>size</td>
+  <td>uint</td>
+  <td>列表的大小（以条目数表示）</td>
+</tr>
+<tr>
+  <td>list</td>
+  <td>type_item[size]</td>
+  <td>列表的元素</td>
+</tr>
+</tbody>
+</table>
+
+<h3 id="type-item-format">type_item 格式</h3>
+
+<table class="format">
+<thead>
+<tr>
+  <th>名称</th>
+  <th>格式</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>type_idx</td>
+  <td>ushort</td>
+  <td><code>type_ids</code> 列表中的索引</td>
+</tr>
+</tbody>
+</table>
+
+<h3 id="code-item">code_item</h3>
+<h4>引用自 encoded_method</h4>
+<h4>在数据区段中显示</h4>
+<h4>对齐：4 个字节</h4>
+
+<table class="format">
+<thead>
+<tr>
+  <th>名称</th>
+  <th>格式</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>registers_size</td>
+  <td>ushort</td>
+  <td>此代码使用的寄存器数量</td>
+</tr>
+<tr>
+  <td>ins_size</td>
+  <td>ushort</td>
+  <td>此代码所用方法的传入参数的字数</td>
+</tr>
+<tr>
+  <td>outs_size</td>
+  <td>ushort</td>
+  <td>此代码进行方法调用所需的传出参数空间的字数</td>
+</tr>
+<tr>
+  <td>tries_size</td>
+  <td>ushort</td>
+  <td>此实例的 <code>try_item</code> 数量。如果此值为非零值，则这些项会显示为 <code>tries</code> 数组（正好位于此实例中 <code>insns</code> 的后面）。
+  </td>
+</tr>
+<tr>
+  <td>debug_info_off</td>
+  <td>uint</td>
+  <td>从文件开头到此代码的调试信息（行号 + 局部变量信息）序列的偏移量；如果没有任何信息，则该值为 <code>0</code>。该偏移量（如果为非零值）应该是到 <code>data</code> 区段中某个位置的偏移量。数据格式由下文的“<code>debug_info_item</code>”指定。
+  </td>
+</tr>
+<tr>
+  <td>insns_size</td>
+  <td>uint</td>
+  <td>指令列表的大小（以 16 位代码单元为单位）</td>
+</tr>
+<tr>
+  <td>insns</td>
+  <td>ushort[insns_size]</td>
+  <td>字节码的实际数组。<code>insns</code> 数组中代码的格式由随附文档 <a href="dalvik-bytecode.html">Dalvik 字节码</a>指定。请注意，尽管此项被定义为 <code>ushort</code> 的数组，但仍有一些内部结构倾向于采用四字节对齐方式。此外，如果此项恰好位于某个字节序交换文件中，则交换操作将只在单个 <code>ushort</code> 上进行，而不是在较大的内部结构上进行。<i></i>
+  </td>
+</tr>
+<tr>
+  <td>padding</td>
+  <td>ushort（可选）= 0<i></i></td>
+  <td>使 <code>tries</code> 实现四字节对齐的两字节填充。只有 <code>tries_size</code> 为非零值且 <code>insns_size</code> 是奇数时，此元素才会存在。
+  </td>
+</tr>
+<tr>
+  <td>tries</td>
+  <td>try_item[tries_size]<i></i>（可选）</td>
+  <td>用于表示在代码中捕获异常的位置以及如何对异常进行处理的数组。该数组的元素在范围内不得重叠，且数值地址按照从低到高的顺序排列。只有 <code>tries_size</code> 为非零值时，此元素才会存在。
+  </td>
+</tr>
+<tr>
+  <td>handlers</td>
+  <td>encoded_catch_handler_list<i></i>（可选）</td>
+  <td>用于表示“捕获类型列表和关联处理程序地址”的列表的字节。每个 <code>try_item</code> 都具有到此结构的分组偏移量。只有 <code>tries_size</code> 为非零值时，此元素才会存在。
+  </td>
+</tr>
+</tbody>
+</table>
+
+<h3 id="type-item">try_item 格式</h3>
+
+<table class="format">
+<thead>
+<tr>
+  <th>名称</th>
+  <th>格式</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>start_addr</td>
+  <td>uint</td>
+  <td>此条目涵盖的代码块的起始地址。该地址是到第一个所涵盖指令开头部分的 16 位代码单元的计数。
+  </td>
+</tr>
+<tr>
+  <td>insn_count</td>
+  <td>ushort</td>
+  <td>此条目所覆盖的 16 位代码单元的数量。所涵盖（包含）的最后一个代码单元是 <code>start_addr + insn_count - 1</code>。
+  </td>
+</tr>
+<tr>
+  <td>handler_off</td>
+  <td>ushort</td>
+  <td>从关联的 <code>encoded_catch_hander_list</code> 开头部分到此条目的 <code>encoded_catch_handler</code> 的偏移量（以字节为单位）。此偏移量必须是到 <code>encoded_catch_handler</code> 开头部分的偏移量。
+  </td>
+</tr>
+</tbody>
+</table>
+
+<h3 id="encoded-catch-handlerlist">encoded_catch_handler_list 格式</h3>
+
+<table class="format">
+<thead>
+<tr>
+  <th>名称</th>
+  <th>格式</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>size</td>
+  <td>uleb128</td>
+  <td>列表的大小（以条目数表示）</td>
+</tr>
+<tr>
+  <td>list</td>
+  <td>encoded_catch_handler[handlers_size]</td>
+  <td>处理程序列表的实际列表，直接表示（不作为偏移量）并依序连接</td>
+</tr>
+</tbody>
+</table>
+
+<h3 id="encoded-catch-handler">encoded_catch_handler 格式</h3>
+
+<table class="format">
+<thead>
+<tr>
+  <th>名称</th>
+  <th>格式</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>size</td>
+  <td>sleb128</td>
+  <td>此列表中捕获类型的数量。如果为非正数，则该值是捕获类型数量的负数，捕获数量后跟一个“全部捕获”处理程序。例如，<code>size</code> 为 <code>0</code> 表示捕获类型为“全部捕获”，而没有明确类型的捕获。<code>size</code> 为 <code>2</code> 表示有两个明确类型的捕获，但没有“全部捕获”类型的捕获。<code>size</code> 为 <code>-1</code> 表示有一个明确类型的捕获和一个“全部捕获”类型的捕获。
+  </td>
+</tr>
+<tr>
+  <td>handlers</td>
+  <td>encoded_type_addr_pair[abs(size)]</td>
+  <td><code>abs(size)</code> 编码项的信息流（一种捕获类型对应一项）；按照应对类型进行测试的顺序排列。
+  </td>
+</tr>
+<tr>
+  <td>catch_all_addr</td>
+  <td>uleb128<i></i>（可选）</td>
+  <td>“全部捕获”处理程序的字节码地址。只有当 <code>size</code> 为非正数时，此元素才会存在。
+  </td>
+</tr>
+</tbody>
+</table>
+
+<h3 id="encoded-type-addr-pair">encoded_type_addr_pair 格式</h3>
+
+<table class="format">
+<thead>
+<tr>
+  <th>名称</th>
+  <th>格式</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>type_idx</td>
+  <td>uleb128</td>
+  <td>要捕获的异常类型的 <code>type_ids</code> 列表中的索引</td>
+</tr>
+<tr>
+  <td>addr</td>
+  <td>uleb128</td>
+  <td>关联的异常处理程序的字节码地址</td>
+</tr>
+</tbody>
+</table>
+
+<h3 id="debug-info-item">debug_info_item</h3>
+<h4>引用自 code_item</h4>
+<h4>在数据区段中显示</h4>
+<h4>对齐：无（字节对齐）</h4>
+
+<p>每个 <code>debug_info_item</code> 都会定义一个基于 DWARF3 的字节码状态机，在解译时，系统会发出 (emit) <code>code_item</code> 的位置表，并可能会发出 (emit) 其局部变量信息。该序列的开头是一个可变长度的标头（其长度取决于方法参数的数量），后跟状态机字节码，最后以 <code>DBG_END_SEQUENCE</code> 字节结尾。</p>
+
+<p>该状态机由 5 个寄存器组成。<code>address</code> 寄存器表示关联的 <code>insns_item</code> 中的指令偏移量（以 16 位代码单元为单位）。<code>address</code> 寄存器在每个 <code>debug_info</code> 序列的开头处都是从 <code>0</code> 开始，而且只能单调递增。<code>line</code> 寄存器表示应与状态机发出 (emit) 的下一个位置表条目相关联的源行号。它在序列标头中进行初始化，并可能会正向或负向发生更改，但绝不能小于 <code>1</code>。<code>source_file</code> 寄存器表示行号条目引用的源文件。它在 <code>class_def_item</code> 中被初始化为 <code>source_file_idx</code> 的值。另外两个变量（<code>prologue_end</code> 和 <code>epilogue_begin</code>）是布尔值标记（已初始化为 <code>false</code>），它们表示所发出的下一个位置是否应视为方法前序或结尾。此外，该状态机还必须跟踪用于 <code>DBG_RESTART_LOCAL</code> 代码的每个寄存器中最后一个局部变量的名称和类型。</p>
+
+<p>标头如下所示：</p>
+
+<table class="format">
+<thead>
+<tr>
+  <th>名称</th>
+  <th>格式</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+ <td>line_start</td>
+ <td>uleb128</td>
+ <td>状态机的 <code>line</code> 寄存器的初始值。不表示实际的位置条目。
+ </td>
+</tr>
+<tr>
+ <td>parameters_size</td>
+ <td>uleb128</td>
+ <td>已编码的参数名称的数量。每个方法参数都应该有一个名称，但不包括实例方法的 <code>this</code>（如果有）。
+ </td>
+</tr>
+<tr>
+ <td>parameter_names</td>
+ <td>uleb128p1[parameters_size]</td>
+ <td>方法参数名称的字符串索引。<code>NO_INDEX</code> 的编码值表示该关联参数没有可用的名称。该类型描述符和签名隐含在方法描述符和签名中。
+ </td>
+</tr>
+</tbody>
+</table>
+
+<p>字节码值如下：</p>
+
+<table class="debugByteCode">
+<thead>
+<tr>
+  <th>名称</th>
+  <th>值</th>
+  <th>格式</th>
+  <th>参数</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>DBG_END_SEQUENCE</td>
+  <td>0x00</td>
+  <td></td>
+  <td><i>（无）</i></td>
+  <td>终止 <code>code_item</code> 的调试信息序列</td>
+</tr>
+<tr>
+  <td>DBG_ADVANCE_PC</td>
+  <td>0x01</td>
+  <td>uleb128 addr_diff</td>
+  <td><code>addr_diff</code>：添加到地址寄存器的数量</td>
+  <td>使地址寄存器指向下一个地址，而不发出 (emit) 位置条目</td>
+</tr>
+<tr>
+  <td>DBG_ADVANCE_LINE</td>
+  <td>0x02</td>
+  <td>sleb128 line_diff</td>
+  <td><code>line_diff</code>：要更改的行寄存器数量</td>
+  <td>使行寄存器指向下一个地址，而不发出 (emit) 位置条目</td>
+</tr>
+<tr>
+  <td>DBG_START_LOCAL</td>
+  <td>0x03</td>
+  <td>uleb128 register_num<br />uleb128p1 name_idx<br />uleb128p1 type_idx</td>
+  <td><code>register_num</code>：将包含本地变量的寄存器<br />
+    <code>name_idx</code>：该名称的字符串索引<br />
+    <code>type_idx</code>：该类型的类型索引</td>
+  <td>在当前地址中引入一个本地变量。<code>name_idx</code> 或 <code>type_idx</code> 都可能是 <code>NO_INDEX</code>，用于表示该值是未知的。
+  </td>
+</tr>
+<tr>
+  <td>DBG_START_LOCAL_EXTENDED</td>
+  <td>0x04</td>
+  <td>uleb128 register_num<br />uleb128p1 name_idx<br />uleb128p1 type_idx<br />uleb128p1 sig_idx</td>
+  <td><code>register_num</code>：将包含本地变量的寄存器<br />
+    <code>name_idx</code>：该名称的字符串索引<br />
+    <code>type_idx</code>：该类型的类型索引<br />
+    <code>sig_idx</code>：该类型签名的字符串索引</td>
+  <td>在当前地址中引入一个带有类型签名的本地变量。<code>name_idx</code>、<code>type_idx</code> 或 <code>sig_idx</code> 中的任何一个都可能是 <code>NO_INDEX</code>，用于表示该值是未知的（即便 <code>sig_idx</code> 为 <code>-1</code>，使用操作码 <code>DBG_START_LOCAL</code> 也可以更有效地表示相同的数据）。
+    <p class="note"><strong>注意</strong>：请参阅“<code>dalvik.annotation.Signature</code>”下的讨论，了解关于处理签名的注意事项。</p>
+  </td>
+</tr>
+<tr>
+  <td>DBG_END_LOCAL</td>
+  <td>0x05</td>
+  <td>uleb128 register_num</td>
+  <td><code>register_num</code>：包含本地变量的寄存器</td>
+  <td>在当前地址中将当前存在的本地变量标记为超出范围</td>
+</tr>
+<tr>
+  <td>DBG_RESTART_LOCAL</td>
+  <td>0x06</td>
+  <td>uleb128 register_num</td>
+  <td><code>register_num</code>：要重新启动的寄存器</td>
+  <td>在当前地址中重新引入一个本地变量。名称和类型与指定寄存器中存在的最后一个本地变量相同。
+  </td>
+</tr>
+<tr>
+  <td>DBG_SET_PROLOGUE_END</td>
+  <td>0x07</td>
+  <td></td>
+  <td><i>（无）</i></td>
+  <td>设置 <code>prologue_end</code> 状态机寄存器；表示所添加的下一个位置条目应被视为方法前序的结尾（方法断点的适当位置）。<code>prologue_end</code> 寄存器已被任何特殊的 (<code>&gt;= 0x0a</code>) 操作码清除。
+  </td>
+</tr>
+<tr>
+  <td>DBG_SET_EPILOGUE_BEGIN</td>
+  <td>0x08</td>
+  <td></td>
+  <td><i>（无）</i></td>
+  <td>设置 <code>epilogue_begin</code> 状态机寄存器；表示所添加的下一个位置条目应被视为方法结尾的开头（要在方法退出之前暂停执行的适当位置）。<code>epilogue_begin</code> 寄存器已被任何特殊的 (<code>&gt;= 0x0a</code>) 操作码清除。
+  </td>
+</tr>
+<tr>
+  <td>DBG_SET_FILE</td>
+  <td>0x09</td>
+  <td>uleb128p1 name_idx</td>
+  <td><code>name_idx</code>：源文件名称的字符串索引；如果未知，则此项为 <code>NO_INDEX</code></td>
+  <td>表示所有后续行号条目均引用此源文件名称，而不是 <code>code_item</code> 中指定的默认名称
+  </td>
+</tr>
+<tr>
+  <td><i>特殊操作码</i></td>
+  <td><!-- When updating the range below, make sure to search for other
+  instances of 0x0a in this section. -->
+  </td><td>0x0a…0xff</td>
+  <td></td>
+  <td><i>（无）</i></td>
+  <td>使 <code>line</code> 和 <code>address</code> 寄存器指向下一个地址，发出 (emit) 一个位置条目，并清除 <code>prologue_end</code> 和 <code>epilogue_begin</code>。请参阅下文中的说明。
+  </td>
+</tr>
+</tbody>
+</table>
+
+<h3 id="opcodes">特殊操作码</h3>
+
+<p>值在 <code>0x0a</code> 和 <code>0xff</code>（含）之间的操作码会将 <code>line</code> 和 <code>address</code> 寄存器移动一小部分，然后发出 (emit) 一个新的位置表条目。这些增量的公式如下所示：</p>
+
+<pre>
+DBG_FIRST_SPECIAL = 0x0a  // the smallest special opcode
+DBG_LINE_BASE   = -4      // the smallest line number increment
+DBG_LINE_RANGE  = 15      // the number of line increments represented
+
+adjusted_opcode = opcode - DBG_FIRST_SPECIAL
+
+line += DBG_LINE_BASE + (adjusted_opcode % DBG_LINE_RANGE)
+address += (adjusted_opcode / DBG_LINE_RANGE)
+</pre>
+
+<h3 id="annotations-directory">annotations_directory_item</h3>
+<h4>引用自 class_def_item</h4>
+<h4>在数据区段中显示</h4>
+<h4>对齐：4 个字节</h4>
+
+<table class="format">
+<thead>
+<tr>
+  <th>名称</th>
+  <th>格式</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>class_annotations_off</td>
+  <td>uint</td>
+  <td>从文件开头到直接在该类上所做的注释的偏移量；如果该类没有任何直接注释，则该值为 <code>0</code>。该偏移量（如果为非零值）应该是到 <code>data</code> 区段中某个位置的偏移量。数据格式由下文的“<code>annotation_set_item</code>”指定。
+  </td>
+</tr>
+<tr>
+  <td>fields_size</td>
+  <td>uint</td>
+  <td>此项所注释的字段数量</td>
+</tr>
+<tr>
+  <td>annotated_methods_size</td>
+  <td>uint</td>
+  <td>此项所注释的方法数量</td>
+</tr>
+<tr>
+  <td>annotated_parameters_size</td>
+  <td>uint</td>
+  <td>此项所注释的方法参数列表的数量</td>
+</tr>
+<tr>
+  <td>field_annotations</td>
+  <td>field_annotation[fields_size]<i></i>（可选）</td>
+  <td>所关联字段的注释列表。该列表中的元素必须按 <code>field_idx</code> 以升序进行排序。
+  </td>
+</tr>
+<tr>
+  <td>method_annotations</td>
+  <td>method_annotation[methods_size]<i></i>（可选）</td>
+  <td>所关联方法的注释列表。该列表中的元素必须按 <code>method_idx</code> 以升序进行排序。
+  </td>
+</tr>
+<tr>
+  <td>parameter_annotations</td>
+  <td>parameter_annotation[parameters_size]<i></i>（可选）</td>
+  <td>所关联方法参数的注释列表。该列表中的元素必须按 <code>method_idx</code> 以升序进行排序。
+  </td>
+</tr>
+</tbody>
+</table>
+
+<p class="note"><strong>注意</strong>：所有元素的 <code>field_id</code> 和 <code>method_id</code> 都必须引用相同的定义类。</p>
+
+<h3 id="field-annotation">field_annotation 格式</h3>
+
+<table class="format">
+<thead>
+<tr>
+  <th>名称</th>
+  <th>格式</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>field_idx</td>
+  <td>uint</td>
+  <td>字段（带注释）标识的 <code>field_ids</code> 列表中的索引</td>
+</tr>
+<tr>
+  <td>annotations_off</td>
+  <td>uint</td>
+  <td>从文件开头到该字段的注释列表的偏移量。该偏移量应该是到 <code>data</code> 区段中某个位置的偏移量。数据格式由下文的“<code>annotation_set_item</code>”指定。
+  </td>
+</tr>
+</tbody>
+</table>
+
+<h3 id="method-annotation">method_annotation 格式</h3>
+
+<table class="format">
+<thead>
+<tr>
+  <th>名称</th>
+  <th>格式</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>method_idx</td>
+  <td>uint</td>
+  <td>方法（带注释）标识的 <code>method_ids</code> 列表中的索引</td>
+</tr>
+<tr>
+  <td>annotations_off</td>
+  <td>uint</td>
+  <td>从文件开头到该方法注释列表的偏移量。该偏移量应该是到 <code>data</code> 区段中某个位置的偏移量。数据格式由下文的“<code>annotation_set_item</code>”指定。
+  </td>
+</tr>
+</tbody>
+</table>
+
+<h3 id="parameter-annotation">parameter_annotation 格式</h3>
+
+<table class="format">
+<thead>
+<tr>
+  <th>名称</th>
+  <th>格式</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>method_idx</td>
+  <td>uint</td>
+  <td>方法（其参数带注释）标识的 <code>method_ids</code> 列表中的索引</td>
+</tr>
+<tr>
+  <td>annotations_off</td>
+  <td>uint</td>
+  <td>从文件开头到该方法参数的注释列表的偏移量。该偏移量应该是到 <code>data</code> 区段中某个位置的偏移量。数据格式由下文的“<code>annotation_set_ref_list</code>”指定。
+  </td>
+</tr>
+</tbody>
+</table>
+
+<h3 id="set-ref-list">annotation_set_ref_list</h3>
+<h4>引用自 parameter_annotations_item</h4>
+<h4>在数据区段中显示</h4>
+<h4>对齐：4 个字节</h4>
+
+<table class="format">
+<thead>
+<tr>
+  <th>名称</th>
+  <th>格式</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>size</td>
+  <td>uint</td>
+  <td>列表的大小（以条目数表示）</td>
+</tr>
+<tr>
+  <td>list</td>
+  <td>annotation_set_ref_item[size]</td>
+  <td>列表的元素</td>
+</tr>
+</tbody>
+</table>
+
+<h3 id="set-ref-item">annotation_set_ref_item 格式</h3>
+
+<table class="format">
+<thead>
+<tr>
+  <th>名称</th>
+  <th>格式</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>annotations_off</td>
+  <td>uint</td>
+  <td>从文件开头到所引用注释集的偏移量；如果此元素没有任何注释，则该值为 <code>0</code>。该偏移量（如果为非零值）应该是到 <code>data</code> 区段中某个位置的偏移量。数据格式由下文的“<code>annotation_set_item</code>”指定。
+  </td>
+</tr>
+</tbody>
+</table>
+
+<h3 id="annotation-set-item">annotation_set_item</h3>
+<h4>引用自 annotations_directory_item、field_annotations_item、method_annotations_item 和 annotation_set_ref_item</h4>
+<h4>在数据区段中显示</h4>
+<h4>对齐：4 个字节</h4>
+
+<table class="format">
+<thead>
+<tr>
+  <th>名称</th>
+  <th>格式</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>size</td>
+  <td>uint</td>
+  <td>该集合的大小（以条目数表示）</td>
+</tr>
+<tr>
+  <td>entries</td>
+  <td>annotation_off_item[size]</td>
+  <td>该集合的元素。这些元素必须按 <code>type_idx</code> 以升序进行排序。
+  </td>
+</tr>
+</tbody>
+</table>
+
+<h3 id="off-item">annotation_off_item 格式</h3>
+
+<table class="format">
+<thead>
+<tr>
+  <th>名称</th>
+  <th>格式</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>annotation_off</td>
+  <td>uint</td>
+  <td>从文件开头到注释的偏移量。该偏移量应该是到 <code>data</code> 区段中某个位置的偏移量，且该位置的数据格式由下文的“<code>annotation_item</code>”指定。
+  </td>
+</tr>
+</tbody>
+</table>
+
+<h3 id="annotation-item">annotation_item</h3>
+<h4>引用自 annotation_set_item</h4>
+<h4>在数据区段中显示</h4>
+<h4>对齐：无（字节对齐）</h4>
+
+<table class="format">
+<thead>
+<tr>
+  <th>名称</th>
+  <th>格式</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>visibility</td>
+  <td>ubyte</td>
+  <td>此注释的预期可见性（见下文）</td>
+</tr>
+<tr>
+  <td>annotation</td>
+  <td>encoded_annotation</td>
+  <td>已编码的注释内容；采用上文的“<code>encoded_value</code> 编码”下的“<code>encoded_annotation</code> 格式”所述的格式。
+  </td>
+</tr>
+</tbody>
+</table>
+
+<h3 id="visibility">可见值</h3>
+
+<p>以下是 <code>annotation_item</code> 中 <code>visibility</code> 字段的选项：</p>
+
+<table class="format">
+<thead>
+<tr>
+  <th>名称</th>
+  <th>值</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>VISIBILITY_BUILD</td>
+  <td>0x00</td>
+  <td>预计仅在构建（例如，在编译其他代码期间）时可见</td>
+</tr>
+<tr>
+  <td>VISIBILITY_RUNTIME</td>
+  <td>0x01</td>
+  <td>预计在运行时可见</td>
+</tr>
+<tr>
+  <td>VISIBILITY_SYSTEM</td>
+  <td>0x02</td>
+  <td>预计在运行时可见，但仅对基本系统（而不是常规用户代码）可见</td>
+</tr>
+</tbody>
+</table>
+
+<h3 id="encoded-array-item">encoded_array_item</h3>
+<h4>引用自 class_def_item</h4>
+<h4>在数据区段中显示</h4>
+<h4>对齐：无（字节对齐）</h4>
+
+<table class="format">
+<thead>
+<tr>
+  <th>名称</th>
+  <th>格式</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>value</td>
+  <td>encoded_array</td>
+  <td>用于表示编码数组值的字节，采用上文的“<code>encoded_value</code> 编码”下的“<code>encoded_array</code> 格式”指定的格式。
+  </td>
+</tr>
+</tbody>
+</table>
+
+<h2 id="system-annotation">系统注释</h2>
+
+<p>系统注释用于表示关于类（以及方法和字段）的各种反射信息。这类信息通常只能通过客户端（非系统）代码来间接获取。</p>
+
+<p>系统注释在 <code>.dex</code> 文件中表示为注释，可见性设为 <code>VISIBILITY_SYSTEM</code>。</p><h3 id="dalvik-annotation-default">dalvik.annotation.AnnotationDefault</h3>
+<h4>在注释界面的方法中显示</h4>
+
+<p><code>AnnotationDefault</code> 注释会附加到各个注释界面，用于表示默认绑定。</p>
+
+<table class="format">
+<thead>
+<tr>
+  <th>名称</th>
+  <th>格式</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>value</td>
+  <td>Annotation</td>
+  <td>此注释的默认绑定，表示为此类型的注释。该注释不需要包含由注释定义的所有名称；缺少的名称根本没有默认值。
+  </td>
+</tr>
+</tbody>
+</table>
+
+<h3 id="dalvik-enclosingclass">dalvik.annotation.EnclosingClass</h3>
+<h4>在类中显示</h4>
+
+<p><code>EnclosingClass</code> 注释会附加到各个类，这些类会被定义为其他类本身的成员，或者匿名显示但不在方法正文中定义（例如，合成的内部类）。具有此注释的各个类还必须具有 <code>InnerClass</code> 注释。此外，一个类不得同时包含 <code>EnclosingClass</code> 和 <code>EnclosingMethod</code> 注释。</p>
+
+<table class="format">
+<thead>
+<tr>
+  <th>名称</th>
+  <th>格式</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>value</td>
+  <td>Class</td>
+  <td>在词法作用域最接近此类的类</td>
+</tr>
+</tbody>
+</table>
+
+<h3 id="dalvik-enclosingmethod">dalvik.annotation.EnclosingMethod</h3>
+<h4>在类中显示</h4>
+
+<p><code>EnclosingMethod</code> 注释会附加到已在方法正文中定义的各个类。具有此注释的各个类还必须具有 <code>InnerClass</code> 注释。此外，一个类不得同时包含 <code>EnclosingClass</code> 和 <code>EnclosingMethod</code> 注释。</p>
+
+<table class="format">
+<thead>
+<tr>
+  <th>名称</th>
+  <th>格式</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>value</td>
+  <td>Method</td>
+  <td>在词法作用域最接近此类的方法</td>
+</tr>
+</tbody>
+</table>
+
+<h3 id="dalvik-innerclass">dalvik.annotation.InnerClass</h3>
+<h4>在类中显示</h4>
+
+<p><code>InnerClass</code> 注释会附加到已在其他类定义的词法作用域中定义的各个类。<i></i><i></i>具有此注释的所有类还必须具有 <code>EnclosingClass</code> 注释或 <code>EnclosingMethod</code> 注释。</p>
+
+<table class="format">
+<thead>
+<tr>
+  <th>名称</th>
+  <th>格式</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>name</td>
+  <td>String</td>
+  <td>此类最初声明的简单名称（不包含任何软件包前缀）。如果此类是匿名显示，则名称为 <code>null</code>。
+  </td>
+</tr>
+<tr>
+  <td>accessFlags</td>
+  <td>int</td>
+  <td>此类最初声明的访问标记（由于源语言与目标虚拟机之间的执行模型不匹配，该标记可能与有效标记不同）</td>
+</tr>
+</tbody>
+</table>
+
+<h3 id="dalvik-memberclasses">dalvik.annotation.MemberClasses</h3>
+<h4>在类中显示</h4>
+
+<p><code>MemberClasses</code> 注释会附加到声明成员类（成员类是指具有名称的直接内部类）的各个类。</p>
+
+<table class="format">
+<thead>
+<tr>
+  <th>名称</th>
+  <th>格式</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>value</td>
+  <td>Class[]</td>
+  <td>成员类的数组</td>
+</tr>
+</tbody>
+</table>
+
+<h3 id="dalvik-annotation-method-parameters">dalvik.annotation.MethodParameters</h3>
+<h4>在方法中显示</h4>
+
+<p class="note"><strong>注意</strong>：此注释在 Android 7.1 之后的版本中添加。早期 Android 版本中存在的这类注释将被忽略。</p>
+
+<p><code>MethodParameters</code> 注释是可选项，并可用于提供参数元数据（例如参数名称和修饰符）。</p>
+
+<p>当运行时不需要参数元数据时，可在方法或构造函数中放心地省略这项注释。
+<code>java.lang.reflect.Parameter.isNamePresent()</code> 可用于检查某个参数中是否存在元数据；如果不存在这种信息，则关联的反射方法（例如 <code>java.lang.reflect.Parameter.getName()</code>）将在运行时回退到默认行为。</p>
+
+<p>如果编译器包含参数元数据，则必须包含已生成类（如枚举）的信息，因为参数元数据会指明参数是合成参数还是强制参数。</p>
+
+<p><code>MethodParameters</code> 注释仅用于描述单个方法的参数。因此，为了权衡代码大小和运行时效率，编译器可能会完全省略不含参数的构造函数和方法的注释。</p>
+
+<p>下面记录的数组必须与该方法所关联的 <code>method_id_item</code> dex 结构具有相同的大小，否则运行时会抛出 <code>java.lang.reflect.MalformedParametersException</code>。</p>
+
+<p>即：<code>method_id_item.proto_idx</code> -&gt; <code>proto_id_item.parameters_off</code> -&gt; <code>type_list.size</code> 必须与 <code>names().length</code> 和 <code>accessFlags().length</code> 相同。</p>
+
+<p>由于 <code>MethodParameters</code> 说明了所有形式方法参数，甚至包括源代码中没有明确声明或隐式声明的参数，因此数组的大小可能不同于签名或其他元数据信息（仅基于源代码中声明的显式参数）的大小。此外，<code>MethodParameters</code> 也不包含任何关于实际方法签名中不存在的类型注释接收器参数的信息。</p>
+
+<table class="format">
+<thead>
+<tr>
+  <th>名称</th>
+  <th>格式</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>names</td>
+  <td>String[]</td>
+  <td>关联方法的形式参数的名称。数组不得为空；但如果没有任何形式参数，则该项必须为空。如果使用该索引的形式参数没有名称，则数组中的值必须为空。<br />如果参数名称字符串为空或包含“.”、“;”、“[”或“/”，则运行时会抛出 <code>java.lang.reflect.MalformedParametersException</code>。
+  </td>
+</tr>
+<tr>
+  <td>accessFlags</td>
+  <td>int[]</td>
+  <td>关联方法的形式参数的访问标记。数组不得为空；但如果没有任何形式参数，则该项必须为空。<br />该值是包含以下值的位掩码：<br />
+  <ul>
+    <li>0x0010：final，表示该参数被声明为 final</li>
+    <li>0x1000：synthetic，表示该参数由编译器引入</li>
+    <li>0x8000：mandated，表示该参数是合成参数，但同样由语言规范所暗示</li>
+  </ul>如果任何位在此集合之外进行设置，则运行时会抛出 <code>java.lang.reflect.MalformedParametersException</code>。
+  </td>
+</tr>
+</tbody>
+</table>
+
+<h3 id="dalvik-signature">dalvik.annotation.Signature</h3>
+<h4>在类、字段和方法中显示</h4>
+
+<p><code>Signature</code> 注释会附加到各个类、字段或方法（按照比 <code>type_id_item</code> 所表示的类型更复杂的类型进行定义）。<code>.dex</code> 格式不定义签名的格式；它仅仅能够表示源语言成功实现该语言的语义所需要的任何签名。因此，签名通常不会通过虚拟机实现进行解析（或验证）。这些签名只会传递给更高级别的 API 和工具（如调试程序）。因此，每次使用签名时都应该记录下来，以免就只接收有效签名作出任何假设，从而明确防止出现句法无效的签名。</p>
+
+<p>由于签名字符串往往包含很多重复内容，因此 <code>Signature</code> 注释会被定义为字符串的数组，其中的重复元素会自然地引用相同的基本数据，而签名则被视为该数组中所有字符串的连接。<i></i>对于如何将签名分割成单独的字符串，则没有任何规则；这完全取决于生成 <code>.dex</code> 文件的工具。</p>
+
+<table class="format">
+<thead>
+<tr>
+  <th>名称</th>
+  <th>格式</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>value</td>
+  <td>String[]</td>
+  <td>该类或成员的签名，用作要连接在一起的字符串的数组</td>
+</tr>
+</tbody>
+</table>
+
+<h3 id="dalvik-throws">dalvik.annotation.Throws</h3>
+<h4>在方法中显示</h4>
+
+<p><code>Throws</code> 注释会附加到已声明要抛出一个或多个异常类型的各个方法。</p>
+
+<table class="format">
+<thead>
+<tr>
+  <th>名称</th>
+  <th>格式</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>value</td>
+  <td>Class[]</td>
+  <td>已抛出的异常类型的数组</td>
+</tr>
+</tbody>
+</table>
+
+</body></html>
