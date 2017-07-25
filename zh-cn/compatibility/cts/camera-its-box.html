@@ -1,0 +1,155 @@
+<html devsite><head>
+    <title>相机盒装 ITS</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>Android 相机图像测试套件 (ITS) 是 Android 兼容性测试套件 (CTS) 验证程序的一部分，并且包含可验证图像内容的测试。从 CTS 7.0_r8 开始，CTS 验证程序通过相机盒装 ITS 支持 ITS 测试自动化；而且继续支持手动测试以确保涵盖所有类型的 Android 设备。</p>
+
+<p>盒装 ITS 具有以下优势：</p>
+<ul>
+<li><strong>自动化</strong>。在测试期间不需要人为干预。</li>
+<li><strong>缩短测试时间</strong>。可以对前置/后置摄像头进行并行测试，将测试周期缩短了 50％。</li>
+<li><strong>问题排查更轻松</strong>。测试环境保持一致，减少了设置错误并提升了重现能力。</li>
+<li><strong>高效</strong>。能够针对单个相机/场景进行重试，提高了测试执行效率。</li>
+</ul>
+
+<h2 id="get-started">开始设置</h2>
+<p>盒装 ITS 包含一个通过计算机辅助设计 (CAD) 绘图进行激光切割的塑料盒、一部图表平板电脑和一部被测设备 (DUT)。开始使用相机盒装 ITS：</p>
+<ol>
+<li><a href="camera_its_iab_tech_drawings.zip">下载技术图纸</a>。</li>
+<li><a href="camera-its-box-assembly.html">组装盒子</a>。</li>
+<li>使用 CameraITS 软件<a href="#configure-tablet">配置平板电脑</a>。</li>
+<li><a href="#run-tests">运行测试</a>。</li>
+<li>从 DUT 中<a href="#get-results">获取结果</a>。</li>
+</ol>
+
+<h2 id="configure-tablet">配置平板电脑</h2>
+<p>本部分将分步说明如何设置 Pixel C 平板电脑以与 CameraITS 软件配合使用。</p>
+
+<p class="note"><strong>注意</strong>：CameraITS python 脚本会自动在平板电脑上为您设置以下选项：<br /><em>设置 &gt; 显示 &gt; 休眠 &gt; 无操作 30 分钟后</em>
+<br /><em>自动调节亮度 &gt; 关闭</em>
+</p>
+
+<ol>
+<li>为平板电脑接通电源并开机。如果系统提示您设置帐号，请跳过（CameraITS 不需要与平板电脑配对任何帐号）。</li>
+<li>将平板电脑更新为 Android 7.0 或更高版本（Android 6.x 及更早版本不支持 CameraITS）。</li>
+<li><em></em>通过依次转到“设置”&gt;“关于平板电脑”并点按<strong>版本号</strong>五次来启用开发者模式。</li>
+<li><em></em>返回“设置”并选择<strong>开发者选项</strong>。
+
+<table>
+<tbody><tr>
+<th>启用选项</th>
+<td>
+<ul>
+<li>开启</li>
+<li>不锁定屏幕</li>
+<li>USB 调试（这样可以允许主机在调试模式下运行平板电脑。首次将平板电脑连接到主机时，平板电脑会提示您“允许 USB 调试吗？”。如果平板电脑没有显示调试提示，请断开连接，然后重新连接平板电脑。）</li>
+</ul>
+</td>
+</tr>
+<tr>
+<th>停用选项</th>
+<td>
+<ul>
+<li>自动系统更新</li>
+<li>通过 USB 验证应用</li>
+</ul>
+</td>
+</tr>
+</tbody></table>
+</li>
+<li>通过运行 <code>$ adb devices</code> 列出可用设备来确定 DUT 和图表 ID。要确定 <code>device_id</code> 和 <code>chart_id</code>，请插上再拔下设备并观察连接和断开连接的设备。</li>
+<li>执行三次测试，以隐藏可能会遮盖平板电脑屏幕上的图表的提示和用户提示。
+<ol style="list-style-lower-alpha">
+<li>将平板电脑正面朝上放在桌子上（请勿将平板电脑连接到盒子的后板）</li>
+<li>运行以下命令：<pre>$ python tools/run_all_tests.py device=$device_id camera=0 chart=$chart_id scenes=2,3</pre>场景 2 和 3 需要平板电脑来显示图像，因此平板电脑会提示您“允许云端硬盘访问您设备上的照片、媒体和文件吗？”。通过按<strong>允许</strong>清除此提示（并防止以后再次出现提示）。</li>
+<li>再次运行该命令。平板电脑会提示您“保留此文件的副本吗？”，并建议保存到 Google 云端硬盘。通过按“云端硬盘”图标，然后按<strong>取消</strong>上传到云端硬盘，清除此提示（并防止以后再次出现提示）。</li>
+<li>最后，运行 <code>tools/run_all_tests.py</code> 并确认当前场景会随着脚本循环自动变换为不同的场景。尽管大多数测试将失败（因为相机未指向图表），但您可以验证平板电脑是否正确地循环播放场景，而不会在屏幕上显示任何提示或其他弹出式窗口。</li></ol></li></ol>
+
+<h2 id="run-tests">运行测试</h2>
+<p>在运行盒装 ITS 之前，请确保您的测试设置包含以下硬件和软件：</p>
+<ul>
+<li>一 (1) 个盒装 ITS</li>
+<li>一 (1) 部用于显示场景的 Pixel C，序列号：5811000011</li>
+<li>两 (2) 个 DUT，它们使用相同的版本号指纹并安装了 CTS 验证程序 7.0_8+ 应用。DUT 示例：<ul>
+<li>一 (1) 部用于后置摄像头 (0) 测试的 Pixel NOF26W，序列号：FA6BM0305016。要安装 CTS 验证程序应用，请解压缩 android-cts-verifier.zip，然后运行<pre>$ adb -s FA6BM0305016 install -r android-cts-verifier/CtsVerifier.apk</pre></li>
+<li>一 (1) 部用于前置摄像头 (1) 测试的 Pixel NOF26W，序列号：FA6BM0305439。要安装 CTS 验证程序应用，请解压缩 android-cts-verifier.zip，然后运行<pre>$ adb -s FA6BM0305439 install -r android-cts-verifier/CtsVerifier.apk</pre></li>
+</ul>
+</li></ul>
+
+<h3 id="scenes-0-4">运行场景 0-4</h3>
+<p>对前置和后置摄像头并行运行场景 0-4：</p>
+<pre>$ cd android-cts-verifier/CameraITS
+$ . build/envsetup.sh
+$ python tools/run_parallel_tests.py device0=FA6BM0305016 device1=FA6BM0305439 chart=5811000011
+</pre>
+
+<p>示例：</p>
+<table>
+<tbody><tr>
+<td><img src="images/camera_its_cam0.png" align="center"/></td>
+<td align="center"><img src="images/camera_its_cam0.png"/></td>
+</tr>
+<tr>
+<td align="center"><p class="caption"><strong>图 1</strong>. 相机 0 序列号：FA6BM0305016</p>
+</td>
+<td align="center"><p class="caption"><strong>图 2</strong>. 相机 1 序列号：FA6BM0305439</p>
+</td>
+</tr>
+</tbody></table>
+
+<h3 id="retry-scenes">重试场景</h3>
+<p>您可以为前置和后置摄像头或单个摄像头重试场景：</p><ul>
+<li>对前置和后置摄像头并行重试场景：<pre>$ python tools/run_parallel_tests.py device0=FA6BM0305016 device1=FA6BM0305439 chart=5811000011 scenes=3,4</pre></li>
+<li>对单个摄像头重试场景：<pre>$ python tools/run_all_tests.py device=FA6BM0305016 chart=5811000011 camera=1 scenes=3,4</pre></li>
+</ul>
+
+<h3 id="scenes-0-4">运行场景 5</h3>
+<p>场景 5 需要进行特殊设置并具有特定光线（有关详情，请参阅 CTS 验证程序下载内容中的 CameraITS.pdf 文档）。您可以单独运行场景 5（在盒子外部）以并行测试两部设备。</p>
+<ul>
+<li>在两部设备上为前置和后置摄像头并行运行场景 5：<pre>$ python tools/run_parallel_tests.py device0=FA6BM0305016 device1=FA6BM0305439 chart=5811000011 scenes=5</pre>
+<br /><img src="images/camera_its_scene5.png" width="50%"/><br />
+<strong>图 3</strong>. 相机场景 5。</li>
+<li>在单部设备上为前置和后置摄像头运行场景 5：<pre>$ python tools/run_all_tests.py device=FA6BM0305016 camera=0 scenes=5
+$ python tools/run_all_tests.py device=FA6BM0305016 camera=1 scenes=5
+</pre></li>
+</ul>
+
+<h2 id="get-results">获取结果</h2>
+<p>您可以在测试期间查看结果，并将完成的结果另存为报告。
+</p>
+<ul>
+<li><strong>查看运行测试的进度</strong>。命令 <code>run_parallel_tests</code> 仅在相机场景测试完成后输出结果，因此要在执行测试期间查看结果，您必须使用 Android 设备监控器或 <code>adb logcat</code> 来验证进度和/或查看屏幕截图。<br />
+<br />adb 命令示例：<pre>$ adb -s FA6BM0305016 logcat -v time</pre>屏幕截图命令示例：<pre>$ adb -s FA6BM0305016 shell screencap -p /sdcard/screencap.png
+$ adb -s FA6BM0305016 pull /sdcard/screencap.png
+$ display ./screencap.png
+</pre></li>
+<li><strong>查看结果</strong>。将相机 ITS 结果另存为报告：<ol>
+<li>按<strong>通过</strong>并保存报告：<br /><img src="images/camera_its_results.png" width="50%"/><br />
+<strong>图 4</strong>. 相机 ITS 报告。</li>
+<li>从设备中提取报告：<pre>$ adb -s FA6BM0305016 pull /sdcard/verifierReports</pre></li>
+<li>解压缩报告文件并查看 test_result.xml。
+<br /><img src="images/camera_its_reports.png"/><br />
+<strong>图 5</strong>. 相机 ITS 报告。<br /></li>
+</ol>
+</li>
+</ul>
+
+</body></html>
