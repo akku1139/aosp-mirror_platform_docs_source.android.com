@@ -1,0 +1,197 @@
+<html devsite>
+  <head>
+    <title>Customizing the Reference TV App</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          //www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>Live TV is a reference TV app designed for Android television devices. However,
+device manufacturers may want to add more product-specific functions, which are
+not covered by the default implementation of Live TV, such as picture
+adjustment, game mode, or 3D mode. To support these device-specific functions or
+options, Live TV supports these customizations:</p>
+
+<ul>
+  <li>Enabling time-shifting mode, which allows users to pause, fast forward,
+  and rewind. Configuring time-shifting mode to use
+  external storage instead of internal storage.</li>
+  <li>Adding options to the TV options row.</li>
+  <li>Adding a custom row and adding options in it.</li>
+</ul>
+
+<p class="note"><strong>Note</strong>: <a
+href="https://play.google.com/store/apps/details?id=com.google.android.tv">Live
+Channels</a> is Google's implementation of Live TV that can be used as is on
+devices with Google services. To customize Live Channels, replace
+<code>com.android.tv.*</code> with <code>com.google.android.tv.*</code> in these
+instructions.</p>
+
+<h2 id="customization-package">Customizing Live TV</h2>
+<p>To customize Live TV, the target Android TV device needs a customization package
+installed, which must be a prebuilt system app with the
+<code>com.android.tv.permission.CUSTOMIZE_TV_APP</code> permission.</p>
+
+<p>Live TV searches for a system package with this permission, checks the resource
+files, and detects the package's <a
+href="http://developer.android.com/reference/android/app/Activity.html">Activities</a>
+marked with specific <a
+href="http://developer.android.com/guide/topics/manifest/category-element.html">categories</a>
+to process customization.</p>
+
+<p class="key-point">
+<strong>Key point</strong>: Only one package can customize Live TV.</p>
+
+<h3 id="timeshift">Configuring time-shifting mode </h3>
+<p>Time-shifting (trickplay) allows Android television devices to pause, rewind,
+and fast forward channel playback. In the Live TV implementation, time-shifting
+can be used via the <em>Play controls</em> UI. Time-shifting is enabled by default in
+Live TV, but can be disabled. Time-shifting can also be configured to use
+external storage only.</p>
+
+<p>To configure time-shifting, add the string resource <code>trickplay_mode</code>
+and set its value to one of these options:</p>
+<ul>
+  <li><code>enabled</code>: Enable time-shifting. This is the default value when
+  no options are given.</li>
+  <li><code>disabled</code>: Disable time-shifting.</li>
+  <li><code>use_external_storage_only</code>: Configure time-shifting to use
+  external storage.</li>
+</ul>
+
+<pre class="devsite-click-to-copy">&lt;string name="trickplay_mode"&gt;use_external_storage_only&lt;/string&gt;</pre>
+
+<div>
+<img src="/devices/tv/images/trickplay.png" alt="Play controls UI is activated after
+pressing the D-pad center button." id="figure1" />
+</div>
+
+<p class="img-caption"><strong>Figure 1</strong>. <em>Play controls</em> UI is activated after pressing the
+D-pad center button.</p>
+
+<h3 id="tv-options">Customizing TV options</h3>
+<p>Device manufacturers can add custom options for Live TV settings to the existing
+TV options menu, such as adding a shortcut to the Sound Picture settings.</p>
+
+<p>To indicate a custom option, declare an intent-filter that filters the category
+<code>com.android.tv.category.OPTIONS_ROW</code> in an activity. The custom feature
+is implemented by the device manufacturer in the activity. The activity
+launches if the option is clicked. The activity's title and icon are used for
+the option. Customized TV options should match the existing UI to provide the
+best user experience.</p>
+
+<p class="note"><strong>Note</strong>: An activity can only handle one option
+because Live TV cannot differentiate intent-filters in an activity with the same
+category due to the Android limitation. See <a
+href="#multiple-options">Handle multiple options in an
+activity</a> for a workaround.</p>
+
+<p>Device manufacturers can also place a custom option before or after the existing
+options by defining <code>android:priority</code> in <code>AndroidManifest.xml</code>.
+An option with a defined priority value lower than 100 shows before the existing
+items and a value higher than 100 shows after. Multiple custom options (either
+before or after existing options) are sorted by their priority in ascending
+order. If options have the same priority, order among them is undefined.</p>
+
+<p>In this example, the option appears first in the TV options row, and
+PictureSettingsActivity launches if the option is clicked.</p>
+
+<pre class="devsite-click-to-copy">
+&lt;activity android:name=".PictureSettingsActivity"
+    android:label="@string/activity_label_picture_settings"
+          android:theme="@style/Theme.Panel"&gt;
+    &lt;intent-filter
+        android:icon="@drawable/ic_tvoptions_brightness"
+        android:label="@string/option_label_brightness"
+        android:priority="0"&gt;
+        &lt;action android:name="android.intent.action.MAIN" /&gt;
+        &lt;category android:name="com.android.tv.category.OPTIONS_ROW" /&gt;
+    &lt;/intent-filter&gt;
+&lt;/activity&gt;</pre>
+
+<p><img src="/devices/tv/images/tv-options-row.png" alt="Sample customized TV options row"
+ id="figure2" /></p>
+
+<p class="img-caption"><strong>Figure 2</strong>. Sample customized TV options row (Brightness and
+Energy Saving).</p>
+
+<p><img src="/devices/tv/images/tv-options.png" alt="Sample custom TV options."
+ id="figure3" /></p>
+
+<p class="img-caption"><strong>Figure 3</strong>. Sample custom TV options.</p>
+
+<h4 id="multiple-options">Handling multiple options in an activity</h4>
+<p>An option maps to an activity's intent-filter and vice-versa. Because Android
+doesn't differentiate intent-filters with the same categories and actions, an
+activity only handles one option, even if multiple intent-filters are declared
+in it. To handle multiple options in an activity, use
+<code>&lt;activity-alias&gt;</code> in <code>AndroidManifest.xml</code>. In the
+activity, use <code>getIntent().getComponent()</code> to identify the clicked option.</p>
+
+<pre class="devsite-click-to-copy">
+&lt;activity-alias android:name=".AnyUniqueName"
+    android:targetActivity=".PictureSettingsActivity"&gt;
+    &lt;intent-filter
+        android:icon="@drawable/ic_tvoptions_energy_saving"
+        android:label="@string/option_label_energy_saving"
+        android:priority="1"&gt;
+        &lt;action android:name="android.intent.action.MAIN" /&gt;
+        &lt;category android:name="com.android.tv.category.OPTIONS_ROW" /&gt;
+    &lt;/intent-filter&gt;
+&lt;/activity-alias&gt;</pre>
+
+<h3 id="custom-row">Creating a custom row</h3>
+<p>Device manufacturers can add and customize a row above the TV options row.
+This custom row is optional.</p>
+
+<h4 id="row-title">Row Title</h4>
+<p>Define a <code>partner_row_title</code> string in
+<code>res/values/strings.xml</code>. The string's value is used for the custom
+row title.</p>
+
+<pre class="devsite-click-to-copy">&lt;string name="partner_row_title"&gt;Partner Row&lt;/string&gt;</pre>
+
+<h4 id="custom-options">Custom options</h4>
+<p>To add custom options to the custom row, follow the process for adding options
+to the TV options menu, but change the category name to
+<code>com.android.tv.category.PARTNER_ROW</code> instead.</p>
+
+<pre class="devsite-click-to-copy">&lt;activity android:name=".ThreeDimensionalSettingDialogActivity"
+    android:label="@string/activity_label_3d"
+    android:theme="@android:style/Theme.Material.Light.Dialog"&gt;
+    &lt;intent-filter
+        android:icon="@drawable/ic_tvoptions_3d"
+        android:priority="0"&gt;
+        &lt;action android:name="android.intent.action.MAIN" /&gt;
+        &lt;category android:name="com.android.tv.category.PARTNER_ROW" /&gt;
+    &lt;/intent-filter&gt;
+&lt;/activity&gt;
+</pre>
+
+<p><img src="/devices/tv/images/partner-row.png" alt="Sample optional custom row."
+id="figure4" /></p>
+
+<p class="img-caption"><strong>Figure 4</strong>. Sample optional custom row.</p>
+
+
+<p><img src="/devices/tv/images/custom-dialog.png" alt="Sample custom option dialog."
+ id="figure5" /></p>
+
+<p class="img-caption"><strong>Figure 5</strong>. Sample custom option dialog.</p>
+</body>
+</html>
