@@ -1,0 +1,302 @@
+<html devsite><head>
+    <title>实现 ART 即时 (JIT) 编译器</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>
+在 Android 7.0 中，我们为 Android 运行时 (ART) 添加了一个具备代码归类功能的即时 (JIT) 编译器。ART 可以在 Android 应用运行时持续提高其性能。JIT 编译器补充了 ART 当前的预先 (AOT) 编译器的功能，有助于提高运行时性能、节省存储空间和加快应用更新及系统更新速度。
+</p>
+
+<p>
+相较于 AOT 编译器，JIT 编译器的表现也更为出色，因为它不会在应用自动更新期间或 OTA 时重新编译应用期间拖慢系统速度。因此，该功能对制造商在设备集成方面的要求也最低。
+</p>
+
+<p>
+JIT 和 AOT 使用相同的编译器，它们所进行的一系列优化几乎完全相同。根据实际情况生成的代码可能会有所不同。JIT 会利用运行时类型信息，并且可以更高效地进行内联。此外，我们有时会通过 JIT 进行 OSR 编译（即栈上替换）。这种编译会再次生成略有差异的代码。
+</p>
+
+<p>
+要了解更全面的信息，请参阅 developer.android.com 网站上的<a href="https://developer.android.com/preview/api-overview.html#jit_aot">配置文件引导的 JIT/AOT 编译</a>。
+</p>
+
+<h2 id="architectural-overview">架构概览</h2>
+
+<img src="images/jit-arch.png" alt="JIT 架构" width="633" id="JIT-architecture"/>
+<p class="img-caption">
+  <strong>图 1.</strong> JIT 架构 - 工作原理
+</p>
+
+<h2 id="flow">流程</h2>
+
+<p>
+JIT 编译采用以下方式运作：
+</p>
+
+<ol>
+<li>用户运行应用，而这随后就会触发 ART 加载 .dex 文件。
+</li><li>如果有 .oat 文件（即 .dex 文件的 AOT 二进制文件），ART 会直接使用该文件。请注意，虽然 .oat 文件会定期生成，但这并不意味着文件中会包含经过编译的代码（即 AOT 二进制文件）。
+</li><li>如果没有 .oat 文件，ART 会通过 JIT 或解释器执行 .dex 文件。如果有 .oat 文件，ART 将始终使用该文件。否则，它将在内存中解压 APK 文件并得到 .dex 文件，但是这会导致消耗大量内存（相当于 dex 文件的大小）。
+</li><li>对任何不是根据“加速”编译过滤器编译的应用启用 JIT（也就是说，要尽可能多地在应用中进行编译）。
+</li><li>将 JIT 配置文件数据转存到系统目录内的文件中。只有应用能访问这个目录。
+</li><li>AOT 编译 (dex2oat) 守护进程通过解析该文件来促进编译。</li>
+</ol>
+
+<img src="images/jit-profile-comp.png" alt="配置文件引导的编译" width="452" id="JIT-profile-comp"/>
+<p class="img-caption">
+  <strong>图 2.</strong> 配置文件引导的编译
+</p>
+
+<img src="images/jit-daemon.png" alt="JIT 守护进程" width="718" id="JIT-daemon"/>
+<p class="img-caption">
+  <strong>图 3.</strong> 守护进程工作原理
+</p>
+
+<p>
+举例来说，Google Play 就是一种由其他应用使用的服务。这些应用往往表现更像是共享库。
+</p>
+
+<h2 id="jit-workflow">JIT 工作流程</h2>
+<p>
+请从在接下来的示意图中查看下文介绍的 JIT 工作原理简要概览。
+</p>
+
+<img src="images/jit-workflow.png" alt="JIT 架构" width="707" id="JIT-workflow"/>
+<p class="img-caption">
+  <strong>图 4.</strong> JIT 数据流
+</p>
+
+<p>
+这表示：
+</p>
+
+<ul>
+<li>归类信息存储在代码缓存中，并且会在内存紧张时进行垃圾回收。
+</li><li>因此，无法保证在应用处于后台时所捕获的快照能够包含完整的数据（即 JIT 编译的所有内容）。
+</li><li>不会尝试确保记录所有内容，因为这将影响运行时的性能。
+</li><li>方法可能有三种不同的状态：<ul>
+ <li>已经过解释（dex 代码）
+ </li><li>已经过 JIT 编译
+ </li><li>已经过 AOT 编译
+</li><li>如果同时存在 JIT 和 AOT 代码（例如，由于反复进行逆优化），经过 JIT 编译的代码将是首选代码。
+</li><li>在不影响前台应用性能的情况下运行 JIT 所需的内存取决于相关应用。大型应用比小型应用需要更多内存。一般来说，大型应用所需的内存稳定维持在 4 MB 左右。</li></ul>
+</li>
+</ul>
+
+<h2 id="system-properties">系统属性</h2>
+
+<p>
+以下系统属性用于控制 JIT 行为：
+</p><ul>
+<li><code>dalvik.vm.usejit <true|false></true|false></code>- 是否启用 JIT。
+</li><li><code>dalvik.vm.jitinitialsize</code>（默认 64K）- 代码缓存的初始容量。代码缓存将定期进行垃圾回收 (GC) 并且可以视情况增加缓存。您或许可以使用以下属性查看您应用的代码缓存大小：<br />
+<code> $ adb shell dumpsys meminfo -d &amp;LT;pid&amp;GT;</code>
+</li><li><code>dalvik.vm.jitmaxsize</code>（默认 64M）- 代码缓存的最大容量。
+</li><li><code>dalvik.vm.jitthreshold &amp;LT;integer&amp;GT;</code>（默认 10000）- 此项属性是 JIT 编译方法时需要的“热度”计数器传递的阈值。“热度”计数器是运行时的内部度量标准。它包括调用次数、后向分支及其他因素。
+</li><li><code>dalvik.vm.usejitprofiles &amp;LT;true|false&amp;GT;</code> - 是否启用 JIT 配置文件；当 usejit 为 False 时也可以使用此属性。
+</li><li><code>dalvik.vm.jitprithreadweight &amp;LT;integer&amp;GT;</code>（默认为 <code>dalvik.vm.jitthreshold</code> / 20）- 应用界面线程的 JIT“示例”（参见 jitthreshold）的权重。用于加速方法的编译。在与应用交互时，这些方法会直接影响用户体验。
+</li><li><code>dalvik.vm.jittransitionweight &amp;LT;integer&amp;GT;</code> (<code>dalvik.vm.jitthreshold</code> / 10) - 在编译代码和解释器转换之间选择调用的方法的权重。这有助于确保所涉及的方法在编译时尽可能减少转换的量（转换需要很大开销）。
+</li>
+</ul>
+
+<h2 id="tuning">调整</h2>
+
+<p>
+如果需要，设备制造商可能会预先编译（某些）系统应用。使用 JIT 初始化的性能与预编译的性能差异取决于应用，但通常情况下两者会非常接近。可能值得注意的是，预编译的应用不会被归类，因此这会占用更多空间，并可能错过其他优化。
+</p>
+
+<p>
+在 Android 7.0 中，有种基于不同的用例来指定编译/验证级别的通用方式。例如，安装时间的默认选项是仅进行验证（并将编译推迟到后期）。编译级别可通过系统属性进行配置，默认值为：
+</p>
+
+<pre>
+pm.dexopt.install=interpret-only
+pm.dexopt.bg-dexopt=speed-profile
+pm.dexopt.ab-ota=speed-profile
+pm.dexopt.nsys-library=speed
+pm.dexopt.shared-apk=speed
+pm.dexopt.forced-dexopt=speed
+pm.dexopt.core-app=speed
+pm.dexopt.first-boot=interpret-only
+pm.dexopt.boot=verify-profile
+</pre>
+
+<p>
+如需了解如何使用，请参阅<a href="#recommendation">建议</a>一节。
+</p>
+
+<p>
+请注意，此处引用了 A/B 无线下载 (OTA) 更新。
+</p>
+
+<p>
+检查 <code>$ adb shell cmd package compile</code> 以了解使用情况。请注意，本文档中的所有命令前面都有一个美元 ($) 符号，在复制粘贴命令时应去掉该符号。下面是几个常见用例：
+</p>
+
+<h3 id="turn-on-jit-logging">打开 JIT 日志记录</h3>
+
+<pre>
+$ adb root
+$ adb shell stop
+$ adb shell setprop dalvik.vm.extra-opts -verbose:jit
+$ adb shell start
+</pre>
+
+<h3 id="disable-jit-and-run-applications-in-interpreter">禁用 JIT</h3>
+
+<pre>
+$ adb root
+$ adb shell stop
+$ adb shell setprop dalvik.vm.usejit false
+$ adb shell start
+</pre>
+
+<h3 id="force-compilation-of-a-specific-package">强制编译特定软件包</h3>
+
+<ul>
+<li>基于配置文件：
+<code>$ adb shell cmd package compile -m speed-profile -f
+my-package</code>
+</li><li>全部：
+<code>$ adb shell cmd package compile -m speed -f
+my-package</code></li>
+</ul>
+
+<h3 id="force-compilation-of-all-packages">强制编译所有软件包</h3>
+
+<ul>
+<li>基于配置文件：
+<code>$ adb shell cmd package compile -m speed-profile -f
+-a</code>
+</li><li>全部：
+<code>$ adb shell cmd package compile -m speed -f -a</code></li></ul>
+
+<h3 id="clear-profile-data-and-remove-compiled-code">清除配置文件数据并删除经过编译的代码</h3>
+
+<ul>
+<li>一个软件包：
+<code>$ adb shell cmd package compile --reset my-package</code>
+</li><li>所有软件包：
+<code>$ adb shell cmd package compile --reset
+-a</code></li>
+</ul>
+
+<h2 id="recommendation">建议</h2>
+
+<h3 id="runtime_compilation_level">编译/验证级别</h3>
+
+<p>
+请注意，我们强烈建议您使用以下 <code>pm.dexopt</code> 默认设置，因为它是经过我们测试而且我们将提供支持的唯一路径。
+</p>
+
+<pre>
+pm.dexopt.install=interpret-only
+pm.dexopt.bg-dexopt=speed-profile
+pm.dexopt.boot=verify-profile (or interpret-only)
+</pre>
+
+<p>
+以下是有关 <code>pm.dexopt</code> 选项的详细说明，以及我们提出这些建议的原因：
+</p>
+
+<pre>
+pm.dexopt.install
+</pre>
+
+<p>
+这是通过 Play 商店安装应用时所使用的编译过滤器。为了加快安装速度，我们建议 <code>interpret-only</code>。
+</p>
+
+<pre>
+pm.dexopt.bg-dexopt
+</pre>
+
+<p>
+这是当设备处于空闲状态和在充电以及充满电时所使用的编译过滤器。我们建议您使用 <code>speed-profile</code>，以利用配置文件引导的编译并节省存储空间。
+</p>
+
+<pre>
+pm.dexopt.ab-ota
+</pre>
+
+<p>
+这是在进行 A/B 无线下载 (OTA) 更新时使用的编译过滤器。如果设备支持 A/B OTA，我们建议使用 <code>speed-profile</code>，以利用配置文件引导的编译并节省存储空间。
+</p>
+
+<pre>
+pm.dexopt.nsys-library
+pm.dexopt.shared-apk
+pm.dexopt.core-app
+</pre>
+
+<p>
+您可以使用这些不同的选项来控制如何从根本上编译被其他应用使用的应用。对于此类应用，我们建议使用 <code>speed</code> 过滤器，因为相应平台不支持对其进行有效归类。
+</p>
+
+<pre>
+pm.dexopt.first-boot
+</pre>
+
+<p>
+在设备初次启动时使用的编译过滤器。此时使用的过滤器只会影响出厂后的启动时间。对于这种情况，我们建议使用 <code>interpret-only</code> 过滤器，以免用户在首次使用时需要很长时间才能开始使用手机。请注意，如果 /system 中的所有应用都已进行了速度编译，<code>pm.dexopt.first-boot</code> 将不会产生任何影响。
+</p>
+
+<pre>
+pm.dexopt.boot
+</pre>
+
+<p>
+无线下载更新后使用的编译过滤器。对于此选项，我们<strong>强烈</strong>建议使用 <code>verify-profile</code>，以免更新时间过久。
+</p>
+
+<h3 id="system_image_compilation_level">系统映像</h3>
+
+<p>
+本节为您提供有关如何最大限度地减小系统映像大小，同时尽可能维持最高性能水平的建议。请注意，本节内容是对上述关于<a href="#runtime_compilation_level">编译/验证级别</a>的指导原则的补充。
+</p>
+
+<p>
+为预构建版本选择较低级别的编译可以减小系统映像大小。为了达到应用性能和映像大小之间的最佳折中状态，我们强烈建议您使用 <code>interpret-only</code> 过滤器来编译预构建版本。为此，请修改以下文件来添加这些条目。
+</p>
+
+<p>请将以下条目添加到 <code>BoardConfig.mk</code>：</p>
+
+<pre>WITH_DEXPREOPT := true</pre>
+
+<p>请将以下条目添加到 <code>device.mk</code>：</p>
+
+<pre>
+PRODUCT_DEX_PREOPT_DEFAULT_FLAGS := --compiler-filter=interpret-only
+</pre>
+
+<p>
+与 <code>speed</code> 过滤器相比，使用 <code>interpret-only</code> 过滤器可将预构建版本已优化代码的大小缩小几乎一半（具体取决于应用）。借助此过滤器，运行时还可以归类预构建版本并执行配置文件引导的编译，以进一步节省数据分区存储空间。
+</p>
+
+<p>
+我们建议您不要为了进一步节省系统映像上的空间，而使用较低的编译/验证级别（例如：<code>verify-none</code>）或禁用预构建版本的优化功能。因为这会导致减缓应用的启动速度并会增加内存的消耗。
+</p>
+
+<h2 id="validation">验证</h2>
+
+<p>
+为了确保其功能版本能按预期运行，设备实现程序应该在 <code>android/art/test</code> 中运行 ART 测试。另请参阅 CTS 测试 <code>hostsidetests/compilation</code>，了解有关 userdebug 版本的信息。
+</p>
+
+</body></html>

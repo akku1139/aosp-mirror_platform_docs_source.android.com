@@ -1,0 +1,497 @@
+<html devsite><head>
+    <title>HDR 视频播放</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>高动态范围 (HDR) 视频是高品质视频解码领域的又一项前沿技术产物，它能够提供无与伦比的场景再现品质。它可以通过显著扩大亮度分量的动态范围（从当前的 100 cd/m2 到 1000 cd/m2）以及使用更宽的色彩空间 (BT 2020) 来达到这种效果。<sup></sup><sup></sup>如今，在电视领域中，HDR 是发展 4K 超高清显示技术的一项核心元素。</p>
+
+<p>Android 7.0 中已新增对 HDR 技术的初步支持，其中包括创建适当的常量以便发现和设置 HDR 视频通道。这意味着需要定义编解码器类型和显示模式，以及指定以何种方式将 HDR 数据传递至 MediaCodec 并将其提供给 HDR 解码器。HDR 技术仅在隧道视频播放模式下受支持。</p>
+
+<p>本文档的目的在于帮助应用开发者提供对 HDR 流播放技术的支持，并帮助原始设备制造商 (OEM) 和 SoC 供应商在 Android 7.0 上启用 HDR 功能。</p>
+
+<h2 id="technologies">支持的 HDR 技术</h2>
+
+<p>自 Android 7.0 版本开始，支持以下 HDR 技术。
+
+<table>
+<tbody>
+<tr>
+<th>技术</th>
+<th>杜比视界</th>
+<th>HDR 10</th>
+<th>VP9-HLG</th>
+<th>VP9-PQ</th>
+</tr>
+<tr>
+<th>编解码器</th>
+<td>AVC/HEVC
+</td>
+<td>HEVC
+</td>
+<td>VP9
+</td>
+<td>VP9
+</td>
+</tr>
+<tr>
+<th>传递函数</th>
+<td>ST-2084
+</td>
+<td>ST-2084
+</td>
+<td>HLG</td>
+<td>ST-2084
+</td>
+</tr>
+<tr>
+<th>HDR 元数据类型
+</th>
+<td>动态
+</td>
+<td>静态
+</td>
+<td>无
+</td>
+<td>静态
+</td>
+</tr>
+</tbody>
+</table>
+
+</p><p>在 Android 7.0 中，<b>仅定义了隧道模式下的 HDR 播放</b>，但设备可以新增相应的支持，以便使用不透明的视频缓冲区在 SurfaceView 上播放 HDR 视频。换而言之：</p>
+<ul>
+<li>尚无标准的 Android API 可用于检查设备是否可使用非隧道解码器来支持 HDR 播放。</li>
+<li>播发具有 HDR 播放功能的隧道视频解码器必须在连接到具有 HDR 功能的显示屏时支持 HDR 播放功能。</li>
+<li>AOSP Android 7.0 版本不支持 HDR 内容的 GL 合成。</li>
+</ul>
+
+<h2 id="discovery">发现</h2>
+
+<p>要使用 HDR 播放功能，您需要具备支持 HDR 功能的解码器，并需连接到支持 HDR 功能的显示屏。有时，某些技术需要用到特定的提取器。</p>
+
+<h3 id="display">显示屏</h3>
+
+<p>应用应使用全新 <code>Display.getHdrCapabilities</code> API 来查询特定显示屏支持的 HDR 技术。这基本上就是 CTA-861.3 中定义的 EDID 静态元数据块中的信息：</p>
+
+<ul>
+
+<li><code>public Display.HdrCapabilities getHdrCapabilities()</code><br />返回显示屏的 HDR 功能。</li>
+
+<li><code>Display.HdrCapabilities</code><br />
+封装特定显示屏的 HDR 功能。例如，该显示屏支持哪些 HDR 类型以及有关所需亮度数据的详细信息。</li>
+</ul>
+
+<p><b>常量：</b></p>
+
+<ul>
+<li><code>int HDR_TYPE_DOLBY_VISION</code><br />支持杜比视界。</li>
+
+<li><code>int HDR_TYPE_HDR10</code><br />支持 HDR10/PQ。</li>
+
+<li><code>int HDR_TYPE_HLG</code><br />支持混合 Log-Gamma (HLG)。</li>
+
+<li><code>float INVALID_LUMINANCE</code><br />无效亮度值。</li>
+</ul>
+
+<p><b>公开方法：</b></p>
+
+<ul>
+<li><code>float getDesiredMaxAverageLuminance()</code><br />
+为此显示屏返回所需的内容最大帧平均亮度数据（以 cd/cd/m2 为单位）<sup></sup>。</li>
+
+<li><code>float getDesiredMaxLuminance()</code><br />
+为此显示屏返回所需的内容最大亮度数据（以 cd/cd/m2 为单位）<sup></sup>。</li>
+
+<li><code>float getDesiredMinLuminance()</code><br />
+为此显示屏返回所需的内容最小亮度数据（以 cd/cd/m2 为单位）<sup></sup>。</li>
+
+<li><code>int[] getSupportedHdrTypes()</code><br />
+获取此显示屏的受支持 HDR 类型（请参阅“常量”）。如果此显示屏不支持 HDR，则返回空数组。</li>
+</ul>
+
+<h3 id="decoder">解码器</h3>
+
+<p>应用应使用现有的 <a href="https://developer.android.com/reference/android/media/MediaCodecInfo.CodecCapabilities.html#profileLevels"><code>CodecCapabilities.profileLevels</code></a> API 来验证是否支持新的具有 HDR 功能的配置文件：</p>
+
+<h4>杜比视界</h4>
+
+<p><code>MediaFormat</code> mime 常量：
+</p><blockquote><pre>
+String MIMETYPE_VIDEO_DOLBY_VISION
+</pre></blockquote><p></p>
+
+<p><code>MediaCodecInfo.CodecProfileLevel</code> 配置文件常量：</p>
+<blockquote><pre>
+int DolbyVisionProfileDvavPen
+int DolbyVisionProfileDvavPer
+int DolbyVisionProfileDvheDen
+int DolbyVisionProfileDvheDer
+int DolbyVisionProfileDvheDtb
+int DolbyVisionProfileDvheDth
+int DolbyVisionProfileDvheDtr
+int DolbyVisionProfileDvheStn
+</pre></blockquote>
+
+<p>杜比视界视频层和元数据必须通过视频应用逐帧连接到单个缓冲区。此过程可通过具有杜比视界功能的 MediaExtractor 自动完成。</p>
+
+<h4>HEVC HDR 10</h4>
+
+<p><code>MediaCodecInfo.CodecProfileLevel</code> 配置文件常量：</p><p>
+</p><blockquote><pre>
+int HEVCProfileMain10HDR10
+</pre></blockquote>
+
+<h4>VP9 HLG 与 VP9 PQ</h4>
+
+<p><code>MediaCodecInfo.CodecProfileLevel</code> 配置文件常量：</p>
+<blockquote><pre>
+int VP9Profile2HDR
+int VP9Profile3HDR
+</pre></blockquote>
+
+<p>如果某个平台支持具备 HDR 功能的解码器，则该平台还应该支持具备 HDR 功能的提取器。</p>
+
+<p>只有隧道解码器才能确保播放 HDR 内容。通过非隧道解码器播放可能会导致 HDR 信息丢失，且内容会被压缩为 SDR 色域。</p>
+
+<h3 id="extractor">提取器</h3>
+
+<p>Android 7.0 支持实现各项 HDR 技术的以下容器：</p>
+
+<table>
+<tbody>
+<tr>
+<th>技术</th>
+<th>杜比视界</th>
+<th>HDR 10</th>
+<th>VP9-HLG</th>
+<th>VP9-PQ</th>
+</tr>
+<tr>
+<th>容器</th>
+<td>MP4
+</td>
+<td>MP4
+</td>
+<td>WebM</td>
+<td>WebM</td>
+</tr>
+</tbody>
+</table>
+
+<p>该平台不支持探索（文件的）轨道是否需要 HDR 支持。应用可以解析编解码器专用数据，以确定轨道是否需要特定的 HDR 配置文件。</p>
+
+<h3 id="summary">摘要</h3>
+
+<p>各项 HDR 技术的组件要求如下表所示：</p>
+
+<div style="overflow:auto">
+<table>
+<tbody>
+<tr>
+<th>技术
+</th>
+<th>杜比视界</th>
+<th>HDR 10</th>
+<th>VP9-HLG</th>
+<th>VP9-PQ</th>
+</tr>
+<tr>
+<th>支持的 HDR 类型（显示屏）</th>
+<td>HDR_TYPE_DOLBY_VISION
+</td>
+<td>HDR_TYPE_HDR10
+</td>
+<td>HDR_TYPE_HLG
+</td>
+<td>HDR_TYPE_HDR10
+</td>
+</tr>
+<tr>
+<th>容器（提取器）
+</th>
+<td>MP4
+</td>
+<td>MP4
+</td>
+<td>WebM</td>
+<td>WebM</td>
+</tr>
+<tr>
+<th>解码器
+</th>
+<td>MIMETYPE_VIDEO_DOLBY_VISION
+</td>
+<td>MIMETYPE_VIDEO_HEVC
+</td>
+<td>MIMETYPE_VIDEO_VP9
+</td>
+<td>MIMETYPE_VIDEO_VP9
+</td>
+</tr>
+<tr>
+<th>配置文件（解码器）
+</th>
+<td>其中一个杜比配置文件</td>
+<td>HEVCProfileMain10HDR10
+</td>
+<td>VP9Profile2HDR 或
+VP9Profile3HDR
+</td>
+<td>VP9Profile2HDR 或
+VP9Profile3HDR
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<br />
+
+<p>注意：</p>
+<ul>
+<li>杜比视界比特流以杜比实验室定义的方式打包到 MP4 容器中。只要应用将访问单元从相应的层打包到用于杜比实验室所定义的解码器的单个访问单元，应用就可以实施它们自己的具有杜比功能的提取器。</li>
+<li>某个平台可能会支持具有 HDR 功能的提取器，但不支持具有 HDR 功能的相应解码器。</li>
+</ul>
+
+<h2 id="playback">播放</h2>
+
+<p>当应用确认支持 HDR 播放后，它可以通过几乎与播放非 HDR 内容相同的方式播放 HDR 内容，但需注意以下方面：</p>
+
+<ul>
+<li>对于杜比视界，无论特定的媒体文件/轨道是否需要具有 HDR 功能的解码器，都不可立即播放。应用必须提前获取此信息，或能够通过解析 MediaFormat 的编解码器专用数据区段来获取此信息。</li>
+<li><code>CodecCapabilities.isFormatSupported</code> 不考虑是否需要隧道解码器功能来支持此类配置文件。</li>
+</ul>
+
+<h2 id="enablinghdr">启用 HDR 平台支持</h2>
+
+<p>SoC 供应商和原始设备制造商(OEM) 必须采取进一步措施，才能让某款设备支持 HDR 平台。</p>
+
+<h3 id="platformchanges">Android 7.0 版本中针对 HDR 所做的平台更改</h3>
+
+<p>以下是原始设备制造商 (OEM) 和 SoC 供应商需知悉的平台（应用层/本地层）中的一些重要更改。</p>
+
+<h3 id="display">显示屏</h3>
+
+<h4>硬件合成器</h4>
+
+<p>具有 HDR 功能的平台必须支持将 HDR 内容与非 HDR 内容合成在一起。从 7.0 版开始，Android 不再对实际的合成特性和操作进行定义，但完成相应流程一般应遵循以下步骤：</p>
+<ol>
+<li>根据各层的颜色、母带和潜在的动态元数据，确定包含要合成的所有层的线性色彩空间/色域。
+<br />如果直接合成到显示屏，则可能需要与显示屏的色域相匹配的线性空间。</li>
+<li>将所有层转换为普通色彩空间。</li>
+<li>进行合成。</li>
+<li>如果是通过 HDMI 显示，则需要：<ol style="list-style-type: lower-alpha">
+<li>确定合成场景的颜色、母带和潜在的动态元数据。</li>
+<li>将产生的合成场景转换为导出的色彩空间/色域。</li></ol></li>
+<li>如果直接在显示屏中显示，则将产生的合成场景转换为所需的显示信号，以生成该场景。
+</li></ol>
+
+<h4>Display Discovery</h4>
+
+<p>HDR Display Discovery 功能只能通过 HWC2 受支持。设备实施者必须选择性地启用随 Android 7.0 一起发布的 HWC2 适配器，以确保此功能正常发挥作用。因此，平台必须添加对 HWC2 的支持，或扩展 AOSP 框架以允许通过某种方式提供此信息。HWC2 首次采用一种全新的 API，可以向框架和应用传播 HDR 静态数据。</p>
+
+<h4>HDMI</h4>
+
+<ul>
+<li>根据 <a href="https://standards.cta.tech/kwspub/published_docs/CTA-861.3-Preview.pdf">CTA-861.3</a> 第 4.2 节中定义的内容，连接的 HDMI 显示屏通过 HDMI EDID 播发其 HDR 功能。</li>
+<li>以下是应使用的 EOTF 映射：<ul>
+<li>ET_0 传统灰度系数 - SDR 亮度范围：未映射到任何 HDR 类型</li>
+<li>ET_1 传统灰度系数 - HDR 亮度范围：未映射到任何 HDR 类型</li>
+<li>ET_2 SMPTE ST 2084 - 映射到 HDR 类型 HDR10</li></ul></li>
+<li>通过 HDMI 实现杜比视界或 HLG 的信号支持（根据其相关机构的定义）。</li>
+<li>请注意，HWC2 API 会使用浮点期望亮度值，因此 8 位 EDID 值必须以合适的方式进行转换。</li></ul>
+
+<h3 id="decoders">解码器</h3>
+
+<p>平台必须添加具有 HDR 功能的隧道解码器，并播发其 HDR 支持。通常，具有 HDR 功能的解码器必须：</p>
+<ul>
+<li>支持隧道解码 (<code>FEATURE_TunneledPlayback</code>)。</li>
+<li>支持 HDR 静态元数据 (<code>OMX.google.android.index.describeHDRColorInfo</code>) 以及向显示屏/硬件合成器传播这类数据。对于 HLG，必须将适当的元数据提交至显示屏。</li>
+<li>支持色彩描述 (<code>OMX.google.android.index.describeColorAspects</code>) 以及向显示屏/硬件合成器传播这类描述。</li>
+<li>支持根据相关标准定义的 HDR 内嵌元数据。</li>
+</ul>
+
+<h4>杜比视界解码器支持</h4>
+
+<p>要支持杜比视界，平台必须添加具有杜比视界功能的 HDR OMX 解码器。基于杜比视界的特性，这通常是由一个或多个 AVC 和/或 HEVC 解码器以及合成器封装的解码器。此类解码器必须：</p>
+<ul>
+<li>支持 mime 类型的“视频/杜比视界”。</li>
+<li>播发支持的杜比视界配置文件/级别。</li>
+<li>接受包含杜比实验室定义的所有层的子访问单元的访问单元。</li>
+<li>接受由杜比实验室定义的编解码器专用数据。例如，包括杜比视界配置文件/级别的数据，也有可能是针对内部解码器的编解码器专用数据。</li>
+<li>根据杜比实验室的要求，支持在杜比视界配置文件/级别之间进行自适应切换。</li>
+</ul>
+
+<p>在配置解码器时，实际的杜比配置文件不会被传送到编解码器。只有在解码器启动后，配置文件才能通过编解码器专用数据完成传送。一个平台可选择支持多个杜比视界解码器：一个用于 AVC 配置文件，另一个用于 HEVC 配置文件，以便能够在配置时间内初始化底层编解码器。如果单个杜比视界解码器同时支持两种类型的配置文件，那么它还必须支持以自适应方式在这两种类型之间进行动态切换。</p>
+<p>如果一个平台不仅支持一般的 HDR 解码器，而且还提供具有杜比视界功能的解码器，那么它必须：</p>
+
+<ul>
+<li>提供杜比视界感知提取器（即使该平台不支持 HDR 播放）。</li>
+<li>提供至少支持杜比视界配置文件 X/级别 Y 的解码器。</li>
+</ul>
+
+<h4>HDR10 解码器支持</h4>
+
+<p>要支持 HDR10，平台必须添加一个支持 HDR10 的 OMX 解码器。上述解码器通常是采用隧道技术且支持解析和处理 HDMI 相关元数据的 HEVC 解码器。此类解码器（除了支持一般的 HDR 解码器之外）必须：</p>
+<ul>
+<li>支持 mime 类型“video/hevc”。</li>
+<li>播发支持的 HEVCMain10HDR10。要支持 HEVCMain10HRD10 配置文件，解码器还需要支持 HEVCMain10 配置文件，而该 HEVCMain10 配置文件需要支持相同级别的 HEVCMain 配置文件。</li>
+<li>支持解析母带元数据序列参数集 (SEI) 块，以及补充增强信息 (SPS) 中包含的与 HDR 相关的其他信息。</li>
+</ul>
+
+<h4>VP9 解码器支持</h4>
+
+<p>要支持 VP9 HDR，平台必须添加一个支持 VP9 Profile2 的 HDR OMX 解码器。上述解码器通常是采用隧道技术且支持处理 HDMI 相关元数据的 VP9 解码器。此类解码器（除了支持一般的 HDR 解码器之外）必须：</p>
+<ul>
+<li>支持 mime 类型“video/x-vnd.on2.vp9”。</li>
+<li>播发支持的 VP9Profile2HDR。要支持 VP9Profile2HDR 配置文件，解码器还需要支持相同级别的 VP9Profile2 配置文件。</li>
+</ul>
+
+<h3 id="extractors">提取器</h3>
+
+<h4>杜比视界提取器支持</h4>
+
+<p>支持杜比视界解码器的平台必须支持用于提取杜比视频内容的杜比提取器（也称 Dolby Extractor）。</p>
+<ul>
+<li>常规的 MP4 提取器只能从文件中提取基本层，而无法提取增强层或元数据层。因此，需要使用特殊的杜比提取器来从文件中提取数据。</li>
+<li>杜比提取器必须为每个杜比视频轨道（组）公开显示 1 到 2 个轨道：<ul>
+<li>用于组合的 2/3 层杜比流的具有“视频/杜比视界”类型的杜比视界 HDR 轨道。杜比实验室将定义 HDR 轨道的访问单元格式，该格式定义了如何将访问单元从基本层/增强层/元数据层打包到将被解码为单个 HDR 帧的单个缓冲区。</li>
+<li>如果杜比视界视频轨道包含单独的（向后兼容的）基本层 (BL)，则提取器还必须将其显示为单独的“video/avc”或“video/hevc”轨道。提取器必须为此轨道提供常规的 AVC/HEVC 访问单元。</li>
+<li>BL 轨道必须与 HDR 轨道具有相同的轨道唯一 ID（“轨道 ID”），以便应用了解它们是同一视频的两种编码形式。</li>
+<li>应用可以根据平台的能力决定选择哪个轨道。</li>
+</ul>
+</li>
+<li>杜比视界配置文件/级别必须以 HDR 轨道的轨道格式显示。</li>
+<li>如果平台提供了具有杜比视界功能的解码器，那么即使它不支持 HDR 播放，也必须提供杜比视界感知提取器。</li>
+</ul>
+
+<h4>HDR10 和 VP9 HDR 提取器支持</h4>
+
+<p>要支持 HDR10 或 VP9 HLG，对于提取器并没有额外的要求。平台必须提供 MP4 提取器以支持 MP4 中的 VP9 PQ。HDR 静态元数据必须传播到 VP9 PQ 比特流中，以便将此元数据传递到 VP9 PQ 解码器，并通过正常的 MediaExtractor =&gt; MediaCodec 通道传递到显示屏。</p>
+
+<h3 id="stagefright">扩展 Stagefright 以支持杜比视界</h3>
+
+<p>平台必须为 Stagefright 添加杜比视界格式支持：</p>
+<ul>
+<li>支持压缩端口的端口定义查询。</li>
+<li>支持 DV 解码器的配置文件/级别枚举。</li>
+<li>支持显示对应 DV HDR 轨道的 DV 配置文件/级别。</li>
+</ul>
+
+<h2 id="implementationnotes">技术方面的具体实施细节</h2>
+
+<h3 id="hdr10decoder">HDR10 解码器通道</h3>
+
+<p><img src="../images/hdr10_decoder_pipeline.png"/></p>
+
+<p class="img-caption"><strong>图 1.</strong> HDR10 通道</p>
+
+<p>HDR10 比特流会打包到 MP4 容器中。应用会使用常规的 MP4 提取器来提取帧数据，并将其发送到解码器。</p>
+
+<ul>
+<li><b>MPEG4 提取器</b><br />
+MPEG4Extractor 会将 HDR10 比特流识别为正常的 HEVC 流，系统将提取具有类型“video/HEVC”的 HDR 轨道。该框架会选择支持 Main10HDR10 配置文件的 HEVC 视频解码器来解码该轨道。</li>
+
+<li><b>HEVC 解码器</b><br />
+HDR 信息位于 SEI 或 SPS 中。HEVC 解码器会首先接收包含 HDR 信息的帧。随后，解码器会将 HDR 信息提取出来，并通知应用它正在解码 HDR 视频。HDR 信息会以解码器输出格式进行捆绑，这些信息稍后会传播到表层。</li>
+</ul>
+
+<h4>供应商操作</h4>
+<ol>
+<li>播发支持的 HDR 解码器配置文件和级别 OMX 类型。例如：<br />
+<code>OMX_VIDEO_HEVCProfileMain10HDR10</code>（和 <code>Main10</code>）</li>
+<li>实现对以下索引的支持：
+'<code>OMX.google.android.index.describeHDRColorInfo</code>'</li>
+<li>实现对以下索引的支持：
+'<code>OMX.google.android.index.describeColorAspects</code>'</li>
+<li>实现对 SEI 解析母带元数据的支持。</li>
+</ol>
+
+<h3 id="dvdecoder">杜比视界解码器通道</h3>
+
+<p><img src="../images/dolby_vision_decoder_pipleline.png"/></p>
+
+<p class="img-caption"><strong>图 2.</strong> 杜比视界通道</p>
+
+<p>将杜比比特流打包到由杜比实验室定义的 MP4 容器中。在理论上，应用可以使用常规 MP4 提取器独立提取基本层、增强层和元数据层；然而，这不符合当前的 Android MediaExtractor/MediaCodec 模式。</p>
+
+<ul>
+<li>杜比提取器：
+<ul>
+<li>杜比提取器可识别杜比比特流，并会针对每个杜比视频轨道（组）将不同的层显示为 1 到 2 个轨道：
+<ul>
+<li>用于组合的 2/3 层杜比流的具有“视频/杜比视界”类型的 HDR 轨道。杜比实验室将定义 HDR 轨道的访问单元格式，该格式定义了如何将访问单元从基本层/增强层/元数据层打包到单个缓冲区（将被解码为单个 HDR 帧）。</li>
+<li>（只有当 BL 是向后兼容时才可选）BL 轨道只包含必须通过常规 MediaCodec 解码器（例如：AVC/HEVC 解码器）才能解码的基本层。提取器应为此轨道提供常规的 AVC/HEVC 访问单元。此 BL 轨道必须与杜比轨道具有相同的轨道唯一 ID（“轨道 ID”），以便应用了解它们是同一视频的两种编码形式。</li>
+</ul>
+</li><li>应用可以根据平台的能力决定选择哪个轨道。</li>
+<li>由于 HDR 轨道具有特定的 HDR 类型，因此，框架将选择杜比视频解码器来解码该轨道。BL 轨道将由常规 AVC/HEVC 视频解码器来解码。</li>
+</ul>
+
+</li><li>杜比解码器：<ul>
+<li>杜比解码器会接收包含所有层（EL+BL+MD 或 BL+MD）所需访问单元的访问单元。</li>
+<li>单个层的 CSD（编解码器专用数据，例如 SPS+PPS+VPS）信息可以打包成 1 个杜比所定义的 CSD 帧。前提是，需要有一个单个的 CSD 帧。</li>
+</ul>
+</li></ul>
+
+<h4>杜比操作</h4>
+<ol>
+<li>对抽象杜比解码器（即 HDR 解码器预期的缓冲格式）的各种杜比容器方案（例如：BL+EL+MD）的访问单元的打包进行定义。</li>
+<li>定义抽象杜比解码器的 CSD 打包。</li>
+</ol>
+
+<h4>供应商操作</h4>
+<ol>
+<li>实施杜比提取器。此任务也可以由杜比实验室来完成。</li>
+<li>将杜比提取器集成到框架中。入口点是 <code>frameworks/av/media/libstagefright/MediaExtractor.cpp</code>。</li>
+<li>声明 HDR 解码器配置文件和级别 OMX 类型。例如：<code>OMX_VIDEO_DOLBYPROFILETYPE</code> 和 <code>OMX_VIDEO_DOLBYLEVELTYP</code>。</li>
+<li>实现对以下索引的支持：
+<code>'OMX.google.android.index.describeColorAspects</code>'</li>
+<li>将动态 HDR 元数据传播到每个帧中的应用和表层。通常，这种信息必须打包成杜比实验室定义的解码帧，因为 HDMI 标准不提供将其传递给显示屏的途径。</li>
+</ol>
+
+<h3 id="v9decoder">VP9 解码器通道</h3>
+
+<p><img src="../images/vp9-pq_decoder_pipleline.png"/></p>
+
+<p class="img-caption"><strong>图 3.</strong> VP9-PQ 通道</p>
+
+<p>VP9 比特流将按照 WebM 团队定义的方式打包到 WebM 容器中。在将帧发送到解码器之前，应用需要使用 WebM 提取器将 HDR 元数据从比特流中提取出来。</p>
+
+<ul>
+<li>WebM 提取器：<ul>
+<li>WebM 提取器从<a href="http://www.webmproject.org/docs/container/#location-of-the-colour-element-in-an-mkv-file">容器</a>中提取 HDR <a href="http://www.webmproject.org/docs/container/#colour">元数据</a>和帧。</li>
+</ul>
+
+</li><li>VP9 解码器：<ul>
+<li>解码器接收 Profile2 比特流，并将其解码为普通 VP9 流。</li>
+<li>解码器接收任何来自框架的 HDR 静态元数据。</li>
+<li>解码器通过 VP9 PQ 流的比特流访问单元接收静态元数据。</li>
+<li>VP9 解码器必须能够将 HDR 静态/动态元数据传播到显示屏。</li>
+</ul>
+</li></ul>
+
+<h4>供应商操作</h4>
+
+<ol>
+<li>实现对以下索引的支持：<code>OMX.google.android.index.describeHDRColorInfo</code></li>
+<li>实现对以下索引的支持：<code>OMX.google.android.index.describeColorAspects</code></li>
+<li>传播 HDR 静态元数据</li>
+</ol>
+
+</body></html>
