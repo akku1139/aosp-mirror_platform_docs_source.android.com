@@ -1,0 +1,156 @@
+<html devsite><head>
+    <title>实现设备管理功能</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>本部分介绍如何启用和验证设备管理功能（为托管资料准备设备时所需）。同时，本部分还介绍了在企业环境中至关重要的设备所有者用户情境。</p>
+
+<p>除了 AOSP 代码之外，设备还需要以下组件来与托管资料配合使用。</p>
+
+<h2 id="requirements">常规要求</h2>
+<p>要支持设备管理，设备必须符合以下常规要求。</p>
+
+<h3 id="HAL_values">热 HAL 值</h3>
+<p>Android 7.0 及更高版本提供对 HardwarePropertiesManager API 的支持，该 API 是用于设备监控和运行状况报告的 API，可让应用查询设备硬件的状态。该 API 通过 <code>android.os.HardwarePropertiesManager</code> 提供，并通过 <code>HardwarePropertiesManagerService</code> 对硬件热 HAL (<code>hardware/libhardware/include/hardware/thermal.h</code>) 进行调用。该 API 是受保护的 API，也就是说，只有设备/资料所有者（即设备策略控制器 (DPC) 应用）和现有的 <code>VrListenerService</code> 可以调用它。</p>
+
+<p>要支持 HardwarePropertiesManager API，设备热 HAL 实现必须能够报告以下值：</p>
+
+<table>
+<tbody><tr>
+<th width="32%">值</th>
+<th>报告范围</th>
+<th>启用</th>
+</tr>
+
+<tr>
+  <td>[CPU|GPU|电池|设备表面] 的温度</td>
+  <td>组件温度（以摄氏度为单位）</td>
+  <td>应用可以查看设备温度和组件限制/关闭温度</td>
+</tr>
+
+<tr>
+  <td>CPU 处于活动状态的时间/总启用时间</td>
+  <td>时间（以毫秒为单位）</td>
+  <td>应用可以查看每个核心的 CPU 使用率</td>
+</tr>
+
+<tr>
+  <td>风扇转速</td>
+  <td>每分钟转数 (RPM)</td>
+  <td>应用可以查看风扇转速</td>
+</tr>
+
+</tbody></table>
+
+<p>当核心（或 GPU、电池、风扇）进入离线状态或接通/断开电源时，实现应正确处理报告值对应的情况。</p>
+
+<h3 id="low_ram">不允许低 RAM</h3>
+<p>设备不得是低 RAM 设备，这意味着不得定义 <code>ro.config.low_ram</code>。当定义了 <code>low_ram</code> 标记时，框架会自动将用户数限制为 1。</p>
+
+<h3 id="uses-feature">Uses-feature</h3>
+<p>设备必须定义以下 <code>uses-feature</code>：</p>
+
+<pre>
+android.software.managed_users
+android.software.device_admin
+</pre>
+
+<p>要确认这些 <code>uses-feature</code> 值已在设备上进行了定义，请运行：<code>adb shell pm list features</code>。</p>
+
+<h3 id="required_apps">仅限基本应用</h3>
+<p>默认情况下，在配置托管设备时，只能启用资料正确运行所必需的应用。原始设备制造商 (OEM) 必须通过修改以下文件确保托管资料或设备具有所有必需的应用：</p>
+
+<pre>vendor_required_apps_managed_profile.xml
+vendor_required_apps_managed_device.xml
+</pre>
+
+<p>Nexus 设备的示例：</p>
+
+<p><code>packages/apps/ManagedProvisioning/res/values/vendor_required_apps_managed_device.xml</code></p>
+
+<pre>&lt;resources&gt;
+  &lt;!-- A list of apps to be retained on the managed device --&gt;
+  &lt;string-array name="vendor_required_apps_managed_device"&gt;
+    &lt;item&gt;com.android.vending&lt;/item&gt; &lt;!--­Google Play --&gt;
+    &lt;item&gt;com.google.android.gms&lt;/item&gt; &lt;!--­Required by Play --&gt;
+    &lt;item&gt;com.google.android.contacts&lt;/item&gt; &lt;!--­Google or OEM Contacts­--&gt;
+    &lt;item&gt;com.google.android.googlequicksearchbox&lt;/item&gt; &lt;!--­Google Launcher --&gt;
+    &lt;item&gt;com.google.android.launcher&lt;/item&gt; &lt;!--­Google Launcher or OEM Launcher --&gt;
+    &lt;item&gt;com.google.android.dialer&lt;/item&gt; &lt;!--­Google or OEM dialer to enable making phone calls --&gt;
+  &lt;/string-array&gt;
+&lt;/resources&gt;
+</pre>
+
+<p><code>
+packages/apps/ManagedProvisioning/res/values/vendor_required_apps_managed_profile.xml
+</code></p>
+
+<pre>
+&lt;resources&gt;
+    &lt;!-- A list of apps to be retained in the managed profile. This includes any Google experience apps required. --&gt;
+    &lt;string-array name="vendor_required_apps_managed_profile"&gt;
+        &lt;item&gt;com.android.vending&lt;/item&gt; &lt;!-- Google Play --&gt;
+        &lt;item&gt;com.google.android.gms&lt;/item&gt; &lt;!-- Required by Play --&gt;
+        &lt;item&gt;com.google.android.contacts&lt;/item&gt; &lt;!-- Google or OEM Contacts --&gt;
+    &lt;/string-array&gt;
+&lt;/resources&gt;
+</pre>
+
+<h2 id="launcher">启动器要求</h2>
+
+<p>您必须更新启动器，以支持用来标记应用的图标徽章（在 AOSP 中提供，代表托管应用）以及其他徽章界面元素（如近期活动和通知）。如果您在 AOSP 中使用未经修改的 <a href="https://android.googlesource.com/platform/packages/apps/Launcher3/">launcher3</a>，那么您可能已经支持此徽章功能。</p>
+
+<h2 id="nfc">NFC 要求</h2>
+
+<p>NFC 设备必须在“开箱即用”的过程（即安装向导）中启用 NFC，并配置为接受托管配置 Intent：</p>
+
+<p><code>packages/apps/Nfc/res/values/provisioning.xml</code></p>
+<pre>&lt;bool name="enable_nfc_provisioning"&gt;true&lt;/bool&gt;
+&lt;item&gt;application/com.android.managedprovisioning&lt;/item&gt;
+</pre>
+
+<h2 id="setup_wizard">设置要求</h2>
+
+<p>支持“开箱即用”过程（即安装向导）的设备应实现设备所有者配置功能。当“开箱即用”过程开始时，应检查其他进程（如设备所有者配置）是否已经完成用户设置，如果已完成，则应触发返回主屏幕的 Intent 完成设置。配置应用会捕获此 Intent，然后将控制权交给新设置的设备所有者。</p>
+
+<p>要满足设置要求，请将以下代码添加到设备设置的主要活动中：</p>
+
+<pre>@Override
+   protected void onStart() {
+        super.onStart();
+
+        // When returning to a setup wizard activity, check to see if another setup process
+        // has intervened and, if so, complete an orderly exit
+        boolean completed = Settings.Secure.getInt(getContentResolver(),
+                Settings.Secure.USER_SETUP_COMPLETE, 0) != 0;
+        if (completed) {
+           startActivity(new Intent(Intent.ACTION_MAIN, null)
+                .addCategory(Intent.CATEGORY_HOME)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
+                        | Intent.FLAG_ACTIVITY_CLEAR_TASK
+                        | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED));
+           finish();
+       }
+
+       ...
+   }
+</pre>
+
+</body></html>

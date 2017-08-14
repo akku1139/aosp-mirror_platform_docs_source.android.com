@@ -1,0 +1,229 @@
+<html devsite><head>
+    <title>对要发布的版本进行签名</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>Android OS 映像在两个地方使用加密签名：</p>
+<ol>
+<li>映像中的所有 .apk 文件都必须经过签名。Android 软件包管理器通过下列两种方式使用 .apk 签名：<ul>
+<li>更换应用时，必须使用与旧应用相同的密钥对其签名，才能存取旧应用的数据。无论是通过覆盖 .apk 来更新用户应用，还是使用安装在 <code>/data</code> 下的新版本应用来覆盖系统应用，这一点都适用。</li>
+<li>如果两个或多个应用想要共享同一个用户 ID（方便共享数据等），则必须使用相同的密钥对它们进行签名。</li></ul></li>
+<li>必须使用符合系统预期的密钥对 OTA 更新包进行签名，否则在安装过程中 OTA 更新包将被拒绝。</li>
+</ol>
+
+<h2 id="release-keys">发布密钥</h2>
+
+<p>Android 树的 <code>build/target/product/security</code> 目录中提供了“测试密钥”<i></i>。使用 <code>make</code> 构建 Android OS 映像便可使用这些测试密钥对所有 .apk 文件进行签名。由于这些测试密钥是公开的，任何人都可以使用相同的密钥对他们自己的 .apk 文件签名，这样他们就能够替换或盗用您的操作系统映像中构建的系统应用。因此，您必须使用只有您自己才能访问的特殊“发布密钥”<i></i>集对公开发布或部署的 Android OS 映像进行签名。</p>
+
+<p>要生成您自己的唯一发布密钥集，请在 Android 树的根目录下运行以下命令：</p>
+
+<pre class="no-pretty-print">
+subject='/C=US/ST=California/L=Mountain View/O=Android/OU=Android/CN=Android/emailAddress=android@android.com'
+mkdir ~/.android-certs
+for x in releasekey platform shared media; do \
+    ./development/tools/make_key ~/.android-certs/$x "$subject"; \
+done
+</pre>
+
+<p>您需要对 <code>$subject</code> 进行更改以反映贵组织的信息。您可以使用任何目录，但要注意选择一个已备份且安全的位置。部分供应商会使用强密码加密私钥，并将其存储在源代码控制系统中；其他供应商则将他们的发布密钥完全存储在其他地方，如气隙阻隔的计算机上。</p>
+
+<p>要生成发布映像，请使用以下命令：</p>
+
+<pre class="no-pretty-print">
+make dist
+./build/tools/releasetools/sign_target_files_apks \
+    -o \    # explained in the next section
+    -d ~/.android-certs out/dist/*-target_files-*.zip \
+    signed-target_files.zip
+</pre>
+
+<p><code>sign_target_files_apks</code> 脚本将目标文件 .zip 作为输入文件，并生成一个新的目标文件 .zip，其中所有的 .apk 都已使用新密钥签名。您可以在 <code>signed-target_files.zip</code> 中的 <code>IMAGES/</code> 目录下找到新签名的映像。</p>
+
+<h2 id="sign-ota-packages">对 OTA 更新包进行签名</h2>
+
+您可以按照以下步骤将已签名的目标文件 zip 转换为已签名的 OTA 更新 zip：
+
+<pre class="no-pretty-print">
+./build/tools/releasetools/ota_from_target_files \
+    -k ~/.android-certs/releasekey \
+    signed-target_files.zip \
+    signed-ota_update.zip
+</pre>
+
+<h3 id="signatures-sideloading">签名和旁加载</h3>
+<p>旁加载不会绕过 Recovery 流程中的正常软件包签名验证机制。在安装一个软件包之前，Recovery 会验证该软件包是否由与 Recovery 分区中存储的公钥相匹配的私钥进行签名，这与利用无线方式传输的软件包的处理方式一样。
+</p>
+
+<p>从主系统接收的更新包通常要接受两次验证：一次是由主系统使用 Android API 中的 <code><a href="http://developer.android.com/reference/android/os/RecoverySystem.html#verifyPackage">RecoverySystem.verifyPackage()</a></code> 方法进行验证，第二次则是通过 Recovery 进行验证。RecoverySystem API 对照存储在主系统 <code>/system/etc/security/otacerts.zip
+</code> 文件（默认情况下）中的公钥对签名进行检查。Recovery 对照存储在 Recovery 分区 RAM 磁盘中的 <code>/res/keys</code> 文件中的公钥对签名进行检查。</p>
+
+<p>默认情况下，由此版本生成的目标文件 .zip 会将 OTA 证书设置为与测试密钥相匹配。在发布的映像上，必须使用不同的证书，这样设备才能验证更新包的真实性。如前面一部分所示，将 <code>-o</code> 标志传递到 <code>sign_target_files_apks</code> 即可将测试密钥证书替换成您的证书目录中的发布密钥证书。</p>
+
+<p>通常情况下，系统映像和 Recovery 映像存储的是相同的 OTA 公钥集。通过将密钥仅<i></i>添加至 Recovery 密钥集，可对只能通过旁加载安装的 apk 包（假设主系统的更新下载机制正确地对照 otacerts.zip 进行验证）签名。您可以通过在产品定义中设置 PRODUCT_EXTRA_RECOVERY_KEYS 变量来指定其他仅可纳入 Recovery 中的密钥：</p>
+
+<p><code>vendor/yoyodyne/tardis/products/tardis.mk</code></p>
+<pre class="no-pretty-print">
+ [...]
+
+PRODUCT_EXTRA_RECOVERY_KEYS := vendor/yoyodyne/security/tardis/sideload
+</pre>
+
+<p>其中包括 Recovery 密钥文件中的公钥 <code>vendor/yoyodyne/security/tardis/sideload.x509.pem</code>，因此它可以安装用此公钥签名的 apk 包。但 otacerts.zip 中不<i></i>包含额外的密钥，因此正确验证下载包的系统不会针对用此密钥签名的 apk 包调用 Recovery。</p>
+
+<h2 id="certificates-keys">证书和私钥</h2>
+<p>每个密钥都包含两个文件：一个是扩展名为 .x509.pem 的证书<i></i>，另一个是扩展名为 .pk8 的私钥<i></i>。私钥需要加以保密，并用于对 apk 包进行签名。密钥本身也可能受密码保护。相比之下，证书只包含公开的一半密钥，因此可以大范围地分发。证书被用于验证某个 apk 包是否由相应的私钥进行签名。</p>
+<p>标准 Android 版本使用四个密钥，所有这些密钥都位于 <code>
+build/target/product/security</code> 中：</p>
+
+<dl>
+<dt>testkey</dt>
+<dd>适用于未另外指定密钥的 apk 包的通用默认密钥。</dd>
+<dt>平台</dt>
+<dd>适用于核心平台所包含的 apk 包的测试密钥。</dd>
+<dt>共享</dt>
+<dd>适用于家庭/联系人进程中的共享内容的测试密钥。</dd>
+<dt>媒体</dt>
+<dd>适用于媒体/下载系统所包含的 apk 包的测试密钥。</dd></dl>
+
+<p>单个 apk 包通过在其 Android.mk 文件中设置 LOCAL_CERTIFICATE 来指定其中一个密钥。（如果未设置此变量，则使用 testkey。）您还可以通过路径名指定完全不同的密钥，例如：</p>
+
+<p><code>device/yoyodyne/apps/SpecialApp/Android.mk</code></p>
+<pre class="no-pretty-print">
+ [...]
+
+LOCAL_CERTIFICATE := device/yoyodyne/security/special
+</pre>
+
+<p>现在，此版本使用 <code>device/yoyodyne/security/special.{x509.pem,pk8}
+</code> 密钥来对 SpecialApp.apk 进行签名。此版本仅可使用不受<i></i>密码保护的私钥。</p>
+
+<h2 id="advanced-signing-options">高级签名选项</h2>
+<p>当您运行 <code>sign_target_files_apks</code> 脚本时，您必须在命令行中指定此版本中每个密钥的替换密钥。
+<code>-k <i>src_key</i>=<i>
+dest_key</i></code> 标志每次指定一个密钥替换。<code>-d <i>dir</i></code> 标志可指定一个含有四个密钥的目录来替换所有位于 <code>build/target/product/security</code> 中的密钥；这相当于使用 <code>-k</code> 四次来指定映射：</p>
+
+<pre class="no-pretty-print">
+build/target/product/security/testkey  = dir/releasekey
+build/target/product/security/platform = dir/platform
+build/target/product/security/shared   = dir/shared
+build/target/product/security/media    = dir/media
+</pre>
+
+<p>对于假定的 tardis 产品，您需要五个受密码保护的密钥：四个用于替换 <code>build/target/product/security</code> 中的四个密钥，其余一个则用于替换在上述示例中提到的 SpecialApp 所需的额外的 <code>keydevice/yoyodyne/security/special</code>。如果密钥位于以下文件中：</p>
+
+<pre class="no-pretty-print">
+vendor/yoyodyne/security/tardis/releasekey.x509.pem
+vendor/yoyodyne/security/tardis/releasekey.pk8
+vendor/yoyodyne/security/tardis/platform.x509.pem
+vendor/yoyodyne/security/tardis/platform.pk8
+vendor/yoyodyne/security/tardis/shared.x509.pem
+vendor/yoyodyne/security/tardis/shared.pk8
+vendor/yoyodyne/security/tardis/media.x509.pem
+vendor/yoyodyne/security/tardis/media.pk8
+vendor/yoyodyne/security/special.x509.pem
+vendor/yoyodyne/security/special.pk8           # NOT password protected
+vendor/yoyodyne/security/special-release.x509.pem
+vendor/yoyodyne/security/special-release.pk8   # password protected
+</pre>
+
+<p>那么您将对所有应用签名，如下所示：</p>
+
+<pre class="no-pretty-print">
+% <b>./build/tools/releasetools/sign_target_files_apks \
+    -d vendor/yoyodyne/security/tardis \
+    -k vendor/yoyodyne/special=vendor/yoyodyne/special-release \
+    -o \
+    tardis-target_files.zip signed-tardis-target_files.zip</b>
+Enter password for vendor/yoyodyne/security/special-release key&gt;
+Enter password for vendor/yoyodyne/security/tardis/media key&gt;
+Enter password for vendor/yoyodyne/security/tardis/platform key&gt;
+Enter password for vendor/yoyodyne/security/tardis/releasekey key&gt;
+Enter password for vendor/yoyodyne/security/tardis/shared key&gt;
+    signing: Phone.apk (vendor/yoyodyne/security/tardis/platform)
+    signing: Camera.apk (vendor/yoyodyne/security/tardis/media)
+    signing: Special.apk (vendor/yoyodyne/security/special-release)
+    signing: Email.apk (vendor/yoyodyne/security/tardis/releasekey)
+        [...]
+    signing: ContactsProvider.apk (vendor/yoyodyne/security/tardis/shared)
+    signing: Launcher.apk (vendor/yoyodyne/security/tardis/shared)
+rewriting SYSTEM/build.prop:
+  replace:  ro.build.description=tardis-user Eclair ERC91 15449 test-keys
+     with:  ro.build.description=tardis-user Eclair ERC91 15449 release-keys
+  replace: ro.build.fingerprint=generic/tardis/tardis/tardis:Eclair/ERC91/15449:user/test-keys
+     with: ro.build.fingerprint=generic/tardis/tardis/tardis:Eclair/ERC91/15449:user/release-keys
+    signing: framework-res.apk (vendor/yoyodyne/security/tardis/platform)
+rewriting RECOVERY/RAMDISK/default.prop:
+  replace:  ro.build.description=tardis-user Eclair ERC91 15449 test-keys
+     with:  ro.build.description=tardis-user Eclair ERC91 15449 release-keys
+  replace: ro.build.fingerprint=generic/tardis/tardis/tardis:Eclair/ERC91/15449:user/test-keys
+     with: ro.build.fingerprint=generic/tardis/tardis/tardis:Eclair/ERC91/15449:user/release-keys
+using:
+    vendor/yoyodyne/security/tardis/releasekey.x509.pem
+for OTA package verification
+done.
+</pre>
+
+<p>在提示用户所有受密码保护的密钥的密码后，脚本会使用发布密钥对输入目标 .zip 中的 .apk 文件重新签名。在运行该命令之前，您还可以将 ANDROID_PW_FILE 环境变量设置为临时文件名；然后脚本会调用您的编辑器，允许您输入所有密钥的密码（采用该方式输入密码可能较为简便）。</p><p>
+</p><p><code>sign_target_files_apks</code> 还会在版本属性文件中重写版本描述和指纹，表明这是一个已签名的版本。<code>-t</code> 标志可以控制对指纹所做的编辑。使用 <code>-h</code> 运行脚本来查看所有标志上的文档。</p>
+
+<h2 id="manually-generating-keys">手动生成密钥</h2>
+<p>Android 使用公开指数为 3 的 2048 位 RSA 密钥。您可以使用 <a href="https://www.openssl.org/">openssl.org</a> 提供的 openssl 工具来生成证书/私钥对：</p>
+
+<pre class="no-pretty-print">
+# generate RSA key
+% <b>openssl genrsa -3 -out temp.pem 2048</b>
+Generating RSA private key, 2048 bit long modulus
+....+++
+.....................+++
+e is 3 (0x3)
+
+# create a certificate with the public part of the key
+% <b>openssl req -new -x509 -key temp.pem -out releasekey.x509.pem \
+  -days 10000 \
+  -subj '/C=US/ST=California/L=San Narciso/O=Yoyodyne, Inc./OU=Yoyodyne Mobility/CN=Yoyodyne/emailAddress=yoyodyne@example.com'</b>
+
+# create a PKCS#8-formatted version of the private key
+% <b>openssl pkcs8 -in temp.pem -topk8 -outform DER -out releasekey.pk8 -nocrypt</b>
+
+# securely delete the temp.pem file
+% <b>shred --remove temp.pem</b>
+</pre>
+
+<p>上述 openssl pkcs8 命令可创建一个适用于该版本系统的 .pk8 文件，该文件未<i></i>设置密码。要创建一个带有密码保护的 .pk8 文件（您应当为所有实际的发布密钥执行此步骤），请将 <code>-nocrypt</code> 参数替换为 <code>-passout stdin</code>；这样 openssl 将使用从标准输入中读取的密码来加密私钥。该过程中不会输出任何提示。因此，当系统确实只是在等待您输入密码时，如果 stdin 是终端，程序将会处于挂起状态。可以对 Passout 参数使用其他值，以便从其他位置读取密码；有关详情，请参阅 <a href="http://www.openssl.org/docs/man1.0.1/apps/openssl.html#PASS-PHRASE-ARGUMENTS">openssl 文档</a>。</p>
+<p>temp.pem 中间文件包含不受任何类型的密码保护的私钥，因此在生成发布密钥时应谨慎处理该文件。需要特别指出的是，GNUshred 实用程序可能对网络或日志文件系统无效。在生成密钥时，您可以使用位于 RAM 磁盘（如 tmpfs 分区）中的工作目录以确保中间文件不会无意间被暴露。</p>
+
+<h2 id="creating-image-files">创建映像文件</h2>
+
+<p>
+一旦您签署了目标文件 .zip，您便需要创建映像，以便将其存放到设备上。要从目标文件中创建已签名的映像，请在 Android 树形结构的根目录下运行以下命令：</p>
+
+<pre>
+./build/tools/releasetools/img_from_target_files signed-target-files.zip signed-img.zip
+</pre>
+
+生成的文件 <code>signed-img.zip</code> 中包含所有 .img 文件。
+要将映像加载到设备上，请使用 fastboot，如下
+所示：
+
+<pre>
+fastboot update signed-img.zip
+</pre>
+
+</body></html>
