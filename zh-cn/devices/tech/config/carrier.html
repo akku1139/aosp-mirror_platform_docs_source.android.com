@@ -1,0 +1,181 @@
+<html devsite><head>
+    <title>运营商配置</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>Android 6.0 Marshmallow 版本为特权应用推出了一项功能，可以为相应平台提供运营商专属配置。此功能是以 Android 5.1 (Lollipop MR1) 中推出的 <a href="uicc.html">UICC 运营商授权功能</a>为基础，使运营商配置得以弃用静态配置叠加层，并使运营商和原始设备制造商 (OEM) 能够通过指定接口向相应平台动态提供运营商配置。</p>
+
+<p>经过正确签名的运营商应用可以预先加载到系统映像中，也可以自动安装，或者通过应用商店手动安装。平台会征询应用并提供以下配置信息以便于设置应用：</p>
+
+<ul>
+  <li>漫游/非漫游网络
+  </li><li>可视语音信箱
+  </li><li>短信/彩信网络设置
+  </li><li>VoLTE/即时通讯配置
+</li></ul>
+
+<p class="note"><strong>注意</strong>：此应用必须使用证书进行签名，且所用证书的签名要与 SIM 卡上的签名一致。有关详情，请参阅<a href="#how_privilege_is_granted_to_a_carrier_app">如何向运营商应用授予权限</a>一节。</p>
+
+<p>返回值的选择完全取决于运营商应用，并且可以根据通过平台传递给应用的详细信息做出动态抉择。</p>
+
+<p>这种方法的主要优点包括：</p>
+
+<ul>
+  <li><strong>动态配置</strong> - 支持非 MCCMNC 衍生的配置等概念，例如：移动虚拟网络运营商 (MVNO) 或客户选择使用的额外服务
+  </li><li><strong>支持通过任何渠道销售的设备</strong> - 例如，开放市场手机可以通过从应用商店下载应用，自动配置正确的设置。
+  </li><li><strong>安全性</strong> - 仅向运营商签名的应用授予提供此配置的权限
+  </li><li><strong>定义的 API</strong> - 过去，此配置主要存储在框架内的内部 XML 覆盖层中，而不是通过公共 API 进行配置。Android 6.0 中的运营商配置 API 是公共的且进行了严格定义。
+</li></ul>
+
+<h2 id="how_it_works">工作原理</h2>
+
+<h3 id="loading_the_config">加载配置</h3>
+
+<p>此功能提供的运营商配置是一组可以改变平台中各种电话相关行为的键值对。</p>
+
+<p>适用于特定设备的那组值是通过依序征询以下组件来确定：</p>
+
+<ol>
+  <li>运营商应用（虽然从技术上来看这不是必需的，但对于 Android 开源项目 (AOSP) 之外的其他配置来说，建议进行征询）
+  </li><li>与系统映像捆绑在一起的平台配置应用
+  </li><li>硬编码到框架中（相当于 M 之前的行为）的默认值
+</li></ol>
+
+<p class="caution"><strong>重要提示</strong>：如果特定键的值在任何阶段都会予以返回，则发现的第一个值优先于其他阶段返回的值。</p>
+
+<h4 id="the_platform_config_app">平台配置应用</h4>
+
+<p>通用的平台配置应用会与系统映像捆绑在一起，而且该系统映像能够提供常规运营商应用不会提供的变量的值。平台配置应用可在 <code>packages/apps/CarrierConfig</code> 中找到（M 中）。</p>
+
+<p>此应用的目的是在未安装运营商应用的情况下提供一些基于运营商网络的配置，运营商/OEM 应在他们自己的映像中对配置只做很小的改动。不过，运营商应该提供单独的运营商应用以实现运营商定制，从而使更新可以通过诸如应用商店之类的渠道分发给用户。</p>
+
+<h4 id="how_privilege_is_granted_to_a_carrier_app">如何向运营商应用授予权限</h4>
+
+<p>根据 <a href="uicc.html">UICC 运营商授权</a>中的记录，相关的运营商应用必须使用在 SIM 卡上发现的同一证书进行签名。</p>
+
+<h4 id="what_information_is_passed_to_the_carrier_app">向运营商应用传递的信息</h4>
+
+<p>对运营商应用提供以下值，以使运营商应用能够对要返回的值做出动态抉择：</p>
+
+<ul>
+  <li>MCC
+  </li><li>MNC
+  </li><li>SPN
+  </li><li>IMSI
+  </li><li>GID1
+  </li><li>GID2
+</li></ul>
+
+<h4 id="when_loading_the_carrier_config_occurs">在加载运营商配置时发生</h4>
+
+<p>在以下情况下，将构建键值对列表：</p>
+
+<ul>
+  <li>加载 SIM 卡（启动或 SIM 卡热插拔）时
+  </li><li>运营商应用手动触发重新加载时
+  </li><li>运营商应用更新时
+</li></ul>
+
+<p>如需了解更多详情，请参阅以下参考资料：<a href="http://developer.android.com/reference/android/service/carrier/CarrierService.html#onLoadConfig(android.service.carrier.CarrierIdentifier)">android.service.carrier.CarrierService#onLoadConfig()</a>。</p>
+
+<p class="note"><strong>注意</strong>：平台会缓存运营商配置捆绑包，并在 SIM 状态发生改变时从缓存中加载内容。缓存目的在于加速启动和 SIM 卡热插拔。假定软件包没有更新或没有明确的 <code>notifyConfigChangedForSubId</code>，配置捆绑包尚未被修改。</p>
+
+<h3 id="using_the_config">使用配置</h3>
+
+<p>一旦构建了配置，配置中包含的值将用于设置系统配置中的各种值，其中包括：</p>
+
+<ul>
+  <li>内部框架电话设置
+  </li><li>SDK 返回的配置值，例如：在 SmsManager 中
+  </li><li>应用设置，例如：拨号器中的 VVM 连接值
+</li></ul>
+
+<h3 id="configuration_keys">配置密钥</h3>
+
+<p>密钥列表被定义为 <code><a href="http://developer.android.com/reference/android/telephony/CarrierConfigManager.html">android.telephony.CarrierConfigManager</a></code> 中公共 SDK 的一部分，并且不能在相同的 API 级别中更改。有关密钥的摘要，请参见下表。</p>
+
+<h2 id="how_to_build_your_application">如何构建应用</h2>
+
+<h3 id="create_your_application">打造您的应用</h3>
+
+<p>您的应用必须定位到 Android 6.0 API 级别 (23)。</p>
+
+<h3 id="declare_a_class_that_overrides_android_service_carrier_carrierservice">声明一个替换 android.service.CarrierCarrierService 的类</h3>
+
+<ol>
+  <li>替换 <code>onLoadConfig</code> 以根据传递的 <code>service.carrier.CarrierIdentifier</code> 对象返回您希望提供的值
+  </li><li>添加逻辑以在运营商配置可能随时间发生改变的情况下调用 <code>notifyConfigChangedForSubId</code>（例如，当用户向其帐号添加额外服务时）
+</li></ol>
+
+<p>请参阅以下示例：</p>
+
+<pre>
+public class SampleCarrierConfigService extends CarrierService {
+
+    private static final String TAG = "SampleCarrierConfigService";
+
+    public SampleCarrierConfigService() {
+        Log.d(TAG, "Service created");
+    }
+
+    @Override
+    public PersistableBundle onLoadConfig(CarrierIdentifier id) {
+        Log.d(TAG, "Config being fetched");
+        PersistableBundle config = new PersistableBundle();
+        config.putBoolean(
+            CarrierConfigManager.KEY_CARRIER_VOLTE_AVAILABLE_BOOL, true);
+        config.putBoolean(
+            CarrierConfigManager.KEY_CARRIER_VOLTE_TTY_SUPPORTED_BOOL, false);
+        config.putInt(CarrierConfigManager.KEY_VOLTE_REPLACEMENT_RAT_INT, 6);
+        // Check CarrierIdentifier and add more config if needed…
+        return config;
+    }
+}
+</pre>
+
+<p>如需了解更多详情，请参阅 developer.android.com 网站上的 <a href="https://developer.android.com/reference/android/service/carrier/CarrierService.html">android.service.carrier.CarrierService</a> 参考资料。</p>
+
+<h3 id="name_the_class_in_your_manifest">命名清单中的类</h3>
+
+<p>请参阅以下示例：</p>
+
+<pre>
+&lt;service android:name=".SampleCarrierConfigService"
+android:label="@string/service_name"
+android:permission="android.permission.BIND_CARRIER_SERVICES"&gt;
+      &lt;intent-filter&gt;
+      &lt;action android:name="android.service.carrier.ConfigService"/&gt;&lt;/intent-filter&gt;
+&lt;/service&gt;
+</pre>
+
+<h3 id="sign_app_with_same_certificate_on_sim">使用 SIM 卡上的同一证书对应用进行签名</h3>
+
+<p>有关签名要求，请参阅 <a href="uicc.html">UICC 运营商授权</a>。</p>
+
+<h2 id="testing_your_application">测试您的应用</h2>
+
+<p>构建配置应用后，您可以使用以下工具来测试代码：</p>
+
+<ul>
+  <li>包含有效证书签名的 SIM 卡
+  </li><li>运行 Android 6.0 或更高版本的设备（例如：Nexus 设备）
+</li></ul>
+
+</body></html>

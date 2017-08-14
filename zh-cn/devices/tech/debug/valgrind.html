@@ -1,0 +1,65 @@
+<html devsite><head>
+    <title>使用 Valgrind</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p><a href="http://valgrind.org/">Valgrind</a> 工具套件包括 Memcheck（用于检测 C 和 C ++ 中与内存相关的错误）、Cachegrind（缓存分析器）、Massif（堆分析器）和其他几种工具。</p>
+
+<p class="note"><strong>注意</strong>：尽管您可以使用 Valgrind 对 Android 进行调试，但大多数 Android 平台开发人员都会使用 <a href="/devices/tech/debug/asan.html">AddressSanitizer</a>。</p>
+
+<h2 id="build-valgrind">构建 Valgrind</h2>
+<p>要构建 Valgrind，请运行以下命令：</p>
+<pre class="no-pretty-print">
+$ mmma -j6 external/valgrind
+</pre>
+
+<h2 id="app-valgrind">在应用上使用</h2>
+<p>要在某个应用上使用 Valgrind，请运行以下命令：</p>
+
+<pre class="no-pretty-print">
+$ adb shell setprop wrap.<em>app_name</em> "logwrapper valgrind"
+$ adb shell am start -a android.intent.action.MAIN -n <em>app_name</em>/.MainActivity
+</pre>
+
+<code><em>app_name</em></code> 必须是一个完全符合要求的名称，例如 <strong>com.google.example_app</strong>。
+
+<h2 id="server-valgrind">在系统服务器上使用</h2>
+<p>要使用 Valgrind 运行系统服务器，请运行以下命令：</p>
+
+<pre class="no-pretty-print">
+$ adb shell setprop wrap.system_server "logwrapper valgrind"
+$ adb shell stop &amp;&amp; adb shell start
+</pre>
+
+<h2 id="symbols-valgrind">获取调试符号</h2>
+<p>要获取调试符号，请将未剥离的库推送到 <code>/data/local/symbols</code>：</p>
+<pre class="no-pretty-print">
+$ adb shell mkdir /data/local/symbols
+$ adb push $OUT/symbols /data/local/symbols
+</pre>
+
+<h2 id="boot-valgrind">在启动过程中使用</h2>
+<p>要在启动过程中使用 Valgrind，请修改 <code>out/target/product/XXXX/root/init.rc</code>，具体方法是将</p>
+<p><code>service example /system/bin/foo --arg1 --arg2</code></p>
+<p>更改为：</p>
+<p><code>service example /system/bin/logwrapper /system/bin/valgrind /system/bin/foo --arg1 --arg2</code></p>
+<p>要查看效果，请创建一个 <code>boot.img</code> 并重新刷入设备。</p>
+
+</body></html>
