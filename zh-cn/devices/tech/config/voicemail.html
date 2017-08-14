@@ -1,0 +1,144 @@
+<html devsite><head>
+    <title>可视化语音信箱</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>Android 6.0 (Marshmallow) 实现了集成到拨号器的可视化语音信箱 (VVM) 支持，从而使兼容的运营商 VVM 服务能够通过最少的配置接入拨号器。通过可视化语音信箱，用户无需拨号便可轻松查收语音邮件。用户可以在类似于收件箱的界面中查看邮件列表，按任何顺序收听邮件，并可根据需要删除邮件。</p>
+
+<p>Android 7.0 已将下列配置参数添加到可视化语音信箱：
+</p><ul>
+  <li>通过 <code>KEY_VVM_PREFETCH_BOOLEAN</code> 来控制语音邮件的预取
+  </li><li>通过 <code>KEY_VVM_CELLULAR_DATA_REQUIRED_BOOLEAN</code> 来控制是否需要移动数据网络连接
+  </li><li>语音邮件转录内容的提取
+  </li><li>语音信箱配额的提取
+</li></ul>
+
+<p>本文概述了可视化语音信箱的功能、运营商与之进行集成的方式，以及实现方面的一些相关细节。</p>
+
+<h2 id="visual_voicemail_vvm_client">可视化语音信箱 (VVM) 客户端</h2>
+
+<p>Android 6.0 及更高版本中包含一个 OMTP VVM 客户端。如果配置正确的话，该客户端将连接到运营商的 VVM 服务器，并在 Android 开放源代码项目 (AOSP) 拨号器中填入可视化语音邮件。VVM 客户端会执行以下操作：</p>
+
+<ul>
+  <li>处理用于激活/停用/查询服务状态的短信，以及处理用于将订阅者邮箱中的事件通知设备的短信
+  </li><li>将信箱与 IMAP 服务器同步
+  </li><li>当用户选择收听语音邮件时下载这类邮件
+  </li><li>提取语音邮件转录内容
+  </li><li>提取语音信箱配额的详细信息（信箱总容量和占用容量）
+  </li><li>集成到拨号器以实现用户功能（例如：回拨、查看未读邮件、删除邮件等）
+</li></ul>
+
+<h2 id="integrate_with_the_vvm_client">与 VVM 客户端进行集成</h2>
+
+<h3 id="implementation">实现</h3>
+
+<p>运营商必须提供实施 <a href="http://www.gsma.com/newsroom/wp-content/uploads/2012/07/OMTP_VVM_Specification_1_3.pdf">OMTP VVM 规范</a>的可视化语音信箱服务器。AOSP VVM 客户端当前的实现支持核心功能（读取/删除语音邮件、下载/同步/收听语音邮件），但没有实现其他的 TUI 功能（密码更改、语音邮件问候语、语言）。目前，我们仅支持 OMTP 版本 1.1，并且没有对 IMAP 身份验证使用加密。</p>
+
+<p>为了支持转录，运营商必须支持 OMTP 1.3 规范第 2.1.3 项所规定的转录附件格式（MIME 类型 plain/text）。</p>
+
+<p class="note"><strong>注意</strong>：服务器发送到设备的短信（例如：STATUS 或 SYNC）必须为数据短信。</p>
+
+<h3 id="configuration">配置</h3>
+
+<p>为了让运营商能与 VVM 服务进行集成，运营商必须向 OMTP 客户端可以使用的平台提供配置详情。这些参数包括：</p>
+
+<ul>
+  <li>短信的目标号码和端口号
+  </li><li>运营商提供的可视化语音信箱应用的软件包名称（如有提供），以便在安装该软件包后，可以停用平台实现
+</li></ul>
+
+<p>这些值通过 <a href="https://developer.android.com/reference/android/telephony/CarrierConfigManager.html">Carrier Config API</a> 提供。利用在 Android 6.0 中推出的这项功能，应用可以动态地将与电话相关的配置提供给需要该配置的各种平台组件。尤其需要注意的是，以下密钥必须定义值：</p>
+
+<ul>
+  <li><code>KEY_VVM_DESTINATION_NUMBER_STRING</code>
+  </li><li><code>KEY_VVM_PORT_NUMBER_INT</code>
+  </li><li><code>KEY_VVM_TYPE_STRING</code>
+  </li><li><code>KEY_CARRIER_VVM_PACKAGE_NAME_STRING</code>
+  </li><li><code>KEY_VVM_PREFETCH_BOOLEAN</code>
+  </li><li><code>KEY_VVM_CELLULAR_DATA_REQUIRED_BOOLEAN</code>
+</li></ul>
+
+<p>有关详细信息，请参阅<a href="/devices/tech/config/carrier.html">运营商配置</a>一文。</p>
+
+<h2 id="implementation">实现</h2>
+
+<p>OMTP VVM 客户端是在 <code>packages/services/Telephony</code> 中实现，尤其是 <code>src/com/android/phone/vvm/</code> 内</p>
+
+<h3 id="setup">设置</h3>
+
+<ol>
+  <li>VVM 客户端监听 <code>TelephonyIntents#ACTION_SIM_STATE_CHANGED</code> 或 <code>CarrierConfigManager#ACTION_CARRIER_CONFIG_CHANGED</code>。
+  </li><li>当添加了具有合适的运营商配置值（<code>KEY_VVM_TYPE_STRING</code> 设置为 <code>TelephonyManager.VVM_TYPE_OMTP</code> 或 <code>TelephonyManager.VVM_TYPE_CVVM</code>）的 SIM 卡后，VVM 客户端向 <code>KEY_VVM_DESTINATION_NUMBER_STRING</code> 中指定的值发送 ACTIVATE 短信。
+  </li><li>服务器激活可视化语音信箱服务，并通过 STATUS 短信发送 OMTP 凭据。当 VVM 客户端收到 STATUS 短信后，就会注册语音邮件来源，并在设备上显示语音信箱标签。
+  </li><li>OMTP 凭据保存到本地，并且设备开始进行完全同步（如下所述）。
+</li></ol>
+
+<h3 id="syncing">同步</h3>
+
+<p>VVM 客户端可以通过多种方式与运营商服务器进行同步，反之亦然。</p>
+
+<ul>
+  <li>初次下载时会触发<strong>完全同步</strong>。VVM 客户端提取语音信箱的元数据，例如日期和时间、发件号码、时长、语音邮件转录内容（如果有）以及音频数据（如果 <code>KEY_VVM_PREFETCH_BOOLEAN</code> 为 True）。完全同步可由以下操作触发：
+    <ul>
+      <li>插入新的 SIM 卡
+      </li><li>重启设备
+      </li><li>重新使用服务
+      </li><li>接收 <code>VoicemailContract.ACTION_SYNC_VOICEMAIL</code> 广播
+    </li></ul>
+  </li><li>当用户与语音邮箱进行互动以读取或删除语音邮件时，就会触发<strong>上传同步</strong>。上传同步会导致服务器更改其数据来匹配设备上的数据。例如，如果用户查看语音邮件，则相应邮件会在服务器中标为已读；如果用户删除语音邮件，则相应邮件会从服务器中删除。
+  </li><li>当 VVM 客户端收到来自运营商的“MBU”（信箱更新）SYNC 短信时，就会触发<strong>下载同步</strong>。SYNC 短信包含新邮件的元数据，以便该邮件可以存储在语音信箱内容提供程序中。
+</li></ul>
+
+<p class="note"><strong>注意</strong>：每次同步时，系统都会对语音信箱收件箱配额值进行检索。</p>
+
+<h3 id="voicemail_download">语音邮件下载</h3>
+
+<p>当用户按下“播放”来收听语音邮件时，相应的音频文件便会被下载下来。如果用户选择收听语音邮件，拨号器便可以广播语音信箱客户端将会收到的 <code>VoicemailContract.ACTION_FETCH_VOICEMAIL</code>、开始下载内容并更新平台语音信箱内容提供程序中录制的内容。</p>
+
+<h3 id="disabling_vvm">停用 VVM</h3>
+
+<p>用户互动、取出有效 SIM 卡或者被运营商 VVM 应用所取代都会导致 VVM 服务遭到停用或禁用。<em></em>“停用”表示本地设备不再显示可视化语音邮件。<em></em>“禁用”则意味着为订阅者关闭该服务。用户互动会禁用服务，取出 SIM 卡会暂时停用服务（因为该服务已不再存在），而被运营商 VVM 所取代则会停用 AOSP VVM 客户端。</p>
+
+<h4 id="user_interaction">用户互动</h4>
+
+<p>用户可以手动启用或停用可视化语音信箱。如果用户停用可视化语音信箱，会同时禁用相应服务。当用户停用可视化语音信箱时，系统会发送 DEACTIVATE 短信，在本地取消注册语音信箱来源，并且语音信箱标签将会消失。如果用户重新启用可视化语音信箱，相应的服务也将重新激活。</p>
+
+<h4 id="sim_removal">取出 SIM 卡</h4>
+
+<p>如果设备的 SIM 卡状态 (<code>ACTION_SIM_STATE_CHANGED</code>) 或运营商配置值 (<code>ACTION_CARRIER_CONFIG_CHANGED</code>) 发生变化，并且给定 SIM 卡的有效配置不再存在，那么语音邮箱来源会在本地取消注册，而且语音信箱标签也会消失。如果更换 SIM 卡，VVM 将被重新启用。</p>
+
+<h4 id="replaced_by_carrier_vvm">被运营商 VVM 所取代</h4>
+
+<p>运营商可视化语音信箱应用（如果已安装在设备上）可以停用 AOSP VVM 客户端。这可通过检查是否安装了名称与 <code>KEY_CARRIER_VVM_PACKAGE_NAME_STRING</code> 参数相符的软件包来实现。</p>
+
+<p>VVM 客户端仍可通过用户互动来启用。</p>
+
+<h2 id="testing">测试</h2>
+
+<p>自 Android 4.0 以来，就有一组现有的 CTS 测试用于 VoicemailProvider API。借助 VoicemailProvider API，应用可以在平台中插入/查询/删除语音邮件。这些 API 与 VVM 用来添加/删除语音邮件的 API 相同，这样一来，任何拨号器应用都可以在界面中显示这些语音邮件。</p>
+
+<p>要测试您的配置应用是否在正确地传递 OMTP 配置，您可以使用以下工具来测试代码：</p>
+
+<ul>
+  <li>包含有效证书签名的 SIM 卡
+  </li><li>运行 Android 6.0 且具备未修改版 AOSP 手机框架的设备
+</li></ul>
+
+</body></html>

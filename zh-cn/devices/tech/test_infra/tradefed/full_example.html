@@ -1,0 +1,342 @@
+<html devsite><head>
+    <title>端到端测试示例</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>本教程将指导您创建“hello world”Trade Federation (TF) 测试配置，并通过实际操作向您介绍 TF 框架的相关内容。您将从开发环境着手，创建一个简单的配置并添加功能。</p>
+
+<p>本教程以一组练习的形式讲述测试开发过程，其中每个练习都包含几个步骤，为您演示如何构建配置并使其逐渐完善。我们为您提供了完成测试配置所需的所有示例代码，并在每个练习的标题中添加字母标注，表示该步骤涉及的人员：</p>
+<ul>
+<li><strong>D</strong> 代表开发者</li>
+<li><strong>I</strong> 代表集成者</li>
+<li><strong>R</strong> 代表测试运行者</li>
+</ul>
+
+<p>学完本教程之后，您不仅会获得一个可正常运行的 TF 配置，还可以了解 TF 框架中的许多重要概念。</p>
+
+<h2 id="setup">搭建 Trade Federation 开发环境</h2>
+<p>要详细了解如何搭建 TF 开发环境，请参阅<a href="/devices/tech/test_infra/tradefed/fundamentals/machine_setup.html">机器设置</a>。本教程的其余部分假设您已打开一个已初始化为 TF 环境的 shell。</p>
+
+<p>为简单起见，本教程将举例说明如何向 TF 框架核心库添加配置及其类。这可以通过编译 tradefed JAR 文件，然后根据该 JAR 文件编译模块来扩展到源代码树之外的开发模块。</p>
+
+<h2 id="testclass">创建测试类 (D)</h2>
+<p>我们来创建一个仅将消息转储到 stdout 的 hello world 测试。Tradefed 测试通常会实现 <a href="/reference/com/android/tradefed/testtype/IRemoteTest.html">IRemoteTest</a> 接口。以下为 HelloWorldTest 的实现过程：</p>
+<pre><code>package com.android.tradefed.example;
+
+import com.android.tradefed.device.DeviceNotAvailableException;
+import com.android.tradefed.result.ITestInvocationListener;
+import com.android.tradefed.testtype.IRemoteTest;
+
+public class HelloWorldTest implements IRemoteTest {
+    @Override
+    public void run(ITestInvocationListener listener) throws DeviceNotAvailableException {
+        System.out.println("Hello, TF World!");
+    }
+}
+</code></pre>
+
+<p>请将此示例代码保存到 <code>&lt;tree&gt;/tools/tradefederation/core/prod-tests/src/com/android/tradefed/example/HelloWorldTest.java</code> 并从您的 shell 中重建 tradefed：</p>
+<pre><code>m -jN</code></pre>
+
+<p>请注意，在实际操作中，上述示例中的 <code>System.out</code> 可能并不直接将输出导向至控制台。虽然这对于此测试示例而言是可接受的，但您应按照<a href="#logging">日志记录（D、I、R）</a>这一部分所述，在 Trade Federation 中建立日志记录。</p>
+
+<p>如果测试创建失败，请参阅<a href="/devices/tech/test_infra/tradefed/fundamentals/machine_setup.html">机器设置</a>，并确保您没有漏掉任何步骤。</p>
+
+<h2 id="createconfig">创建配置 (I)</h2>
+<p>Trade Federation 测试可通过创建<strong>配置</strong>来执行。此配置为 XML 文件，告诉 tradefed 在哪个（或哪些）测试上运行以及要执行哪些其他模块并按何种顺序执行。</p>
+
+<p>我们来为 HelloWorldTest 创建一个新的配置（请注意 HelloWorldTest 的完整类名）：</p>
+<pre><code>&lt;configuration description="Runs the hello world test"&gt;
+    &lt;test class="com.android.tradefed.example.HelloWorldTest" /&gt;
+&lt;/configuration&gt;</code></pre>
+
+<p>请将此数据保存到位于本地文件系统任意位置的 <code>helloworld.xml</code> 文件上（例如：<code>/tmp/helloworld.xml</code>）。TF 将解析配置 XML 文件（也称为 <b>config</b> 文件）、使用反射加载指定的类、使其实例化、将其转型为 <code>IRemoteTest</code>，并调用其 <code>run</code> 方法。</p>
+
+<h2 id="runconfig">运行配置文件 (R)</h2>
+<p>从您的 shell 中启动 tradefed 控制台：</p>
+<pre><code>$ tradefed.sh
+</code></pre>
+
+<p>确保设备已连接至主机，而且对 tradefed 可见：</p>
+<pre><code>tf &gt;list devices
+Serial            State      Product   Variant   Build   Battery
+004ad9880810a548  Available  mako      mako      JDQ39   100
+</code></pre>
+
+<p>您可以使用 <code>run &lt;config&gt;</code> 控制台命令执行配置。请尝试输入：</p>
+<pre><code>tf&gt; run /tmp/helloworld.xml
+05-12 13:19:36 I/TestInvocation: Starting invocation for target stub on build 0 on device 004ad9880810a548
+Hello, TF World!
+</code></pre>
+<p>您应该可以在终端看到“Hello, TF World！”输出内容。</p>
+
+<h2 id="addconfig">将配置文件添加到类路径（D、I、R）</h2>
+<p>为了方便部署，您还可以将配置文件捆绑到 tradefed JAR 文件自身中。Tradefed 将自动识别类路径下的“config”文件夹中存放的所有配置。<em></em></p>
+
+<p>为进行详细说明，我们将 <code>helloworld.xml</code> 文件移到 tradefed 核心库 (<code>&lt;tree&gt;/tools/tradefederation/core/prod-tests/res/config/example/helloworld.xml</code>) 中。重建 tradefed，重启 tradefed 控制台，然后请求 tradefed 显示类路径中的配置列表：</p>
+<pre><code>tf&gt; list configs
+[…]
+example/helloworld: Runs the hello world test
+</code></pre>
+
+<p>您现在可以使用以下命令运行 helloworld 配置文件：</p>
+<pre><code>tf &gt;run example/helloworld
+05-12 13:21:21 I/TestInvocation: Starting invocation for target stub on build 0 on device 004ad9880810a548
+Hello, TF World!
+</code></pre>
+
+<h2 id="deviceinteract">与设备交互（D、R）</h2>
+<p>到目前为止，我们的 HelloWorldTest 还没有执行任何有趣的操作。Tradefed 专门用于使用 Android 设备运行测试，所以我们向测试中添加一个 Android 设备吧。</p>
+
+<p>测试可以通过实现 <a href="/reference/com/android/tradefed/testtype/IDeviceTest.html">IDeviceTest</a> 接口来获得 Android 设备引用。以下为展示此步骤的实现示例：</p>
+<pre><code>public class HelloWorldTest implements IRemoteTest, IDeviceTest {
+    private ITestDevice mDevice;
+    @Override
+    public void setDevice(ITestDevice device) {
+        mDevice = device;
+    }
+
+    @Override
+    public ITestDevice getDevice() {
+        return mDevice;
+    }
+…
+}
+</code></pre>
+
+<p>在调用 <code>IRemoteTest#run</code> 方法之前，Trade Federation 框架将通过 <code>IDeviceTest#setDevice</code> 方法将 <code>ITestDevice</code> 引用注入到测试中。</p>
+
+<p>我们来修改下 HelloWorldTest 输出消息，以显示设备的序列号：</p>
+<pre><code>@Override
+public void run(ITestInvocationListener listener) throws DeviceNotAvailableException {
+    System.out.println("Hello, TF World! I have device " + getDevice().getSerialNumber());
+}
+</code></pre>
+
+<p>现在重建 tradefed 并检查设备列表：</p>
+<pre><code>$ tradefed.sh
+tf &gt;list devices
+Serial            State      Product   Variant   Build   Battery
+004ad9880810a548  Available  mako      mako      JDQ39   100
+</code></pre>
+
+<p>记下列为 <strong>Available</strong> 的序列号；表示应分配到 HelloWorld 的设备：</p>
+<pre><code>tf &gt;run example/helloworld
+05-12 13:26:18 I/TestInvocation: Starting invocation for target stub on build 0 on device 004ad9880810a548
+Hello, TF World! I have device 004ad9880810a548
+</code></pre>
+
+<p>您应该可以看到显示设备序列号的新输出消息。</p>
+
+<h2 id="sendresults">发送测试结果 (D)</h2>
+<p><code>IRemoteTest</code> 通过对提供给 <code>#run</code> 方法的 <a href="/reference/com/android/tradefed/result/ITestInvocationListener.html">ITestInvocationListener</a> 实例调用方法来报告结果。TF 框架本身负责报告每个调用的开始之处（通过 <a href="/reference/com/android/tradefed/result/ITestInvocationListener.html#invocationStarted(com.android.tradefed.build.IBuildInfo)">ITestInvocationListener#invocationStarted</a>）和结束之处（通过 <a href="/reference/com/android/tradefed/result/ITestInvocationListener.html#invocationEnded(long)">ITestInvocationListener#invocationEnded</a>）。</p>
+
+<p><b>测试运行</b>是测试的逻辑集合。要报告测试结果，<code>IRemoteTest</code> 负责报告测试运行的开始之处，每个测试的开始和结束之处以及测试运行的结束之处。</p>
+
+<p>单次测试结果为失败的 HelloWorldTest 实现可能如下所示。</p>
+<pre><code>@Override
+public void run(ITestInvocationListener listener) throws DeviceNotAvailableException {
+    System.out.println("Hello, TF World! I have device " + getDevice().getSerialNumber());
+
+    TestIdentifier testId = new TestIdentifier("com.example.TestClassName", "sampleTest");
+    listener.testRunStarted("helloworldrun", 1);
+    listener.testStarted(testId);
+    listener.testFailed(testId, "oh noes, test failed");
+    listener.testEnded(testId, Collections.emptyMap());
+    listener.testRunEnded(0, Collections.emptyMap());
+}</code></pre>
+
+<p>TF 包括几个可以重复使用的 <code>IRemoteTest</code> 实现，因而您无需从头开始编写您自己的实现。例如，<a href="/reference/com/android/tradefed/testtype/InstrumentationTest.html">InstrumentationTest</a> 可在 Android 设备上远程运行 Android 应用测试、解析结果，并将这些结果转发到 <code>ITestInvocationListener</code>。有关详情，请参阅<a href="/reference/com/android/tradefed/testtype/package-summary.html">测试类型</a>。</p>
+
+<h2 id="storeresults">存储测试结果 (I)</h2>
+<p>TF 配置的默认测试监听器实现为 <a href="/reference/com/android/tradefed/result/TextResultReporter.html">TextResultReporter</a>，它会将调用结果转储到 stdout。请运行上一节中的 HelloWorldTest 配置文件，以进行详细说明：</p>
+<pre><code>$ ./tradefed.sh
+tf &gt;run example/helloworld
+05-16 20:03:15 I/TestInvocation: Starting invocation for target stub on build 0 on device 004ad9880810a548
+Hello, TF World! I have device 004ad9880810a548
+05-16 20:03:15 I/InvocationToJUnitResultForwarder: run helloworldrun started: 1 tests
+Test FAILURE: com.example.TestClassName#sampleTest
+ stack: oh noes, test failed
+05-16 20:03:15 I/InvocationToJUnitResultForwarder: run ended 0 ms
+</code></pre>
+
+<p>要将调用结果存储在其他位置（如某个文件中），请使用配置中的 <code>result_reporter</code> 标签来指定自定义 <code>ITestInvocationListener</code> 实现。</p>
+
+<p>TF 还包括 <a href="/reference/com/android/tradefed/result/XmlResultReporter.html">XmlResultReporter</a> 监听器，它采用与 ant JUnit XML writer 所使用的格式类似的格式将测试结果写入 XML 文件。<em></em>要在配置中指定 result_reporter，请修改 <code>…/res/config/example/helloworld.xml</code> 配置：</p>
+<pre><code>&lt;configuration description="Runs the hello world test"&gt;
+    &lt;test class="com.android.tradefed.example.HelloWorldTest" /&gt;
+    &lt;result_reporter class="com.android.tradefed.result.XmlResultReporter" /&gt;
+&lt;/configuration&gt;
+</code></pre>
+
+<p>现在重建 tradefed 并重新运行 hello world 示例：</p>
+<pre><code>tf &gt;run example/helloworld
+05-16 21:07:07 I/TestInvocation: Starting invocation for target stub on build 0 on device 004ad9880810a548
+Hello, TF World! I have device 004ad9880810a548
+05-16 21:07:07 I/XmlResultReporter: Saved device_logcat log to /tmp/0/inv_2991649128735283633/device_logcat_6999997036887173857.txt
+05-16 21:07:07 I/XmlResultReporter: Saved host_log log to /tmp/0/inv_2991649128735283633/host_log_6307746032218561704.txt
+05-16 21:07:07 I/XmlResultReporter: XML test result file generated at /tmp/0/inv_2991649128735283633/test_result_536358148261684076.xml. Total tests 1, Failed 1, Error 0
+</code></pre>
+
+<p>请留意表明已生成 XML 文件的日志消息；所生成的文件应如下所示：</p>
+<pre><code>&lt;?xml version='1.0' encoding='UTF-8' ?&gt;
+&lt;testsuite name="stub" tests="1" failures="1" errors="0" time="9" timestamp="2011-05-17T04:07:07" hostname="localhost"&gt;
+  &lt;properties /&gt;
+  &lt;testcase name="sampleTest" classname="com.example.TestClassName" time="0"&gt;
+    &lt;failure&gt;oh noes, test failed
+    &lt;/failure&gt;
+  &lt;/testcase&gt;
+&lt;/testsuite&gt;
+</code></pre>
+
+<p>您还可以编写您自己的自定义调用监听器 - 它们只需要实现 <a href="/reference/com/android/tradefed/result/ITestInvocationListener.html">ITestInvocationListener</a> 接口。</p>
+
+<p>Tradefed 支持多个调用监听器，因此您可以将测试结果发送到多个独立的目的地。只需在配置文件中指定多个 <code>&lt;result_reporter&gt;</code> 标签，即可完成此步骤。</p>
+
+<h2 id="logging">日志记录（D、I、R）</h2>
+<p>TF 的日志记录设备具有以下功能：</p>
+<ol>
+<li>从设备捕获日志（也称为设备 logcat）</li>
+<li>记录在主机上运行的 TradeFederation 框架中的日志（也称为主机日志）</li>
+</ol>
+
+<p>TF 框架自动从分配的设备中捕获 logcat，并将其发送到调用监听器以进行处理。
+然后 <code>XmlResultReporter</code> 将捕获的设备 logcat 保存为文件。
+</p>
+
+<p>系统使用 ddmlib 日志类的 <a href="/reference/com/android/tradefed/log/LogUtil.CLog.html">CLog 封装容器</a>报告主机日志。让我们将 HelloWorldTest 中之前的 <code>System.out.println</code> 调用转换为 <code>CLog</code> 调用：</p>
+<pre><code>@Override
+public void run(ITestInvocationListener listener) throws DeviceNotAvailableException {
+    CLog.i("Hello, TF World! I have device %s", getDevice().getSerialNumber());
+</code></pre>
+
+<p><code>CLog</code> 直接处理字符串插入，类似于 <code>String.format</code>。当您在重建和重新运行 TF 时，您应该可以在 stdout 上看到此日志消息：</p>
+<pre><code>tf&gt; run example/helloworld
+…
+05-16 21:30:46 I/HelloWorldTest: Hello, TF World! I have device 004ad9880810a548
+…
+</code></pre>
+
+<p>默认情况下，tradefed <a =""="" android com hre="=" tradefed>会将主机日志消息输出到 stdout</a>。TF 还包括将消息写入文件的日志实现：<a href="/reference/com/android/tradefed/log/FileLogger.html">FileLogger</a>。要添加文件日志记录，请将 <code>logger</code> 标签添加到配置文件中，指定 <code>FileLogger</code> 的完整类名：</p>
+<pre><code>&lt;configuration description="Runs the hello world test"&gt;
+    &lt;test class="com.android.tradefed.example.HelloWorldTest" /&gt;
+    &lt;result_reporter class="com.android.tradefed.result.XmlResultReporter" /&gt;
+    &lt;logger class="com.android.tradefed.log.FileLogger" /&gt;
+&lt;/configuration&gt;
+</code></pre>
+
+<p>现在，再次重建并运行 helloworld 示例：</p>
+<pre><code>tf &gt;run example/helloworld
+…
+05-16 21:38:21 I/XmlResultReporter: Saved device_logcat log to /tmp/0/inv_6390011618174565918/device_logcat_1302097394309452308.txt
+05-16 21:38:21 I/XmlResultReporter: Saved host_log log to /tmp/0/inv_6390011618174565918/host_log_4255420317120216614.txt
+…
+</code></pre>
+<p>该日志消息指出了主机日志的路径，当您查看该日志时，其中应当包含您的 HelloWorldTest 日志消息：</p>
+<pre><code>$ more /tmp/0/inv_6390011618174565918/host_log_4255420317120216614.txt
+…
+05-16 21:38:21 I/HelloWorldTest: Hello, TF World! I have device 004ad9880810a548
+</code></pre>
+
+<h2 id="optionhandling">处理选项（D、I、R）</h2>
+<p>从 TF 配置中加载的对象（也称为<b>配置对象</b>）亦可通过使用 <code>@Option</code> 注释从命令行参数中接收数据。</p><p>
+
+</p><p>要参与其中，配置对象类会将 <code>@Option</code> 注释应用于相关成员字段，并为其指定一个唯一的名称。这样您便可以通过命令行选项填充该成员字段值（并自动将该选项添加到配置帮助系统）。</p>
+
+<p class="note"><strong>注意</strong>：部分字段类型可能不受支持。要了解受支持的字段类型，请参阅 <a href="/reference/com/android/tradefed/config/OptionSetter.html">OptionSetter</a>。
+</p>
+
+<p>我们将 <code>@Option</code> 添加到 HelloWorldTest 中：</p>
+<pre><code>@Option(name="my_option",
+        shortName='m',
+        description="this is the option's help text",
+        // always display this option in the default help text
+        importance=Importance.ALWAYS)
+private String mMyOption = "thisisthedefault";
+</code></pre>
+
+<p>接下来，我们添加一条日志消息来显示 HelloWorldTest 中的选项的值，以便证明已正确接收该值：</p>
+<pre><code>@Override
+public void run(ITestInvocationListener listener) throws DeviceNotAvailableException {
+    …
+    CLog.logAndDisplay(LogLevel.INFO, "I received option '%s'", mMyOption);
+</code></pre>
+
+<p>最后，重建 TF 并运行 helloworld；您应该会看到一条带有 <code>my_option</code> 默认值的日志消息：</p>
+<pre><code>tf&gt; run example/helloworld
+…
+05-24 18:30:05 I/HelloWorldTest: I received option 'thisisthedefault'
+</code></pre>
+
+<h3 id="passclivalues">从命令行传递值</h3>
+<p>为 <code>my_option</code> 传入值；您应该可以看到使用此值填充的 <code>my_option</code>：</p>
+<pre><code>tf&gt; run example/helloworld --my_option foo
+…
+05-24 18:33:44 I/HelloWorldTest: I received option 'foo'
+</code></pre>
+
+<p>TF 配置还包括帮助系统，该系统会自动显示 <code>@Option</code> 字段的帮助文本。现在试试看吧，您应该可以看到 <code>my_option</code> 的帮助文本：</p>
+<pre><code>tf&gt; run example/helloworld --help
+Printing help for only the important options. To see help for all options, use the --help-all flag
+
+  cmd_options options:
+    --[no-]help          display the help text for the most important/critical options. Default: false.
+    --[no-]help-all      display the full help text for all options. Default: false.
+    --[no-]loop          keep running continuously. Default: false.
+
+  test options:
+    -m, --my_option      this is the option's help text Default: thisisthedefault.
+
+  'file' logger options:
+    --log-level-display  the minimum log level to display on stdout. Must be one of verbose, debug, info, warn, error, assert. Default: error.
+</code></pre>
+
+<p>请注意有关“仅输出重要选项的帮助文本”的消息。为了减少选项帮助的混乱情况，TF 使用 <code>Option#importance</code> 属性来确定是否在指定 <code>--help</code> 时显示特定的 <code>@Option</code> 字段帮助文本。无论字段重要与否，<code>--help-all</code> 始终显示针对所有 <code>@Option</code> 字段的帮助。有关详情，请参阅 <a href="/reference/com/android/tradefed/config/Option.Importance.html">Option.Importance</a>。
+</p>
+
+<h3 id="passconfvalues">从配置传递值</h3>
+<p>您还可以通过添加 <code>&lt;option name="" value=""&gt;</code> 元素在配置文件中指定“选项”值。使用 <code>helloworld.xml</code> 进行测试：</p>
+<pre><code>&lt;test class="com.android.tradefed.example.HelloWorldTest" &gt;
+    &lt;option name="my_option" value="fromxml" /&gt;
+&lt;/test&gt;
+</code></pre>
+
+<p>重建和运行 helloworld 后现在应产生以下输出内容：</p>
+<pre><code>05-24 20:38:25 I/HelloWorldTest: I received option 'fromxml'
+</code></pre>
+
+<p>配置帮助也应经过更新以显示 <code>my_option</code> 的默认值：</p>
+<pre><code>tf&gt; run example/helloworld --help
+  test options:
+    -m, --my_option      this is the option's help text Default: fromxml.
+</code></pre>
+
+<p>helloworld 配置中包含的其他配置对象（如 <code>FileLogger</code>）也接受选项。选项 <code>--log-level-display</code> 比较有意思，因为它会过滤在 stdout 上显示的日志。在本教程前面的部分中，您可能已经注意到：当我们改用 <code>FileLogger</code> 后，stdout 上不再显示“Hello, TF World！ I have device ...”这一日志消息。您可以通过传入 <code>--log-level-display</code> 参数提高 stdout 上日志记录的详细程度。</p>
+
+<p>请立即尝试，您应该可以看到“I have device”这一日志消息再次出现在 stdout 上，并被记录到某个文件中：</p>
+<pre><code>tf &gt;run example/helloworld --log-level-display info
+…
+05-24 18:53:50 I/HelloWorldTest: Hello, TF World! I have device 004ad9880810a548
+</code></pre>
+
+<h2 id="conclusion">讲解完毕，谢谢大家！</h2>
+<p>在此提醒您，如果您遇到任何问题，可在 <a href="https://android.googlesource.com/platform/tools/tradefederation/+/master">Trade Federation 源代码</a>中找到并未在本文档中公开的大量实用信息。如果所有其他尝试均以失败告终，请尝试在 <a href="/source/community.html">Android 平台</a> Google 网上论坛中咨询（在消息主题中提及“Trade Federation”）。</p>
+
+</body></html>

@@ -1,0 +1,175 @@
+<html devsite><head>
+    <title>OTA 软件包内部</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>系统从 <code>bootable/recovery/updater
+</code> 构建更新程序二进制文件并将其用于 OTA 更新包。</p>更新包本身是包含可执行二进制文件 <code>META-INF/com/google/android/update-binary
+</code> 的 .zip 文件（<code>ota_update.zip</code>、<code>incremental_ota_update.zip</code>）。
+
+<p>更新程序包含多个内建函数和一个可扩展脚本语言 (<b>Edify</b>) 解释器，该脚本语言支持用于执行更新相关的典型任务的命令。更新程序从 .zip 压缩包文件中查找 <code>META-INF/com/google/android/updater-script</code> 文件中的脚本。</p>
+
+<p class="note"><strong>注意</strong>：Edify 脚本和/或内建函数并不常用，但当您需要调试更新文件时，这会很有帮助。</p>
+
+<h2 id="edify-syntax">Edify 语法</h2>
+<p>Edify 脚本是一个单一的表达式，其中的所有值都是字符串。在布尔上下文中，空字符串为 False，其他所有字符串均为 True。<i></i><i></i>Edify 支持以下运算符（具有常规含义）：</p>
+
+<pre>
+(<i>expr</i> )
+ <i>expr</i> <b>+</b> <i>expr</i>  # string concatenation, not integer addition
+ <i>expr</i> <b>==</b> <i>expr</i>
+ <i>expr</i> <b>!=</b> <i>expr</i>
+ <i>expr</i> <b>&amp;&amp;</b> <i>expr</i>
+ <i>expr</i> <b>||</b> <i>expr</i>
+ ! <i>expr</i>
+ if <i>expr</i> <b>then</b> <i>expr</i> <b>endif</b>
+ if <i>expr</i> <b>then</b> <i>expr</i> <b>else</b> <i>expr</i> <b>endif</b>
+ <i>function_name</i><b>(</b><i>expr</i><b>,</b> <i>expr</i><b>,</b><i>...</i><b>)</b>
+ <i>expr</i><b>;</b> <i>expr</i>
+</pre>
+
+<p><i></i>由非保留字符 az、AZ、0-9 _、:、/、. 组成的任何字符串均视为字符串字面量。（保留字为 <b>if else</b>、then <b>endif</b>。）字符串字面量也可以用双引号括起来；通过这种方法可以使用空格和上述集合之外的其他字符来创建值。\n、\t、\“ 和 \\ 充当带引号的字符串中的转义字符，\x## 亦如此。<i></i></p>
+<p>&amp;&amp; 和 || 为短路运算符；如果逻辑结果由左侧确定，则不评估右侧。下面两个表达式是对等的：</p>
+<pre>
+<i>e1</i> <b>&amp;&amp;</b> <i>e2</i>
+<b>if</b> <i>e1</i> <b>then</b> <i>e2</i> <b>endif</b></pre>
+<p>分号“;”运算符是序列点；表示要先评估左侧，再评估右侧。它的值是右侧表达式的值。分号也可以出现在表达式之后，其效果与 C 风格语句相仿：</p>
+
+<pre>
+<b>prepare();
+do_other_thing("argument");
+finish_up();</b>
+</pre>
+
+<h2 id="builtin-functions">内建函数</h2>
+<p>大部分更新功能都包含在可供脚本执行的函数中。（严格来说，这些是“宏”，而不是 Lisp 意义上的函数，因为它们不需要评估所有参数。）<i></i><i></i>除非另有说明，函数在成功时返回 <b>True</b>，出错时返回 <b>False</b>。如果您希望在出错时中止脚本执行，请使用 <code>abort()</code> 和/或 <code>assert()</code> 函数。也可以扩展更新程序中的可用函数集，以提供<a href="/devices/tech/ota/device_code.html">特定于设备的功能</a>。
+
+</p><dl>
+<dt><code>abort([<i>msg</i>])</code></dt>
+<dd>使用可选的 msg 立即中止脚本执行。<i></i>如果用户打开了文本显示功能，msg 将出现在恢复日志和屏幕上。<i></i></dd>
+<dt><code>assert(<i>expr</i>[, <i>expr</i>, ...])</code></dt>
+<dd>依序评估每个 expr。<i></i>如果出现 false，则立即中止执行并显示“assert failed”和失败的表达式的源文本。</dd>
+<dt><code>apply_patch(<i>src_file</i>, <i>tgt_file</i>, <i>tgt_sha1</i>, <i>
+tgt_size</i>, <i>patch1_sha1</i>, <i>patch1_blob</i>, [...])</code></dt>
+<dd>将二进制补丁程序应用于 src_file 以生成 tgt_file。<i></i><i></i>如果所需的目标文件与源文件相同，则传递“-”作为 tgt_file。tgt_sha1 和 tgt_size 分别是目标文件的预期最终 SHA1 哈希值和文件大小。<i></i><i></i><i></i>其余参数必须成对出现：一个 SHA1 哈希值（40 个字符的十六进制字符串）和一个 Blob。如果源文件当前的内容含有给定的 SHA1，该 Blob 即为要应用的补丁程序。
+<p>打补丁以一种安全的方式完成，该方式可保证目标文件要么具有所需的 SHA1 哈希值和大小，要么不发生变化，而不会处于不可恢复的中间状态。如果在打补丁过程中进程中断，目标文件可能会处于中间状态；这时缓存分区中会存在一个副本，重新启动更新便可成功更新文件。</p>
+<p>支持特殊语法将内存技术设备 (MTD) 分区的内容作为文件处理，以便为引导分区这样的原始分区打补丁。由于 MTD 分区没有文件结束标记，因此要读取该分区，您必须知道您要读取的数据量。您可以使用字符串“MTD:partition:size_1:sha1_1:size_2:sha1_2”作为文件名来读取给定的分区。<i></i><i></i><i></i><i></i><i></i>您必须至少指定一个（size，sha-1）对；如果您希望读取的内容有多种可能，则可以指定多个对。<i></i></p></dd>
+<dt><code>apply_patch_check(<i>filename</i>, <i>sha1</i>[, <i>sha1</i>, ...])
+</code></dt>
+<dd>如果 filename 的内容或缓存分区中的临时副本（如果存在）中的内容具有与给定的 sha1 值之一相等的 SHA1 校验和，则返回 True。sha1 值指定为 40 位十六进制数字。<i></i><i></i><i></i>此函数与 <code>sha1_check(read_file(<i>filename</i>),
+<i>sha1</i> [, ...])</code> 的不同之处在于，它知道检查缓存分区副本。因此，即使文件被中断的 <code>apply_patch() update</code> 损坏，<code>apply_patch_check()</code> 仍会成功执行。</dd>
+<dt><code>apply_patch_space(<i>bytes</i>)</code></dt>
+<dd>如果至少有 bytes 字节暂存空间可用于应用二进制补丁程序，则返回 True。<i></i></dd>
+<dt><code>concat(<i>expr</i>[, <i>expr</i>, ...])</code></dt>
+<dd>评估每个表达式并将它们连接起来。在只有两个参数的特殊情况下，+ 运算符就是该函数的语法糖（但该函数形式可以包含任意数量的表达式）。表达式必须为字符串；该函数不能连接 Blob。</dd>
+<dt><code>delete([<i>filename</i>, ...])</code></dt>
+<dd>删除列出的所有 filename。<i></i>返回成功删除的文件数。</dd>
+<dt><code>delete_recursive([<i>dirname</i>, ...])</code></dt>
+<dd><i></i>递归删除 dirname 及目录中的所有内容。返回成功删除的目录数。</dd>
+<dt><code>file_getprop(<i>filename</i>, <i>key</i>)</code></dt>
+<dd><i></i><i></i><i></i>读取给定的 filename，将其解释为属性文件（例如：<code>/system/build.prop</code>），并返回给定 key 的值，如果 key 不存在，则返回空字符串。</dd>
+<dt><code>format(<i>fs_type</i>, <i>partition_type</i>, <i>location</i>, <i>
+fs_size</i>, <i>mount_point</i>)</code></dt>
+<dd>重新格式化给定的分区。支持的分区类型如下：
+<ul>
+<li>fs_type =“yaffs2”和 partition_type =“MTD”。Location 必须为 MTD 分区的名称；将在该位置构建一个空的 yaffs2 文件系统。其余参数未使用。</li>
+<li>fs_type =“ext4”和 partition_type =“EMMC”。Location 必须为该分区的设备文件。将在该位置构建一个空的 ext4 文件系统。<i></i>如果 fs_size 为零，则文件系统将占用整个分区。<i></i>如果 fs_size 为正数，则文件系统将占用分区的前 fs_size 个字节。<i></i>如果 fs_size 为负数，则文件系统将占用分区中除最后 |fs_size| 个字节以外的所有字节。<i></i><i></i></li>
+<li>fs_type =“f2fs” 和 partition_type =“EMMC”。Location 必须为该分区的设备文件。fs_size<i></i> 必须为非负数。<i></i>如果 fs_size 为零，则文件系统将占用整个分区。如果 fs_size 为正数，则文件系统将占用分区的前 fs_size 个字节。<i></i><i></i></li>
+<li>mount_point 应为文件系统的未来挂载点。</li></ul>
+</dd>
+<dt><code>getprop(<i>key</i>)</code></dt>
+<dd>返回系统属性 key 的值（或者，如果未定义，则为空字符串）。<i></i>由恢复分区定义的系统属性值未必与主系统属性值相同。此函数返回恢复分区中的值。</dd>
+<dt><code>greater_than_int(<i>a</i>, <i>b</i>)</code></dt>
+<dd>当且仅当 (iff) a（解析为整数）大于 b（解析为整数）时，才返回 True。<i></i><i></i></dd>
+<dt><code>ifelse(<i>cond</i>, <i>e1</i>[, <i>e2</i>])</code></dt>
+<dd>评估 cond，如果为 True，则评估并返回 e1 的值，否则评估并返回 e2（如果存在）。<i></i><i></i><i></i>“if ... else ... then ... endif”结构就是此函数的语法糖。</dd>
+<dt><code>is_mounted(<i>mount_point</i>)</code></dt>
+<dd>当且仅当 mount_point 挂载文件系统时，才返回 True。<i></i></dd>
+<dt><code>is_substring(<i>needle</i>, <i>haystack</i>)</code></dt>
+<dd>当且仅当 needle 是 haystack 的子字符串时，才返回 True。<i></i><i></i></dd>
+<dt><code>less_than_int(<i>a</i>, <i>b</i>)</code></dt>
+<dd>当且仅当 a（解析为整数）小于 b（解析为整数）时，才返回 True。<i></i><i></i></dd>
+<dt><code>mount(<i>fs_type</i>, <i>partition_type</i>, <i>name</i>,
+<i>mount_point</i>)</code></dt>
+<dd>在 mount_point 挂载 fs_type 的文件系统。<i></i><i></i>
+partition_type<i></i> 必须为以下类型之一：<ul>
+<li><b>MTD</b>。Name 是 MTD 分区的名称（例如：system、userdata；有关完整列表，请参见设备上的 <code>/proc/mtd</code>）。</li>
+<li><b>EMMC。</b></li>
+</ul>
+<p>默认情况下，恢复分区不挂载任何文件系统（如果用户正在手动从 SD 卡安装软件包，则 SD 卡除外）；您的脚本必须挂载需要修改的所有分区。</p></dd>
+<dt><code>package_extract_dir(<i>package_dir</i>, <i>dest_dir</i>)</code></dt>
+<dd>从 package_dir 下的文件包中提取所有文件，并将它们写入 dest_dir 下相应的树形结构中。<i></i><i></i>所有现有文件都将被覆盖。</dd>
+<dt><code>package_extract_file(<i>package_file</i>[, <i>dest_file</i>])</code>
+</dt>
+<dd>从更新包中提取单个 package_file 并将其写入 dest_file，如有必要，覆盖现有文件。<i></i><i></i>在没有 dest_file 参数的情况下，将更新包文件的内容作为二进制 blob 返回。<i></i></dd>
+<dt><code>read_file(<i>filename</i>)</code></dt>
+<dd>读取 filename 并将其内容作为二进制 Blob 返回。<i></i></dd>
+<dt><code>rename(<i>src_filename</i>, <i>tgt_filename</i>)</code></dt>
+<dd>将 src_filename 重命名为 tgt_filename。<i></i><i></i>系统会自动为 tgt_filename 创建必要的目录。<i></i>例如：<code>
+rename("system/app/Hangouts/Hangouts.apk",
+"system/priv-app/Hangouts/Hangouts.apk")</code>。</dd>
+<dt><code>run_program(<i>path</i>[, <i>arg</i>, ...])</code></dt>
+<dd>在 path 上执行二进制文件，以传递 arg。<i></i><i></i>返回程序的退出状态。</dd>
+<dt><code>set_metadata(<i>filename</i>, <i>key1</i>, <i>value1</i>[, <i>key2
+</i>, <i>value2</i>, ...])</code></dt>
+<dd>将给定 filename 的 key 设置为 value。<i></i><i></i>例如：
+<code>set_metadata("/system/bin/netcfg", "uid", 0, "gid", 3003, "mode", 02750,
+"selabel", "u:object_r:system_file:s0", "capabilities", 0x0)</code>。</dd>
+<dt><code>set_metadata_recursive(<i>dirname</i>, <i>key1</i>, <i>value1</i>[,
+<i>key2</i>, <i>value2</i>, ...])</code></dt>
+<dd>递归地将给定 dirname 及其所有子项的 key 设置为 value。<i></i><i></i>例如：<code>set_metadata_recursive("/system", "uid",
+0, "gid", 0, "fmode", 0644, "dmode", 0755, "selabel",
+"u:object_r:system_file:s0", "capabilities", 0x0)</code>。</dd>
+<dt><code>set_progress(<i>frac</i>)</code></dt>
+<dd>在最新的 <code>show_progress()</code> 调用所定义的块内设置进度条的位置。frac 必须介于 [0.0，1.0] 的范围内。<i></i>进度条从不向后移动；向后移动的尝试会被忽略。</dd>
+<dt><code>sha1_check(<i>blob</i>[, <i>sha1</i>])</code></dt>
+<dd>该 blob 参数是 <code>
+read_file()</code> 返回类型的 Blob 或 <code>package_extract_file()
+</code> 的单参数形式的 Blob。<i></i>在没有 sha1 参数的情况下，此函数返回 Blob 的 SHA1 哈希值（作为 40 位十六进制字符串）。<i></i>在使用一个或多个 sha1 参数的情况下，如果 SHA1 哈希值等于其中一个参数，则该函数返回 SHA1 哈希值；如果与其中的任何一个参数都不相等，则返回空字符串。<i></i></dd>
+<dt><code>show_progress(<i>frac</i>, <i>secs</i>)</code></dt>
+<dd>在 secs 秒（必须为整数）内推动进度条向前移动下一个 frac 的长度。secs 可能为 0，在这种情况下，进度条不会自动向前移动，而是通过使用上面所定义的 <code>
+set_progress()</code> 函数实现进度递增。<i></i><i></i><i></i></dd>
+<dt><code>sleep(<i>secs</i>)</code></dt>
+<dd>休眠 secs 秒（必须为整数）。<i></i></dd>
+<dt><code>stdout(<i>expr</i>[, <i>expr</i>, ...])</code></dt>
+<dd>评估每个表达式并将其值转储到 stdout。这在调试时很有用。</dd>
+<dt><code>symlink(<i>target</i>[, <i>source</i>, ...])</code></dt>
+<dd>将所有 source 创建为 target 的符号链接。<i></i><i></i></dd>
+<dt><code>tune2fs(<i>device</i>[, <i>arg</i>, …])</code></dt>
+<dd>调整 device 上的可调参数 arg。<i></i><i></i></dd>
+<dt><code>ui_print([<i>text</i>, ...])</code></dt>
+<dd>连接所有 text 参数并将结果输出到界面（如果用户已打开文本显示功能，界面上将显示该结果）。<i></i></dd>
+<dt><code>unmount(<i>mount_point</i>)</code></dt>
+<dd>卸载挂载在 mount_point 上的文件系统。<i></i></dd>
+<dt><code>wipe_block_device(<i>block_dev</i>, <i>len</i>)</code></dt>
+<dd>擦除给定块设备 block_dev 的 len 字节。<i></i><i></i></dd>
+<dt><code>wipe_cache()</code></dt>
+<dd>可实现在安装过程成功结束时擦除缓存分区。</dd>
+<dt><code>write_raw_image(<i>filename_or_blob</i>, <i>partition</i>)</code>
+</dt>
+<dd>将 filename_or_blob 中的映像写入 MTD 分区。<i></i><i></i>
+filename_or_blob 可以是一个命名本地文件的字符串或一个包含要写入的数据的 blob 值参数。<i></i>要将文件从 OTA 包复制到分区，请使用：<code>write_raw_image(package_extract_file("zip_filename"), "partition_name");
+</code>
+</dd>
+</dl>
+
+<p class="note"><strong>注意</strong>：对于 Android 4.1 之前的版本，仅接受 filename。因此要完成该操作，必须先将数据解压到临时本地文件中。</p>
+
+</body></html>
