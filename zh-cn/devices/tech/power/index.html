@@ -1,0 +1,52 @@
+<html devsite><head>
+    <title>Android 电源配置文件</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>电池使用信息来自电池使用统计信息和电源配置文件中的值。</p>
+
+<h2 id="usage-statistics">电池使用统计信息</h2>
+
+<p>框架可通过跟踪设备组件在不同状态下维持的时间来自动确定电池使用统计信息。当组件（WLAN 芯片组、手机无线装置、蓝牙、GPS、显示屏和 CPU）状态发生改变（开/关、空闲/全功耗、低/高亮度等）时，控制服务会向框架中的 BatteryStats 服务报告状态改变信息。BatteryStats 会不断地收集信息，并存储这些信息以便在重新启动后继续使用。该服务不会直接跟踪电池中消耗的电流，而是通过收集计时信息来估算不同组件所消耗的电量。</p>
+
+<p>该框架使用以下方法收集统计信息：</p>
+
+<ul>
+<li><strong>推送</strong>。服务察觉到组件状态发生变化后，会将状态变化推送到 BatteryStats 服务中。</li>
+<li><strong>拉取</strong>。对于应用使用的 CPU 等组件，框架会在转换点（例如启动活动或停止活动）自动拉取数据以截取快照。</li>
+</ul>
+
+<p>资源消耗与使用资源的应用相关。当多个应用同时使用某项资源（例如防止系统挂起的唤醒锁）时，框架会将资源消耗量分摊到这些应用上，但不一定会均分。</p>
+
+<p>为了避免由于系统关闭事件而丢失电池使用统计信息（这些统计信息可能表明存在电池功耗问题，比如由于电池电量耗尽而关闭），框架会大约每 30 分钟发送一次统计信息。</p>
+
+<p>电池使用统计信息完全由框架处理，不需要原始设备制造商 (OEM) 修改。</p>
+
+<h2 id="profile-values">电源配置文件中的值</h2>
+
+<p class="caution"><strong>注意</strong>：设备制造商必须提供组件的电源配置文件，该配置文件定义了组件的电流消耗值以及该组件在一段时间内大概消耗的电量。有关此配置文件的定义，请查看 <a href="https://android.googlesource.com/platform/frameworks/base/+/master/core/res/res/xml/power_profile.xml">platform/frameworks/base/core/res/res/xml/power_profile.xml</a>。要获得与这些设置相关的指导，请参阅<a href="/devices/tech/power/values.html">电源值</a>。</p>
+
+<p>在电源配置文件中，功耗表示额定电压下的电流消耗量，单位为毫安 (mA)，也可用微安 (uA) 表示（分数值）。该值应代表电池上消耗的电流，而非与电池消耗的电流不对应的相应电源轨的值。</p>
+
+<p>例如，显示屏电源配置文件列出了当显示屏开启状态下保持最低亮度和最高亮度时需消耗的电流量 (mA)。为了确定显示屏常亮时所需的电源成本（即由显示屏组件所消耗的电池量），框架会跟踪在各个亮度级别下维持的时间，然后将这些时间间隔乘以通过插值算法计算的显示亮度成本。</p>
+
+<p>该框架还会将每个应用的 CPU 时间乘以在特定速度运行 CPU 所需的毫安量。通过该计算方法可以创建一个应用电池消耗量（通过执行 CPU 代码）的相对排名（应用在前台的时间和包括后台活动在内的总时间将分别进行报告）。</p>
+
+</body></html>

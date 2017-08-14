@@ -1,0 +1,154 @@
+<html devsite><head>
+    <title>测量组件功率</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>您可以通过比较当组件处于期望状态（开启活跃、运行和扫描等）和关闭状态时设备消耗的电流来确定单个组件的功耗。在额定电压下使用外部电源监控器（如台式电源或 Monsoon Solution Inc. 的电源监控器和电源工具软件等专用电池监控工具）测量设备消耗的平均瞬时电流。</p>
+
+<p>制造商通常都会提供有关单个组件所耗电流的信息。如果这些信息准确地反映了实际操作时设备电池消耗的电流，您便可以利用这些信息。不过，在采用制造商提供的设备电源配置文件中的值之前，请先对它们进行验证。</p>
+
+<h2 id="control-consumption">控制功耗</h2>
+
+<p>进行测量时，请确保设备未连接到外部电源，例如运行 Android 调试桥 (adb) 时与开发主机之间通过 USB 连接。因为被测设备可能会使用来自主机的电流，从而导致电池的测量值偏低。避免使用 USB On-The-Go (OTG) 连接，因为 OTG 设备可能消耗被测设备的电流。</p>
+
+<p>除被测量的组件外，系统应以恒定的功耗水平运行，以避免由于其他组件的功耗变化而影响测量的准确性。以下系统活动可能会给功率测量带来不必要的更改：</p>
+
+<ul>
+<li><strong>通过移动网络、Wi-Fi 和蓝牙进行的接收、传输或扫描活动</strong>。当未测量手机无线装置功率时，请将设备设置为飞行模式，并根据实际情况启用 Wi-Fi 或蓝牙。</li>
+<li><strong>屏幕开启/关闭</strong>。屏幕开启时屏幕上显示的色彩可能会影响某些屏幕技术的功耗。测量非屏幕组件的功耗值时请关闭屏幕。</li>
+<li><strong>系统挂起/恢复</strong>。当屏幕处于关闭状态时会触发系统进入挂起状态，使部分设备部件处于低功耗运行或关闭状态。这可能会影响被测量组件的功耗，并引起较大的差异，因为系统会定期恢复以发送报警等。有关详细信息，请参阅<a href="#control-suspend">控制系统挂起</a>。</li>
+<li><strong>CPU 变速以及进入/退出低功耗调度程序空闲状态</strong>。在正常运行期间，系统会频繁地调整 CPU 速率、在线 CPU 内核数量以及其他系统内核状态，例如内存总线速率以及与 CPU 和内存关联的电源轨电压。在测试期间，这些调整会影响功率测量：<ul>
+<li>CPU 速率调节操作可能会减少内存总线和其他系统核心组件的时钟和电压缩放量。</li>
+<li>调度活动可能会影响 CPU 保持在低功耗空闲状态的时间所占的百分比。有关防止测试期间发生此类调整的详细信息，请参阅<a href="#control-cpu">控制 CPU 速率</a>。</li>
+</ul>
+
+</li>
+</ul>
+
+<p>例如，Joe Droid 想要计算某个设备的 <code>screen.on</code> 值。他在设备上启用飞行模式，在恒定电流状态下运行设备，保持 CPU 速率恒定，并使用部分唤醒锁来防止系统进入挂起状态。随后，Joe 关闭设备屏幕并测量电流 (200mA)。接着他开启设备屏幕，将亮度调到最低，然后再次进行测量 (300mA)。<code>screen.on</code> 值为 100mA (300 - 200)。</p>
+
+<p class="note">
+<strong>注意</strong>：如果组件在活跃状态（如移动无线装置或 Wi-Fi）下测得的消耗电流波形不平，请使用功率监控工具测量一段时间内的平均电流。</p>
+
+<p>当使用外部电源代替设备电池时，系统可能会因为电池热敏电阻或集成的电量计引脚未连接而出现问题（即当电池温度或电池剩余电量读数无效时，内核或 Android 系统可能会关闭）。假冒电池可以提供模仿正常系统温度和充电读数状态的热敏电阻或电量计引脚信号，并且还可以提供外部电源引线以方便连接。或者您也可以修改系统，以便忽略由于缺失电池产生的无效数据。</p>
+
+<h2 id="control-suspend">控制系统挂起</h2>
+
+<p>本节介绍了当您不希望系统挂起状态干扰其他测量时应如何避免系统进入挂起状态，以及当您希望测量系统在挂起状态下的功耗时该如何操作。</p>
+
+<h3 id="prevent-suspend">防止系统挂起</h3>
+
+<p>系统挂起可能会给功率测量造成不必要的误差，并使系统组件处于低功耗状态，而在这种状态下不适合测量活跃状态的功耗。要防止系统在屏幕关闭时进入挂起状态，请暂时使用部分唤醒锁。使用 USB 电缆将设备连接到开发主机，然后发出以下命令：</p>
+
+<pre>
+$ adb shell "echo temporary &gt; /sys/power/wake_lock"
+</pre>
+
+<p>当使用 <code>wake_lock</code> 时，屏幕进入关闭状态不会触发系统挂起。（请记得在测量功耗之前先断开 USB 电缆与设备的连接。）</p>
+
+<p>要移除唤醒锁，请使用以下命令：</p>
+
+<pre>
+$ adb shell "echo temporary &gt; /sys/power/wake_unlock"
+</pre>
+
+<h3 id="measure-suspend">测量系统挂起状态下的功耗</h3>
+
+<p>要测量系统挂起状态下的功耗，您可以测量电源配置文件中 <code>cpu.idle</code> 的值。测量前，请进行以下操作：</p><ul>
+<li>移除现有的唤醒锁（如上所述）。</li>
+<li>将设备设置成飞行模式，以避免移动网络无线装置的并发活动。移动网络无线装置可能在独立于 SoC 部分（受系统挂起状态控制）的处理器上运行。</li>
+<li>通过执行以下操作确保系统处于挂起状态：<ul>
+<li>确认电流读数稳定保持在某个值。读数应在预期范围内，即 SoC 挂起状态的功耗加上保持供电的系统组件（如 USB PHY）功耗之和。</li>
+<li>检查系统控制台输出。</li>
+<li>观察可指示系统状态的外部标示（如系统未挂起时 LED 关闭）。</li>
+</ul>
+</li>
+</ul>
+
+<h2 id="control-cpu">控制 CPU 速率</h2>
+
+<p>活跃的 CPU 可以处于联机或脱机状态，改变其时钟速率和相关电压（也可能影响内存总线速率和其他系统内核的电源状态），并在内核空闲循环时进入较低功耗的空闲状态。在测量不同 CPU 的功耗状态来验证电源配置文件中的值时，请避免在测量其他参数时导致功耗发生变化。电源配置文件假设所有 CPU 的可用速率和功率特性都相同。</p>
+
+<p>在测量 CPU 功率或者在保持恒定 CPU 功率以进行其他测量时，请保持在线 CPU 的数量恒定（例如一个 CPU 在线，其余处于离线状态/以热插拔方式拔出）。留下一个 CPU，并将其余的所有 CPU 处于调度空闲状态，这样可能有助于获得令人信服的结果。使用 <code>adb shell stop</code> 停止 Android 框架可以减少系统调度活动。</p>
+
+<p>您必须在电源配置文件的 <code>cpu.speeds</code> 条目中指定设备的可用 CPU 速率。要获取可用 CPU 速率列表，请运行以下命令：</p>
+
+<pre>
+adb shell cat /sys/devices/system/cpu/cpu0/cpufreq/stats/time_in_state
+</pre>
+
+<p>这些速率与 <code>cpu.active</code> 值中对应的功率测量值相匹配。</p>
+
+<p>如果某个平台的在线内核数量对功耗有很大的影响，您可能需要修改该平台的 cpufreq 驱动程序或调节器。大多数平台支持使用用户空间 cpufreq 调节器控制 CPU 速率以及使用 sysfs 接口来设置速率。例如，要在只有 1 个 CPU 的系统上或者所有 CPU 共享一个公共 cpufreq 策略的系统上将速率设为 200MHz，请使用系统控制台或 adb shell 运行以下命令：</p>
+
+<pre>
+echo userspace &gt; /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
+echo 200000 &gt; /sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq
+echo 200000 &gt; /sys/devices/system/cpu/cpu0/cpufreq/scaling_min_freq
+echo 200000 &gt; /sys/devices/system/cpu/cpu0/cpufreq/scaling_setspeed
+cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq
+</pre>
+
+<p class="note">
+<strong>注意</strong>：确切的命令可能因平台实施的 cpufreq 不同而有所差异。
+</p>
+
+<p>这些命令可确保新的速率不超出允许的范围，并设置新的速率，然后输出 CPU 实际运行的速率（用于验证）。如果执行前的当前最小速率高于 200000，则可能需要交换前两行的顺序，或者再次执行第一行，以在设置最大速率之前降低最小速率。</p>
+
+<p>要测量 CPU 在不同速率下运行时所消耗的电流，请使用以下命令通过系统控制台将 CPU 置于 CPU 限制循环中：</p>
+<pre>
+# while true; do true; done
+</pre>
+
+<p>请在执行循环时进行测量。</p>
+
+<p>如果某些设备因测量温度值过高（即持续高速运行 CPU 一段时间后）需执行温控调频，则可能会限制最大 CPU 速率。您可以通过两种方式观察是否存在此类限制：一是在测量时使用系统控制台输出，二是在测量后检查内核日志。</p>
+
+<p>对于 <code>cpu.awake</code> 值，您可以测量系统未挂起且不执行任务时的功耗。CPU 应处于低功耗调度程序空闲循环<em></em>中（可能是正在执行 ARM 等待事件指令）或特定的 SoC 低功耗状态（适用于空闲状态下使用的快速退出延迟）。</p>
+
+<p>对于 <code>cpu.active</code> 值，您可以测量系统未处于挂起模式且不执行任务时的功率。一个 CPU（通常是主 CPU）应运行任务，而所有其他 CPU 都应处于空闲状态。</p>
+
+<h2 id="screen-power">测量屏幕功率</h2>
+
+<p>当测量屏幕功率时，请确保在启用屏幕时通常会一并开启的其他设备也处于开启状态。例如，如果触摸屏和显示屏背光通常在屏幕打开时亮起，请确保在测量时这些设备也处于打开状态，以获得屏幕功耗的实际示例。</p>
+
+<p>一些显示屏技术因所显示颜色的不同而造成功耗上的差异，从而导致功率测量值随测量时屏幕上显示的内容而出现很大差异。测量时，请确保屏幕显示的是具有真实屏幕功率特性的内容。尽量确保屏幕处于全黑屏幕（某些技术在此状态下功耗最低）和全白屏幕两个极限状态之间。通常的做法是使用日历应用中的日程表视图，因为它混合了白色背景和非白色元素。</p>
+
+<p>测量显示屏/背光亮度最低<em></em>和最高<em></em>时的屏幕功率。设置最低亮度的方法：</p>
+
+<ul>
+<li><strong>使用 Android UI</strong>（不推荐）。依次转到“设置”&gt;“显示屏亮度”，将相应滑块设为最低显示亮度。然而，Android UI 支持的最低亮度为面板/背光亮度的 10-20％，并且不支持将亮度设置到难以看清屏幕的程度。</li>
+<li><strong>使用 sysfs 文件</strong>（推荐）。如果有可用的 sysfs 文件，请使用该文件来控制面板亮度，最低可降至硬件支持的最低亮度。</li>
+</ul>
+
+<p>此外，如果平台 sysfs 文件可以开启和关闭 LCD 面板、背光和触摸屏，请使用该文件在屏幕开启和关闭的状态下进行测量。或者您可以设置部分唤醒锁防止系统进入挂起状态，然后使用电源按钮开启和关闭屏幕。</p>
+
+<h2 id="wifi-power">测量 Wi-Fi 功率</h2>
+
+<p>在活动较少的网络上执行 Wi-Fi 测量。避免引入与被测活动无关的其他工作（处理大量广播流量）。</p>
+
+<p><code>wifi.on</code> 值测量 Wi-Fi 在启用但未主动发送或接收数据的状态下的功耗。该值通常是测量系统挂起（休眠）状态下启用/禁用 Wi-Fi 之间产生的电流增量。</p>
+
+<p><code>wifi.scan</code> 值测量接入点 Wi-Fi 扫描时的功耗。应用可以使用 WifiManager 类 <a href="http://developer.android.com/reference/android/net/wifi/WifiManager.html"><code>startScan()</code> API</a> 来触发 Wi-Fi 扫描。您也可以依次打开“设置”&gt;“Wi-Fi”，这样 Wi-Fi 每隔几秒执行一次接入点扫描，扫描时功耗会明显上升，但必须从这些测量值中减去屏幕功率。</p>
+
+<p class="note">
+<strong>注意</strong>：请使用受控设置（如 <a href="http://en.wikipedia.org/wiki/Iperf">iperf</a>）来生成网络收发流量。</p>
+
+</body></html>
