@@ -1,0 +1,176 @@
+<html devsite>
+  <head>
+    <title>Version Binding</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          //www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>
+In Keymaster1, all keymaster keys were cryptographically bound to the device
+<em>Root of Trust</em>, the <a href="/security/verifiedboot/">verified boot
+key</a>. In Keymaster2, all keys are
+also bound to the operating system and patch level of the system image.
+This ensures that an attacker who discovers a weakness in an old
+version of system or TEE software cannot roll a device back to the vulnerable
+version and use keys created with the newer version. In addition, when a key
+with a given version and patch level is used on a device that has been upgraded
+to a newer version or patch level, the key is upgraded before it can be used,
+and the previous version of the key invalidated. In this way, as the device is
+upgraded, the keys will "ratchet" forward along with the device, but any
+reversion of the device to a previous release will cause the keys to be
+unusable.
+</p>
+
+<h2 id="hal-changes">HAL changes</h2>
+<p>
+To support version binding and version attestation, Android 7.1 added the tags
+<code>KM_TAG_OS_VERSION</code> and <code>KM_TAG_OS_PATCHLEVEL</code> and the
+methods <code>configure</code> and <code>upgrade_key</code>. The version tags
+are automatically added by keymaster2 implementations to all newly-generated (or
+updated) keys. Further, any attempt to use a key that does not have an OS
+version or patch level matching the current system OS version or patch level,
+respectively, is rejected with <code>KM_ERROR_KEY_REQUIRES_UPGRADE</code>.
+</p>
+<p>
+<code>KM_TAG_OS_VERSION</code> is a <code>KM_UINT</code> that represents the
+major, minor, and sub-minor portions of an Android system version as MMmmss,
+where MM is the major version, mm is the minor version and ss is the sub-minor
+version. For example 6.1.2 would be represented as 060102.
+</p>
+<p>
+<code>KM_TAG_OS_PATCHLEVEL</code> is a <code>KM_UINT</code> that represents the
+year and month of the last update to the system as YYYYMM, where YYYY is the
+four-digit year and MM is the two-digit month. For example, March 2016 would be
+represented as 201603.
+</p>
+
+<h3 id="upgrade_key">Upgrade_key</h3>
+<p>
+To allow keys to be upgraded to the new OS version and patch level of the system
+image, Android 7.1 added the <code>upgrade_key</code> method to the HAL:
+</p>
+
+<pre
+class="prettyprint">keymaster_error_t (*upgrade_key)(const struct keymaster2_device* dev,
+    const keymaster_key_blob_t* key_to_upgrade,
+    const keymaster_key_param_set_t* upgrade_params,
+    keymaster_key_blob_t* upgraded_key);
+</pre>
+
+<ul>
+  <li><code>dev</code> is the device structure</li>
+  <li><code>key_to_upgrade</code> is the key which needs to be upgraded</li>
+  <li><code>upgrade_params</code> are parameters needed to upgrade the key. These
+  will include <code>KM_TAG_APPLICATION_ID</code> and
+  <code>KM_TAG_APPLICATION_DATA</code>, which are necessary to decrypt the key
+  blob, if they were provided during generation.</li>
+  <li><code>upgraded_key</code> is the output parameter, used to return the new
+  key blob.</li>
+</ul>
+
+<p>
+If <code>upgrade_key</code> is called with a key blob that cannot be parsed or
+is otherwise invalid, it returns <code>KM_ERROR_INVALID_KEY_BLOB</code>. If it
+is called with a key whose patch level is greater than the current system value,
+it returns <code>KM_ERROR_INVALID_ARGUMENT</code>. If it is called with a key
+whose OS version is greater than the current system value, and the system value
+is non-zero, it returns KM_ERROR_INVALID_ARGUMENT. OS version upgrades from
+non-zero to zero are allowed. In the event of errors communicating with the
+secure world, it returns an appropriate error value (e.g.
+<code>KM_SECURE_HW_ACCESS_DENIED</code>, <code>KM_SECURE_HW_BUSY</code>, etc.)
+Otherwise, it returns <code>KM_ERROR_OK</code> and returns a new key blob in
+<code>upgraded_key</code>.
+</p>
+<p>
+<code>key_to_upgrade</code> remains valid after the <code>upgrade_key</code>
+call, and could theoretically be used again if the device were downgraded. In
+practice, keystore generally calls <code>delete_key</code> on the
+<code>key_to_upgrade</code> blob shortly after the call to upgrade_key. If
+<code>key_to_upgrade</code> had tag <code>KM_TAG_ROLLBACK_RESISTANT</code>, then
+<code>upgraded_key</code> should have it as well (and should be rollback
+resistant).
+</p>
+
+<h2 id="secure-configuration">Secure configuration</h2>
+<p>
+To implement version binding, the keymaster TA needs a way to securely receive
+the current OS version and patch level (version information), and to ensure that
+the information it receives strongly matches the information about the running
+system.
+</p>
+<p>
+To support secure delivery of version information to the TA, an <code><a
+href="https://android.googlesource.com/platform/system/core/+/master/mkbootimg/bootimg.h#48">os_version
+field</a></code> has been added to the boot image header. The boot image build
+script automatically populates this field. OEMs and keymaster TA implementers
+need to work together to modify device bootloaders to extract the version
+information from the boot image and pass it to the TA before the non-secure
+system is booted. This ensures that attackers cannot interfere with provisioning
+of version information to the TA.
+</p>
+
+<p>
+It is also necessary to ensure that the system image has the same version
+information as the boot image. To that end, the configure method has been added
+to the keymaster HAL:
+</p>
+
+
+<pre
+class="prettyprint">keymaster_error_t (*configure)(const struct keymaster2_device* dev,
+	const keymaster_key_param_set_t* params);
+</pre>
+
+<p>
+The <code>params</code> argument contains <code>KM_TAG_OS_VERSION</code> and
+<code>KM_TAG_OS_PATCHLEVEL</code>. This method is called by keymaster2 clients
+after opening the HAL, but before calling any other methods. If any other method
+is called before configure, the TA returns
+<code>KM_ERROR_KEYMASTER_NOT_CONFIGURED</code>.
+</p>
+
+<p>
+The first time <code>configure</code> is called after the device boots, it
+should verify that the version information provided matches what was provided by
+the bootloader. If the version information does not match,
+<code>configure</code> returns <code>KM_ERROR_INVALID_ARGUMENT</code>, and all
+other keymaster methods continue returning
+<code>KM_ERROR_KEYMASTER_NOT_CONFIGURED</code>. If the information matches,
+<code>configure</code> returns <code>KM_ERROR_OK</code>, and other keymaster
+methods begin functioning normally.
+</p>
+
+<p>
+Subsequent calls to <code>configure</code> return the same value returned by the
+first call, and do not change the state of keymaster. Note that this process
+will REQUIRErequire that all OTAs update both system and boot images; they can't
+be updated separately in order to keep the version information in sync.
+</p>
+
+<p>
+Because <code>configure</code> will be called by the system whose contents it is
+intended to validate, there is a narrow window of opportunity for an attacker to
+compromise the system image and force it to provide version information that
+matches the boot image, but which is not the actual version of the system. The
+combination of boot image verification, dm-verity validation of the system image
+contents, and the fact that <code>configure</code> is called very early in the
+system boot should make this window of opportunity difficult to exploit.
+</p>
+</body>
+</html>

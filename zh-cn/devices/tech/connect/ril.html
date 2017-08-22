@@ -1,0 +1,183 @@
+<html devsite><head>
+    <title>RIL 重构</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>Android 7.0 已对无线接口层 (RIL) 进行重构，使用一组子功能改进了 RIL 功能。要实现这些功能，您需要对合作伙伴代码进行更改；您可以自行决定是否更改，不过我们建议您进行更改。重构更改具有向后兼容性，因此您可以继续使用之前实现的已重构功能。</p>
+
+<p>RIL 重构功能中包括以下子功能。您可以实现任何或所有子功能：</p>
+
+<ul>
+<li>增强的 RIL 错误代码：代码可以返回比现有 <code>GENERIC_FAILURE</code> 代码更具体的错误代码。这样一来，系统便可以提供关于错误原因的更具体信息，从而提高错误的问题排查效率。</li>
+
+<li>增强的 RIL 版本管理：RIL 版本管理机制得到增强，可以更准确更轻松地配置版本信息。</li>
+
+<li>利用唤醒锁定机制重新设计的 RIL 通信技术：采用唤醒锁定机制的 RIL 通信技术得到增强，可以改善设备的电池性能。</li>
+</ul>
+
+<h2 id="examples">示例和源代码</h2>
+
+<p>您也可以在 <a href="https://android.googlesource.com/platform/hardware/ril/+/master/include/telephony/ril.h"><code>https://android.googlesource.com/platform/hardware/ril/+/master/include/telephony/ril.h</code></a> 中的代码注释中找到有关 RIL 版本管理的文档。</p>
+
+<h2 id="implementation">实现</h2>
+
+<p>下面的部分介绍了如何实现 RIL 重构功能的子功能。</p>
+
+<h3 id="errorcodes">实现增强的 RIL 错误代码</h3>
+
+<h4 id="errorcodes-problem">问题</h4>
+
+<p>几乎所有的 RIL 请求调用在对错误做出响应时都会返回 <code>GENERIC_FAILURE</code> 错误代码。原始设备制造商 (OEM) 返回的所有应求响应都存在这个问题。如果同一 <code>GENERIC_FAILURE</code> 错误代码由 RIL 调用出于不同的原因返回，则很难通过错误报告对问题进行调试。供应商甚至需要花费相当长的时间才能确定代码的哪一部分本应返回 <code>GENERIC_FAILURE</code> 代码。</p>
+
+<h4 id="errorcodes-solution">解决方案</h4>
+
+<p>OEM 应返回与当前归类为 <code>GENERIC_FAILURE</code> 的各个不同错误相关联的独特错误代码值。</p>
+
+<p>如果 OEM 不希望公开披露自己的自定义错误代码，则可能会以一组独特整数（例如从 1 到 x；映射为从 <code>OEM_ERROR_1</code> 到 <code>OEM_ERROR_X</code>）的形式返回错误。供应商应确保返回的每个经掩码处理的这类错误代码都可以映射到其代码中唯一的错误原因。这样做的目的是，在 OEM 每次返回一般性错误时加快 RIL 问题的调试速度。要确定导致 <code>GENERIC_FAILURE</code> 的确切原因，可能需要花费很长时间，有时甚至找不到原因。</p><p>
+
+</p><p>在 <code>ril.h</code> 中，我们针对枚举 <code>RIL_LastCallFailCause</code> 和 <code>RIL_DataCallFailCause</code> 添加了更多错误代码，以便供应商代码可以避免返回 <code>CALL_FAIL_ERROR_UNSPECIFIED</code> 和 <code>PDP_FAIL_ERROR_UNSPECIFIED</code> 等一般性错误。</p>
+
+<h3 id="version">实现增强的 RIL 版本管理</h3>
+
+<h4 id="version-problem">问题</h4>
+
+<p>RIL 版本管理机制不够准确。供应商报告其 RIL 版本时所采用的机制不明晰，进而导致供应商报告的版本不正确。目前所使用的解决方法是对版本进行评估，但这种方法可能并不准确。</p>
+
+<h4 id="version-solution">解决方案</h4>
+
+<p><code>ril.h</code> 中提供了一个文档记录部分，该部分介绍了特定 RIL 版本值对应的内容。每个 RIL 版本均记录在内，包括与相应版本对应的更改信息。针对相应版本做出更改时，供应商必须在代码中更新其版本，并在进行 <code>RIL_REGISTER</code> 时返回该版本。</p>
+
+<h3 id="wakelocks">实现利用唤醒锁定机制重新设计的 RIL 通信技术</h3>
+
+<h4 id="wakelocks-prob-sum">问题摘要</h4>
+
+<p>在 RIL 通信中使用定时唤醒锁定的方式并不精确，因而会对电池性能带来负面影响。RIL 请求既可以是应求请求，也可以自发请求。应求请求应归入以下类别之一：</p>
+
+<ul>
+<li>同步：无需较长时间即可返回响应的请求。例如，<code>RIL_REQUEST_GET_SIM_STATUS</code>。</li>
+
+<li>异步：需要相当长时间才能返回响应的请求。例如，<code>RIL_REQUEST_QUERY_AVAILABLE_NETWORKS</code>。</li>
+</ul>
+
+<p>要实现重新设计的唤醒锁定，请按以下步骤操作：</p>
+
+<ol>
+<li>根据应求 RIL 命令所需的响应时间，将其归类为同步或异步。
+<p>做出该决定时请注意以下事项：</p>
+
+<ul>
+<li>如在异步应求 RIL 请求解决方案中所述，由于此类请求需要相当长时间才会返回响应，因此当 RIL Java 收到来自供应商代码的确认信息时，会释放唤醒锁定。这可能会使应用处理器从闲置状态转为挂起状态。当收到来自供应商代码的响应时，RIL Java（应用处理器）会重新获取唤醒锁定，并对响应进行处理，然后再次转入闲置状态。从闲置状态转为挂起状态然后再返回闲置状态这一流程可能会非常耗电。</li>
+
+<li>如果响应时间不够长，则与进入挂起状态（通过释放唤醒锁定，然后在系统返回响应时唤醒）相比，在整个响应时间内保持唤醒锁定并停留在闲置状态可能会更省电。因此，供应商应使用平台专用功率测量工具，以确定时间“t”在以下情况下的阈值：当应用处理器停留在闲置状态时（在整个时间“t”内）的耗电量多于从闲置状态转为挂起状态并返回闲置状态（在同一时间“t”内）的耗电量时。找出该时间“t”的值时，所用处理时间比“t”多的 RIL 命令可归类为“异步”，而其余 RIL 命令则可归类为“同步”。</li>
+</ul>
+</li>
+
+<li>了解 <a href="#ril-comm-scenarios">RIL 通信示例情景</a>部分所述的 RIL 通信示例情景。</li>
+
+<li>修改用于处理 RIL 应求请求和自发请求的代码，按照示例情景中的解决方法说明操作。</li>
+</ol>
+
+<h4 id="ril-comm-scenarios">RIL 通信示例情景</h4>
+
+<p>要详细了解如何实施以下图表中使用的函数，请参阅 <code>ril.cpp</code> 的源代码：<code>acquireWakeLock()</code>、<code>decrementWakeLock()</code>、<code>clearWakeLock(</code>)</p>
+
+<h5>示例情景 1：来自 Java API 的 RIL 请求和针对该请求的应求异步响应</h5>
+
+<p><img src="images/ril-refactor-scenario-1.png"/></p>
+
+<h6>问题</h6>
+
+<p>如果 RIL 应求响应预计需要花费相当长的时间（例如，<code>RIL_REQUEST_GET_AVAILABLE_NETWORKS</code>），则唤醒锁定会在应用处理器端保持较长时间，这是一个问题。此外，调制解调器问题也会导致长时间的等待。</p>
+
+<h6>解决方案第 1 部分</h6>
+
+<p>在这种示例情景下，调制调解器代码会保持相应的唤醒锁定状态（RIL 请求和返回的异步响应）。</p>
+
+<p><img src="images/ril-refactor-scenario-1-solution-1.png"/></p>
+
+<p>如以上循序图所示：</p>
+
+<ol>
+<li>RIL 请求已发送，调制解调器需要获取唤醒锁定来处理请求。</li>
+
+<li>调制解调器代码会发送确认信息，这会导致 Java 端的唤醒锁定计数器的数值递减；如果唤醒锁定计数器的值为 0，则还会释放唤醒锁定。</li>
+
+<li>调制解调器处理请求后，会向供应商代码发送一个中断，该代码会获取唤醒锁定并向 ril.cpp 发送响应。随后，ril.cpp 会获取唤醒锁定并向 Java 端发送响应。</li>
+
+<li>当响应到达 Java 端时，Java 会获取唤醒锁定，并将响应发送回至调用程序。</li>
+
+<li>该响应经过所有模块处理后，系统会通过一个套接字将确认信息发送回 <code>ril.cpp</code>。随后，<code>ril.cpp</code> 会释放第 3 步中获取的唤醒锁定。</li>
+</ol>
+
+<p>请注意，由于确认信息很快就可以返回，因此请求确认序列的唤醒锁定超时时长应短于当前使用的超时时长。</p>
+
+<h6>解决方案第 2 部分</h6>
+
+<p>在这种示例情景下，调制调解器不会保持唤醒锁定，且响应会很快返回（同步 RIL 请求和响应）。</p>
+
+<p><img src="images/ril-refactor-scenario-1-solution-2.png"/></p>
+
+<p>如以上循序图所示：</p>
+
+<ol>
+<li>通过在 Java 端调用 <code>acquireWakeLock()</code> 发送 RIL 请求。</li>
+
+<li>供应商代码不需要获取唤醒锁定，且可快速处理请求并返回响应。</li>
+
+<li>当 Java 端收到响应时，会调用 <code>decrementWakeLock()</code>；这样一来，唤醒锁定计数器的数值便会减少，如果其值为 0，则还会释放唤醒锁定。</li>
+</ol>
+
+<p>请注意，此同步与异步行为已针对特定 RIL 命令按逐个调用进行硬编码。</p>
+
+<h5>示例情景 2：RIL 自发响应</h5>
+
+<p><img src="images/ril-refactor-scenario-2.png"/></p>
+
+<p>如上图所示，RIL 自发响应会在响应中标有唤醒锁定类型标记，该标记指明了是否需要针对特定响应（从供应商处接收）获取唤醒锁定。如果响应中标有标记，则系统会设置一个定时唤醒锁定，并会通过套接字将响应发送至 Java 端。当定时器到期时，系统会释放唤醒锁定。</p>
+
+<h6>问题</h6>
+
+<p>对于不同的 RIL 自发响应而言，示例情景 2 中阐述的定时唤醒锁定可能会过长或过短。</p>
+
+<h6>解决方案</h6>
+
+<p><img src="images/ril-refactor-scenario-2-solution.png"/></p>
+
+<p>如图所示，通过以下方法便可以解决该问题：从相应的 Java 代码将确认信息发送至本机端 (<code>ril.cpp</code>)，而不是在发送自发响应时在本机端保持定时唤醒锁定。</p>
+
+<h2 id="validation">验证</h2>
+
+<p>下文介绍了如何验证 RIL 重构功能的子功能是否已实现。</p>
+
+<h3 id="validate-error">验证增强的 RIL 错误代码</h3>
+
+<p>添加新的错误代码来替换 <code>GENERIC_FAILURE</code> 代码后，请确保新的错误代码由 RIL 调用（而非 <code>GENERIC_FAILURE</code>）返回。</p>
+
+<h3 id="validate-version">验证增强的 RIL 版本管理</h3>
+
+<p>确保您的 RIL 代码对应的 RIL 版本在 <code>ril.h</code> 中定义的 <code>RIL_REGISTER</code> 期间（而非 <code>RIL_VERSION</code> 期间）返回。</p>
+
+<h3 id="validate-wakelocks">验证重新设计的唤醒锁定</h3>
+
+<p>验证 RIL 调用已被识别为“同步”还是“异步”。</p>
+
+<p>由于电池耗电量可能因硬件/平台而异，因此供应商应进行一些内部测试，以确定针对异步调用使用新的唤醒锁定语义是否可以节省电量。</p>
+
+</body></html>

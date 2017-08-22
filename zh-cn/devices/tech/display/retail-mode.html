@@ -1,0 +1,191 @@
+<html devsite><head>
+    <title>零售演示模式</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>Android 7.1.1 及更高版本可为零售模式提供系统级支持，以便用户可以轻松检测运行中的设备。通过该功能，零售环境中的任何人都可以观看快速、安全、一致的 Android 设备演示，而原始设备制造商 (OEM) 也可以借此大幅降低零售模式的成本和复杂度，实现演示设备的普通化。
+</p>
+
+<h2 id="key-use-cases">关键用例</h2>
+
+<ul>
+<li>任何现成的 Android 设备都可以通过向 build 添加一个演示视频来设置为零售模式。
+</li><li>所有设备上都具有突出设备独特功能的视频。
+</li><li>无论是在线还是离线环境，设备都可以运行。
+</li><li>设备可以进行自我维护，所需的员工互动极少。</li></ul>
+
+<h2 id="lifecycle">生命周期</h2>
+
+<img src="images/retail-demo-flow.png" alt="零售演示模式流程" width="XXX" id="retail-demo-flow"/>
+<p class="img-caption">
+  <strong>图 1.</strong> 语言选择中的零售演示模式选项</p>
+
+<h3 id="setup-wizard-suw">设置向导 (SUW)</h3>
+
+<p>零售员工可以从任何设置向导的首屏直接启用零售模式，具体方法是选择列表底部的语言 <strong>Retail demo</strong>。此选项适用于全新出厂的设备。一旦消费者完成设置，零售模式将不再可用。选择后，设备将完成具有简短流程的 SUW。
+</p>
+
+<img src="images/retail-demo-wizard.png" alt="零售演示模式向导用法" width="XXX" id="retail-demo-wizard"/>
+<p class="img-caption">
+  <strong>图 2.</strong> 语言选择中的零售演示模式选项</p>
+
+<h3 id="guest-session">访客会话</h3>
+
+<p>设备进入零售模式后，会切换到新的演示用户，并自动启动覆盖层资源中指定的自定义启动器（如“实现”部分所述）。默认情况下，此自定义启动器会重复播放演示视频，直至用户触摸屏幕开始访客会话。这时，自定义启动器会在启动系统启动器后退出。原始设备制造商 (OEM) 可以更改自定义启动器，使其在退出时额外启动其他服务或活动。有关详细信息，请参阅“实现”部分。<em></em>
+</p>
+
+<p>为了保持零售模式的完整性，键盘锁会被停用，且某些可能会对零售模式产生不利影响的“快捷设置”操作也会被禁用，其中包括：</p>
+
+<ul>
+  <li>飞行模式切换</li><li>移除或修改 WLAN 接入点（设置）</li><li>更改运营商（设置）</li><li>配置热点（设置）</li><li>用户切换</li></ul>
+
+<p>此外，还对某些会影响零售模式的全局设置进行了停用，以便阻止对这些设置的访问：</p>
+
+<ul>
+  <li>WLAN 设置</li><li>移动网络配置选项，尤其是热点</li><li>蓝牙配置</li><li>备份和重置、日期和时间以及移动网络（这些选项根本不会显示）</li></ul>
+
+<p>如果用户一段时间（默认为 90 秒）没有操作，零售模式会显示系统对话框，提示用户是退出会话还是继续。如果用户选择退出或在 5 秒内没有任何响应，零售模式将终止/擦除当前演示用户，然后切换到新的演示用户，并再次循环播放原始视频。如果有人使用电源按钮关闭屏幕，几秒钟后屏幕又会自动打开。
+</p>
+
+<p>设备退出演示会话后，会自动静音并重置一些全局设置，其中包括：</p>
+
+<ul>
+  <li>亮度</li><li>自动旋转</li><li>手电筒</li><li>语言</li><li>无障碍</li></ul>
+
+<h3 id="exiting-retail-mode">退出零售模式</h3>
+
+<p>要退出零售模式，零售员工必须从引导加载程序将设备恢复出厂设置。
+</p>
+
+<h2 id="examples-and-source">示例和源代码</h2>
+
+<p>从以下位置查找循环播放视频的自定义启动器：<br />
+<code>/packages/apps/RetailDemo</code>
+</p>
+
+<h2 id="implementation">实现</h2>
+
+<h3 id="enabling-retaildemomodeservice">启用 RetailDemoModeService</h3>
+
+<p>设置向导设置全局设置 <code>Global.DEVICE_DEMO_MODE=true</code>，以表示设备已进入零售模式。一遇到此设置，<code>RetailDemoModeService</code> 便会在用户 0 已启动时创建并切换至演示用户，启用覆盖层资源中指定的自定义启动器，并停用 SUW。系统服务器和 SystemUI 也会使用此标记来管理零售模式的各个方面。
+</p>
+
+<h3 id="setting-custom-launcher-or-video-player">设置自定义启动器或视频播放器</h3>
+
+<p>原始设备制造商 (OEM) 可以通过覆盖 <code>/frameworks/base/core/res/res/config.xml</code> 中指定的框架资源 <code>config_demoModeLauncherComponent</code> 来指定自定义启动器
+</p>
+
+<p>例如，使用以下代码：</p>
+
+<pre>
+&lt;!-- Component that is the default launcher when Retail Mode is enabled. --&gt;
+&lt;string name="config_demoModeLauncherComponent"&gt;com.android.retaildemo/.DemoPlayer&lt;/string&gt;
+</pre>
+<p>位于 <code>/packages/apps/RetailDemo</code> 的零售演示 DemoPlayer 应用，是 Android 开放源代码项目 (AOSP) 中的默认自定义启动器。该应用会在 <code>/data/preloads/demo/retail_demo.mp4</code> 中查找视频并进行循环播放。当用户触摸屏幕时，自定义启动器会停用其活动组件，然后默认的系统启动器便会启动。
+</p>
+
+<p>自定义启动器必须将其自定义组件标记为默认停用，从而避免该组件在非演示情境下出现。在演示情境下，系统服务器会在启动新的演示会话时启用指定的 <code>config_demoModeLauncherComponent</code>。
+</p>
+
+<p>设置向导也会查找上述视频作为素材，以提供给零售模式进行播放。如果视频不是演示的一部分，则可以修改 SUW 以查找其他表明支持零售模式的原始设备制造商 (OEM) 特定标志。
+</p>
+
+<p>如果有 A/B 两个系统分区，则 B 系统分区的 <code>/preloads/demo</code> 中必须包含演示视频。在首次启动时，系统会将该视频复制到 <code>/data/preloads/demo</code>。
+</p>
+
+<p>要设置特定于零售模式的设置，请使用：<code>Settings.Global.retail_demo_mode_constants</code>。例如：<code>user_inactivity_timeout_ms=90000,warning_dialog_timeout_ms=10000</code>
+</p>
+
+<p class="note"><strong>注意</strong>：目前的超时默认值为 90000 毫秒，但可对其进行配置。
+</p>
+
+<h3 id="finding-sample-images">查找示例图片</h3>
+
+<p>此功能可将示例照片放在对任何图库应用均可见的特殊文件夹中。这些照片仅在演示模式下可用，并且由于处在受保护的目录中，所以演示用户无法对其进行修改。
+</p>
+
+<h3 id="preventing-google-accounts">阻止 Google 帐号</h3>
+
+<p>访客用户中设置了一些限制，类似于通过托管设备/资料策略防止应用和用户执行某些操作。其中一项限制是 <code>DISALLOW_MODIFY_ACCOUNTS</code>。在此限制之下，AccountManager 和“设置”不允许添加帐号。某些 Google 应用会对此限制做出反应并显示一条错误消息，其他应用则不提示登录帐号（如 YouTube 和 Google 照片）。
+</p>
+
+<p>原始设备制造商 (OEM) 应用也应检查是否已设置 <code>DISALLOW_MODIFY_ACCOUNTS</code>。但这是一个一般问题，并非零售模式所独有。企业用例很可能已解决此问题。
+</p>
+
+<h3 id="customizing-the-system-launcher">自定义系统启动器</h3>
+
+<p>原始设备制造商 (OEM) 可以自由选择布局，但应该在主屏幕和底部区域包含正常运行的应用。
+</p>
+
+<h3 id="Customizing-built-in-apps">针对零售演示模式自定义内置应用</h3>
+
+<p>内置应用可调用 API <code>UserManager.isDemoUser()</code> 来查看应用是否在演示环境中启动，以此针对零售演示模式自定义应用体验。
+</p>
+
+<h3 id="following-demo-video-guidelines">遵循演示视频指南</h3>
+
+<p>演示视频应采用纵向布局（如果是平板电脑，则为设备的自然方向），且时长在 5 秒以上。由于视频将在展示期间全天候播放，因此视频内容不能导致烧机。
+</p>
+
+<h2 id="maintenance">维护</h2>
+
+<h3 id="bringing-the-device-out-of-retail-mode">使设备退出零售模式</h3>
+
+<p>只能通过从引导加载程序恢复出厂设置来实现。
+</p>
+
+<h3 id="auto-ota-of-system-software">系统软件的自动 OTA</h3>
+
+<p>默认情况下，启用零售模式时，设备策略将被自动设置为无线 (OTA) 更新。零售设备将不经过确认，自动下载、重新启动并安装更新（考虑电池阈值），即使更新被标记为可选亦如此。
+</p>
+
+<p class="caution"><strong>注意</strong>：如果针对 OTA 使用 A/B 系统分区，则接收 OTA 更新后，设备将无法在 B 系统分区中找到原始的零售模式资源。因此，之后的任何恢复出厂设置操作都会导致设备无法返回零售模式。
+</p>
+
+<h3 id="updating-demo-video-via-the-web">通过网络更新演示视频</h3>
+
+<p>只要有网络连接，<code>/packages/apps/RetailDemo</code> 中的 RetailDemo 应用便可以更新演示视频。通过在 RetailDemo 应用中替换以下字符串值，可配置下载视频的网址：</p>
+
+<pre>
+&lt;!-- URL where the retail demo video can be downloaded from. --&gt;
+&lt;string name="retail_demo_video_download_url"&gt;&lt;/string&gt;
+</pre>
+
+<p>如果需要在不同的区域使用不同的视频，则可以通过使用特定于语言区域的字符串资源 <code>res/values-*/strings.xml. </code>配置不同的下载网址。例如，如果需要在美国和英国使用不同的视频，则可以将相应的下载网址分别放在 <code>res/values-en-rUS/strings.xml</code> 和 <code>res/values-en-rGB/strings.xml</code> 中。
+</p>
+
+<p>在 <code>res/values-en-rUS/strings.xml</code> 中：</p>
+
+<pre>
+&lt;string name="retail_demo_video_download_url"&gt;download URL for US video goes here&lt;/string&gt;
+</pre>
+
+<p>同样，在 <code>res/values-en-rGB/strings.xml</code> 中：</p>
+
+<pre>
+&lt;string name="retail_demo_video_download_url"&gt;download URL for UK video goes here&lt;/string&gt;
+</pre>
+
+<p>每次设备重新启动时，此视频最多只能下载一次。视频在设备上播放时，RetailDemo 应用会在后台检查是否提供了下载网址以及网址中的视频是否比正在播放的视频新。
+
+</p><p>如果是，RetailDemo 应用就会下载该视频并开始播放。视频下载完成后，下载的视频将用于在之后的演示会话中播放。在下次重新启动之前，将不再执行此类检查。
+</p>
+
+</body></html>

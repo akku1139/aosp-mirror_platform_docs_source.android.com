@@ -1,0 +1,75 @@
+<html devsite><head>
+    <title>测试设备管理</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>为确保为受管理个人资料提供最基本的支持，原始设备制造商 (OEM) 设备必须包含以下基本元素：</p>
+
+<ul>
+  <li>个人资料所有者（如<a href="https://developer.android.com/training/enterprise/app-compatibility.html">确保与受管理个人资料的兼容性</a>中所述）</li>
+  <li>设备所有者</li>
+  </ul>
+
+<p>要查看完整的要求列表，请参阅<a href="/devices/tech/admin/implement.html">实现设备管理</a>。</p>
+
+<p>要测试设备管理功能，设备所有者可以使用 TestDPC 应用（如下所述），也可以考虑直接与其他企业移动管理 (EMM) 提供商合作。</p>
+
+<h2 id="set_up_the_device_owner_for_testing">设置设备所有者以进行测试</h2>
+<p>请按照以下说明设置设备所有者测试环境。</p>
+
+<ol>
+  <li>设置设备：<ol>
+  <li style="list-style-type: lower-alpha">将目标设备恢复出厂设置。</li>
+  <li style="list-style-type: lower-alpha">确保您未向设备添加任何用户帐号（例如，用于登录在线服务的用户帐号）。您可以依次转到“设置”-&gt;“帐号”进行确认。<em></em></li>
+  </ol></li>
+  <li>使用以下某种方法设置测试应用：<ul>
+  <li><a href="https://play.google.com/store/apps/details?id=com.afwsamples.testdpc&hl=zh-cn">下载 TestDPC 应用</a>（可从 Google Play 下载）。</li>
+  <li><a href="https://github.com/googlesamples/android-testdpc/">编译 TestDPC 应用</a>（可从 github.com 编译）。</li>
+  </ul>
+  </li>
+  <li>使用以下命令将 TestDPC 应用设置为设备所有者：<br />
+  <pre>$ adb shell dpm set-device-owner "com.afwsamples.testdpc/.DeviceAdminReceiver"</pre>
+  </li>
+  <li>在设备上完成设备所有者设置（加密、选择 WLAN 等）</li>
+</ol>
+
+<h2 id="verify_the_device_owner_was_correctly_setup">验证设备所有者设置</h2>
+<p>要验证设备所有者是否已正确设置，请依次转到“设置”&gt;“安全”&gt;“设备管理器”，并确认 TestDPC 是否已在列表中。<em></em>验证它无法被停用（这表明它就是设备所有者）。</p>
+
+<h2 id="automate">自动配置测试</h2>
+<p>要自动化企业配置进程的测试，请使用 Android for Work (AfW) 自动化测试框架。如需了解详情，请参阅<a href="/devices/tech/admin/testing-provision.html">测试设备配置</a>。</p>
+
+<h2 id="troubleshooting">错误报告和日志</h2>
+<p>在 Android 7.0 中，设备所有者 Device Policy Client (DPC) 可以获取受管理设备上企业进程的错误报告并查看日志。</p>
+
+<p>要触发错误报告（即由 <code>adb
+bugreport</code> 收集的包含 dumpsys、dumpstate 和 logcat 数据的对应数据），请使用 <code>DevicePolicyController.requestBugReport</code>。收集错误报告后，系统会提示用户同意发送错误报告数据。结果将由 <code>DeviceAdminReceiver.onBugreport[Failed|Shared|SharingDeclined]</code> 接收。要详细了解错误报告内容，请参阅<a href="/source/read-bug-reports.html">读取错误报告</a>。
+
+</p><p>此外，设备所有者 DPC 还可以收集与用户在受管理设备上执行的操作相关的日志。所有报告 device_admin 的设备均必须进行企业进程日志记录，且通过新的日志安全缓冲区（仅供系统服务器读取）进行启用（也就是说，<code>adb logcat -b security</code> 无法读取该缓冲区）。ActivityManager 服务和 Keyguard 组件会将以下事件记录到安全缓冲区：</p>
+
+<ul>
+<li>应用进程启动</li>
+<li>锁屏操作（例如，解锁失败和成功）</li>
+<li>针对设备执行 <code>adb</code> 命令</li>
+</ul>
+
+<p>要在重新启动（而非冷启动）后有选择地保留日志，并将这些日志提供给设备所有者 DPC，设备的内核必须启用 <code>pstore</code> 和 <code>pmsg</code>、支持 DRAM，并能在重新启动的所有阶段刷新，以免损坏内存中保留的日志。要启用支持，请在 <code>frameworks/base/core/res/res/values/config.xml</code> 中使用 <code>config_supportPreRebootSecurityLogs</code> 设置。</p>
+
+</body></html>

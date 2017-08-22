@@ -1,0 +1,262 @@
+<html devsite>
+  <head>
+    <title>VINTF Object Data</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>A VINTF object aggregates data from
+<a href="#device-manifest-file">device manifest</a> and
+<a href="#framework-manifest-file">framework manifest</a> files (XML) and from
+the device itself at <a href="#runtime-data">runtime</a>. Both manifests share a
+format, although not all elements apply to both (for details on the schema, see
+<a href="#manifest-file-schema">Manifest file schema</a>).</p>
+
+<h2 id="device-manifest-file">Device manifest file</h2>
+<p>The Device manifest file is provided by the device. It lives in the Android
+source tree at <code>device/${VENDOR}/${DEVICE}/manifest.xml</code> and on the
+device at
+<code><a href="https://android.googlesource.com/platform/system/libhidl/+/master/manifest.xml" class="external">/vendor/manifest.xml</a></code>.
+</p>
+
+<p>Example Device manifest:</p>
+
+<pre class="prettyprint">
+&lt;?xml version="1.0" encoding="UTF-8"?>
+&lt;!-- Comments, Legal notices, etc. here -->
+&lt;manifest version="1.0" type="device">
+    &lt;hal>
+        &lt;name>android.hardware.camera&lt;/name>
+        &lt;transport>hwbinder&lt;/transport>
+        &lt;version>3.4&lt;/version>
+        &lt;interface>
+            &lt;name>ICameraProvider&lt;/name>
+            &lt;instance>legacy/0&lt;/instance>
+            &lt;instance>proprietary/0&lt;/instance>
+        &lt;/interface>
+    &lt;/hal>
+    &lt;hal>
+        &lt;name>android.hardware.nfc&lt;/name>
+        &lt;transport>hwbinder&lt;/transport>
+        &lt;version>1.0&lt;/version>
+        &lt;version>2.0&lt;/version>
+        &lt;interface>
+            &lt;name>INfc&lt;/name>
+            &lt;instance>nfc_nci&lt;/instance>
+        &lt;/interface>
+    &lt;/hal>
+    &lt;hal>
+        &lt;name>android.hardware.nfc&lt;/name>
+        &lt;transport>hwbinder&lt;/transport>
+        &lt;version>2.0&lt;/version>
+        &lt;interface>
+            &lt;name>INfc&lt;/name>
+            &lt;instance>default&lt;/instance>
+        &lt;/interface>
+    &lt;/hal>
+    &lt;hal format="native">
+        &lt;name>EGL&lt;/name>
+        &lt;version>1.1&lt;/version>
+    &lt;/hal>
+    &lt;hal format="native">
+        &lt;name>GLES&lt;/name>
+        &lt;version>1.1&lt;/version>
+        &lt;version>2.0&lt;/version>
+        &lt;version>3.0&lt;/version>
+    &lt;/hal>
+    &lt;sepolicy>
+        &lt;version>25.0&lt;/version>
+    &lt;/sepolicy>
+&lt;/manifest>
+</pre>
+
+<h2 id="framework-manifest-file">Framework manifest file</h2>
+<p>The Framework manifest file is provided by Google and is manually generated.
+It lives in the Android source tree at <code>system/libhidl/manifest.xml</code>
+and on the device under <code>/system/manifest.xml</code>.</p>
+
+<p>Example Framework manifest (provided by Google):</p>
+
+<pre class="prettyprint">
+&lt;?xml version="1.0" encoding="UTF-8"?>
+&lt;!-- Comments, Legal notices, etc. here -->
+&lt;manifest version="1.0" type="framework">
+    &lt;hal>
+        &lt;name>android.hidl.allocator&lt;/name>
+        &lt;transport>hwbinder&lt;/transport>
+        &lt;version>1.0&lt;/version>
+        &lt;interface>
+            &lt;name>IAllocator&lt;/name>
+            &lt;instance>ashmem&lt;/instance>
+        &lt;/interface>
+    &lt;/hal>
+    &lt;hal>
+        &lt;name>android.hidl.memory&lt;/name>
+        &lt;transport arch="32+64">passthrough&lt;/transport>
+        &lt;version>1.0&lt;/version>
+        &lt;interface>
+            &lt;name>IMapper&lt;/name>
+            &lt;instance>ashmem&lt;/instance>
+        &lt;/interface>
+    &lt;/hal>
+    &lt;hal>
+        &lt;name>android.hidl.manager&lt;/name>
+        &lt;transport>hwbinder&lt;/transport>
+        &lt;version>1.0&lt;/version>
+        &lt;interface>
+            &lt;name>IServiceManager&lt;/name>
+            &lt;instance>default&lt;/instance>
+        &lt;/interface>
+    &lt;/hal>
+    &lt;hal>
+        &lt;name>android.framework.sensorservice&lt;/name>
+        &lt;transport>hwbinder&lt;/transport>
+        &lt;version>1.0&lt;/version>
+        &lt;interface>
+            &lt;name>ISensorManager&lt;/name>
+            &lt;instance>default&lt;/instance>
+        &lt;/interface>
+    &lt;/hal>
+&lt;/manifest>
+</pre>
+
+<h2 id="manifest-file-schema">Manifest file schema</h2>
+<dl>
+<dt><code>?xml</code></dt>
+<dd>Optional. Only provides information to the XML parser.</dd>
+<dt><code>manifest.version</code></dt>
+<dd>Required. Version of <strong>this</strong> manifest. Describes the elements
+expected in the manifest. Unrelated to XML version.</dd>
+<dt><code>manifest.type</code></dt>
+<dd>Required. Type of this manifest. It has value <code>device</code> for
+device manifest file and <code>framework</code> for framework manifest
+file.</dd>
+<dt><code>manifest.hal</code></dt>
+<dd>Optional, can repeat. A single HAL (HIDL or native, such as GL),
+depending on the <code>format</code> attribute.</dd>
+<dt><code>manifest.hal.format</code></dt>
+<dd>Optional. Value can be one of:
+ <ul>
+ <li><code>hidl</code>: HIDL HALs. This is the default.
+ <li><code>native</code>: native HALs.</li>
+ </ul>
+</dd>
+<dt><code>manifest.hal.name</code></dt>
+<dd>Required. Fully-qualified package name of HAL. Multiple HAL entries can use
+the same name. Examples:
+ <ul>
+ <li><code>android.hardware.camera</code> (HIDL HAL)</li>
+ <li><code>GLES</code> (native HAL, requires name only)</li>
+ </ul>
+ </dd>
+<dt><code>manifest.hal.transport</code></dt>
+<dd>Required when <code>manifest.hal.format == "hidl"</code>. Must NOT be
+present otherwise. States what transport will be used when an interface from
+this package is queried from service manager. Value can be one of:
+ <ul>
+ <li><code>hwbinder</code>: binderized mode</li>
+ <li><code>passthrough</code>: passthrough mode</li>
+ </ul>
+</dd>
+<dt><code>manifest.hal.transport.arch</code></dt>
+<dd>Required for <code>passthrough</code> and must not be present for
+<code>hwbinder</code>. Describes the bitness of the passthrough service being
+provided. Value can be one of:
+ <ul>
+ <li><code>32</code>: 32-bit mode</li>
+ <li><code>64</code>: 64-bit mode</li>
+ <li><code>32+64</code>: both</li>
+ </ul>
+</dd>
+<dt><code>manifest.hal.version</code></dt>
+<dd>Required, can repeat. A version for the <code>hal</code> tags in a
+manifest. Format is <code><var>MAJOR</var>.<var>MINOR</var></code>. For
+examples, refer to <code>hardware/interfaces</code>,
+<code>vendor/${VENDOR}/interfaces</code>,
+<code>framework/hardware/interfaces</code>, or<code>
+system/hardware/interfaces</code>.
+<br><br>
+HIDL and native HALs may use multiple version fields as long as they represent
+<strong>distinct major versions</strong>, with only one minor version per major
+version provided. For example, 3.1 and 3.2 cannot coexist, but 1.0 and 3.4 can.
+This applies for all <code>hal</code> elements with the same name.</dd>
+<dt><code>manifest.hal.interface</code></dt>
+<dd>Required, can repeat without duplicates. State an interface in the
+package that has an instance name. There can be multiple
+<code>&lt;interface&gt;</code> elements in a <code>&lt;hal&gt;</code>; names
+must be distinct.</dd>
+<dt><code>manifest.hal.interface.name</code></dt>
+<dd>Required. Name of the interface.</dd>
+<dt><code>manifest.hal.interface.instance</code></dt>
+<dd>Required, can repeat. Instance name of the interface. Can have multiple
+instances for an interface but no duplicated <code>&lt;instance&gt;</code>
+elements.</dd>
+<dt><code>manifest.sepolicy</code></dt>
+<dd>Required. Contains all sepolicy-related entries.</dd>
+<dt><code>manifest.sepolicy.version</code></dt>
+<dd>Required for device manifest. Declares sepolicy version. It has the
+format <var>SDK_INT</var>.<var>PLAT_INT</var>.</dd>
+</dl>
+
+<h2 id=runtime-data>Runtime data</h2>
+<p>Some information required for the device manifest can be collected only at
+runtime. Information is available via
+<code>::android::vintf::VintfObject::GetRuntimeInfo()</code> and includes the
+following:</p>
+
+<ul>
+<li>Kernel information, including:
+ <ul>
+ <li><code>/proc/config.gz</code>. Zipped full kernel configuration that needs
+ to be read at runtime and converted to a queryable object.</li>
+ <li><code>/proc/version</code>. Information available through
+ <code>uname()</code> system call.</li>
+ <li><code>/proc/cpuinfo</code>. Format may be different for 32-bit and 64-bit
+ machine.</li>
+ <li>policydb version
+  <ul>
+  <li><code>/sys/fs/selinux/policyvers</code> (assuming <code>selinuxfs</code>
+  is mounted at <code>/sys/fs/selinux</code>).</li>
+  <li><code>security_policyvers()</code> API from <code>libselinux</code> gives
+  you the same.</li>
+  </ul>
+  </li>
+  </ul>
+<li>static libavb version, including:
+ <ul>
+ <li>bootloader system property: <code>ro.boot.vbmeta.avb_version</code></li>
+ <li>init/fs_mgr system property: <code>ro.boot.avb_version</code></li>
+ </ul>
+</li>
+</ul>
+
+<h2 id="queryable-api">Queryable API</h2>
+<p>The VINTF object is a system API as the
+<code>hwservicemanager</code>, OTA update service, CTS <code>DeviceInfo</code>,
+and others need information from this API.</p>
+
+<ul>
+<li>C++ queryable API is in
+<a href="https://android.googlesource.com/platform/system/libvintf/+/master/include/vintf/VintfObject.h" class="external"><code>android::vintf::VintfObject</code></a></li>
+<li>Java queryable API is in
+<a href="https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/os/VintfObject.java" class="external"><code>android.os.VintfObject</code></a>
+</ul>
+
+  </body>
+</html>

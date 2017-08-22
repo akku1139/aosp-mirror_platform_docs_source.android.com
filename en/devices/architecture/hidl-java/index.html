@@ -1,0 +1,186 @@
+<html devsite>
+  <head>
+    <title>HIDL Java</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+
+<p>Android O re-architects the Android OS to define clear interfaces between the
+device-independent Android platform and device- and vendor-specific code.
+Android already defines many such interfaces in the form of HAL interfaces,
+defined as C headers in <code>hardware/libhardware</code>. HIDL replaces these
+HAL interfaces with stable, versioned interfaces, which can be in Java
+(described below) or as client- and server-side HIDL interfaces in
+<a href="/devices/architecture/hidl-cpp/index.html">C++</a>.</p>
+
+<p>HIDL interfaces are intended to be used primarily from native code, and as a
+result HIDL is focused on the auto-generation of efficient code in C++. However,
+HIDL interfaces must also be able to be used directly from Java as some Android
+subsystems (such as Telephony) will most likely have Java HIDL interfaces.</p>
+
+<p>The pages in this section describe the Java frontend for HIDL interfaces,
+detail how to create, register, and use services, and explain how HALs and HAL
+clients written in Java interact with the HIDL RPC system.</p>
+
+<h2 id=client>Being a client</h2>
+<p>To access an interface IFoo in package <code>android.hardware.foo</code>
+version 1.0 that is registered as service name <code>foo-bar</code>:</p>
+
+<ol>
+<li>Add libraries:
+
+<ul>
+<li>Add the following to Android.mk:
+<pre class="prettyprint">LOCAL_JAVA_LIBRARIES += android.hardware.foo-V1.0-java</pre>
+
+<strong>OR</strong><br>
+</li>
+
+<li>Add the following to Android.bp:
+<pre class="prettyprint">
+shared_libs: [
+    /* &hellip; */
+    "android.hardware.foo-V1.0-java",
+],
+</pre>
+The static version of the library is also available as
+<code>android.hardware.foo-V1.0-java-static</code>.</li>
+</ul>
+</li>
+<li>Add the following to your Java file:
+<pre class="prettyprint">
+import android.hardware.foo.V1_0.IFoo;
+...
+IFoo server = IFoo.getService(); // throws exception if not available
+IFoo anotherServer = IFoo.getService("second_impl");
+server.doSomething(&hellip;);
+</pre>
+</li>
+</ol>
+
+<h2 id=service>Providing a service</h2>
+<p>Framework code in Java may need to serve interfaces to receive asynchronous
+callbacks from HALs.</p>
+
+<p class=warning><strong>Warning</strong>: Do not implement a driver (HAL) in
+Java. We strongly recommend you implement drivers in C++.</p>
+
+<p>For interface <code>IFooCallback</code> in version 1.0 of package
+<code>android.hardware.foo</code>, you can implement your interface in Java
+using the following steps:</p>
+
+<ol>
+<li>Define your interface in HIDL.</li>
+<li>Open <code>/tmp/android/hardware/foo/IFooCallback.java</code> as a
+reference.</li>
+<li>Create a new module for your Java implementation.</li>
+<li>Examine the abstract class
+<code>android.hardware.foo.V1_0.IFooCallback.Stub</code>, then write a new class
+to extend it and implement the abstract methods.</li>
+</ol>
+
+<h3 id=autogen>Viewing auto-generated files</h3>
+<p>To view the automatically-generated files, run:</p>
+<pre class="prettyprint">
+hidl-gen -o /tmp -Ljava \
+  -randroid.hardware:hardware/interfaces \
+  -randroid.hidl:system/libhidl/transport android.hardware.foo@1.0
+</pre>
+
+<p>These commands generate the directory
+<code>/tmp/android/hardware/foo/1.0</code>. For the file
+<code>hardware/interfaces/foo/1.0/IFooCallback.hal</code>, this generates the
+file <code>/tmp/android/hardware/foo/1.0/IFooCallback.java</code>, which
+encapsulates the Java interface, the proxy code, and the stubs (both proxy and
+stubs conform to the interface).</p>
+
+<p><code>-Lmakefile</code> generates the rules that run this command at build
+time and allow you to include
+<code>android.hardware.foo-V1.0-java(-static)?</code> and link against the
+appropriate files. A script that automatically does this for a project full of
+interfaces can be found at <code>hardware/interfaces/update-makefiles.sh</code>.
+The paths in this example are relative; hardware/interfaces can be a temporary
+directory under your code tree to enable you to develop a HAL prior to
+publishing it.</p>
+
+<h2 id=service>Running a service</h2>
+<p>The HAL provides an interface <code>IFoo</code>, which must make asynchronous
+callbacks to the framework over interface <code>IFooCallback</code>. The
+<code>IFooCallback</code> interface is not registered by name as a discoverable
+service; instead, <code>IFoo</code> must contain a method such as
+<code>setFooCallback(IFooCallback x)</code>.</p>
+
+<p>To set up <code>IFooCallback</code> from version 1.0 of package
+<code>android.hardware.foo</code>, add
+<code>android.hardware.foo-V1.0-java</code> to <code>Android.mk</code>. The code
+to run the service is:</p>
+
+<pre class="prettyprint">
+import android.hardware.foo.V1_0.IFoo;
+import android.hardware.foo.V1_0.IFooCallback.Stub;
+....
+class FooCallback extends IFoo.Stub {
+    // implement methods
+}
+....
+// Get the service you will be receiving callbacks from.
+// This also starts the threadpool for your callback service.
+IFoo server = IFoo.getService(); // throws exception if not available
+....
+// This must be a persistent instance variable, not local,
+//   to avoid premature garbage collection.
+FooCallback mFooCallback = new FooCallback();
+....
+// Do this once to create the callback service and tell the "foo-bar" service
+server.setFooCallback(mFooCallback);
+</pre>
+
+<h2 id=extensions>Interface extensions</h2>
+<p>Assuming a given service implements an interface <code>IFoo</code> across all
+devices, it's possible that on a particular device the service may provide
+additional capabilities implemented in an interface extension
+<code>IBetterFoo</code>, i.e.:</p>
+
+<pre class="prettyprint">
+interface IFoo {
+   ...
+};
+
+interface IBetterFoo extends IFoo {
+   ...
+};
+</pre>
+
+<p>Calling code aware of the extended interface can use the
+<code>castFrom()</code> Java method to safely cast the base interface to the
+extended interface:</p>
+
+<pre class="prettyprint">
+IFoo baseService = Foo.getService();
+IBetterFoo extendedService = IBetterFoo.castFrom(baseService);
+if (extendedService != null) {
+  // The service implements the extended interface.
+} else {
+  // The service only implements the base interface.
+}
+</pre>
+
+  </body>
+</html>

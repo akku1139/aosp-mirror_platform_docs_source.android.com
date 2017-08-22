@@ -1,0 +1,315 @@
+<html devsite>
+  <head>
+    <title>Using Binder IPC</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+
+<p>This page describes changes to the binder driver in Android O, provides
+details on using binder IPC, and lists required SELinux policy.</p>
+
+<h2 id=binder-changes>Changes to binder driver</h2>
+
+<p>Starting in Android O, the Android framework and HALs now communicate with
+each other using binder. As this communication dramatically increases binder
+traffic, Android O includes several improvements designed to keep binder IPC
+fast. SoC vendors and OEMs integrating the latest version of the driver should
+review the list of these improvements, relevant SHAs for the 3.18, 4.4, and 4.9
+kernels, and required userspace changes.</p>
+
+<h3 id=contexts>Multiple binder domains (contexts)</h3>
+<em>In common-3.10, common-3.18, common-4.4, common-4.9, and upstream</em>
+<p>
+To cleanly split the binder traffic between framework (device-independent) and
+vendor (device-specific) code, Android O introduces the concept of a <em>binder
+context</em>. Each binder context has its own device node and its own context
+(service) manager. You can access the context manager only through the device
+node to which it belongs and, when passing a binder node through a certain
+context, it is accessible from that same context only by another process, thus
+completely isolating the domains from each other. For details on using, see
+<a href="#vndbinder">vndbinder</a> and
+<a href="#vndservicemanager">vndservicemanager</a>.
+</p>
+
+
+<h3 id=scatter>Scatter-gather</h3>
+<em>In common-3.10, common-3.18, common-4.4, common-4.9, and upstream</em>
+<p>
+In previous releases of Android, every piece of data in a binder call was copied
+three times:
+</p>
+<ul>
+<li>Once to serialize it into a
+<code><a href="https://developer.android.com/reference/android/os/Parcel.html">Parcel</a></code>
+in the calling process</li>
+<li>Once in the kernel driver to copy the <code>Parcel</code> to the target
+process</li>
+<li>Once to unserialize the <code>Parcel</code> in the target process</li>
+</ul>
+
+<p>
+Android O uses
+<a href="https://en.wikipedia.org/wiki/Vectored_I/O">scatter-gather
+optimization</a> to reduce the number of copies from 3 to 1. Instead of
+serializing data in a <code>Parcel</code> first, data remains in its original
+structure and memory layout and the driver immediately copies it to the target
+process. After the data is in the target process, the structure and memory
+layout is the same and the data can be read without requiring another copy.
+</p>
+
+<h3 id=locking>Fine-grained locking</h3>
+<em>In common-3.18, common-4.4, common-4.9, and upstream</em>
+
+<p>
+In previous Android releases, the binder driver used a global lock to protect
+against concurrent access to critical data structures. While there was minimal
+contention for the lock, the main problem was that if a low-priority thread
+obtained the lock and then got preempted, it could seriously delay
+higher-priority threads needing to obtain the same lock. This caused jank in the
+platform.
+</p>
+<p>
+Initial attempts to resolve this problem involved disabling preemption while
+holding the global lock. However, this was more of a hack than a true solution,
+and was eventually rejected by upstream and discarded. Subsequent attempts
+focused on making locking more fine-grained, a version of which has been running
+on Pixel devices since January 2017. While the majority of those changes were
+made public, substantial improvements were made in future versions.
+</p>
+<p>
+After identifying small issues in the fine-grained locking implementation, we
+devised an improved solution with a different locking architecture and submitted
+the changes in the 3.18, 4.4, and 4.9 common branches. We continue to test this
+implementation on a large number of different devices; as we are unaware of any
+outstanding issues, this is the recommended implementation for devices shipping
+with Android O.
+</p>
+<p class="note"><strong>Note:</strong> We strongly encourage budgeting
+sufficient testing hours for fine-grained locking.
+</p>
+<h3 id=rt-priority>Real-time priority inheritance</h3>
+<em>In common-3.18, common-4.4, common-4.9 (upstream coming soon)</em>
+
+<p>
+The binder driver has always supported nice priority inheritance. As an
+increasing number of processes in Android run at real-time priority, in some
+cases it now makes sense that if a real-time thread makes a binder call, the
+thread in the process that handles that call also runs at real-time priority. To
+support these use cases, Android O now implements real-time priority inheritance
+in the binder driver.
+</p>
+<p>
+In addition to transaction-level priority inheritance, <em>node priority
+inheritance</em> allows a node (binder service object) to specify a minimum
+priority at which calls into this node should be executed. Previous versions of
+Android already supported node priority inheritance with nice values, but
+Android O adds support for real-time scheduling policies node inheritance.
+</p>
+<p class="note"><strong>Note:</strong> The Android performance team found that
+real-time priority inheritance caused unwanted side-effects in the framework
+binder domain (<code>/dev/binder</code>), so real-time priority inheritance is
+<strong>disabled</strong> for that domain.
+</p>
+
+<h3 id=userspace>Userspace changes</h3>
+<p>
+Android O includes all userspace changes required to work with the current
+binder driver in the common kernel with one exception: The original
+implementation to disable real-time priority inheritance for
+<code>/dev/binder</code> used an
+<a href="https://android.googlesource.com/kernel/msm/+/868f6ee048c6ff51dbd92353dd5c68bea4419c78" class="external">ioctl</a>. Subsequent development switched control of priority
+inheritance to a more fine-grained method that is per binder mode (and not per
+context). Thus, the ioctl is not in the Android common branch and is instead
+<a href="https://android-review.googlesource.com/#/c/421861/" class="external">submitted
+in our common kernels</a>.
+</p>
+<p>
+The effect of this change is that real-time priority inheritance is disabled by
+default for <em>every</em> node. The Android performance team has found it
+beneficial to enable real-time priority inheritance for all nodes in the
+<code>hwbinder</code> domain. To achieve that same effect, cherry-pick
+<a href="https://android-review.googlesource.com/#/c/440359/" class="external">this
+change</a> in userspace.
+</p>
+<h3 id=shas>SHAs for common kernels</h3>
+<p>
+To obtain necessary changes to the binder driver, sync to the SHAs below (or
+later):
+</p>
+<ul>
+<li>Common-3.18<br>
+cc8b90c121de ANDROID: binder: don't check prio permissions on restore.</li>
+<li>Common-4.4<br>
+76b376eac7a2 ANDROID: binder: don't check prio permissions on restore.</li>
+<li>Common-4.9<br>
+ecd972d4f9b5 ANDROID: binder: don't check prio permissions on restore.</li>
+</ul>
+
+<h2 id=ipc>Using binder IPC</h2>
+<p>Historically, vendor processes have used binder interprocess communication
+(IPC) to communicate. In Android O, the <code>/dev/binder</code> device node
+becomes exclusive to framework processes, meaning vendor processes no longer
+have access to it. Vendor processes can access <code>/dev/hwbinder</code>, but
+must convert their AIDL interfaces to use HIDL. For vendors who want to continue
+using AIDL interfaces between vendor processes, Android supports binder IPC as
+described below.</p>
+
+<h3 id=vndbinder>vndbinder</h3>
+<p>Android O supports a new binder domain for use by vendor services, accessed
+using <code>/dev/vndbinder</code> instead of <code>/dev/binder</code>. With the
+addition of <code>/dev/vndbinder</code>, Android now has the following three
+IPC domains:</p>
+
+<table>
+  <tr>
+   <th>IPC Domain</th>
+   <th>Description</th>
+  </tr>
+  <tr>
+   <td><code>/dev/binder</code></td>
+   <td>IPC between framework/app processes with AIDL interfaces</td>
+  </tr>
+  <tr>
+   <td><code>/dev/hwbinder</code></td>
+   <td>IPC between framework/vendor processes with HIDL interfaces
+   <br>IPC between vendor processes with HIDL interfaces</td>
+  </tr>
+  <tr>
+   <td><code>/dev/vndbinder</code></td>
+   <td>IPC between vendor/vendor processes with AIDL Interfaces</td>
+  </tr>
+</table>
+
+<p>For <code>/dev/vndbinder</code> to appear, ensure the kernel configuration
+item <code>CONFIG_ANDROID_BINDER_DEVICES</code> is set to
+<code>"binder,hwbinder,vndbinder"</code> (this is the default in Android's
+common kernel trees).</p>
+
+<p>Normally, vendor processes don't open the binder driver directly and instead
+link against the <code>libbinder</code> userspace library, which opens the
+binder driver. Adding a method for <code>::android::ProcessState()</code>
+selects the binder driver for <code>libbinder</code>. Vendor processes should
+call this method <strong>before</strong> calling into <code>ProcessState,</code>
+<code>IPCThreadState</code>, or before making any binder calls in general. To
+use, place the following call after the <code>main()</code> of a vendor process
+(client and server):</p>
+
+<pre class="prettyprint">ProcessState::initWithDriver("/dev/vndbinder");</pre>
+
+<h3 id=vndservicemanager>vndservicemanager</h3>
+<p>Previously, binder services were registered with <code>servicemanager</code>,
+where they could be retrieved by other processes. In Android O,
+<code>servicemanager</code> is now used exclusively by framework and app
+processes and vendor processes can no longer access it.</p>
+
+<p>However, vendor services can now use <code>vndservicemanager</code>, a new
+instance of <code>servicemanager</code> that uses <code>/dev/vndbinder</code>
+instead of <code>/dev/binder</code> and which is built from the same sources as
+framework <code>servicemanager</code>. Vendor processes do not need to make
+changes to talk to <code>vndservicemanager</code>; when a vendor process opens
+/<code>dev/vndbinder</code>, service lookups automatically go to
+<code>vndservicemanager</code>.</p>
+
+<p>The <code>vndservicemanager</code> binary is included in Android's default
+device makefiles.</p>
+
+<h2 id=selinux>SELinux policy</h2>
+<p>Vendor processes that want to use binder functionality to communicate with
+each other need the following:</p>
+<ol>
+<li>Access to <code>/dev/vndbinder</code>.</li>
+<li>Binder <code>{transfer, call}</code> hooks into
+<code>vndservicemanager</code>.</li>
+<li><code>binder_call(A, B)</code> for any vendor domain A that wants to call
+into vendor domain B over the vendor binder interface.</li>
+<li>Permission to <code>{add, find}</code> services in
+<code>vndservicemanager</code>.</li>
+</ol>
+
+<p>To fulfill requirements 1 and 2, use the <code>vndbinder_use()</code>
+macro:</p>
+
+<pre class="prettyprint">vndbinder_use(some_vendor_process_domain);</pre>
+
+<p>To fulfill requirement 3, the <code>binder_call(A, B)</code> for vendor
+processes A and B that need to talk over binder can stay in place, and doesn't
+need renaming.</p>
+
+<p>To fulfill requirement 4, you must make changes in the way service names,
+service labels, and rules are handled.</p>
+
+<p>For details on SELinux, see
+<a href="https://source.android.com/security/selinux/">Security-Enhanced Linux
+in Android</a>. For details on SELinux in Android 8.0, see
+<a href="/security/selinux/images/SELinux_Treble.pdf">SELinux for Android
+8.0</a>.</p>
+
+<h3 id=names>Service names</h3>
+<p>Previously, vendor processes registered service names in a
+<code>service_contexts</code> file and added corresponding rules for accessing
+that file. Example <code>service_contexts</code> file from
+<code>device/google/marlin/sepolicy</code>:</p>
+
+<pre class="devsite-click-to-copy">
+AtCmdFwd                              u:object_r:atfwd_service:s0
+cneservice                            u:object_r:cne_service:s0
+qti.ims.connectionmanagerservice      u:object_r:imscm_service:s0
+rcs                                   u:object_r:radio_service:s0
+uce                                   u:object_r:uce_service:s0
+vendor.qcom.PeripheralManager         u:object_r:per_mgr_service:s0
+</pre>
+
+<p>In Android O, <code>vndservicemanager</code> loads the
+<code>vndservice_contexts</code> file instead. Vendor services migrating to
+<code>vndservicemanager</code> (and which are already in the old
+<code>service_contexts</code> file) should be added to the new
+<code>vndservice_contexts</code> file.</p>
+
+<h3 id=labels>Service labels</h3>
+<p>Previously, service labels such as <code>u:object_r:atfwd_service:s0</code>
+were defined in a <code>service.te</code> file. Example:</p>
+
+<pre class="prettyprint">type atfwd_service,      service_manager_type;</pre>
+
+<p>In Android O, you must change the type to
+<code>vndservice_manager_type</code> and move the rule to the
+<code>vndservice.te</code> file. Example:</p>
+
+<pre class="prettyprint">type atfwd_service,      vndservice_manager_type;</pre>
+
+<h3 id=rules>Servicemanager rules</h3>
+<p>Previously, rules granted domains access to add or find services from
+<code>servicemanager</code>. Example:</p>
+
+<pre class="prettyprint">
+allow atfwd atfwd_service:service_manager find;
+allow some_vendor_app atfwd_service:service_manager add;
+</pre>
+
+<p>In Android O, such rules can stay in place and use the same class. Example:
+</p>
+
+<pre class="prettyprint">
+allow atfwd atfwd_service:service_manager find;
+allow some_vendor_app atfwd_service:service_manager add;
+</pre>
+
+  </body>
+</html>

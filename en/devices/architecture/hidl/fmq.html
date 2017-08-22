@@ -1,0 +1,424 @@
+<html devsite>
+  <head>
+    <title>Fast Message Queue (FMQ)</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>HIDL's remote procedure call (RPC) infrastructure uses Binder mechanisms,
+meaning calls involve overhead, require kernel operations, and may trigger
+scheduler action. However, for cases where data must be transferred between
+processes with less overhead and no kernel involvement, the Fast Message Queue
+(FMQ) system is used.</p>
+
+<p>FMQ creates message queues with the desired properties. An
+<code>MQDescriptorSync</code> or <code>MQDescriptorUnsync</code> object can be
+sent over a HIDL RPC call and used by the receiving process to access the
+message queue.</p>
+
+<p class="caution">Fast Message Queues are supported only in C++.</p>
+
+<h2 id=flavors>MessageQueue types</h2>
+<p>Android supports two queue types:</p>
+<ul>
+<li><em>Unsynchronized</em> queues are allowed to overflow, and can have many
+readers; each reader must read data in time or lose it.
+<li><em>Synchronized</em> queues are not allowed to overflow, and can have only
+one reader.</li>
+</ul>
+
+<p>Both queue types are not allowed to underflow (read from an empty queue will
+fail) and can only have one writer.</p>
+
+<h3 id=unsync>Unsynchronized</h3>
+<p>An unsynchronized queue has only one writer, but can have any number of
+readers. There is one write position for the queue; however, each reader keeps
+track of its own independent read position.</p>
+
+<p>Writes to the queue always succeed (are not checked for overflow) as long as
+they are no larger than the configured queue capacity (writes larger than the
+queue capacity fail immediately). As each reader may have a different read
+position, rather than waiting for every reader to read every piece of data, data
+is allowed to fall off the queue whenever new writes need the space.</p>
+
+<p>Reads are responsible for retrieving data before it falls off the end of
+the queue. A read that attempts to read more data than is available either
+fails immediately (if nonblocking) or waits for enough data to be available (if
+blocking). A read that attempts to read more data than the queue capacity always
+fails immediately.</p>
+
+<p>If a reader fails to keep up with the writer, so that the amount of data
+written and not yet read by that reader is larger than the queue capacity, the
+next read does not return data; instead, it resets the readers read
+position to equal the latest write position then returns failure. If the
+data available to read is checked after overflow but before the next read, it
+shows more data available to read than the queue capacity, indicating
+overflow has occurred. (If the queue overflows between checking available data
+and attempting to read that data, the only indication of overflow is that the
+read fails.)</p>
+
+<h3 id=sync>Synchronized</h3>
+<p>A synchronized queue has one writer and one reader with a single write
+position and a single read position. It is impossible to write more data than
+the queue has space for or read more data than the queue currently holds.
+Depending on whether the blocking or nonblocking write or read function is
+called, attempts to exceed available space or data either return failure
+immediately or block until the desired operation can be completed. Attempts to
+read or write more data than the queue capacity will always fail immediately.
+</p>
+
+<h2 id=setup>Setting up an FMQ</h2>
+<p>A message queue requires multiple <code>MessageQueue</code> objects: one to
+be written to, and one or more to be read from. There is no explicit
+configuration of which object is used for writing or reading; it is up to the
+user to ensure that no object is used for both reading and writing, that there
+is at most one writer, and, for synchronized queues, that there is at most one
+reader.</p>
+
+<h3 id=first-object>Creating the first MessageQueue object</h3>
+<p>A message queue is created and configured with a single call:</p>
+
+<pre class="prettyprint">
+#include &lt;fmq/MessageQueue.h&gt;
+using android::hardware::kSynchronizedReadWrite;
+using android::hardware::kUnsynchronizedWrite;
+using android::hardware::MQDescriptorSync;
+using android::hardware::MQDescriptorUnsync;
+using android::hardware::MessageQueue;
+....
+// For a synchronized non-blocking FMQ
+mFmqSynchronized =
+  new (std::nothrow) MessageQueue&lt;uint16_t, kSynchronizedReadWrite&gt;
+      (kNumElementsInQueue);
+// For an unsynchronized FMQ that supports blocking
+mFmqUnsynchronizedBlocking =
+  new (std::nothrow) MessageQueue&lt;uint16_t, kUnsynchronizedWrite&gt;
+      (kNumElementsInQueue, true /* enable blocking operations */);
+</pre>
+
+<ul>
+<li>The <code>MessageQueue&lt;T, flavor&gt;(numElements)</code> initializer
+creates and initializes an object that supports the message queue functionality.
+</li>
+<li>The <code>MessageQueue&lt;T, flavor&gt;(numElements,
+configureEventFlagWord)</code> initializer creates and initializes an object
+that supports the message queue functionality with blocking.</li>
+<li><code>flavor</code> can be either <code>kSynchronizedReadWrite</code> for a
+synchronized queue or <code>kUnsynchronizedWrite</code> for an unsynchronized
+queue.</li>
+<li><code>uint16_t</code> (in this example) can be any
+<a href="/devices/architecture/hidl-cpp/types.html">HIDL-defined type</a> that
+does not involve nested buffers (no <code>string</code> or <code>vec</code>
+types), handles, or interfaces.</li>
+<li><code>kNumElementsInQueue</code> indicates the size of queue in number of
+entries; it determines the size of shared memory buffer that will be allocated
+for the queue.</li>
+</ul>
+
+<h3 id=second-object>Creating the second MessageQueue object</h3>
+<p>The second side of the message queue is created using an
+<code>MQDescriptor</code> object obtained from the first side. The
+<code>MQDescriptor</code> object is sent over a HIDL RPC call to the process
+that will hold the second end of the message queue. The
+<code>MQDescriptor</code> contains information about the queue:</p>
+
+<ul>
+<li>Information to map the buffer and write pointer.</li>
+<li>If the queue is synchronized, information to map the read pointer.</li>
+<li>If the queue is blocking, information to map the event flag word.</li>
+<li>The object type is made into a template with the HIDL-defined type of queue
+elements and the flavor (synchronized or unsynchronized).</li>
+</ul>
+
+<p>The <code>MQDescriptor</code> object can be used to construct a
+<code>MessageQueue</code> object:</p>
+
+<pre class="prettyprint">
+MessageQueue&lt;T, flavor&gt;::MessageQueue(const MQDescriptor&lt;T, flavor&gt;&amp; Desc, bool resetPointers)
+</pre>
+
+<p>The <code>resetPointers</code> parameter indicates whether to reset the read
+and write positions to 0 while creating this <code>MessageQueue</code> object.
+In an unsynchronized queue, the read position (which is local to each
+<code>MessageQueue</code> object in unsynchronized queues) is always set to 0
+during creation. Typically, the <code>MQDescriptor</code> is initialized during
+creation of the first message queue object. For extra control over the shared
+memory, you can set up the <code>MQDescriptor</code> manually
+(<code>MQDescriptor</code> is defined in
+<a href="https://android.googlesource.com/platform/system/libhidl/+/master/base/include/hidl/MQDescriptor.h" class="external"><code>system/libhidl/base/include/hidl/MQDescriptor.h</code></a>)
+then create every <code>MessageQueue</code> object as described in this section.
+</p>
+
+<h3 id=blocking>Blocking queues and event flags</h3>
+<p>By default, queues do not support blocking reads/writes. There are two kinds
+of blocking read/write calls:</p>
+<ul>
+<li><em>Short form</em>, with three parameters (data pointer, number of items,
+timeout). Supports blocking on individual read/write operations on a single
+queue. When using this form, the queue will handle the event flag and bitmasks
+internally, and the first message queue object must be initialized with a
+second parameter of <code>true</code>.</li>
+<li><em>Long form</em>, with six parameters (includes event flag and bitmasks).
+Supports using a shared <code>EventFlag</code> object between multiple queues
+and allows specifying the notification bit masks to be used. In this case, the
+event flag and bitmasks must be supplied to each read and write call.</li>
+</ul>
+
+<p>For the long form, the <code>EventFlag</code> can be supplied explicitly in
+each <code>blockingRead()</code> and <code>blockingWrite()</code> call. One of
+the queues may be initialized with an internal event flag, which must then be
+extracted from that queue's <code>MessageQueue</code> objects using
+<code>getEventFlagWord()</code> and used to create <code>EventFlag</code>
+objects in each process for use with other FMQs. Alternatively, the
+<code>EventFlag</code> objects can be initialized with any suitable shared
+memory.</p>
+
+<p>In general, each queue should use only one of non-blocking, short-form
+blocking, or long-form blocking. It is not an error to mix them, but careful
+programming is required to get the desired result.</p>
+
+<h2 id=using>Using the MessageQueue</h2>
+<p>The public API of the <code>MessageQueue</code> object is:</p>
+
+<pre class="prettyprint">
+size_t availableToWrite()  // Space available (number of elements).
+size_t availableToRead()  // Number of elements available.
+size_t getQuantumSize()  // Size of type T in bytes.
+size_t getQuantumCount() // Number of items of type T that fit in the FMQ.
+bool isValid() // Whether the FMQ is configured correctly.
+const MQDescriptor&lt;T, flavor&gt;* getDesc()  // Return info to send to other process.
+
+bool write(const T* data)  // Write one T to FMQ; true if successful.
+bool write(const T* data, size_t count) // Write count T's; no partial writes.
+
+bool read(T* data);  // read one T from FMQ; true if successful.
+bool read(T* data, size_t count);  // Read count T's; no partial reads.
+
+bool writeBlocking(const T* data, size_t count, int64_t timeOutNanos = 0);
+bool readBlocking(T* data, size_t count, int64_t timeOutNanos = 0);
+
+// Allows multiple queues to share a single event flag word
+std::atomic&lt;uint32_t&gt;* getEventFlagWord();
+
+bool writeBlocking(const T* data, size_t count, uint32_t readNotification,
+uint32_t writeNotification, int64_t timeOutNanos = 0,
+android::hardware::EventFlag* evFlag = nullptr); // Blocking write operation for count Ts.
+
+bool readBlocking(T* data, size_t count, uint32_t readNotification,
+uint32_t writeNotification, int64_t timeOutNanos = 0,
+android::hardware::EventFlag* evFlag = nullptr) // Blocking read operation for count Ts;
+
+//APIs to allow zero copy read/write operations
+bool beginWrite(size_t nMessages, MemTransaction* memTx) const;
+bool commitWrite(size_t nMessages);
+bool beginRead(size_t nMessages, MemTransaction* memTx) const;
+bool commitRead(size_t nMessages);
+</pre>
+
+<p><code>availableToWrite()</code> and <code>availableToRead()</code> can be used
+to determine how much data can be transferred in a single operation. In an
+unsynchronized queue:</p>
+
+<ul>
+<li><code>availableToWrite()</code> always returns the capacity of the queue.
+<li>Each reader has its own read position and does its own calculation for
+<code>availableToRead()</code>.</li>
+<li>From the point of view of a slow reader, the queue is allowed to overflow;
+this may result in <code>availableToRead()</code> returning a value larger than
+the size of the queue. The first read after an overflow will fail and result in
+the read position for that reader being set equal to the current write pointer,
+whether or not the overflow was reported through
+<code>availableToRead()</code>.</li>
+</ul>
+
+<p>The <code>read()</code> and <code>write()</code> methods return
+<code>true</code> if all requested data could be (and was) transferred to/from
+the queue. These methods do not block; they either succeed (and return
+<code>true</code>), or return failure (<code>false</code>) immediately.</p>
+
+<p>The <code>readBlocking()</code> and <code>writeBlocking()</code> methods wait
+until the requested operation can be completed, or until they timeout (a
+<code>timeOutNanos</code> value of 0 means never timeout).</p>
+
+<p>Blocking operations are implemented using an event flag word. By default,
+each queue creates and uses its own flag word to support the short form of
+<code>readBlocking()</code> and <code>writeBlocking()</code>. It is possible for
+multiple queues to share a single word, so that a process can wait on writes or
+reads to any of the queues. A pointer to a queue's event flag word can be
+obtained by calling <code>getEventFlagWord()</code>, and that pointer (or any
+pointer to a suitable shared memory location) can be used to create an
+<code>EventFlag</code> object to pass into the long form of
+<code>readBlocking()</code> and <code>writeBlocking()</code>for a different
+queue. The <code>readNotification</code> and <code>writeNotification</code>
+parameters tell which bits in the event flag should be used to signal reads and
+writes on that queue.  <code>readNotification</code> and
+<code>writeNotification</code> are 32-bit bitmasks.</p>
+
+<p><code>readBlocking()</code> waits on the <code>writeNotification</code> bits;
+if that parameter is 0, the call always fails. If the
+<code>readNotification</code> value is 0, the call will not fail, but a
+successful read will not set any notification bits. In a synchronized queue,
+this would mean that the corresponding <code>writeBlocking()</code> call will
+never wake up unless the bit is set elsewhere. In an unsynchronized queue,
+<code>writeBlocking()</code> will not wait (it should still be used to set the
+write notification bit), and it is appropriate for reads to not set any
+notification bits. Similarly, <code>writeblocking()</code> will fail if
+<code>readNotification</code> is 0, and a successful write sets the specified
+<code>writeNotification</code> bits.</p>
+
+<p>To wait on multiple queues at once, use an <code>EventFlag</code> object's
+<code>wait()</code> method to wait on a bitmask of notifications. The
+<code>wait()</code> method returns a status word with the bits that caused the
+wake up set. Using the information, the user can then check the corresponding
+queue to see whether it has enough space or data for the desired write or read
+operation and perform a nonblocking <code>read()</code>/<code>write()</code>
+followed by a call to the <code>EventFlag</code>'s <code>wake()</code> method if
+a notification is desired after the same. For a definition of the
+<code>EventFlag</code> abstraction, refer to
+<a href="https://android.googlesource.com/platform/system/libfmq/+/master/include/fmq/EventFlag.h" class="external"><code>system/libfmq/include/fmq/EventFlag.h</code></a>.
+</p>
+
+<h2 id=zero>Zero copy operations</h2>
+<p>The
+<code>read</code>/<code>write</code>/<code>readBlocking</code>/<code>writeBlocking()</code>
+APIs take a pointer to an input/output buffer as an argument and use
+<code>memcpy()</code> calls internally to copy data between the same and the
+FMQ ring buffer. To improve performance, Android O includes a set of APIs that
+provide direct pointer access into the ring buffer, eliminating the need to use
+<code>memcpy</code> calls.</p>
+
+<p>Use the following public APIs for zero copy FMQ operations:</p>
+
+<pre class="prettyprint">
+bool beginWrite(size_t nMessages, MemTransaction* memTx) const;
+bool commitWrite(size_t nMessages);
+
+bool beginRead(size_t nMessages, MemTransaction* memTx) const;
+bool commitRead(size_t nMessages);
+</pre>
+
+<ul>
+<li>The <code>beginWrite</code> method provides base pointers into the FMQ ring
+buffer. After the data is written, commit it using <code>commitWrite()</code>.
+The<code>beginRead</code>/<code>commitRead</code> methods act the same way.</li>
+<li>The <code>beginRead</code>/<code>Write</code> methods take as input the
+number of messages to be read/written and return a boolean indicating if the
+read/write is possible. If the read or write is possible the <code>memTx</code>
+struct is populated with base pointers that can be used for direct pointer
+access into the ring buffer shared memory.</li>
+<li>The <code>MemRegion</code> struct contains details about a block of memory,
+i.e. a base pointer and length in terms of <code>T</code>(where the FMQ is
+templatized to <code>T</code>).</li>
+<li>The <code>MemTransaction</code> struct contains two <code>MemRegion</code>
+structs, <code>first</code> and <code>second</code> as a read or write into
+the ring buffer may require a wrap around to the beginning of the queue. This
+would mean that two base pointers are needed to read/write data into the FMQ
+ring buffer.</li>
+</ul>
+
+<p>To get the base address and length from a <code>MemRegion</code> struct:</p>
+
+<pre class="prettyprint">
+T* getAddress(); // gets the base address
+size_t getLength(); // gets the length of the memory region in terms of T
+size_t getLengthInBytes(); // gets the length of the memory region in bytes
+</pre>
+
+<p>To get references to the first and second <code>MemRegion</code>s within a
+<code>MemTransaction</code> object:</p>
+
+<pre class="prettyprint">
+const MemRegion&amp; getFirstRegion(); // get a reference to the first MemRegion
+const MemRegion&amp; getSecondRegion(); // get a reference to the second MemRegion
+</pre>
+
+<p>Example write to the FMQ using zero copy APIs:</p>
+
+<pre class="prettyprint">
+MessageQueueSync::MemTransaction tx;
+if (mQueue->beginRead(dataLen, &amp;tx)) {
+auto first = tx.getFirstRegion();
+auto second = tx.getSecondRegion();
+
+foo(first.getAddress(), first.getLength()); // method that performs the data write
+foo(second.getAddress(), second.getLength()); // method that performs the data write
+
+if(commitWrite(dataLen) == false) {
+//report error
+}
+} else {
+//report error
+}
+</pre>
+
+<p>The following helper methods are also part of <code>MemTransaction</code>:
+</p>
+
+<ul>
+<li><code>T* getSlot(size_t idx);</code>
+<br>Returns a pointer to slot <code>idx</code> within the
+<code>MemRegions</code> that are part of this <code>MemTransaction</code>
+object. If the <code>MemTransaction</code> object is representing the memory
+regions to read/write N items of type T, then the valid range of
+<code>idx</code> is between 0 and N-1.</li>
+<li><code>bool copyTo(const T* data, size_t startIdx, size_t nMessages = 1);</code>
+<br>Write <code>nMessages</code>' items of type T into the memory regions
+described by the object, starting from index <code>startIdx</code>. This method
+uses <code>memcpy()</code> and is not to meant to be used for a zero copy
+operation. If the <code>MemTransaction</code> object represents memory to
+read/write N items of type T, then the valid range of <code>idx</code> is
+between 0 and N-1.</li>
+<li><code>bool copyFrom(T* data, size_t startIdx, size_t nMessages = 1);</code>
+<br>Helper method to read <code>nMessages</code>' items of type T from the
+memory regions described by the object starting from <code>startIdx</code>. This
+method uses <code>memcpy()</code> and is not meant to be used for a zero copy
+operation.</li>
+</ul>
+
+<h2 id=sending>Sending the queue over HIDL</h2>
+<p>On the creating side:</p>
+<ol>
+<li>Create message queue object as described above.</li>
+<li>Verify the object is valid with <code>isValid()</code>.</li>
+<li>If you will be waiting on multiple queues by passing an
+<code>EventFlag</code> into the long form of
+<code>readBlocking()</code>/<code>writeBlocking()</code>, you can extract the
+event flag pointer (using <code>getEventFlagWord()</code>) from a
+<code>MessageQueue</code> object that was initialized to create the flag, and
+use that flag to create the necessary <code>EventFlag</code> object.</li>
+<li>Use the <code>MessageQueue</code> <code>getDesc()</code> method to get a
+descriptor object.</li>
+<li>In the <code>.hal</code> file, give a method a parameter of type
+<code>fmq_sync<T></code> or <code>fmq_unsync<T></code> where <code>T</code> is a
+suitable HIDL-defined type. Use this to send the object returned by
+<code>getDesc()</code> to the receiving process.</li>
+</ol>
+
+<p>On the receiving side:</p>
+<ol>
+<li>Use the descriptor object to create a <code>MessageQueue</code> object. Be
+sure to use the same queue flavor and data type, or the template will fail to
+compile.</li>
+<li>If you extracted an event flag, extract the flag from the corresponding
+<code>MessageQueue</code> object in the receiving process.</li>
+<li>Use the <code>MessageQueue</code> object to transfer data.</li>
+</ol>
+
+  </body>
+</html>

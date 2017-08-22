@@ -1,0 +1,169 @@
+<html devsite><head>
+    <title>使用 ftrace</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>ftrace 是一种调试工具，用于了解 Linux 内核中的情况。以下部分详细介绍了 ftrace 的基本功能、ftrace 与 atrace（捕获内核事件）如何配合使用，以及动态 ftrace。</p>
+
+<p>有关 systrace 中没有的 ftrace 高级功能的详情，请参阅位于以下位置的 ftrace 文档：<a href="https://www.kernel.org/doc/Documentation/trace/ftrace.txt"><code>&lt;kernel
+tree&gt;/Documentation/trace/ftrace.txt</code></a>。</p>
+
+<h2 id="atrace">通过 atrace 捕获内核事件</h2>
+<p>atrace (<code>frameworks/native/cmds/atrace</code>) 使用 ftrace 来捕获内核事件。反之，systrace.py（或更高版本的 <a href="https://github.com/catapult-project/catapult">Catapult</a> 中的 run_systrace.py）使用 adb 在设备上运行 atrace。atrace 执行以下操作：</p>
+<ul>
+<li>通过设置属性 (<code>debug.atrace.tags.enableflags</code>) 来设置用户模式跟踪。</li>
+<li>通过写入适当的 ftrace sysfs 节点来启用所需的 ftrace 功能。不过，由于 ftrace 支持的功能更多，您可以自行设置一些 sysfs 节点，然后使用 atrace。</li>
+</ul>
+
+<p>除了启动时跟踪之外，还可以通过使用 atrace 将属性设置为适当的值。属性是一个位掩码，除了查找适当的标头（在不同的 Android 版本之间会有所变化），没有确定正确值更好的办法了。</p>
+
+<h2 id="enabling_events">启用 ftrace 事件</h2>
+
+<p>ftrace sysfs 节点位于 <code>/d/tracing</code> 中，trace 事件在 <code>/d/tracing/events</code> 中被划分为多个类别。
+
+</p><p>要按类别启用事件，请使用：</p><pre>$ echo 1 &gt; /d/tracing/events/irq/enable</pre>
+
+<p>要按事件启用事件，请使用：</p><pre>$ echo 1 &gt; /d/tracing/events/sched/sched_wakeup/enable</pre>
+
+<p>如果通过写入 sysfs 节点启用了额外的事件，这些事件将<strong>不会</strong>被 atrace 重置。Qualcomm 设备启动的常用模式是启用 <code>kgsl</code> (GPU) 和 <code>mdss</code>（显示管道）跟踪点，然后使用 atrace 或 <a href="/devices/tech/debug/systrace.html">systrace</a>：</p>
+
+<pre>$ adb shell "echo 1 &gt; /d/tracing/events/mdss/enable"
+$ adb shell "echo 1 &gt; /d/tracing/events/kgsl/enable"
+$ ./systrace.py sched freq idle am wm gfx view binder_driver irq workq ss sync -t 10 -b 96000 -o full_trace.html</pre>
+
+<p>您还可以单独使用 ftrace（不使用 atrace 或 systrace），这在您需要仅限内核的跟踪（或者您已经花时间手动写入用户模式跟踪属性）时很有帮助。如需只运行 ftrace，请执行以下操作：</p>
+
+<ol>
+<li>将缓冲区大小设置为足以用于您跟踪的值：<pre>$ echo 96000 &gt; /d/tracing/buffer_size_kb</pre></li>
+<li>启用跟踪：<pre>$ echo 1 &gt; /d/tracing/tracing_on</pre></li>
+<li>运行您的测试，然后停用跟踪：<pre>$ echo 0 &gt; /d/tracing/tracing_on</pre></li>
+<li>转储跟踪：<pre>$ cat /d/tracing/trace &gt; /data/local/tmp/trace_output</pre>
+</li></ol>
+
+<p>trace_output 以文本形式提供跟踪记录。要使用 Catapult 将其可视化，请从 Github 获取 <a href="https://github.com/catapult-project/catapult/tree/master/">Catapult 存储区</a>并运行 trace2html：</p>
+
+<pre>$ catapult/tracing/bin/trace2html ~/path/to/trace_file</pre>
+
+<p>默认情况下，此操作会将 <code>trace_file.html</code> 写入同一目录中。</p>
+
+<h2 id="correlate">相关事件</h2>
+<p>同时查看 Catapult 可视化内容和 ftrace 日志通常很有帮助，例如，某些 ftrace 事件（尤其是特定于供应商的事件）未经 Catapult 可视化。不过，Catapult 的时间戳与跟踪记录中的第一个事件或 atrace 所转储的特定时间戳相关，而原始的 ftrace 时间戳则基于 Linux 内核中的特别绝对时钟源。</p>
+
+<p>要从 Catapult 事件中查找特定的 ftrace 事件，请执行以下操作：</p>
+
+<ol>
+<li>打开原始的 ftrace 日志。最新版本的 systrace 中的跟踪记录默认经过压缩：<ul>
+<li>如果您使用 <code>--no-compress</code> 捕获 systrace，则跟踪记录在 html 文件中以 BEGIN TRACE 开头的部分。</li>
+<li>如果没有，请从 <a href="https://github.com/catapult-project/catapult/tree/master/">Catapult 树</a> (<code>tracing/bin/html2trace</code>) 运行 html2trace 来解压缩跟踪记录。</li>
+</ul>
+</li>
+<li>在 Catapult 可视化中查找相对时间戳。</li>
+
+<li>在跟踪记录的开头找到一行包含 <code>tracing_mark_sync</code> 的内容。该行应该与以下内容相似：<pre>&lt;5134&gt;-5134  (-----) [003] ...1    68.104349: tracing_mark_write: trace_event_clock_sync: parent_ts=68.104286</pre>
+
+<br />如果此行不存在（或者您使用没有 atrace 的 ftrace），则计时将与 ftrace 日志中的第一个事件相关。
+<ol style="list-style-type: lower-alpha">
+<li>将相对时间戳（以毫秒为单位）添加到 <code>parent_ts</code>（以秒为单位）中的值。</li>
+<li>搜索新时间戳。</li>
+</ol>
+</li>
+</ol>
+<p>按照这些步骤操作之后，您应该会找到（或至少非常接近于）要找的事件。</p>
+
+<h2 id="dftrace">使用动态 ftrace</h2>
+<p>当 systrace 和标准 ftrace 不足时，还有最后一种可用资源：动态 ftrace。<em></em>动态 ftrace 涉及在启动后重写内核代码，因此出于安全考虑，它在正式版内核中不可用。不过，2015 和 2016 版中的每个严重性能错误最终都使用动态 ftrace 找出了根本原因。它在调试不间断休眠方面的功能尤其强大，因为每次命中触发不间断休眠的函数时，您都会获得内核中的堆栈跟踪记录。您还可以调试中断和抢占被停用的部分，这对证明问题非常有帮助。</p>
+
+<p>要开启动态 ftrace，请修改您内核的 defconfig：</p>
+
+<ol>
+<li>移除 CONFIG_STRICT_MEMORY_RWX（如果存在）。如果您使用的是 3.18 或更新版本以及 arm64，则不存在。</li>
+<li>添加以下内容：CONFIG_DYNAMIC_FTRACE=y、CONFIG_FUNCTION_TRACER=y、CONFIG_IRQSOFF_TRACER=y、CONFIG_FUNCTION_PROFILER=y 和 CONFIG_PREEMPT_TRACER=y</li>
+<li>重建和启动新内核。</li>
+<li>运行以下代码以检查可用的跟踪工具：<pre>$ cat /d/tracing/available_tracers</pre></li>
+<li>确认命令返回 <code>function</code>、<code>irqsoff</code>、<code>preemptoff</code> 和 <code>preemptirqsoff</code>。</li>
+<li>运行以下命令以确保动态 ftrace 正常运行：<pre>$ cat /d/tracing/available_filter_functions | grep &lt;a function you care about&gt;</pre>
+</li>
+</ol>
+
+<p>完成这些步骤之后，动态 ftrace、函数分析器、irqsoff 分析器以及 preemptoff 分析器便处于可用状态。我们<strong>强烈建议</strong>您在使用之前阅读有关这些主题的 ftrace 文档，因为它们虽然功能强大，但比较复杂。irqsoff 和 preemptoff 主要用于确认驱动程序是否会使中断或抢占处于关闭状态的时间过长。</p>
+<p>函数分析器是诊断性能问题的最佳选择，通常用于查找函数被调用的位置。</p>
+
+<section class="expandable">
+<h4 class="showalways">显示问题：HDR 照片 + 旋转取景器</h4>
+
+<p>在此问题中，每次使用 Pixel XL 拍摄 HDR + 照片后立即旋转取景器时都会造成卡顿。我们使用函数分析器不到一个小时就调试了该问题。要按照示例进行操作，请<a href="perf_traces.zip">下载跟踪记录的 ZIP 文件</a>（其中包括本部分中提到的其他跟踪记录），解压下载的文件，然后在浏览器中打开 trace_30898724.html 文件。</p>
+
+<p>跟踪记录显示 cameraserver 进程中的一些线程在 <code>ion_client_destroy</code> 上的不间断休眠模式下被屏蔽。此为高代价函数，但不得经常调用，因为 ion 客户端应该包含多项分配。最初是将原因归咎于 Halide 中的 Hexagon 代码，它确实是其中一个原因（它为每个 ion 分配创建新的客户端，并在分配被释放时破坏相应客户端，其代价太高了）。转为适用于所有 Hexagon 分配的单个 ion 客户端改善了这种情况，但卡顿问题并没有得到解决。</p>
+<p>此时，我们需要知道谁在调用 <code>ion_client_destroy</code>，这就要使用函数分析器：</p>
+<p></p>
+<ol>
+<li>由于编译人员有时会对函数进行重命名，因此通过使用以下命令确认 <code>ion_client_destroy</code> 是否存在：<pre>$ cat /d/tracing/available_filter_functions | grep ion_client_destroy</pre>
+</li>
+<li>确认存在之后，将其用作 ftrace 过滤器：<pre>$ echo ion_client_destroy &gt; /d/tracing/set_ftrace_filter</pre></li>
+<li>开启函数分析器：<pre>$ echo function &gt; /d/tracing/current_tracer</pre></li>
+<li>每次调用筛选器函数时均开启堆栈跟踪：<pre>$ echo func_stack_trace &gt; /d/tracing/trace_options</pre></li>
+<li>增加缓冲区大小：<pre>$ echo 64000 &gt; /d/tracing/buffer_size_kb</pre></li>
+<li>开启跟踪功能：<pre>$ echo 1 &gt; /d/tracing/trace_on</pre></li>
+<li>运行测试并获取跟踪记录：<pre>$ cat /d/tracing/trace &gt; /data/local/tmp/trace</pre></li>
+<li>查看跟踪，以查看大量堆栈跟踪记录：<pre>    cameraserver-643   [003] ...1    94.192991: ion_client_destroy &lt;-ion_release
+    cameraserver-643   [003] ...1    94.192997: &lt;stack trace&gt;
+ =&gt; ftrace_ops_no_ops
+ =&gt; ftrace_graph_call
+ =&gt; ion_client_destroy
+ =&gt; ion_release
+ =&gt; __fput
+ =&gt; ____fput
+ =&gt; task_work_run
+ =&gt; do_notify_resume
+ =&gt; work_pending</pre></li>
+ </ol>
+
+<p>对 ion 驱动程序进行检查后，我们可以发现，<code>ion_client_destroy</code> 被将 fd 关闭到 <code>/dev/ion</code>（而非随机内核驱动程序）的用户空间函数所破坏。通过在 Android 代码库中搜索 <code>\"/dev/ion\"</code>，我们发现一些供应商驱动程序与 Hexagon 驱动程序的功能相同，每次在需要新的 ion 分配时打开/关闭 <code>/dev/ion</code>（创建和破坏新的 ion 客户端）。将其更改为在进程的生命周期中<a href="https://android.googlesource.com/platform/hardware/qcom/camera/+/8f7984018b6643f430c229725a58d3c6bb04acab">使用单个 ion 客户端</a>即修复了该错误。</p>
+</section>
+<hr />
+
+<p>如果函数分析器的数据不够具体，您可以将 ftrace 跟踪点与函数分析器结合使用。此外，还可以像平常一样启用 ftrace 事件，这些事件会与您的跟踪记录交错。如果您要调试的特定函数中偶尔存在不间断的长时间休眠，这会非常有用：将 ftrace 过滤器设置为所需函数，启用跟踪点，然后进行跟踪。您可以使用 <code>trace2html</code> 解析得出的跟踪记录，查找所需的事件，然后获取原始跟踪记录中相邻的堆栈跟踪记录。</p>
+
+<h2 id="lock_stat">使用 lockstat</h2>
+<p>有时，只有 ftrace 是不够的，您必须调试内核锁争用。还有一种内核选项值得尝试：<code>CONFIG_LOCK_STAT</code>。这是最后一种方法，因为要在 Android 设备上应用这一方法非常困难，原因是它会使内核的大小超出大多数设备可以处理的范围。</p>
+<p>不过，lockstat 使用调试锁基础设施，这对很多其他应用都有帮助。负责设备启动的所有人都应想出方法来使该选项适用于每台设备，因为您<strong>也许</strong>会想“如果我可以开启 <code>LOCK_STAT</code>，就可以在 5 分钟（而不是 5 天）内确认或反驳这一问题”。</p>
+
+<section class="expandable">
+<h4 class="showalways">显示问题：当内核以最大负载运行 non-SCHED_FIFO 时，SCHED_FIFO 终止</h4>
+
+<p>在这个问题中，当所有内核以最大负载运行 non-SCHED_FIFO 线程时，SCHED_FIFO 线程便会终止。我们的跟踪记录显示 VR 应用中的 fd 存在明显的锁争用，但是我们无法轻松确定相关 fd。要按照示例进行操作，请<a href="perf_traces.zip">下载跟踪记录的 ZIP 文件</a>（其中包括本部分中提到的其他跟踪记录），解压下载文件，然后在浏览器中打开 trace_30905547.html 文件。
+</p>
+
+<p>我们假设 ftrace 本身是锁争用的来源，当优先级较低的线程开始写入 ftrace 管道时，却在释放锁之前被抢占。这是最糟糕的一种情况，一些优先级极低的线程写入 ftrace 标记，同时另一些优先级较高的线程在 CPU 上旋转以模拟完全负载的设备，从而进一步加重情况。</p>
+<p>由于我们无法使用 ftrace 进行调试，因此运行 <code>LOCK_STAT</code>，然后关闭应用的所有其他跟踪功能。结果表明，锁争用实际上来自 ftrace，因为当 ftrace 不运行时，锁跟踪记录中没有出现任何争用情况。</p>
+</section>
+<hr />
+
+<p>如果您可以使用配置选项启动内核，则锁跟踪与 ftrace 类似：</p>
+<ol>
+<li>启用跟踪：<pre>$ echo 1 &gt; /proc/sys/kernel/lock_stat</pre></li>
+<li>运行您的测试。</li>
+<li>停用跟踪：<pre>$ echo 0 &gt; /proc/sys/kernel/lock_stat</pre></li>
+<li>转储您的跟踪记录：<pre>$ cat /proc/lock_stat &gt; /data/local/tmp/lock_stat</pre></li>
+</ol>
+
+<p>有关解释所生成的输出结果的帮助内容，请参阅 lockstat 文档：<a href="https://www.kernel.org/doc/Documentation/locking/lockstat.txt"><code>&lt;kernel&gt;/Documentation/locking/lockstat.txt</code></a>。</p>
+
+</body></html>

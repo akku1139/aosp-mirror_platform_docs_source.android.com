@@ -1,0 +1,73 @@
+<html devsite><head>
+    <title>选项处理</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>选项处理是 Trade Federation 模块化方法的核心。具体而言，选项是一种机制，让开发者、集成者和测试运行者通过该机制可以共同协作，而不会重复相互的工作。简单地说，实现选项处理后，开发者可将 Java 类成员标记为可配置，届时该成员的值可被集成者增强或覆盖，并且随后可被测试运行者增强或覆盖。该机制适用于所有 Java 固有类型，以及固有类型的任何 <code>Map</code> 或 <code>Collection</code>。</p>
+
+<p class="note"><strong>注意</strong>：选项处理机制仅适用于实现<a href="lifecycle.html">测试生命周期</a>内包含的接口之一的类，并且仅当该类由生命周期机制实例化时才适用。<em></em></p>
+
+<h2 id="developer">开发者</h2>
+<p>要开始使用，开发者需要为成员添加 <code><a href="https://android.googlesource.com/platform/tools/tradefederation/+/master/src/com/android/tradefed/config/Option.java">@Option</a></code> 注释。<!-- note: javadoc for the Option class is broken -->开发者需要至少指定 <code>name</code> 和 <code>description</code> 值，这两个值指定与该选项关联的参数名称和说明（后者在命令使用 <code>--help</code> 或 <code>--help-all</code> 运行时在 TF 控制台中显示）。</p>
+
+<p>举例来说，假设我们要构建一个功能完善的电话测试，我们会在测试中拨打各种电话号码，并预期在每个号码连接后收到一系列 DTMF 音。</p>
+<code><pre>public class PhoneCallFuncTest extends IRemoteTest {
+    @Option(name = "timeout", description = "How long to wait for connection, in millis")
+    private long mWaitTime = 30 * 1000;  // 30 seconds
+
+    @Option(name = "call", description = "Key: Phone number to attempt.  " +
+            "Value: DTMF to expect.  May be repeated.")
+    private Map&lt;String, String&gt; mCalls = new HashMap&lt;String, String&gt;;
+
+    public PhoneCallFuncTest() {
+        mCalls.add("123-456-7890", "01134");  // default
+    }</pre></code>
+
+<p>以上就是开发者为该测试设置两个配置点的所有要求。开发者随后可以正常离开并使用 <code>mWaitTime</code> 和 <code>mCalls</code>，无需特别留意它们可进行配置这一事实。由于 <code>@Option</code> 字段在类实例化之后、<code>run</code> 方法调用之前设置，因此实现人员可以轻松为 <code>Map</code> 和 <code>Collection</code> 字段设置默认值或执行某类筛选操作，否则只能附加这些字段。</p>
+
+<h2 id="integrator">集成者</h2>
+<p>集成者的工作重心是编写 XML 格式的配置。该配置格式允许集成者为任何 <code>@Option</code> 字段设置（或附加）值。例如，假设集成者想要定义调用默认数值的低延迟测试，以及调用各种数值的运行时间较长的测试。集成者可以创建一对配置，可能如下所示：</p>
+
+<code><pre>&lt;?xml version="1.0" encoding="utf-8"?&gt;
+&lt;configuration description="low-latency default test; low-latency.xml"&gt;
+    &lt;test class="com.example.PhoneCallFuncTest"&gt;
+        &lt;option name="timeout" value="5000" /&gt;
+    &lt;/test&gt;
+&lt;/configuration&gt;</pre></code>
+
+<code><pre>&lt;?xml version="1.0" encoding="utf-8"?&gt;
+&lt;configuration description="call a bunch of numbers; many-numbers.xml"&gt;
+    &lt;test class="com.example.PhoneCallFuncTest"&gt;
+        &lt;option name="call" key="111-111-1111" value="#*#*TEST1*#*#" /&gt;
+        &lt;option name="call" key="222-222-2222" value="#*#*TEST2*#*#" /&gt;
+        &lt;!-- ... --&gt;
+    &lt;/test&gt;
+&lt;/configuration&gt;</pre></code>
+
+<h2 id="testrunner">测试运行者</h2>
+<p>测试运行者也可以通过 Trade Federation 控制台访问这些配置点。首先也是最重要的是，他们要使用 <code>run command &lt;name&gt;</code>（简称 <code>run &lt;name&gt;</code>）指令运行一个命令（即一个配置及其所有参数）。除此之外，他们可以指定任何参数列表作为命令的一部分，这可能替换或附加到各个配置内的生命周期对象指定的字段。</p>
+
+<p>要使用 <code>many-numbers</code> 电话号码运行低延迟测试，测试运行者可以执行：</p>
+<code><pre>tf &gt;run low-latency.xml --call 111-111-1111 #*#*TEST1*#*# --call 222-222-2222 #*#*TEST2*#*#</pre></code>
+
+<p>或者，要从相反方向获得类似的效果，测试运行者可以减少 <code>many-numbers</code> 测试的等待时间：</p>
+<code></code><pre><code>tf &gt;run many-numbers.xml --timeout 5000</code></pre>
+
+</body></html>
