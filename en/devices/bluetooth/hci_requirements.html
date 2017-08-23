@@ -1,0 +1,2311 @@
+<html devsite> <head> <title>HCI Requirements</title> <meta name="project_path"
+    value="/_project.yaml" /> <meta name="book_path" value="/_book.yaml" />
+  </head> <body>
+  <!--
+     Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License"); you may
+      not use this file except in compliance with the License.  You may obtain a
+      copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+      WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+      License for the specific language governing permissions and limitations
+      under the License.
+  -->
+
+      <p>The Host Controller Interface (HCI) is used for interacting with a
+      Bluetooth controller.</p>
+
+      <p>This document provides a list of Bluetooth (BT) and Bluetooth Low
+      Energy (BLE) requirements. The aim is for Host BT stack vendors and BT
+      controller vendors to conform to these platform requirements in order to
+      use the feature set described below</p>
+
+      <p>The Bluetooth Core 4.1 Specification, referred to in this document as
+      the "BT 4.1 core specification," is available on the <a
+      href="https://www.bluetooth.org/en-us/specification/adopted-specifications">Bluetooth
+    SIG website</a> along with other adopted documents.</p>
+      <h2
+    id="general-design-overview">General design overview</h2>
+        <h3
+  id="chip-capabilities-and-configuration">Chip capabilities and
+  configuration</h3>
+          <p>Android, as an open platform, has a matrix of software
+          releases, OEMs, vendors, and platform and chip capabilities.</p>
+
+          <p>To manage the varying landscape and to manage migrations, a design
+          philosophy of allowing BT controllers to expose their capabilities
+          (beyond the standard BT 4.1 core specification) is described in this
+          document. The host BT stack can then use these capabilities to
+          determine which features to enable.</p>
+
+        <h3 id="supporting-open-standards">Supporting open standards</h3>
+          <p> One goal of Android is to support open standards after
+          ratification in a Bluetooth specification. If a feature described
+          below becomes available in standard HCI methods in a future Bluetooth
+          specification, we will lean towards making that approach the default.</p>
+      <h2 id="vendor-specific-capabilities">Vendor-specific capabilities</h2>
+        <p>Vendor-specific command:
+        <code>LE_Get_Vendor_Capabilities_Command</code></p>
+
+        <p>OCF (OpCode Command Field): 0x153</p>
+        <table>
+          <tr>
+            <th>Command Parameter</th>
+            <th>Size</th>
+            <th>Purpose</th>
+          </tr>
+          <tr>
+            <td></td>
+            <td>NA</td>
+            <td>Empty command parameter list</td>
+          </tr>
+        </table>
+        <p> A Command Complete event will be generated for this command.</p>
+        <table>
+          <tr>
+            <th>Return Parameter</th>
+            <th>Size</th> <th>Purpose</th>
+          </tr>
+          <tr>
+            <td><code>Status</code></td>
+            <td>1 octet</td>
+            <td>Command Complete status</td>
+          </tr>
+          <tr>
+            <td><code>max_advt_instances</code></td>
+            <td>1 octet</td>
+            <td>Number of advertisement instances supported</td>
+          </tr>
+          <tr>
+            <td><code>offloaded_resolution_of_private-address</code></td>
+            <td>1 octet</td>
+            <td>BT chip capability of RPA; if supported by a chip,
+              it needs enablement by the host.<br/>
+              0 = Not capable<br/>
+              1 = Capable</td>
+          </tr>
+          <tr>
+            <td><code>total_scan_results_storage</code></td>
+            <td>2 octets</td>
+            <td>Storage for scan results in bytes</td>
+          </tr>
+          <tr>
+            <td><code>max_irk_list_sz</code></td>
+            <td>1 octet</td>
+            <td>Number of IRK entries supported in the firmware</td>
+          </tr>
+          <tr>
+            <td><code>filtering_support</code></td>
+            <td>1 octet</td>
+            <td>Support for filtering in the controller.<br/>
+              0 = Not supported<br/>
+              1 = Supported</td>
+          </tr>
+          <tr>
+            <td><code>max_filter</code></td>
+            <td>1 octet</td>
+            <td>Number of filters supported</td>
+          </tr>
+          <tr>
+            <td><code>activity_energy_info_support</code></td>
+            <td>1 octet</td>
+            <td>Supports reporting of activity and energy information.<br/>
+              0 = Not capable<br/>
+              1 = Capable</td>
+          </tr>
+          <tr>
+            <td><code>version_supported</code></td>
+            <td>2 octets<br/>
+              [0x00, 0x60]</td>
+            <td>Specifies the version of the Google feature spec supported.<br/>
+              byte[0] = major number<br/>
+              byte[1] = minor number</td>
+          </tr>
+          <tr>
+            <td><code>total_num_of_advt_tracked</code></td>
+            <td>2 octets</td>
+            <td>Total number of advertisers tracked for
+              <code>OnLost</code>/<code>OnFound</code> purposes</td>
+          </tr>
+          <tr>
+            <td><code>extended_scan_support</code></td>
+            <td>1 octet</td>
+            <td>Supports extended scan window and interval</td>
+          </tr>
+          <tr>
+            <td><code>debug_logging_supported</code></td>
+            <td>1 octet</td>
+            <td>Supports logging of binary debug information from controller</td>
+          </tr>
+          <tr>
+            <td><code>LE_address_generation_offloading_support</code></td>
+            <td>1 octet</td>
+            <td>0 = Not supported<br/>
+              1 = supported</td>
+          </tr>
+        </table>
+
+        <p>The <code>max_advt_instances parameter</code> represents the total
+        advertisement instances in the controller. The range of
+        <code>advt_instance</code> IDs will be 0 to
+        <code>max_advt_instances-1</code>.</p>
+
+        <p>An advertisement instance with an ID equal to 0 will map to an
+        existing (default/standard) HCI instance. When operating on a
+        default/standard HCI interface, the standard HCI command set should be
+        used.</p>
+
+      <h2 id="multi-advertiser-support">Multi-advertiser support</h2>
+        <p>The objectives of multi-advertiser support are the following:</p>
+
+        <ul>
+          <li>Ability to support multiple advertisements
+            (<code>max_advt_instances</code>)</li> <li>Different transmit powers
+            to allow for a varying range</li> <li>Different advertising
+            content</li>
+          <li>An individualized response for each advertiser</li>
+          <li>Privacy (non-trackable) for each advertiser</li>
+          <li>Connectable</li>
+        </ul>
+
+        <p>To keep this specification close to existing standards, the
+        following vendor-specific commands are provided. They are derived from
+        the Bluetooth Core 4.1 Specification.</p>
+
+        <h3 id="le_multi_advt_command">LE_Multi_Advt_Command</h3>
+          <p>OCF: 0x154</p>
+
+          <table>
+            <tr>
+              <th>Command Parameter</th>
+              <th>Size</th>
+              <th>Purpose</th>
+            </tr>
+            <tr>
+              <td><code>Multi_advt_opcode</code></td>
+              <td>1 octet</td>
+              <td>0x01 - <code>Set_Advt_Param_Multi_Sub_Cmd</code><br/>
+                0x02 - <code>Set_Advt_Data_Multi_Sub_Cmd</code><br/>
+                0x03 - <code>Set_Scan_Resp_Data_Multi_Sub_Cmd</code><br/>
+                0x04 - <code>Set_Random_Addr_Multi_Sub_Cmd</code><br/>
+                0x05 - <code>Set_Advt_Enable_Multi_Sub_Cmd</code></td>
+            </tr>
+          </table>
+
+          <p>A Command Complete event will be generated for this command.</p>
+
+          <table>
+            <tr>
+              <th>Return Parameter</th>
+              <th>Size</th>
+              <th>Purpose</th>
+            </tr>
+            <tr>
+              <td><code>Status</code></td>
+              <td>1 octet</td>
+              <td>Command Complete status</td>
+            </tr>
+            <tr>
+              <td><code>Multi_advt_opcode</code></td>
+              <td>1 octet</td>
+              <td>0x01 - <code>Set_Advt_Param_Multi_Command</code><br/>
+                0x02 - <code>Set_Advt_Data_Multi_Command</code><br/>
+                0x03 - <code>Set_Scan_Resp_Data_Multi_Command</code><br/>
+                0x04 - <code>Set_Random_Addr_Multi_Command</code><br/>
+                0x05 - <code>Set_Advt_Enable_Multi_Command</code></td>
+            </tr>
+          </table>
+
+          <h4
+            id="le_multi_advt_command-set_advt_param_multi_sub_cmd">LE_Multi_Advt_Command:
+            Set_Advt_Param_Multi_Sub_Cmd</h4>
+            <p>Base reference (referred to below as "spec"):
+            The BT 4.1 core specification, page 964 (LE Set Advertising
+            Parameter Command)</p>
+
+            <p>Sub OCF: 0x01</p>
+
+            <table>
+              <tr>
+                <th>Sub-command Parameter</th>
+                <th>Size</th>
+                <th>Purpose</th>
+              </tr>
+              <tr>
+                <td><code>Advertising_Interval_Min</code></td>
+                <td>Per spec</td>
+                <td>Per spec</td>
+              </tr>
+              <tr>
+                <td><code>Advertising_Interval_Max</code></td>
+                <td>Per spec</td>
+                <td>Per spec</td>
+              </tr>
+              <tr>
+                <td><code>Advertising_Type</code></td>
+                <td>Per spec</td>
+                <td>Per spec</td>
+              </tr>
+              <tr>
+                <td><code>Own_Address_Type</code></td>
+                <td>Per spec</td>
+                <td>Per spec</td>
+              </tr>
+              <tr>
+                <td><code>Own_Address</code></td>
+                <td>Per spec</td>
+                <td>Per spec</td>
+              </tr>
+              <tr>
+                <td><code>Direct_Address_Type</code></td>
+                <td>Per spec</td>
+                <td>Per spec</td>
+              </tr>
+              <tr>
+                <td><code>Direct_Address</code></td>
+                <td>Per spec</td>
+                <td>Per spec</td>
+              </tr>
+              <tr>
+                <td><code>Advertising_Channel_Map</code></td>
+                <td>Per spec</td>
+                <td>Per spec</td>
+              </tr>
+              <tr>
+                <td><code>Adverstising_Filter_Policy</code></td>
+                <td>Per spec</td>
+                <td>Per spec</td>
+              </tr>
+              <tr>
+                <td><code>Advertising_Instance</code></td>
+                <td>1 octet</td>
+                <td>Specifies the applicability of the above parameters to an
+                  instance</td>
+              </tr>
+              <tr>
+                <td><code>Tx_power</code></td>
+                <td>1 octet</td>
+                <td>Transmit_Power<br/>
+                  Unit - in dBm (signed integer)<br/>
+                  Range (-70 to +20)</td>
+              </tr>
+            </table>
+
+            <p>The <code>Own_Address</code> parameter could be a
+            host-configured address at the time of setting up this
+            multi-advertisement instance. This provides the ability to  have a
+            resolvable private address at the time of the transmit of the first
+            beacon. Advertisement on an instance will continue irrespective of
+            the connection. The host BT stack could issue a command to start
+            advertisement on an instance, post connection.</p>
+
+            <p> A Command Complete event will be generated for this command as
+            specified in the Bluetooth Core 4.1 Specification, per the above
+            command. The controller will respond with a non-success (invalid
+            parameter) code if the advertising instance or <code>Tx_Power</code>
+            parameters are invalid.</p>
+
+            <table>
+              <tr>
+                <th>Return Parameter</th>
+                <th>Size</th>
+                <th>Purpose</th>
+              </tr>
+              <tr>
+                <td><code>Status</code></td>
+                <td>1 octet</td>
+                <td>Command Complete status</td>
+              </tr>
+              <tr>
+                <td><code>Multi_advt_opcode</code></td>
+                <td>1 octet</td>
+                <td>0x01 [<code>Set_Advt_Param_Multi_Sub_Cmd]</code></td>
+              </tr>
+            </table>
+
+          <h4
+            id="le_multi_advt_command-set_advt_data_multi_sub_cmd">LE_Multi_Advt_Command:
+            Set_Advt_Data_Multi_Sub_Cmd</h4>
+
+            <p>Base reference: The BT 4.1 core specification, page 969 (LE Set
+            Advertising Data Command)</p>
+
+            <p>Sub OCF: 0x02</p>
+
+            <table>
+              <tr>
+                <th>Sub-command Parameter</th>
+                <th>Size</th>
+                <th>Purpose</th>
+              </tr>
+              <tr>
+                <td><code>Advertising_Data_Length</code></td>
+                <td>Per spec</td>
+                <td>Per spec</td>
+              </tr>
+              <tr>
+                <td><code>Advertising_Data</code></td>
+                <td>Per spec</td>
+                <td>Per spec</td>
+              </tr>
+              <tr>
+                <td><code>Advertising_Instance</code></td>
+                <td>1 octet</td>
+                <td>Specifies the applicability of the above parameters to an
+                  instance</td>
+              </tr>
+            </table>
+
+            <p>A Command Complete event will be generated for this command as
+            specified in the Bluetooth Core 4.1 Specification, per the above
+            command. The controller will respond with a non-success code if the
+            advertising instance or <code>Tx_Power</code> parameters are
+            invalid.  </p>
+
+            <table>
+              <tr>
+                <th>Return Parameter</th>
+                <th>Size</th>
+                <th>Purpose</th>
+              </tr>
+              <tr>
+                <td><code>Status</code></td>
+                <td>1 octet</td>
+                <td>Command Complete status</td>
+              </tr>
+              <tr>
+                <td><code>Multi_advt_opcode</code></td>
+                <td>1 octet</td>
+                <td>0x02 [<code>Set_Advt_Data_Multi_Sub_Cmd]</code></td>
+              </tr>
+            </table>
+
+          <h4
+            id="le_multi_advt_command-set_scan_resp_data_multi_sub_cmd">LE_Multi_Advt_Command:
+            Set_Scan_Resp_Data_Multi_Sub_Cmd</h4>
+            <p>Base reference: The BT 4.1 core specification, page 970
+            (LE Set Scan Response Data Command)</p>
+
+            <p>Sub OCF: 0x03</p>
+
+            <table>
+              <tr>
+                <th>Sub-command Parameter</th>
+                <th>Size</th>
+                <th>Purpose</th>
+              </tr>
+              <tr>
+                <td><code>Scan_Response_Data_Length</code></td>
+                <td>Per spec</td>
+                <td>Per spec</td>
+              </tr>
+              <tr>
+                <td><code>Scan_Response_Data</code></td>
+                <td>Per spec</td>
+                <td>Per spec</td>
+              </tr>
+              <tr>
+                <td><code>Advertising_Instance</code></td>
+                <td>1 octet</td>
+                <td>Specifies the applicability of the above
+                parameters to an instance</td>
+              </tr>
+            </table>
+
+            <p>A Command Complete event will be generated for this command as
+            specified in the Bluetooth Core 4.1 Specification, per the above
+            command. The controller will respond with a non-success code
+            (invalid parameter) if the advertising instance or
+            <code>Tx_Power</code> parameters are invalid.</p>
+
+            <table>
+              <tr>
+                <th>Return Parameter</th>
+                <th>Size</th>
+                <th>Purpose</th>
+              </tr>
+              <tr>
+                <td><code>Status</code></td>
+                <td>1 octet</td>
+                <td>Command Complete status</td>
+              </tr>
+              <tr>
+                <td><code>Multi_advt_opcode</code></td>
+                <td>1 octet</td>
+                <td>0x03 [<code>Set_Scan_Resp_Data_Multi_Sub_Cmd]</code></td>
+              </tr>
+            </table>
+
+          <h4
+            id="le_multi_advt_command-set_random_addr_multi_sub_cmd">LE_Multi_Advt_Command:
+            Set_Random_Addr_Multi_Sub_Cmd</h4>
+            <p>Base reference: The BT 4.1 core specification, page 963 (LE Set
+            Random Address Command)</p>
+
+            <p>Sub OCF: 0x04</p>
+
+            <table>
+              <tr>
+                <th>Sub-command Parameter</th>
+                <th>Size</th>
+                <th>Purpose</th>
+              </tr>
+              <tr>
+                <td>Random Address</td>
+                <td>Per spec</td>
+                <td>Per spec</td>
+              </tr>
+              <tr>
+                <td><code>Advertising_Instance</code></td>
+                <td>1 octet</td>
+                <td>Specifies the applicability of the above parameters to an
+                instance</td>
+              </tr>
+            </table>
+
+            <p>A Command Complete event will be generated for this command.</p>
+
+            <table>
+              <tr>
+                <th>Return Parameter</th>
+                <th>Size</th>
+                <th>Purpose</th>
+              </tr>
+              <tr>
+                <td><code>Status</code></td>
+                <td>1 octet</td>
+                <td>Command Complete status</td>
+              </tr>
+              <tr>
+                <td><code>Multi_advt_opcode</code></td>
+                <td>1 octet</td>
+                <td>0x04 [<code>Set_Random_Addr_Multi_Sub_Cmd]</code></td>
+              </tr>
+            </table>
+
+          <h4
+            id="le_multi_advt_command-set_advt_enable_multi_sub_cmd">LE_Multi_Advt_Command:
+            Set_Advt_Enable_Multi_Sub_Cmd</h4>
+            <p>Base reference:  The BT 4.1 core specification, page 971 (LE Set
+            Advertise Enable Command in that core specification)</p>
+
+            <p>OCF: 0x05</p>
+
+            <table>
+              <tr>
+                <th>Sub-command Parameter</th>
+                <th>Size</th>
+                <th>Purpose</th>
+              </tr>
+              <tr>
+                <td><code>Advertising_Enable</code></td>
+                <td>1 octet</td>
+                <td>A value of 1 means enable. Any other value means disable.</td>
+              </tr>
+              <tr>
+                <td><code>Advertising_Instance</code></td>
+                <td>1 octet</td>
+                <td>Specifies the applicability of the above
+                  parameters to an instance. Instance 0 means a standard HCI
+                  instance.</td>
+              </tr>
+            </table>
+
+            <p>A Command Complete event will be generated for this command.</p>
+
+            <table>
+              <tr>
+                <th>Return Parameter</th>
+                <th>Size</th>
+                <th>Purpose</th>
+              </tr>
+              <tr>
+                <td><code>Status</code></td>
+                <td>1 octet</td>
+                <td>Command Complete status</td>
+              </tr>
+              <tr>
+                <td><code>Multi_advt_opcode</code></td>
+                <td>1 octet</td>
+                <td>0x05 [<code>Set_Advt_Enable_Multi_Sub_Cmd]</code></td>
+              </tr>
+            </table>
+
+      <h2 id="offloaded-resolution-of-private-address">Offloaded resolution of
+        private address</h2>
+        <p> This feature allows the resolution of a private address in the
+        controller firmware or hardware, which provides the following benefits:
+        </p>
+
+        <ul>
+          <li>Latency involved with the host in resolving a private
+            address</li>
+          <li>Saving power by refraining from waking up the host</li>
+        </ul>
+
+        <h3 id="le_set_rpa_timeout">LE_Set_RPA_Timeout</h3>
+          <p>OCF: 0x15C</p>
+
+          <table>
+            <tr>
+              <th>Command Parameter</th>
+              <th>Size</th>
+              <th>Purpose</th>
+            </tr>
+            <tr>
+              <td><code>LE_local_IRK</code></td>
+              <td>16 octet</td>
+              <td>The local device IRK used to generate the random resolvable
+                address(es).</td>
+            </tr>
+            <tr>
+              <td><code>tRPA_min</code></td>
+              <td>2 octets</td>
+              <td>The minimum RPA generation timeout in seconds.
+                The controller must generate new resolvable addresses
+                for any advertising/scanning/connection events on or after this
+                timeout.<br/>
+                Valid range: 300-1800</td>
+            </tr>
+            <tr>
+              <td><code>tRPA_max</code></td>
+              <td>2 octets</td>
+              <td>The maximum RPA generation timeout in seconds.
+                The controller must generate new resolvable addresses for
+                any advertising/scanning/connection
+                events on or before this timeout.<br/>
+                Valid range: <code>tRPA_min</code>-1800</td>
+            </tr>
+          </table>
+
+          <table>
+            <tr>
+              <th>Return Parameter</th>
+              <th>Size</th>
+              <th>Purpose</th>
+            </tr>
+            <tr>
+              <td><code>Status</code></td>
+              <td>1 octet</td>
+              <td>The status of the command.<br/>
+                <br/>
+                Suggested HCI status values:<br/>
+                0x00 Success<br/>
+                0x01 Unknown command (if not supported)<br/>
+                0x12 Invalid command parameters (if any
+                parameters are outside the given range)</td>
+            </tr>
+          </table>
+
+        <h3 id="le_rpa_offload_command">LE_RPA_offload_Command</h3>
+          <p>OCF: 0x155</p>
+
+          <table>
+            <tr>
+              <th>Command Parameter</th>
+              <th>Size</th>
+              <th>Purpose</th>
+            </tr>
+            <tr>
+              <td><code>RPA_offload_opcode</code></td>
+              <td>1 octet</td>
+              <td>0x1 - Enable customer specific feature<br/>
+                0x2 - Add IRK to the list<br/>
+                0x3 - Remove IRK from the list<br/>
+                0x4 - Clear IRK list<br/>
+                0x5 - Read IRK list entry</td>
+            </tr>
+          </table>
+
+          <p>A Command Complete event will be generated for this command.</p>
+
+          <table>
+            <tr>
+              <th>Return Parameter</th>
+              <th>Size</th>
+              <th>Purpose</th>
+            </tr>
+            <tr>
+              <td><code>Status</code></td>
+              <td>1 octet</td>
+              <td>Command Complete status</td>
+            </tr>
+            <tr>
+              <td><code>Event_RPA_offload_opcode</code></td>
+              <td>1 octet</td>
+              <td>0x1 - Enable customer specific feature<br/>
+                0x2 - Add IRK to the list<br/>
+                0x3 - Remove IRK from the list<br/>
+                0x4 - Clear IRK list<br/>
+                0x5 - Read IRK list entry</td>
+            </tr>
+          </table>
+
+          <h4
+            id="le_rpa_offload-enable_cust_specific_sub_command">LE_RPA_offload:
+            Enable_cust_specific_sub_Command</h4>
+            <p>Sub OCF: 0x01</p>
+
+            <table>
+              <tr>
+                <th>Sub-command Parameter</th>
+                <th>Size</th>
+                <th>Purpose</th>
+              </tr>
+              <tr>
+                <td><code>enable_customer_specific_feature_set</code></td>
+                <td>1 octet</td>
+                <td>0x01 - Enable offloaded RPA feature<br/>
+                  0x00 - Disable offloaded RPA feature</td>
+              </tr>
+            </table>
+
+            <p>RPA offload is required to be enabled by the host, based on the
+            chip capability. Refer to the
+            <code>LE_Get_Vendor_Capabilities_Command.</code> Each chip can have
+            a varying <code>max_irk_list_sz </code>in the  firmware.  </p>
+
+            <p>A Command Complete event will be generated for this command.
+            </p>
+
+            <table>
+              <tr>
+                <th>Return Parameter</th>
+                <th>Size</th>
+                <th>Purpose</th>
+              </tr>
+              <tr>
+                <td><code>Status</code></td>
+                <td>1 octet</td>
+                <td>Command Complete status</td>
+              </tr>
+              <tr>
+                <td><code>Event_cust_specific_feature_opcode</code></td>
+                <td>1 octet</td>
+                <td>0x01 [Enable customer-specific feature]</td>
+              </tr>
+            </table>
+
+          <h4 id="le_rpa_offload-add_irk_to_list_sub_command">LE_RPA_offload:
+            Add_IRK_to_list_sub_Command</h4>
+            <p>Sub OCF: 0x02</p>
+            <table>
+              <tr>
+                <th>Sub-command Parameter</th>
+                <th>Size</th>
+                <th>Purpose</th>
+              </tr>
+              <tr>
+                <td><code>LE_IRK</code></td>
+                <td>16 octets</td>
+                <td>LE IRK (1st byte LSB)</td>
+              </tr>
+              <tr>
+                <td><code>Address_Type</code></td>
+                <td>1 octet</td>
+                <td>0: Public address<br/>
+                1: Random address</td>
+              </tr>
+              <tr>
+                <td><code>LE_Device_Address</code></td>
+                <td>6 octets</td>
+                <td>Public or random address associated to the IRK (1st byte
+                  LSB)</td>
+              </tr>
+            </table>
+
+            <p>A Command Complete event will be generated for this command.</p>
+
+            <table>
+              <tr>
+                <th>Return Parameter</th>
+                <th>Size</th>
+                <th>Purpose</th>
+              </tr>
+              <tr>
+                <td><code>Status</code></td>
+                <td>1 octet</td>
+                <td>Command Complete status</td>
+              </tr>
+              <tr>
+                <td><code>Event_cust_specific_feature_opcode</code></td>
+                <td>1 octet</td>
+                <td>0x02 [Add IRK to the list]</td>
+              </tr>
+              <tr>
+                <td><code>LE_IrkList_AvailableSpaces</code></td>
+                <td>1 octet</td>
+                <td>Available IRL list entries after current operation</td>
+              </tr>
+            </table>
+
+          <h4 id="le_rpa_offload-remove_irk_to_list_sub_command">LE_RPA_offload:
+            Remove_IRK_to_list_sub_Command</h4>
+            <p>Sub OCF: 0x03</p>
+
+            <table>
+              <tr>
+                <th>Sub-command Parameter</th>
+                <th>Size</th>
+                <th>Purpose</th>
+              </tr>
+              <tr>
+                <td><code>Address_Type</code></td>
+                <td>1 octet</td>
+                <td>0: Public address<br/>
+                  1: Random address</td>
+              </tr>
+              <tr>
+                <td><code>LE_Device_Address</code></td>
+                <td>6 octets</td>
+                <td>Public or random address that associates to
+                the IRK</td>
+              </tr>
+            </table>
+
+            <p>A Command Complete event will be generated for this command.</p>
+
+            <table>
+              <tr>
+                <th>Return Parameter</th>
+                <th>Size</th>
+                <th>Purpose</th>
+              </tr>
+              <tr>
+                <td><code>Status</code></td>
+                <td>1 octet</td>
+                <td>Command Complete status</td>
+              </tr>
+              <tr>
+                <td><code>Event_cust_specific_feature_opcode</code></td>
+                <td>1 octet</td>
+                <td> 0x03 [Remove IRK from the list]</td>
+              </tr>
+              <tr>
+                <td><code>LE_IrkList_AvailableSpaces</code></td>
+                <td>1 octet</td>
+                <td>Available IRL list entries after current operation</td>
+              </tr>
+            </table>
+
+          <h4 id="le_rpa_offload-clear_irk_list_sub_command">LE_RPA_offload:
+            Clear_IRK_list_sub_Command</h4>
+            <p>Sub OCF: 0x04</p>
+            <table>
+              <tr>
+                <th>Sub-command Parameter</th>
+                <th>Size</th>
+                <th>Purpose</th>
+              </tr>
+              <tr>
+                <td>None</td>
+                <td></td>
+                <td></td>
+              </tr>
+            </table>
+
+            <p> A Command Complete event will be generated for this command.</p>
+
+            <table>
+              <tr>
+                <th>Return Parameter</th>
+                <th>Size</th>
+                <th>Purpose</th>
+              </tr>
+              <tr>
+                <td><code>Status</code></td>
+                <td>1 octet</td>
+                <td>Command Complete status</td>
+              </tr>
+              <tr>
+                <td><code>Event_cust_specific_feature_opcode</code></td>
+                <td>1 octet</td>
+                <td>0x04 [Clear IRK List]</td>
+              </tr>
+              <tr>
+                <td><code>LE_IrkList_AvailableSpaces</code></td>
+                <td>1 octet</td>
+                <td>Available IRL list entries after current
+                  operation [<code>max_irk_list_sz]</code></td>
+              </tr>
+            </table>
+
+          <h4 id="le_rpa_offload-read_irk_list_sub_command">LE_RPA_offload:
+            Read_IRK_list_sub_Command</h4>
+            <p>Sub OCF: 0x05</p>
+
+            <table>
+              <tr>
+                <th>Sub-command Parameter</th>
+                <th>Size</th>
+                <th>Purpose</th>
+              </tr>
+              <tr>
+                <td><code>LE_read_IRK_list_entry-index</code></td>
+                <td>1 octet</td>
+                <td>Index of the  IRK list [0, <code>max_irk_list_sz-1]</code></td>
+              </tr>
+            </table>
+
+            <p> A Command Complete event will be generated for this command.
+            </p>
+
+            <table>
+              <tr>
+                <th>Return Parameter</th>
+                <th>Size</th>
+                <th>Purpose</th>
+              </tr>
+              <tr>
+                <td><code>Status</code></td>
+                <td>1 octet</td>
+                <td>Command Complete status</td>
+              </tr>
+              <tr>
+                <td><code>Event_cust_specific_feature_opcode</code></td>
+                <td>1 octet</td>
+                <td> 0x05 [Read IRK List Entry]</td>
+              </tr>
+              <tr>
+                <td><code>LE_Read_IRK_List_entry</code></td>
+                <td>1 octet</td>
+                <td>Index of the IRK that the host wants to read back (maximum
+                IRK list size is 32)</td>
+              </tr>
+              <tr>
+                <td><code>LE_IRK</code></td>
+                <td>16 octets</td>
+                <td>IRK value</td>
+            </tr>
+            <tr>
+              <td><code>Address_Type</code></td>
+              <td>1 octet</td>
+              <td>0: Public address<br/>
+                1: Random address</td>
+            </tr>
+            <tr>
+              <td><code>LE_Device_Address</code></td>
+              <td>6 octets</td>
+              <td>Public or random address associated to the IRK</td>
+            </tr>
+            <tr>
+              <td><code>LE_Resolved_Private_Address</code></td>
+              <td>6 octets</td>
+              <td>Current resolved resolvable private address of this IRK</td>
+            </tr>
+            </table>
+
+      <h2 id="batching-of-scan-results">Batching of scan results</h2>
+        <p>A design goal is to enhance how the Bluetooth LE Scan Response event
+        notifications are delivered to the host, in order to save power in the
+        host.</p>
+
+        <p>By reducing how often the controller notifies the host application
+        processor to scan results, the host application processor can stay in
+        idle/sleep longer. This reduces power consumption in the host. The
+        return parameter <code>total_scan_results_storage</code> of
+        <code>LE_Get_Vendor_Capabilities_Command</code> indicates the chip
+        capability for storage of scan results.</p>
+
+        <p>This feature focuses on the management and configuration of the LE
+        Scan Results storage facility in the Bluetooth controller. The storage
+        is used to temporarily batch advertisement data and scan data and
+        metadata that are received by the controller for later delivery to the
+        host.</p>
+
+        <p>Firmware shall support two types of batching, which can be engaged
+        simultaneously:</p>
+
+        <ul>
+          <li>Truncated. Contains the following information elements: {MAC,
+            TX Power, RSSI, Timestamp}</li>
+          <li>Full. Contains the following information elements:
+            {MAC, TX Power, RSSI, Timestamp, Adv Data, Scan Response}</li>
+        </ul>
+
+        <h3 id="le_batch_scan_command">LE_Batch_Scan_Command</h3>
+          <p>OCF: 0x156</p>
+
+          <table>
+            <tr>
+              <th>Command Parameter</th>
+              <th>Size</th>
+              <th>Purpose</th>
+            </tr>
+            <tr>
+              <td><code>Batch_Scan_opcode</code></td>
+              <td>1 octet</td>
+              <td>0x1 - Enable customer-specific feature<br/>
+                0x2 - Set Batch Scan Storage parameters<br/>
+                0x3 - Set Batch Scan parameters<br/>
+                0x4 - Read Batch Scan Result parameters</td>
+            </tr>
+          </table>
+
+          <p>A Command Complete event will be generated for this command.
+          Enabling the customer-specific feature does not start the scan.</p>
+
+          <table>
+            <tr>
+              <th>Return Parameter</th>
+              <th>Size</th>
+              <th>Purpose</th>
+            </tr>
+            <tr>
+              <td><code>Status</code></td>
+              <td>1 octet</td>
+              <td>Command Complete status</td>
+            </tr>
+            <tr>
+              <td><code>Batch_Scan_opcode</code></td>
+              <td>1 octet</td>
+              <td>0x1 - Enable customer-specific feature<br/>
+                0x2 - Set Batch Scan Storage parameters<br/>
+                0x3 - Set Batch Scan parameters<br/>
+                0x4 - Read Batch Scan Result parameters</td>
+            </tr>
+          </table>
+
+          <h4
+            id="le_batch_scan_command-enable-customer-specific-feature">LE_Batch_Scan_Command:
+            Enable Customer Specific feature</h4>
+            <p>Sub OCF: 0x01</p>
+            <table>
+              <tr>
+                <th>Sub-command Parameter</th>
+                <th>Size</th>
+                <th>Purpose</th>
+              </tr>
+              <tr>
+                <td><code>enable_customer_specific_feature_set</code></td>
+                <td>1 octet</td>
+                <td>0x01 - Enable Batch Scan feature<br/>
+                  0x00 - Disable Batch Scan feature</td>
+              </tr>
+            </table>
+
+            <p>A Command Complete event will be generated for this command.</p>
+            <table>
+              <tr>
+                <th>Return Parameter</th>
+                <th>Size</th>
+                <th>Purpose</th>
+              </tr>
+              <tr>
+                <td><code>Status</code></td>
+                <td>1 octet</td>
+                <td>Command Complete status</td>
+              </tr>
+              <tr>
+                <td><code>Batch_Scan_opcode</code></td>
+                <td>1 octet</td>
+                <td>0x1 - Enable customer-specific feature<br/>
+                  0x2 - Set Batch Scan Storage parameters<br/>
+                  0x3 - Set Batch Scan parameters<br/>
+                  0x4 - Read Batch Scan Result parameters</td>
+              </tr>
+            </table>
+
+          <h4
+            id="le_batch_scan_command-set-batch-scan-storage-param-subcommand">LE_Batch_Scan_Command:
+            Set Batch Scan Storage Param subcommand</h4>
+            <p>Sub OCF: 0x02</p>
+            <table>
+              <tr>
+                <th>Sub-command Parameter</th>
+                <th>Size</th>
+                <th>Purpose</th>
+              </tr>
+              <tr>
+                <td><code>Batch_Scan_Full_Max</code></td>
+                <td>1 octet</td>
+                <td>Max storage space (in %) allocated to full style [Range:
+                0-100]</td>
+              </tr>
+              <tr>
+                <td><code>Batch_Scan_Truncated_Max</code></td>
+                <td>1 octet</td>
+                <td>Max storage space (in %) allocated to truncated style [Range:
+                0-100]</td>
+              </tr>
+              <tr>
+                <td><code>Batch_Scan_Notify_Threshold</code></td>
+                <td>1 octet</td>
+                <td>Setup notification level (in %) for individual storage pool
+                [Range: 0-100].<br/>
+                Setting to 0 will disable notification.
+                Vendor-specific HCI event is generated (Storage threshold breach
+                subevent)</td>
+              </tr>
+            </table>
+
+            <p>A Command Complete event will be generated for this command.</p>
+            <table>
+              <tr>
+                <th>Return Parameter</th>
+                <th>Size</th>
+                <th>Purpose</th>
+              </tr>
+              <tr>
+                <td><code>Status</code></td>
+                <td>1 octet</td>
+                <td>Command Complete status</td>
+              </tr>
+              <tr>
+                <td><code>Batch_scan_opcode</code></td>
+                <td>1 octet</td>
+                <td>0x02 [Set Batch Scan parameters]</td>
+              </tr>
+            </table>
+
+          <h4
+            id="le_batch_scan_command-set-batch-scan-param-subcommand">LE_Batch_Scan_Command:
+            Set Batch Scan Param subcommand</h4>
+            <p>Sub OCF: 0x03</p>
+            <table>
+              <tr>
+                <th>Sub-command Parameter</th>
+                <th>Size</th>
+                <th>Purpose</th>
+              </tr>
+              <tr>
+                <td><code>Batch_Scan_Mode</code></td>
+                <td>1 octet</td>
+                <td>0x00 – Batch scan is disabled<br/>
+                  0x01 – Truncated mode is enabled<br/>
+                  0x02 – Full mode is enabled<br/>
+                  0x03 – Truncated and Full mode are enabled</td>
+              </tr>
+              <tr>
+                <td><code>Duty_cycle_scan_window</code></td>
+                <td>4 octets</td>
+                <td>Batch Scan scan time (# of slot)</td>
+              </tr>
+              <tr>
+                <td><code>Duty_cyle_scan_interval</code></td>
+                <td>4 octets</td>
+                <td>Batch Scan interval period (# of slot)</td>
+              </tr>
+              <tr>
+                <td><code>own_address_type</code></td>
+                <td>1 octet</td>
+                <td>0x00 - Public device address<br/>
+                  0x01 - Random device address</td>
+              </tr>
+              <tr>
+                <td><code>Batch_scan_Discard_Rule</code></td>
+                <td>1 octet</td>
+                <td>0 - Discard oldest advertisement<br/>
+                  1 - Discard advertisement with weakest RSSI</td>
+              </tr>
+            </table>
+
+            <p> This sub-command will start batch scanning, if enabled. In
+            Truncated scanning, results are stored in truncated form where the
+            unique key for Truncated style = {<code>BD_ADDR,</code>
+            scan_interval}. This means only one <code>BD_ADDR will</code> be
+            recorded for each scan interval. The record to keep for Truncated
+            mode is the following: {<code>BD_ADDR,</code> Tx Power, RSSI,
+            Timestamp} </p>
+
+            <p> When Full mode is enabled, active scanning will be used and Scan
+            Responses will be recorded. The Full style unique key = {MAC, Ad
+            packet}, irrespective of scan interval. The record to keep for Full
+            mode is {<code>BD_ADDR,</code> Tx Power, RSSI, Timestamp, Ad packet,
+            Scan Response}. In Full style, the same AD packet, when seen
+            multiple times across different scan intervals, is recorded only
+            once. However, in Truncated mode, it is the visibility of
+            <code>BA_ADDR </code>across different scan intervals that is of
+            interest (once per scan interval). The RSSI is the averaged value of
+            all duplicates of a unique advertisement within a scan interval.</p>
+
+            <p>A Command Complete event will be generated for this command.</p>
+            <table>
+              <tr>
+                <th>Return Parameter</th>
+                <th>Size</th>
+                <th>Purpose</th>
+              </tr>
+              <tr>
+                <td><code>Status</code></td>
+                <td>1 octet</td>
+                <td>Command Complete status</td>
+              </tr>
+              <tr>
+                <td><code>Batch_scan_opcode</code></td>
+                <td>1 octet</td>
+                <td>0x03 [Set Batch Scan Parameters]</td>
+              </tr>
+            </table>
+
+          <h4 id="le_batch_scan_command-read-batch-scan-results-sub-command">
+            LE_Batch_Scan_Command: Read Batch Scan Results sub-command</h4>
+            <p>Sub OCF: 0x04</p>
+            <table>
+              <tr>
+                <th>Sub-command Parameter</th>
+                <th>Size</th>
+                <th>Purpose</th>
+              </tr>
+              <tr>
+                <td><code>Batch_Scan_Data_read</code></td>
+                <td>1 octet</td>
+                <td>0x01 – Truncated mode data<br/>
+                  0x02 – Full mode data</td>
+              </tr>
+            </table>
+            <p>A Command Complete event will be generated for this command.
+            When the host issues this command, all the results in the controller
+            may not fit in one Command Complete event. The host will iterate
+            issuing this command until the corresponding results in the Command
+            Complete event indicate 0 in the number of records, which indicates
+            the controller has no more records to communicate to the host. Each
+            Command Complete event could contain multiple records of only one
+            type of data (Full or Truncated).</p>
+
+            <p>Controller and host time references are not synchronized. Thus
+            the timestamp needs special explanation. The unit of the timestamp
+            is 50ms. The value of the timestamp is based off when the
+            <code>Read_Batch_Scan_Results_Sub_cmd </code>is given by the host.
+            If a command arrival  time is <code>T_c</code> in the firmware, then
+            the actual time the timestamp was taken in the firmware is
+            <code>T_fw.</code> The reporting time will be: (<code>T_c</code> -
+            <code>T_fw)</code>. <code>T_c</code> and <code>T_fw </code>are in
+            the firmware time domain. This lets the host compute how long ago
+            the event happened.</p>
+            <table>
+              <tr>
+                <th>Return Parameter</th>
+                <th>Size</th>
+                <th>Purpose</th>
+              </tr>
+              <tr>
+                <td><code>Status</code></td>
+                <td>1 octet</td>
+                <td>Command Complete status</td>
+              </tr>
+              <tr>
+                <td><code>Batch_scan_opcode</code></td>
+                <td>1 octet</td>
+                <td>0x03 [Set Batch Scan parameters]</td>
+              </tr>
+              <tr>
+                <td><code>Batch_Scan_data_read</code></td>
+                <td>1 octet</td>
+                <td>Identifies the format (Truncated or Full)</td>
+              </tr>
+              <tr>
+                <td><code>num_of_records</code></td>
+                <td>1 octet</td>
+                <td>Number of records of <code>Batch_Scan_data_read</code></td>
+              </tr>
+              <tr>
+                <td><code>format_of_data</code></td>
+                <td>Variable</td>
+                <td><span style="text-decoration:underline;">Truncated
+                    Mode:</span><br/>
+                  Address[0]: 6 octets<br/>
+                  Address_Type[0]: 1 octet<br/>
+                  Tx_Pwr[0]: 1 octet<br/>
+                  RSSI[0] : 1 octet<br/>
+                  Timestamp[0]: 2 octets<br/>
+                  [multiple records (<code>num_of_records)</code>
+                  with above format]<br/>
+                  <br/>
+                  <span style="text-decoration:underline;">Full
+                    Mode:</span><br/>
+                  Address[0]: 6 octets<br/>
+                  Address_Type[0]: 1 octet<br/>
+                  Tx_Pwr[0]: 1 octet<br/>
+                  RSSI[0]: 1 octet<br/>
+                  Timestamp[0]: 2 octets<br/>
+                  Adv packet_len[0]: 1 octet<br/>
+                  Adv_packet[0]: Adv_packet_len octets<br/>
+                  Scan_data_resp_len[0]: 1 octet<br/>
+                  Scan_data_resp[0]: <code>Scan_data_resp </code>octets<br/>
+                  [multiple records with above format
+                  (<code>num_of_records)]</code></td>
+              </tr>
+            </table>
+      <h2 id="advertisement-packet-content-filter">Advertisement packet content
+        filte</h2>
+        <p>Use this to enable/disable/setup the
+        Advertising Packet Content Filter (APCF) in the controller.</p>
+
+        <h3 id="le_apcf_command">LE_APCF_Command</h3>
+          <p>OCF: 0x157</p>
+          <table>
+            <tr>
+              <th>Command Parameter</th>
+              <th>Size</th>
+              <th>Purpose</th>
+            </tr>
+            <tr>
+              <td><code>APCF_opcode</code></td>
+              <td>1 octet</td>
+              <td>0x00 - APCF Enable<br/>
+                0x01 - APCF Set Filtering parameters<br/>
+                0x02 - APCF Broadcaster Address<br/>
+                0x03 - APCF Service UUID<br/>
+                0x04 - APCF Service Solicitation UUID<br/>
+                0x05 - APCF Local Name<br/>
+                0x06 - APCF Manufacturer Data<br/>
+                0x07 - APCF Service Data</td>
+            </tr>
+          </table>
+          <p>A Command Complete event will be generated for this command.</p>
+          <table>
+            <tr>
+              <th>Return Parameter</th>
+              <th>Size</th>
+              <th>Purpose</th>
+            </tr>
+            <tr>
+              <td><code>Status</code></td>
+              <td>1 octet</td>
+              <td>Return status</td>
+            </tr>
+            <tr>
+              <td><code>APCF_opcode</code></td>
+              <td>1 octet</td>
+              <td>0x00 - APCF Enable<br/>
+                0x01 - APCF Set Filtering parameters<br/>
+                0x02 - APCF Broadcaster Address<br/>
+                0x03 - APCF Service UUID<br/>
+                0x04 - APCF Service Solicitation UUID<br/>
+                0x05 - APCF Local Name<br/>
+                0x06 - APCF Manufacturer Data<br/>
+                0x07 - APCF Service Data</td>
+            </tr>
+          </table>
+
+          <h4 id="le_apcf_command-enable_sub_cmd"> LE_APCF_Command:
+            Enable_sub_cmd</h4>
+            <p>Sub OCF: 0x00</p>
+            <table>
+              <tr>
+                <th>Sub-command Parameter</th>
+                <th>Size</th>
+                <th>Purpose</th>
+              </tr>
+              <tr>
+                <td><code>APCF_enable</code></td>
+                <td>1 octet</td>
+                <td>0x01 - Enable APCF feature<br/>
+                  0x00 - Disable APCF feature</td>
+              </tr>
+            </table>
+            <p>A Command Complete event will be generated for this command.</p>
+            <table>
+              <tr>
+                <th>Return Parameter</th>
+                <th>Size</th>
+                <th>Purpose</th>
+              </tr>
+              <tr>
+                <td><code>Status</code></td>
+                <td>1 octet</td>
+                <td>Command Complete status</td>
+              </tr>
+              <tr>
+                <td><code>APCF_opcode</code></td>
+                <td>1 octet</td>
+                <td>0x0 - APCF Enable</td>
+              </tr>
+              <tr>
+                <td><code>APCF_Enable</code></td>
+                <td>1 octet</td>
+                <td>Enable/disable is set via <code>APCF_enable</code></td>
+              </tr>
+            </table>
+          <h4
+              id="le_apcf_command-set_filtering_parameters_sub_cmd">LE_APCF_Command:
+              set_filtering_parameters_sub_cmd</h4>
+            <p>This subcommand is used to add or delete a filter specification
+            or clear a filter list for on-chip filtering.</p>
+            <p>Sub OCF: 0x01</p>
+            <table>
+              <tr>
+                <th>Sub-command Parameter</th>
+                <th>Size</th>
+                <th>Purpose</th>
+              </tr>
+              <tr>
+                <td><code>APCF_Action</code></td>
+                <td>1 octet</td>
+                <td>0x00 - Add<br/>
+                  0x01 - Delete<br/>
+                  0x02 - Clear<br/> Delete will clear the specific filter
+                  along with associated feature entries in other tables.<br/>
+                  Clear will clear all the filters and associated entries
+                  in other tables.</td>
+              </tr>
+              <tr>
+                <td><code>APCF_Filter_Index</code></td>
+                <td>1 octet</td> <td>Filter index (0,
+                <code>max_filter-1)</code></td>
+              </tr>
+              <tr>
+                <td><code>APCF_Feature_Selection</code></td>
+                <td>2 octets</td>
+                <td>Bit masks for the selected features:<br/>
+                  Bit 0: Set to enable Broadcast Address filter<br/>
+                  Bit 1: Set to enable Service Data Change filter<br/>
+                  Bit 2: Set to enable Service UUID check<br/>
+                  Bit 3: Set to enable Service Solicitation UUID check<br/>
+                  Bit 4: Set to enable Local Name check<br/>
+                  Bit 5: Set to enable Manufacturer Data Check<br/>
+                  Bit 6: Set to enable Service Data Check</td>
+              </tr>
+              <tr>
+                <td><code>APCF_List_Logic_Type</code></td>
+                <td>2 octets</td>
+                <td>Logic operation for each feature selection
+                  (per bit position) specified in
+                  <code>APCF_Feature_Selection.</code><br/>
+                  Valid only when a feature is enabled.<br/>
+                  Bit position value:<br/>
+                  0: OR<br/>
+                  1: AND<br/>
+                  If "AND" logic is selected, an ADV packet will pass
+                  the filter only if it contains ALL of the entries in the
+                  list.<br/>
+                  If "OR" logic is selected, an ADV packet will pass the
+                  filter if it contains any of the entries in the list.</td>
+              </tr>
+              <tr>
+                <td><code>APCF_Filter_Logic_Type</code></td>
+                <td>1 octet</td>
+                <td>0x00: OR<br/>
+                  0x01: AND<br/>
+                  Note: The logic type is N/A for the first three fields
+                  of <code>APCF_Feature_Selection,</code> which is always "AND"
+                  logic. They are only applicable for (Bit 3 ­Bit 6)
+                  four fields of <code>APCF_Feature_Selection.</code></td>
+              </tr>
+              <tr>
+                <td><code>rssi_high_thresh</code></td>
+                <td>1 octet</td>
+                <td>[In dBm] the advertiser is considered seen only if the
+                  signal is higher than the RSSI high threshold. Otherwise,
+                  the firmware must behave as if it never saw it.</td>
+              </tr>
+              <tr>
+                <td><code>delivery_mode</code></td>
+                <td>1 octet</td>
+                <td>0x00 - <code>immediate</code><br/>
+                  0x01 - <code>on_found</code><br/>
+                  0x02 - <code>batched</code></td>
+              </tr>
+              <tr>
+                <td><code>onfound_timeout</code></td>
+                <td>2 octets</td>
+                <td>Valid only if <code>delivery_mode </code>is
+                  <code>on_found</code><br/>
+                  [in milliseconds]<br/>
+                  Time for firmware to linger and collect additional
+                  advertisements before reporting.</td>
+              </tr>
+              <tr>
+                <td><code>onfound_timeout_cnt</code></td>
+                <td>1 octet</td>
+                <td>Valid only if <code>delivery_mode</code> is
+                  <code>on_found</code><br/>
+                  [count]<br/>
+                  If an advertisement in <code>onFound</code> lingers in
+                  firmware for the <code>onfound_timeout </code>duration,
+                  it will collect a few advertisements and the count is checked.
+                  If the count exceeds <code>onfound_timeout_cnt</code>,
+                  it's reported <code>OnFound</code>,
+                  immediately thereafter.</td>
+              </tr>
+              <tr>
+                <td><code>rssi_low_thresh</code></td>
+                <td>1 octet</td> <td>Valid only if <code>delivery_mode</code>
+                  is <code>on_found</code> [in dBm].<br/>
+                  The advertiser packet is considered as not seen if the RSSI
+                  of the received packet is not above the RSSI
+                  low threshold.</td>
+              </tr>
+              <tr>
+                <td><code>onlost_timeout</code></td>
+                <td>2 octets</td>
+                <td>Valid only if <code>delivery_mode</code> is
+                  <code>on_found</code><br/>
+                  [in milliseconds]<br/>
+                  If an advertisement, after being found, is not seen
+                  contiguously for the <code>lost_timeout </code>period,
+                  it will be reported lost. Reporting of lost is immediate.</td>
+              </tr>
+              <tr>
+                <td><code>num_of_tracking_entries</code></td>
+                <td>2 octets</td>
+                <td>Valid only if <code>delivery_mode</code> is
+                  <code>on_found</code><br/> [count]<br/>
+                  Total number of advertisers to track per filter.</td>
+              </tr>
+            </table>
+
+            <p> RSSI values must use 2's complement to represent negative
+            values.  </p>
+
+            <p> Host shall be able to configure multiple filters with
+            <code>APCF_Application_Address_type</code> set to 0x02 (for all
+            broadcaster addresses) to manage various filter combinations.  </p>
+
+            <p> Filtering, batching and reporting are inter-related concepts.
+            Every advertisement and related scan response will have to go
+            through all the filters, one after the other. Thus, resulting
+            actions (<code>delivery_mode)</code> are closely tied to filtering.
+            The delivery modes are the following:
+            <code>report_immediately,</code> <code>batch</code>, and
+            <code>onFound.</code> The <code>OnLost</code> value is related to
+            <code>OnFound</code> in the sense that it will come after
+            <code>OnFound</code> when lost.  </p>
+
+            <p> The following processing flow depicts the conceptual model.
+            </p>
+            <img src="images/bt_filter_batch_report.png">
+            <p> When an advertisement (or scan response) frame is received, it
+            is applied to all the filters in serial order. It's possible that an
+            advertisement can cause immediate reporting based on one filter and
+            batching of the same due to a different filter action.  </p>
+
+            <p> RSSI level thresholds (high and low) give the ability to control
+            when the frame is visible for filter processing, even when a valid
+            packet is received by the controller. In case of delivery mode being
+            set to immediate or batched, the RSSI of an  considered for further
+            controller processing. Different apps need different reporting and
+            batching behavior. This allows multiple apps to have direct
+            reporting and/or batching of results in firmware, concurrently. An
+            example is a case when a batch scan is active from one app and later
+            a regular LE scan is issued by another app. Before a batch scan is
+            issued, the framework/app sets appropriate filters. Later, when the
+            second app issues a regular scan, previous batching continues.
+            However, due to the regular scan, it is akin to conceptually adding
+            a null filter (along with all the existing filters) along with the
+            LE scan command. The LE scan command parameters take precedence when
+            active. When the regular LE scan is disabled, the controller will
+            revert back to a previous batch scan, if it existed.  </p>
+            <p> The <code>OnFound</code> delivery mode is based on configured
+            filters. A combination that triggers a filter's action to succeed is
+            considered the entity to track for <code>onLost</code>. The
+            corresponding event is the LE Advt tracking subevent.  </p>
+            <p> The <code>OnFound/OnLost</code> transition for a filter (if
+            enabled) will look like the following: </p>
+            <img src="images/bt_onfound_onlost.png">
+            <p> A Command Complete event will be generated for this command.</p>
+            <table>
+              <tr>
+                <th>Return Parameter</th>
+                <th>Size</th>
+                <th>Purpose</th>
+              </tr>
+              <tr>
+                <td><code>Status</code></td>
+                <td>1 octet</td>
+                <td>Command Complete status</td>
+              </tr>
+              <tr>
+                <td><code>APCF_opcode</code></td>
+                <td>1 octet</td>
+                <td>0x02 - APCF Set Filtering Parameters</td>
+              </tr>
+              <tr>
+                <td><code>APCF_Action</code></td>
+                <td>1 octet</td>
+                <td>Echo back command's <code>APCF_Action</code></td>
+              </tr>
+              <tr>
+                <td><code>APCF_AvailableSpaces</code></td>
+                <td>1 octet</td>
+                <td>Number of available entries in the filters table</td>
+              </tr>
+            </table>
+
+          <h4 id="le_apcf_command-broadcast_address_sub_cmd">LE_APCF_Command:
+            broadcast_address_sub_cmd</h4>
+            <p>This subcommand is used to add or delete an advertiser address
+            or to clear the advertiser address list for on-chip filtering.</p>
+            <p>Sub OCF: 0x02</p>
+            <table>
+              <tr>
+                <th>Sub-command Parameter</th>
+                <th>Size</th>
+                <th>Purpose</th>
+              </tr>
+              <tr>
+                <td><code>APCF_Action</code></td>
+                <td>1 octet</td>
+                <td>0x00 - Add<br/>
+                  0x01 - Delete<br/>
+                  0x02 - Clear<br/>
+                  Delete will delete the specified broadcaster address in
+                  the specified filter.<br/>
+                  Clear will clear all the broadcaster addresses in the
+                  specified filter.</td>
+              </tr>
+              <tr>
+                <td><code>APCF_Filter_Index</code></td>
+                <td>1 octet</td>
+                <td>Filter index (0, <code>max_filter-1)</code></td>
+              </tr>
+              <tr>
+                <td><code>APCF_Broadcaster_Address</code></td>
+                <td>6 octet</td>
+                <td>6-byte device address to add to or delete from the
+                broadcaster address list</td>
+              </tr>
+              <tr>
+                <td><code>APCF_Application_Address_type</code></td>
+                <td>1 octet</td>
+                <td>0x00: Public<br/>
+                  0x01: Random<br/>
+                  0x02: NA (addresses type not applicable)</td>
+              </tr>
+            </table>
+
+            <p>A Command Complete event will be generated for this command.</p>
+            <table>
+              <tr>
+                <th>Return Parameter</th>
+                <th>Size</th>
+                <th>Purpose</th>
+              </tr>
+              <tr>
+                <td><code>Status</code></td>
+                <td>1 octet</td>
+                <td>Command Complete status</td>
+              </tr>
+              <tr>
+                <td><code>APCF_opcode</code></td>
+                <td>1 octet</td>
+                <td>0x02 - APCF Broadcaster Address</td>
+              </tr>
+              <tr>
+                <td><code>APCF_Action</code></td>
+                <td>1 octet</td>
+                <td>Echo back command's <code>APCF_Action</code></td>
+              </tr>
+              <tr>
+                <td><code>APCF_AvailableSpaces</code></td>
+                <td>1 octet</td>
+                <td>Number of free entries still available in the Broadcast
+                Address table</td>
+              </tr>
+            </table>
+
+          <h4 id="le_apcf_command-service_uuid_sub_cmd">LE_APCF_Command:
+            service_uuid_sub_cmd</h4>
+            <p>This subcommand is used to add or delete a service UUID or to
+            clear a service UUID list for on-chip filtering.</p>
+            <p>Sub OCF: 0x03</p>
+            <table>
+              <tr>
+                <th>Sub-command Parameter</th>
+                <th>Size</th>
+                <th>Purpose</th>
+              </tr>
+              <tr>
+                <td><code>APCF_Action</code></td>
+                <td>1 octet</td>
+                <td>0x00 - Add<br/>
+                  0x01 - Delete<br/>
+                  0x02 - Clear<br/>
+                  Delete will delete the specified service UUID
+                  address in the specified filter.<br/>
+                  Clear will clear all the
+                  service UUIDs in the specified filter.</td>
+              </tr>
+              <tr>
+                <td><code>APCF_Filter_Index</code></td>
+                <td>1 octet</td>
+                <td>Filter index (0, <code>max_filter</code>-1)</td>
+              </tr>
+              <tr>
+                <td><code>APCF_UUID</code></td>
+                <td>2,4,16 octet</td>
+                <td>The Service UUID (16-bit, 32-bit, or 128-bit) for adding
+                  to, or deleting from, the list.</td>
+              </tr>
+              <tr>
+                <td><code>APCF_UUID_MASK</code></td>
+                <td>2,4,16 octet</td>
+                <td>The Service UUID Mask (16-bit, 32-bit, or 128-bit) to add
+                  to the list. It should have the same length as
+                  <code>APCF_UUID.</code></td>
+              </tr>
+            </table>
+
+          <p> A Command Complete event will be generated for this command.</p>
+            <table>
+              <tr>
+                <th>Return Parameter</th>
+                <th>Size</th>
+                <th>Purpose</th>
+              </tr>
+              <tr>
+                <td><code>Status</code></td>
+                <td>1 octet</td>
+                <td>Command Complete status</td>
+              </tr>
+              <tr>
+                <td><code>APCF_opcode</code></td>
+                <td>1 octet</td>
+                <td>0x03 - APCF Service UUID</td>
+              </tr>
+              <tr>
+                <td><code>APCF_Action</code></td>
+                <td>1 octet</td>
+                <td>Echo back command's <code>APCF_Action</code></td>
+              </tr>
+              <tr>
+                <td><code>APCF_AvailableSpaces</code></td>
+                <td>1 octet</td>
+                <td>Number of free entries still available in the Service UUID
+                table</td>
+              </tr>
+            </table>
+
+          <h4 id="le_apcf_command-solicitation_uuid_sub_cmd">LE_APCF_Command:
+            solicitation_uuid_sub_cmd</h4>
+          <p>This subcommand is used to add or delete a solicitation UUID or
+          to clear a solicitation UUID list for on-chip filtering.</p>
+            <p>Sub OCF: 0x04</p>
+            <table>
+              <tr>
+                <th>Sub-command Parameter</th>
+                <th>Size</th>
+                <th>Purpose</th>
+              </tr>
+              <tr>
+                <td><code>APCF_Action</code></td>
+                <td>1 octet</td>
+                <td>0x00 - Add<br/>
+                  0x01 - Delete<br/>
+                  0x02 - Clear<br/>
+                  Delete will delete the solicitation UUID address in
+                  the specified filter.<br/>
+                  Clear will clear all the
+                  solicitation UUIDs in the specified filter.</td>
+              </tr>
+              <tr>
+                <td><code>APCF_Filter_Index</code></td>
+                <td>1 octet</td>
+                <td>Filter index (0, <code>max_filter</code>-1)</td>
+              </tr>
+              <tr>
+                <td><code>APCF_UUID</code></td>
+                <td>2,4,16 octet</td>
+                <td>The Solicitation UUID (16-bit, 32-bit, or 128-bit) to
+                  add to or delete from the list.</td>
+              </tr>
+              <tr>
+                <td><code>APCF_UUID_MASK</code></td>
+                <td>2,4,16 octet</td>
+                <td>The Solicitation UUID Mask (16-bit, 32-bit,
+                  or 128-bit) to add to the list. It should have the same
+                  length as the <code>APCF_UUID.</code></td>
+              </tr>
+            </table>
+            <p>A Command Complete event will be generated for this command.</p>
+            <table>
+              <tr>
+                <th>Return Parameter</th>
+                <th>Size</th>
+                <th>Purpose</th>
+              </tr>
+              <tr>
+                <td><code>Status</code></td>
+                <td>1 octet</td>
+                <td>Command Complete status</td>
+              </tr>
+              <tr>
+                <td><code>APCF_opcode</code></td>
+                <td>1 octet</td>
+                <td>0x04 - APCF Solicitation UUID</td>
+              </tr>
+              <tr>
+                <td><code>APCF_Action</code></td>
+                <td>1 octet</td>
+                <td>Echo back command's <code>APCF_Action</code></td>
+              </tr>
+              <tr>
+                <td><code>APCF_AvailableSpaces</code></td>
+                <td>1 octet</td>
+                <td>Number of free entries still available in the Solicitation
+                UUID table</td>
+              </tr>
+            </table>
+
+          <h4 id="le_apcf_command-local_name_sub_cmd">LE_APCF_Command:
+            local_name_sub_cmd</h4>
+            <p>This subcommand is used to add or delete a local name string or
+            to clear the local name string list for on-chip filtering.</p>
+            <p>Sub OCF: 0x05</p>
+            <table>
+              <tr>
+                <th>Sub-command Parameter</th>
+                <th>Size</th>
+                <th>Purpose</th>
+              </tr>
+              <tr>
+                <td><code>APCF_Action</code></td>
+                <td>1 octet</td>
+                <td>0x00 - Add<br/>
+                  0x01 - Delete<br/>
+                  0x02 - Clear<br/>
+                  Delete will delete the specified local name string
+                  in the specified filter.<br/>
+                  Clear will clear all the local name strings in the
+                  specified filter.</td>
+              </tr>
+              <tr>
+                <td><code>APCF_Filter_Index</code></td>
+                <td>1 octet</td>
+                <td>Filter index (0, <code>max_filter</code>-1)</td>
+              </tr>
+              <tr>
+                <td><code>APCF_LocName_Mandata_or_SerData</code></td>
+                <td>Variable size</td>
+                <td>A character string for local name.<br/>
+                  <br/>
+                  Notes:<br/>
+                  i) Currently the max number of characters in a local name
+                  string is 29<br/>
+                  ii) Not applicable when action is "Clear" (0x2)</td>
+              </tr>
+            </table>
+            <p>A Command Complete event will be generated for this command.</p>
+            <table>
+              <tr>
+                <th>Return Parameter</th>
+                <th>Size</th>
+                <th>Purpose</th>
+              </tr>
+              <tr>
+                <td><code>Status</code></td>
+                <td>1 octet</td>
+                <td>Command Complete status</td>
+              </tr>
+              <tr>
+                <td><code>APCF_opcode</code></td>
+                <td>1 octet</td>
+                <td>0x05 - APCF Local Name</td>
+              </tr>
+              <tr>
+                <td><code>APCF_Action</code></td>
+                <td>1 octet</td>
+                <td>Echo back command's <code>APCF_Action</code></td>
+              </tr>
+              <tr>
+                <td><code>APCF_AvailableSpaces</code></td>
+                <td>1 octet</td>
+                <td>Number of free entries still available in the Local name
+                table.</td>
+              </tr>
+            </table>
+
+          <h4 id="le_apcf_command-manf_data_sub_cmd">LE_APCF_Command:
+            manf_data_sub_cmd</h4>
+            <p>This subcommand is used to add or delete a manufacturer data
+            string or to clear the manufacturer data string list for on-chip
+            filtering.</p>
+            <p>Sub OCF: 0x06</p>
+            <table>
+              <tr>
+                <th>Sub-command Parameter</th>
+                <th>Size</th>
+                <th>Purpose</th>
+              </tr>
+              <tr>
+                <td><code>APCF_Action</code></td>
+                <td>1 octet</td>
+                <td>0x00 - Add<br/>
+                  0x01 - Delete<br/>
+                  0x02 - Clear<br/>
+                  Delete will delete the specified manufacturer data
+                  string in the specified filter.<br/>
+                  Clear will clear all the manufacturer data strings in the
+                  specified filter.</td>
+              </tr>
+              <tr>
+                <td><code>APCF_Filter_Index</code></td>
+                <td>1 octet</td>
+                <td>Filter Index (0, <code>max_filter</code>-1)</td>
+              </tr>
+              <tr>
+                <td><code>APCF_LocName_Mandata_or_SerData</code></td>
+                <td>Variable size</td>
+                <td>A character string for manufacturer data.<br/>
+                  <br/>
+                  Notes:<br/>
+                  i) Currently the max number of characters in a local name
+                  string is 29<br/>
+                  ii) Not applicable when action is "Clear" (0x2)</td>
+              </tr>
+              <tr>
+                <td><code>APCF_ManData_Mask</code></td>
+                <td>Variable size</td>
+                <td>The manufacture data mask to add to the list. It should
+                  have the same length as
+                  <code>APCF_LocName_or_ManData_or_SerData</code>.</td>
+              </tr>
+            </table>
+
+            <p>A Command Complete event will be generated for this command.</p>
+            <table>
+              <tr>
+                <th>Return Parameter</th>
+                <th>Size</th>
+                <th>Purpose</th>
+              </tr>
+              <tr>
+                <td><code>Status</code></td>
+                <td>1 octet</td>
+                <td>Command Complete status</td>
+              </tr>
+              <tr>
+                <td><code>APCF_opcode</code></td>
+                <td>1 octet</td>
+                <td>0x06 - APCF Manufacturer Data</td>
+              </tr>
+              <tr>
+                <td><code>APCF_Action</code></td> <td>1 octet</td>
+                <td>Echo back command's <code>APCF_Action</code></td>
+              </tr>
+              <tr>
+                <td><code>APCF_AvailableSpaces</code></td>
+                <td>1 octet</td>
+                <td>Number of free entries still available in the Manufacturer
+                  Data table.</td>
+              </tr>
+            </table>
+
+          <h4 id="le_apcf_command-service_data_sub_cmd">LE_APCF_Command:
+            service_data_sub_cmd</h4>
+            <p>This subcommand is used to add or delete a service data string
+            or to clear the service data string list for on-chip filtering.</p>
+            <p>Sub OCF: 0x07</p>
+            <table>
+              <tr>
+                <th>Sub-command Parameter</th>
+                <th>Size</th>
+                <th>Purpose</th>
+              </tr>
+              <tr>
+                <td><code>APCF_Action</code></td>
+                <td>1 octet</td>
+                <td>0x00 - Add<br/>
+                  0x01 - Delete<br/>
+                  0x02 - Clear<br/>
+                  Delete will delete the specified service data string in the
+                  specified filter.<br/>
+                  Clear will clear all the service data strings in the specified
+                  filter.</td>
+              </tr>
+              <tr>
+                <td><code>APCF_Filter_Index</code></td>
+                <td>1 octet</td>
+                <td>Filter Index (0, <code>max_filter</code>-1)</td>
+              </tr>
+              <tr>
+                <td><code>APCF_LocName_Mandata_or_SerData</code></td>
+                <td>Variable size</td>
+                <td>A character string for service data.<br/>
+                  <br/>
+                  Notes:<br/>
+                  i) Currently the max number of characters in a local name
+                  string is 29<br/>
+                  ii) Not applicable when action is "Clear" (0x2)</td>
+              </tr>
+              <tr>
+                  <td><code>APCF_LocName_Mandata_or_SerData_Mask</code></td>
+                  <td>Variable size</td>
+                  <td>The service data mask to add to the list. It should have
+                    the same length as
+                    <code>APCF_LocName_or_ManData_or_SerData.</code></td>
+              </tr>
+            </table>
+            <p>A Command Complete event will be generated for this command.</p>
+            <table>
+              <tr>
+                <th>Return Parameter</th>
+                <th>Size</th>
+                <th>Purpose</th>
+              </tr>
+              <tr>
+                <td><code>Status</code></td>
+                <td>1 octet</td>
+                <td>Command Complete status</td>
+              </tr>
+              <tr>
+                <td><code>APCF_opcode</code></td>
+                <td>1 octet</td>
+                <td>0x07 - APCF Service Data</td>
+              </tr>
+              <tr>
+                <td><code>APCF_Action</code></td>
+                <td>1 octet</td>
+                <td>Echo back command's <code>APCF_Action</code></td>
+              </tr>
+              <tr>
+                <td><code>APCF_AvailableSpaces</code></td>
+                <td>1 octet</td>
+                <td>Number of free entries still available for Service Data
+                table.</td>
+              </tr>
+            </table>
+
+      <h2 id="controller-activity-and-energy-information-command">Controller
+        activity and energy information command</h2>
+        <p>The objective of this information is for higher host system
+        functions to analyzethe total activities of all components, including
+        the BT controller and itsmacro state, in conjunction with what is
+        happening in the apps and framework. Todo this, the following
+        information is required from the BT stack and thecontroller: </p>
+        <ul>
+          <li>BT stack: Reporting the current macro-operational state of the
+            controller</li>
+          <li>Firmware: Reporting aggregate activity and
+            energy information</li>
+        </ul>
+        <p>BT host stack macro states, as determined at the user level:</p>
+        <ul>
+          <li>Idle: [page scan, LE advt, inquiry scan]</li>
+          <li>Scan: [paging/inquiry/trying to connect]</li>
+          <li>Active: [ACL link on, SCO link ongoing, sniff mode]</li>
+        </ul>
+        <p>The activities that the controller keeps track of over its life are
+        Tx time, Rx time, idle time, and total energy consumed. They are cleared
+        when read from the host.</p>
+        <p>Vendor-specific command:
+        <code>LE_Get_Controller_Activity_Energy_Info</code> </p>
+        <p>OCF: 0x159</p>
+        <table>
+          <tr>
+            <th>Sub-command Parameter</th>
+            <th>Size</th>
+            <th>Purpose</th>
+          </tr>
+          <tr>
+            <td></td>
+            <td> NA</td>
+            <td>Empty command params</td>
+          </tr>
+        </table>
+        <p>A Command Complete event will be generated for this command.</p>
+        <table>
+          <tr>
+            <th>Return Parameter</th>
+            <th>Size</th>
+            <th>Purpose</th>
+          </tr>
+          <tr>
+            <td><code>Status</code></td>
+            <td>1 octet</td>
+            <td>Command Complete status</td>
+          </tr>
+          <tr>
+            <td><code>total_tx_time_ms</code></td>
+            <td>4 octets</td>
+            <td>Total time performing Tx</td>
+          </tr>
+          <tr>
+            <td><code>total_rx_time_ms</code></td>
+            <td>4 octets</td>
+            <td>Total time performing Rx</td>
+          </tr>
+          <tr>
+            <td><code>total_idle_time_ms</code></td>
+            <td>4 octets</td>
+            <td>Total time in idle (non-sleep low power states)</td>
+          </tr>
+          <tr>
+            <td><code>total_energy_used</code></td>
+            <td>4 octets</td>
+            <td>Total energy used [product of current (mA), voltage (V) and time
+              (ms)]</td>
+          </tr>
+        </table>
+
+      <h2 id="le-extended-set-scan-parameters-command">LE extended set scan
+        parameters command</h2>
+        <p>This command can be used to enable a larger scan window and interval
+        in the controller. Per the BT 4.1 core specification, a scan window and
+        interval have an upper bound limit of 10.24 seconds, which hampers
+        applications' longer scan intervals beyond 10.24 seconds.</p>
+        <p>Base reference: The BT 4.1 core specification, page 973 (LE Set Scan
+        Parameters Command)</p>
+        <p>OCF: 0x15A</p>
+        <table>
+          <tr>
+            <th>Cmd Parameter</th>
+            <th>Size</th>
+            <th>Purpose</th>
+          </tr>
+          <tr>
+            <td><code>LE_Ex_Scan_Type</code></td>
+            <td>1 octet</td>
+            <td>0x00 - Passive scanning. No <code>SCAN_REQ </code>packets shall
+              be sent (default).<br/>
+              0x01 - Active scanning.
+              <code>SCAN_REQ</code> packets may be sent.</td>
+          </tr>
+          <tr>
+            <td><code>LE_Ex_Scan_Interval</code></td>
+            <td>4 octets</td>
+            <td>Defined as the time interval from when the Controller started its
+              last LE scan until it begins the subsequent LE scan.<br/>
+              Range: 0x0004 to 0x00FFFFFF<br/>
+              Default: 0x0010 (10 ms)<br/>
+              Time = N * 0.625 ms<br/>
+              Time range: 2.5 ms to 10442.25 seconds</td>
+          </tr>
+          <tr>
+            <td><code>LE_Ex_Scan_Window</code></td>
+            <td>4 octets</td>
+            <td>The duration of the LE scan. <code>LE_Scan_Window</code>
+              shall be less than or equal to <code>LE_Scan_Interval</code>.<br/>
+              Range: 0x0004 to 0xFFFF<br/>
+              Default: 0x0010 (10 ms)<br/>
+              Time = N * 0.625 ms<br/>
+              Time Range: 2.5 ms to 40.95 seconds</td>
+          </tr>
+          <tr>
+            <td><code>Own_Address_Type</code></td>
+            <td>1 octet</td>
+            <td>0x00 - Public Device Address (default)<br/>
+              0x01 - Random Device Address</td>
+          </tr>
+          <tr>
+            <td><code>LE_Ex_Scan_Filter_Policy</code></td>
+            <td></td>
+            <td>0x00 - Accept all advertisement packets (default).
+              Directed advertising packets which are not addressed for this
+              device shall be ignored.<br/>
+              0x01 - Ignore advertisement packets from devices not
+              in the White List Only list.<br/>
+              Directed advertising packets which are not addressed for this
+              device shall be ignored.</td>
+          </tr>
+        </table>
+        <p>A Command Complete event will be generated for this command.</p>
+        <table>
+          <tr>
+            <th>Return Parameter</th>
+            <th>Size</th>
+            <th>Purpose</th>
+          </tr>
+          <tr>
+            <td><code>Status</code></td>
+            <td>1 octet</td>
+            <td>Command Complete status</td>
+          </tr>
+        </table>
+
+      <h2 id="get-controller-debug-info-command">Get controller debug info
+        command</h2>
+        <p>The objective of this information element is to acquire controller
+        debug information by a host, in binary form, for post-processing and
+        analysis. This helps debug on-field issues and provides engineers with a
+        toolkit to log information for analysis. A Controller can provide the
+        information when requested by a host via the event (Controller Debug Info
+        sub event) or autonomously when desired by the controller. Example uses
+        could be to report firmware state information, crash dump information,
+        logging information, etc.</p>
+        <p>OCF: 0x15B</p>
+        <table>
+          <tr>
+            <th>Cmd Parameter</th>
+            <th>Size</th>
+            <th>Purpose</th>
+          </tr>
+          <tr>
+            <td></td>
+            <td>N/A</td>
+            <td>Empty command parameter list</td>
+          </tr>
+        </table>
+        <p>A Command Complete event will be generated for this command.</p>
+        <table>
+          <tr>
+            <th>Return Parameter</th>
+            <th>Size</th>
+            <th>Purpose</th>
+          </tr>
+          <tr>
+            <td>Status</td>
+            <td>1 octet</td>
+            <td>Command Complete status</td>
+          </tr>
+        </table>
+      <h2 id="hci-event-vendor-specific">HCI event (vendor-specific)</h2>
+        <p>Vendor-specific HCI events are required in some cases. Refer to
+        Figure 5.4  on page 486 of the BT 4.1 core specification. Event
+        parameter 0 will always contain the first sub-event code, based on which
+        the rest of the HCI event is decoded.</p>
+        <table>
+          <tr>
+            <th>Event Parameter</th>
+            <th>Size</th>
+            <th>Purpose</th>
+          </tr>
+          <tr>
+            <td><code>HCI_vendor_specific_event_code</code></td>
+            <td>1 octet</td>
+            <td>0xFF</td>
+          </tr>
+          <tr>
+            <td><code>sub_event_code</code></td>
+            <td>1 octet</td>
+            <td>A sub-event code will be 1 octet in size, the byte immediately
+              following Parameter Length in the HCI event packet.</td>
+          </tr>
+        </table>
+
+        <h3 id="storage-threshold-breach-subevent">Storage threshold breach
+          subevent</h3>
+          <p>This event indicates that the storage threshold has been breached.
+          </p>
+          <p>Sub-event code = 0x54</p>
+          <table>
+            <tr>
+              <th>Sub-event Parameter</th>
+              <th>Size</th>
+              <th>Purpose</th>
+            </tr>
+            <tr>
+              <td>None</td>
+              <td></td>
+              <td></td>
+            </tr> </table>
+
+        <h3 id="le-multi-advertising-state-change-subevent">LE multi-advertising
+          state change subevent</h3>
+
+          <p>This event indicates that an advertising instance has changed its
+          state. At this time, this event is only used to indicate which
+          advertising instance was stopped as a result of a connection.</p>
+          <p>Sub-event code = 0x55</p>
+          <table>
+            <tr>
+              <th>Sub-event Parameter</th>
+              <th>Size</th>
+              <th>Purpose</th>
+            </tr>
+            <tr>
+              <td><code>Advertising_instance</code></td>
+              <td>1 octet</td>
+              <td>Identifies the specific advertising instance.<br/>
+                Valid values are 0 through <code>max_advt_instances</code> -1</td>
+            </tr>
+            <tr>
+              <td><code>State_Change_Reason</code></td>
+              <td>1 octet</td>
+              <td>0x00: Connection received</td>
+            </tr>
+            <tr>
+              <td><code>Connection_handle</code></td>
+              <td>2 octets</td>
+              <td>Identifies the connection that caused the <code>advt</code>
+                instance to be disabled (0xFFFF if invalid)</td>
+            </tr>
+          </table>
+
+        <h3 id="le-advertisement-tracking-subevent">LE advertisement tracking
+          subevent</h3>
+          <p>This event indicates when an advertiser is found or lost.</p>
+          <p>Sub event code = 0x56</p>
+          <table>
+            <tr>
+              <th>Sub Event Parameter</th>
+              <th>Size</th>
+              <th>Purpose</th>
+            </tr>
+            <tr>
+              <td><code>APCF_Filter_Index</code></td>
+              <td>1 octet</td>
+              <td>Filter Index (0, <code>max_filter-1)</code></td>
+            </tr>
+            <tr>
+              <td><code>Advertiser_State</code></td>
+              <td>1 octet</td>
+              <td>0x00: Advertiser found<br/>
+                0x01: Advertiser lost</td>
+            </tr>
+            <tr>
+              <td><code>Advt_Info_Present</code></td>
+              <td>1 octet</td>
+              <td>0x00: Advertiser information (<code>Advt_Info)</code>
+                present<br/>
+                0x01: Advertiser information (<code>Advt_Info)</code> not
+                present</td>
+            </tr>
+            <tr>
+              <td><code>Advertiser_Address</code></td>
+              <td>6 octets</td>
+              <td>Public or random address</td>
+            </tr>
+            <tr>
+              <td><code>Advertiser_Address_Type </code></td>
+              <td>1 octet</td>
+              <td>0x00: Public address<br/>
+                0x01: Random address</td>
+            </tr>
+            <tr>
+              <td><code>Advt_Info</code></td>
+              <td></td>
+              <td><code>Tx_Pwr[0]</code>: 1 octet<br/>
+                <code>RSSI[0]</code>: 1 octet<br/>
+                <code>Timestamp[0]</code>: 2 octets<br/>
+                <code>Adv packet_len[0]</code>: 1 octet<br/>
+                <code>Adv_packet[0]</code>:
+                <code>Adv_packet_len</code> octets<br/>
+                <code>Scan_data_resp_len[0]</code>: 1 octet<br/>
+                <code>Scan_data_resp[0]</code>:
+                <code>Scan_data_resp </code>octets</td>
+            </tr>
+          </table>
+
+        <h3 id="controller-debug-info-subevent">Controller debug info
+          subevent</h3>
+          <p>This event is used by a Controller to provide binary debug
+          information to a host.</p>
+          <p>Sub event code = 0x57</p>
+          <table>
+            <tr>
+              <th>Sub Event Parameter</th>
+              <th>Size</th>
+              <th>Purpose</th>
+            </tr>
+            <tr>
+              <td><code>debug_block_byte_offset_start</code></td>
+              <td>2 octets</td>
+              <td>Debug block byte offset from the start</td>
+            </tr>
+            <tr>
+              <td><code>last_block</code></td>
+              <td>1 octet</td>
+              <td>0x00: More debug data present<br/>
+                0x01: Last binary block; no more debug data</td>
+            </tr>
+            <tr>
+              <td><code>cur_pay_load_sz</code></td>
+              <td>2 octets</td>
+              <td>Binary block size in a current event</td>
+            </tr>
+            <tr>
+              <td><code>Debug_Data</code></td>
+              <td>Variable</td>
+              <td>Debug data of <code>cur_payload_sz</code></td>
+            </tr>
+          </table>
+  </body>
+
+</html>

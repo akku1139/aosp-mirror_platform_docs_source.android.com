@@ -1,0 +1,307 @@
+<html devsite>
+  <head>
+    <title>DTB/DTBO Partitions</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+
+<p>If your DTB/DTBO is in a unique partition, e.g. <code>dtb</code> and
+<code>dtbo</code> partition, use the following table structure and header
+format:</p>
+
+<p><img src="../images/treble_dto_partition_layout.png"></p>
+<figcaption><strong>Figure 1.</strong> Example
+<code>dtb</code>/<code>dtbo</code> partition layout (for AVB signature, see
+<a href="/devices/architecture/dto/implement.html#security">Security</a>).
+</figcaption>
+
+<h2 id=structures>Data structures</h2>
+<p>The <code>dt_table_header</code> is <strong>only</strong> for the
+<code>dtb</code>/<code>dtbo</code> partition; you CANNOT append this format
+after the end of <code>image.gz</code>. If you have a single DTB/DTBO, you must
+still use this format (and the <code>dt_entry_size</code> in
+<code>dt_table_header</code> is 1).</p>
+
+<pre class="prettyprint">
+#define DT_TABLE_MAGIC 0xd7b7ab1e
+
+struct dt_table_header {
+  uint32_t magic;             // DT_TABLE_MAGIC
+  uint32_t total_size;        // includes dt_table_header + all dt_table_entry
+                              // and all dtb/dtbo
+  uint32_t header_size;       // sizeof(dt_table_header)
+
+  uint32_t dt_entry_size;     // sizeof(dt_table_entry)
+  uint32_t dt_entry_count;    // number of dt_table_entry
+  uint32_t dt_entries_offset; // offset to the first dt_table_entry
+                              // from head of dt_table_header
+
+  uint32_t page_size;         // flash page size we assume
+  uint32_t reserved[1];       // must be zero
+};
+
+struct dt_table_entry {
+  uint32_t dt_size;
+  uint32_t dt_offset;         // offset from head of dt_table_header
+
+  uint32_t id;                // optional, must be zero if unused
+  uint32_t rev;               // optional, must be zero if unused
+  uint32_t custom[4];         // optional, must be zero if unused
+};
+</pre>
+
+<p>To read all <code>dt_table_entry</code>, use the <code>dt_entry_size</code>,
+<code>dt_entry_count</code>, and <code>dt_entries_offset</code>. Example:</p>
+<pre class="prettyprint">
+my_read(entries_buf,
+        header_addr + header-&gt;dt_entries_offset,
+        header-&gt;dt_entry_size * header-&gt;dt_entry_count);
+</pre>
+
+<p>The <code>id</code>, <code>rev</code>, <code>custom</code> in
+<code>dt_table_entry</code> are optional hardware identifications of the device
+tree the bootloader can use to efficiently identify the DTB/DTBO to load. If the
+bootloader requires additional information, put it in the DTB/DTBO where
+bootloader can read it by parsing DTB/DTBO (see the sample code below).</p>
+
+<h2 id=sample-code>Sample code</h2>
+<p>The following sample code checks the hardware identification in bootloader.
+</p>
+
+<ul>
+<li>The <code>check_dtbo()</code> function checks the hardware identification.
+It first checks the data in struct <code>dt_table_entry</code> (<code>id</code>,
+<code>rev</code>, etc.). If this data is not enough, it loads <code>dtb</code>
+data into memory and checks the value in <code>dtb</code>.</li>
+<li>The values of <code>my_hw_information</code> and <code>soc_id</code>
+properties are parsed in the root node (example in <code>my_dtbo_1.dts</code>).
+
+<pre class="prettyprint">
+[my_dtbo_1.dts]
+/dts-v1/;
+/plugin/;
+
+/ {
+  /* As DTS design, these properties only for loader, won't overlay */
+  compatible = "board_manufacturer,board_model";
+
+  /* These properties are examples */
+  board_id = &lt;0x00010000&gt;;
+  board_rev = &lt;0x00010001&gt;;
+  another_hw_information = "some_data";
+  soc_id = &lt;0x68000000&gt;;
+  ...
+};
+
+&amp;device@0 {
+  value = &lt;0x1&gt;;
+  status = "okay";
+};
+
+
+[my_bootloader.c]
+int check_dtbo(const dt_table_entry *entry, uint32_t header_addr) {
+  ...
+  if (entry-&gt;id != ... || entry-&gt;rev != ...) {
+    ...
+  }
+  ...
+  void * fdt_buf = my_load_dtb(header_addr + entry-&gt;dt_offset, entry-&gt;dt_size);
+  int root_node_off = fdt_path_offset(fdt_buf, "/");
+  ...
+  const char *my_hw_information =
+    (const char *)fdt_getprop(fdt_buf, root_node_off, "my_hw_information", NULL);
+  if (my_hw_information != NULL &amp;&amp; strcmp(my_hw_information, ...) != 0) {
+    ...
+  }
+  const fdt32_t *soc_id = fdt_getprop(fdt_buf, root_node_off, "soc_id", NULL);
+  if (soc_id != NULL &amp;&amp; *soc_id != ...) {
+    ...
+  }
+  ...
+}
+</pre></li></ul>
+
+<h2 id=mkdtimg>mkdtimg</h2>
+<p><code>mkdtimg</code> is a tool for creating
+<code>dtb</code>/<code>dtbo</code> images
+(<a href="https://android-review.googlesource.com/#/q/topic:mkdtimg+(status:open+OR+status:merged+OR+status:pending)" class="external">source
+code</a> at <code>system/libufdt</code> in AOSP). <code>mkdtimg</code> supports
+several commands, including <code>create</code>, <code>cfg_create</code>, and
+<code>dump</code>.</p>
+
+<h3 id=create>create</h3>
+<p>Use the <code>create</code> command to create a
+<code>dtb</code>/<code>dtbo</code> image:</p>
+<pre class="prettyprint">
+$mkdtimg create &lt;image_filename&gt; (&lt;global-option&gt;...) \
+    &lt;ftb1_filename&gt; (&lt;entry1_option&gt;...) \
+    &lt;ftb2_filename&gt; (&lt;entry2_option&gt;...) \
+    ...
+</pre>
+
+<p><code>ftbX_filename</code> generates a <code>dt_table_entry</code> in the
+image. <code>entryX_option</code>s are the values to assign to
+<code>dt_table_entry</code>. These values can be any of the following:</p>
+<pre class="prettyprint">
+--id=&lt;number|path&gt;
+--rev=&lt;number|path&gt;
+--custom0=&lt;number|path&gt;
+--custom1=&lt;number|path&gt;
+--custom2=&lt;number|path&gt;
+--custom3=&lt;number|path&gt;
+</pre>
+
+<p>Number values can be a 32-bit digit (such as 68000) or a hex number (such as
+0x6800). Alternatively, you can specify a path using the format:</p>
+<pre class="prettyprint">
+&lt;full_node_path&gt;:&lt;property_name&gt;
+</pre>
+
+<p>For example, <code>/board/:id</code>. <code>mkdtimg</code> reads the value
+from the path in the DTB/DTBO file and assigns the value (32-bit) to a relative
+property in <code>dt_table_entry</code>. Alternatively, you can give a
+<code>global_option</code> as a default option for all entries. The default
+value of <code>page_size</code> in <code>dt_table_header</code> is 2048; use
+<code>global_option --page_size=&lt;number&gt;</code> to assign a different
+value.</p>
+
+<p>Example:</p>
+<pre class="prettyprint">
+[board1.dts]
+/dts-v1/;
+/plugin/;
+
+/ {
+  compatible = "board_manufacturer,board_model";
+  board_id = &lt;0x00010000&gt;;
+  board_rev = &lt;0x00010001&gt;;
+  another_hw_information = "some_data";
+  ...
+};
+
+&amp;device@0 {
+  value = &lt;0x1&gt;;
+  status = "okay";
+};
+
+
+$mkdtimg create dtbo.img --id=/:board_id --custom0=0xabc \
+  board1.dtbo \
+  board2.dtbo --id=0x6800 \
+  board3.dtbo --id=0x6801 --custom0=0x123
+</pre>
+
+<ul>
+<li>First <code>dt_table_entry</code> (<code>board1.dtbo</code>) <code>id</code>
+is <code>0x00010000</code> and <code>custom[0]</code> is
+<code>0x00000abc</code>.</li>
+<li>Second <code>id</code> is <code>0x00006800</code> and
+<code>custom[0]</code> is <code>0x00000abc</code>.</li>
+<li>Third <code>id</code> is <code>0x00006801</code> and <code>custom[0]</code>
+is <code>0x00000123</code>.</li>
+<li>All others use the default value (<code>0</code>).</li>
+</ul>
+
+<h3 id=cfg-create>cfg_create</h3>
+<p>The <code>cfg_create</code> command creates an image with a config file in
+the following format:</p>
+<pre class="prettyprint">
+# global options
+  &lt;global_option&gt;
+  ...
+# entries
+&lt;ftb1_filename&gt;     # comment
+  &lt;entry1_option&gt;   # comment
+  ...
+&lt;ftb2_filename&gt;
+  &lt;entry2_option&gt;
+  ...
+...
+</pre>
+
+<p>Options <code>global_option</code> and <code>entryX_option</code> must start
+with one or more space characters (these options are the same as
+<code>create</code> options, without the <code>--</code> prefix). Empty lines or
+lines beginning with <code>#</code> are ignored.</p>
+
+<p>Example:</p>
+<pre class="prettyprint">
+[dtboimg.cfg]
+# global options
+  id=/:board_id
+  rev=/:board_rev
+  custom0=0xabc
+
+board1.dtbo
+
+board2.dtbo
+  id=0x6800       # override the value of id in global options
+
+board2.dtbo
+  id=0x6801       # override the value of id in global options
+  custom0=0x123   # override the value of custom0 in global options
+
+
+$mkdtimg cfg_create dtbo.img dtboimg.cfg
+</pre>
+
+<p><code>mkdtimg</code> does not handle alignment for
+<code>.dtb</code>/<code>.dtbo</code> files but rather appends them to the image.
+When you use <code>dtc</code> to compile <code>.dts</code> to
+<code>.dtb</code>/<code>.dtbo</code>, you must add option <code>-a</code>. For
+example, adding the option <code>-a 4</code> adds padding so the size of
+<code>.dtb</code>/<code>.dtbo</code> aligns to 4 bytes.</p>
+
+<p>Several DT table entries can share a <code>.dtb</code>/<code>.dtbo</code>. If
+you use the same filename for different entries, it stores only one content in
+the image with same <code>dt_offset</code> and <code>dt_size</code>. This is
+useful when using different hardware with identical DTs.</p>
+
+<h3 id=dump>dump</h3>
+<p>For <code>dtb</code>/<code>dtbo</code> images, use the <code>dump</code>
+command to print the information in the image. Example:</p>
+<pre class="prettyprint">
+$mkdtimg dump dtbo.img
+dt_table_header:
+               magic = d7b7ab1e
+          total_size = 1300
+         header_size = 32
+       dt_entry_size = 32
+      dt_entry_count = 3
+   dt_entries_offset = 32
+           page_size = 2048
+         reserved[0] = 00000000
+dt_table_entry[0]:
+             dt_size = 380
+           dt_offset = 128
+                  id = 00010000
+                 rev = 00010001
+           custom[0] = 00000abc
+           custom[1] = 00000000
+           custom[2] = 00000000
+           custom[3] = 00000000
+           (FDT)size = 380
+     (FDT)compatible = board_manufacturer,board_model
+...
+</pre>
+
+  </body>
+</html>

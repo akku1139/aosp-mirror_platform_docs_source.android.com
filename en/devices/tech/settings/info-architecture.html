@@ -1,0 +1,292 @@
+<html devsite>
+  <head>
+    <title>Updated Information Architecture</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>
+Android 8.0 introduces a new information architecture for the Settings app. The
+goal of the new information architecture is to simplify the way settings are
+organized and make it easier for users to quickly find the settings needed to
+customize their Android devices.
+</p>
+
+<h2 id="examples-and-source">Examples and source</h2>
+
+<p>
+Most pages in Settings are currently implemented using the new framework. A good
+example is DisplaySettings:
+<code>packages/apps/Settings/src/com/android/settings/DisplaySettings.java</code>
+</p>
+
+<p>
+Files paths for important components are listed below:
+</p>
+
+<h3 id="categorykey">CategoryKey</h3>
+
+<code>packages/SettingsLib/src/com/android/settingslib/drawer/CategoryKey.java</code>
+
+<h3 id="dashboardfragmentregistry">DashboardFragmentRegistry</h3>
+
+<code>packages/apps/Settings/src/com/android/settings/dashboard/DashboardFragmentRegistry.java</code>
+
+<h3 id="dashboardfragment">DashboardFragment</h3>
+
+<code>packages/apps/Settings/src/com/android/settings/dashboard/DashboardFragment.java</code>
+
+<h3 id="preferencecontrollers">AbstractPreferenceController and PreferenceController</h3>
+
+<code>frameworks/base/packages/SettingsLib/src/com/android/settingslib/core/AbstractPreferenceController.java</code>
+
+<code>packages/apps/Settings/src/com/android/settings/core/PreferenceController.java</code>
+
+<h2 id="implementation">Implementation</h2>
+
+<p>
+Device manufacturers are encouraged to adapt the existing Settings information
+architecture and insert additional settings pages as needed to accommodate
+partner-specific features. Moving preferences from legacy page (implemented as
+SettingsPreferencePage) to a new page (implemented using DashboardFragment) can
+be complicated. The preference from the legacy page is likely not implemented
+with a PreferenceController.
+</p>
+
+<p>
+So when moving it into a DashboardFragment, partners will need to create a
+PreferenceController and move the code into the controller before instantiating
+it in the new DashboardFragment. The refactor process is fairly straightforward
+since most of it is just moving existing code.
+</p>
+
+<p>
+Once done with refactoring, OEMs should submit patch CLs with tests to have
+their changes merged upstream.
+</p>
+
+<h3 id="plugin">Plugin-style information architecture</h3>
+
+<p>
+Each settings item is implemented as a Preference. A Preference can easily be
+moved from one page to another.
+</p>
+
+<p>
+To make it easier for multiple settings to be moved around, Android O introduces
+a plugin style host fragment that contains settings items. Settings items are
+modeled as plugin-style controllers. Hence, a settings page is constructed by a
+single host fragment and multiple setting controllers.
+</p>
+
+<h3 id="dashboard-fragment">DashboardFragment</h3>
+
+<p>
+This is the host of plugin-style preference controllers. The fragment inherits
+from PreferenceFragment and has hooks to inflate and update both static
+preference lists and dynamic preference lists.
+</p>
+
+<h3 id="static-preferences">Static preferences</h3>
+
+<p>
+A static preference list is defined in XML using the <Preference> tag. A
+DashboardFragment implementation uses the getPreferenceScreenResId() method to
+define which XML file contains the static list of preferences to display.
+</p>
+
+<h3 id="dynamic-preferences">Dynamic preferences</h3>
+
+<p>
+A dynamic item represents a tile with intent, leading to an external or internal
+Activity. Usually, the intent leads to a different setting page. For example,
+the "Google" setting item in the Settings homepage is a dynamic item. Dynamic
+items are defined in AndroidManifest (discussed below) and loaded through a
+FeatureProvider (defined as DashboardFeatureProvider).
+</p>
+
+<p>
+Note that dynamic settings are more heavyweight than statically configured
+settings, so normally developers should implement the setting as a static one.
+However the dynamic setting can be useful when any of the following is true:
+</p>
+
+<ul>
+<li>The setting is not directly implemented in the Settings app (such as
+injecting a setting implemented by OEM/Carrier apps).</li>
+<li>The setting should appear on the Settings homepage.</li>
+<li>You already have an Activity for the setting and don't want to implement the
+extra static config.</li>
+</ul>
+
+<p>
+To configure an Activity as a dynamic setting, you need to do a few things:
+</p>
+
+<ul>
+<li>Mark the activity as a dynamic setting. This is done by simply adding an
+intent-filter to the activity.</li>
+<li>Tell Settings app which category it belongs to. The category is a constant,
+defined in <strong>CategoryKey</strong>.</li>
+<li>Optional: Add a summary text when the setting is displayed.</li>
+</ul>
+
+<p>
+Here is an example taken from Settings app for DisplaySettings.
+</p>
+
+<pre
+class="prettyprint">
+&lt;activity android:name="Settings$DisplaySettingsActivity"
+                   android:label="@string/display_settings"
+                   android:icon="@drawable/ic_settings_display"&gt;
+             &lt;!-- Mark the activity as a dynamic setting --&gt;
+              &lt;intent-filter&gt;
+                     &lt;action android:name="com.android.settings.action.IA_SETTINGS" /&gt;
+              &lt;/intent-filter&gt;
+             &lt;!-- Tell Settings app which category it belongs to --&gt;
+              &lt;meta-data android:name="com.android.settings.category"
+                     android:value="com.android.settings.category.ia.homepage" /&gt;
+             &lt;!-- Add a summary text when the setting is displayed --&gt;
+              &lt;meta-data android:name="com.android.settings.summary"
+                     android:resource="@string/display_dashboard_summary"/&gt;
+             &lt;/activity&gt;
+</pre>
+
+<p>
+At render time, the fragment will ask for a list of Preferences from both static
+XML and dynamic settings defined in AndroidManifest. Regardless in which source
+a setting is loaded, DashboardFragment manages the handling logic of each
+setting through PreferenceController<strong> </strong>(discussed below). Then
+they will be displayed onto the UI as a mixed list.
+</p>
+
+<h3 id="preference-controller">PreferenceController</h3>
+
+<p>
+A PreferenceController contains all logic to interact with the preference,
+including displaying/updating/search indexing and so on.
+</p>
+
+<p>
+Correspondingly, the interface of PreferenceController has API of isAvailable(),
+displayPreference(), handlePreferenceTreeClicked() etc. Detailed documentation
+on each API can be found in the interface class.
+</p>
+
+<p>
+While installing a preference to the fragment, dashboard provides a method to
+attach a PreferenceController before display time. At install time, the
+controller will be wired up to the fragment so all future relevant events are
+sent to the controller.
+</p>
+
+<p>
+DashboardFragment will keep a list of PreferenceControllers in the screen. At
+fragment's onCreate(), all controllers will be invoked for the isAvailable()
+method, and if it returns true, displayPreference() will be invoked to process
+display logic.
+</p>
+
+<h2 id="using-dashboardfragment">Using DashboardFragment</h2>
+
+<h3 id="moving-preference">Moving preference from page A to B</h3>
+
+<p>
+If the preference is statically listed in the original page's preference XML
+file, follow the <strong>static </strong>path below. Otherwise, follow the
+<strong>dynamic</strong> path.
+</p>
+
+<h4 id="static-move">Static</h4>
+
+<ol>
+<li>Find the preference XML files for the original page and destination page.</li>
+You can find this information from the page's getPreferenceScreenResId() method.</li>
+<li>Remove the preference in the original page's XML.</li>
+<li>Add the preference to destination page's XML.</li>
+<li>Remove the PreferenceController for this preference in the original page's
+Java implementation. Usually it's in getPreferenceControllers().</li>
+<strong>Note</strong>: It is possible the preference does not have a
+PreferenceController.</li>
+<li>Instantiate the PreferenceController in the destination page's
+getPreferenceControllers().</li>
+</ol>
+
+<h4 id="dynamic-move">Dynamic</h4>
+
+<ol>
+<li>Find which category the original and destination page hosts. You can find
+this information in <code>DashboardFragmentRegistry</code>.</li>
+<li>Open the <code>AndroidManifest.xml</code> file that contains the setting you
+need to move and find the Activity entry representing this setting.</li>
+<li>Change the activity's metadata value for "com.android.settings.category",
+set the value point to the new page's category key.</li>
+</ol>
+
+<h3 id="creating-a-new-preference">Creating a new preference in a page</h3>
+
+<p>
+If the preference is statically listed in the original page's preference XML
+file, follow the <strong>static </strong>path below. Otherwise follow the
+<strong>dynamic</strong> path.
+</p>
+
+<h4 id="static-create">Static</h4>
+
+<ol>
+<li>Find the preference XML files for the page. You can find this information
+from the page's getPreferenceScreenResId() method.</li>
+<li>Add a new Preference item in the XML. Make sure it has a unique android:key.</li>
+<li>Instantiate a PreferenceController for this preference in the page's
+getPreferenceControllers() method.</li>
+If this preference already existed in other
+places, it's possible there is already a PreferenceController for it. You can
+reuse the PreferenceController without building a new one.</li>
+</ol>
+
+<h4 id="dynamic-create">Dynamic</h4>
+
+<ol>
+<li>Find which category the original and destination page hosts. You can find
+this information in <code>DashboardFragmentRegistry</code>.</li>
+<li>Create a new Activity in AndroidManifest, and add necessary metadata to
+define the setting. Make the metadata value for "com.android.settings.category"
+to be the same value defined in step 1.</li>
+</ol>
+
+<h3 id="create-new-page">Create a new page</h3>
+<ol>
+<li>Create a new fragment, inheriting from DashboardFragment.</li>
+<li>Define its category in <code>DashboardFragmentRegistry</code>.
+<p class="note"><strong>Note:</strong> This step is optional. If you do not need
+any dynamic preferences in this page, you don't need to provide a category key.</p></li>
+<li>Follow the steps for adding the settings needed for this page.</li>
+</ol>
+
+<h2 id="validation">Validation</h2>
+
+<ul>
+<li>Run the robolectric tests in Settings, all existing and new tests should
+pass.
+<li>Build and install Settings, manually open the page being modified; the page
+should update immediately.</li>
+</ul>
+</body>
+</html>

@@ -240,6 +240,87 @@ if you have not made the updates indicated above.</p>
 <a href="/compatibility/cts/camera-hal.html">Camera HAL Testing
 Checklist</a>.</p>
 
+<h3 id="80">Android 8.0</h3>
+
+<p>
+The Android 8.0 release contains these key enhancements to the Camera service:
+</p>
+
+<ul>
+  <li>Shared surfaces - Enable multiple surfaces sharing the same
+    <code>OutputConfiguration</code></li>
+  <li>System API for custom camera modes</li>
+  <li><code>onCaptureQueueEmpty</code></li>
+</ul>
+
+<p>
+See the sections below for more information on these features.
+</p>
+
+<h4 id="shared-surfaces">Shared surfaces</h4>
+
+<p>
+This feature enables only one set of buffers to drive two outputs, such as
+preview and video encoding, which lowers power and memory consumption. To
+support this feature, device manufacturers need to ensure their camera HAL and
+gralloc HAL implementations can create gralloc buffers that will be used by
+multiple different consumers (such as the hardware composer/GPU and the video
+encoder), instead of just one consumer. The camera service will pass the
+consumer usage flags to the camera HAL and the gralloc HAL; they need to either
+allocate the right kinds of buffers, or the camera HAL needs to return an error
+that this combination of consumers is not supported.
+</p>
+
+<p>
+See the <code><a
+    href="https://developer.android.com/reference/android/hardware/camera2/params/OutputConfiguration.html#enableSurfaceSharing()">enableSurfaceSharing</a></code>
+developer documentation for additional details.</p>
+
+<h4 id="system-api-for-custom-camera-modes">System API for custom camera
+  modes</h4>
+
+<p>
+The public camera API defines two operating modes: normal and constrained
+high-speed recording. They have fairly different semantics; high-speed mode is
+limited to at most two specific outputs at once, etc. Various OEMs have
+expressed interest in defining other custom modes for hardware-specific
+capabilities. Under the hood, the mode is just an integer passed to the
+configure_streams. See:
+<code>hardware/libhardware/+/master/include/hardware/camera3.h#1736</code>
+</p>
+
+<p>
+This feature includes a system API call that OEM camera apps can use to enable a
+custom mode. These modes must start at integer value 0x8000 to avoid conflicting
+with future modes added to the public API.
+</p>
+
+<p>
+To support this feature, OEMs merely need to add the new mode to their HAL,
+triggered by this integer passed to the HAL on configure_streams, and then have
+their custom camera app use the system API.
+</p>
+
+<p>
+The method name is <code><a
+    href="https://developer.android.com/reference/android/hardware/camera2/CameraCaptureSession.StateCallback.html#onCaptureQueueEmpty(android.hardware.camera2.CameraCaptureSession)">android.hardware.camera2.CameraDevice#createCustomCaptureSession</a></code>.
+See:
+<code>frameworks/base/core/java/android/hardware/camera2/CameraDevice.java#797</code>
+
+<p class="note"><strong>Note:</strong> In the Android 8.0 MR1 release, applications must be preinstalled on the system image to access this API.
+</p>
+
+<h4 id="oncapturequeueempty">onCaptureQueueEmpty</h4>
+
+<p>
+The purpose of this API is to reduce the latency of control changes like zoom by
+keeping the request queue as empty as possible. <code>onCaptureQueueEmpty</code>
+requires no HAL work; it was purely a framework-side addition. Applications that
+want to take advantage of it need to add a listener to that callback and respond
+appropriately. Generally that's by sending another capture request to the camera
+device.
+</p>
+
 <h3 id="34">3.4</h3>
 
 <p>Minor additions to supported metadata and changes to data_space support:</p>
@@ -255,7 +336,7 @@ definition, using the version 0 definition of dataspace encoding.</li>
   <ul>
   <li>
   <a href="https://developer.android.com/reference/android/hardware/camera2/CameraMetadata.html#INFO_SUPPORTED_HARDWARE_LEVEL_3"><code>ANDROID_INFO_SUPPORTED_HARDWARE_LEVEL_3</code>
-  </a></li>
+  </a>
   <li><code>ANDROID_CONTROL_POST_RAW_SENSITIVITY_BOOST</code></li>
   <li><code>ANDROID_CONTROL_POST_RAW_SENSITIVITY_BOOST_RANGE</code></li>
   <li><code>ANDROID_SENSOR_DYNAMIC_BLACK_LEVEL</code></li>
@@ -263,7 +344,7 @@ definition, using the version 0 definition of dataspace encoding.</li>
   <li><code>ANDROID_SENSOR_OPAQUE_RAW_SIZE</code></li>
   <li><code>ANDROID_SENSOR_OPTICAL_BLACK_REGIONS</code></li>
   </ul>
-  <li>
+  </li>
 </ul>
 
 <h3 id="33">3.3</h3>

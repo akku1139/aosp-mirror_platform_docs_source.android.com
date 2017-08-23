@@ -1,0 +1,132 @@
+<html devsite>
+  <head>
+    <title>HIDL C++</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>Android O re-architects the Android OS to define clear interfaces between the
+device-independent Android platform and device- and vendor-specific code.
+Android already defines many such interfaces in the form of HAL interfaces,
+defined as C headers in <code>hardware/libhardware</code>. HIDL replaces these
+HAL interfaces with stable, versioned interfaces, which can be client- and
+server-side HIDL interfaces in C++ (described below) or
+<a href="/devices/architecture/hidl-java/index.html">Java</a>.</p>
+
+<p>The pages in this section describe C++ implementations of HIDL interfaces,
+including details about the files auto-generated from the HIDL <code>.hal</code>
+files by the <code>hidl-gen</code> compiler, how these files are packaged, and
+how to integrate these files with the C++ code that uses them.</p>
+
+<h2 id=client-server>Client &amp; server implementations</h2>
+<p>HIDL interfaces have client and server implementations:</p>
+
+<ul>
+<li>A <strong>client</strong> of a HIDL interface is the code that uses the
+interface by calling methods on it.</li>
+<li>A <strong>server</strong> is an implementation of a HIDL interface that
+receives calls from clients and returns results (if necessary).</li>
+</ul>
+
+<p>In transitioning from <code>libhardware</code> HALs to HIDL HALs, the HAL
+implementation becomes the server and the process calling into the HAL becomes
+the client. Default implementations can serve both passthrough and binderized
+HALs, and can change over time:</p>
+
+<p><img src="../images/treble_cpp_legacy_hal_progression.png"></p>
+<p><strong>Figure 1.</strong> Development progression for legacy HALs.</p>
+
+<h2>Creating the HAL client</h2>
+<p>Start by including the HAL libraries in the makefile:</p>
+
+<ul>
+<li>Make: <code>LOCAL_SHARED_LIBRARIES += android.hardware.nfc@1.0</code></li>
+<li>Soong: <code>shared_libs: [ …, android.hardware.nfc@1.0 ]</code></li>
+</ul>
+
+<p>Next, include the HAL header files:</p>
+
+<pre class="prettyprint">
+#include &lt;android/hardware/nfc/1.0/IFoo.h&gt;
+…
+// in code:
+sp&lt;IFoo&gt; client = IFoo::getService();
+client-&gt;doThing();
+</pre>
+
+<h2>Creating the HAL server</h2>
+<p>To create the HAL implementation, you must have the <code>.hal</code> files
+that represent your HAL and have already generated makefiles for your HAL using
+<code>-Lmakefile</code> or <code>-Landroidbp</code> on <code>hidl-gen</code>
+(<code>./hardware/interfaces/update-makefiles.sh</code> does this for internal
+HAL files and is a good reference). When transferring over HALs from
+<code>libhardware</code>, you can do a lot of this work easily using c2hal.</p>
+
+<p>To create the necessary files to implement your HAL:</p>
+
+<pre class="prettyprint">
+PACKAGE=android.hardware.nfc@1.0
+LOC=hardware/interfaces/nfc/1.0/default/
+make hidl-gen -j64
+hidl-gen -o $LOC -Lc++-impl -randroid.hardware:hardware/interfaces \
+    -randroid.hidl:system/libhidl/transport $PACKAGE
+hidl-gen -o $LOC -Landroidbp-impl -randroid.hardware:hardware/interfaces \
+    -randroid.hidl:system/libhidl/transport $PACKAGE
+</pre>
+
+<p>For the HAL to work in passthrough mode (for legacy devices), you must have
+the function <em>HIDL_FETCH_IModuleName</em> residing in
+<code>/system/lib(64)?/hw/android.hardware.package@3.0-impl(-$OPTIONAL_IDENTIFIER).so</code>
+where <code>$OPTIONAL_IDENTIFIER</code> is a string identifying the passthrough
+implementation. The passthrough mode requirements are met automatically by the
+above commands, which also create the <code>android.hardware.nfc@1.0-impl</code>
+target.</p>
+
+<p>Next, fill out the stubs with functionality and setup a daemon. Example
+daemon code (supporting passthrough):</p>
+
+<pre class="prettyprint">
+#include &lt;hidl/LegacySupport.h&gt;
+
+int main(int /* argc */, char* /* argv */ []) {
+    return defaultPassthroughServiceImplementation&lt;INfc&gt;("nfc");
+}
+</pre>
+
+<p><code>defaultPassthroughServiceImplementation</code> will
+<code>dlopen()</code> the provided <code>-impl</code> library and provide it as
+a binderized service. Example daemon code (for pure binderized service):</p>
+
+<pre class="prettyprint">
+int main(int /* argc */, char* /* argv */ []) {
+    Nfc nfc = new Nfc();
+    nfc-&gt;registerAsService();
+}
+</pre>
+
+<p>This daemon should live in <code>$PACKAGE + "-service"</code> (for example,
+<code>android.hardware.nfc@1.0-service</code>). The
+<a href="/security/selinux/device-policy.html">sepolicy</a> for a specific class
+of HALs is the attribute <code>hal_&lt;module&gt;</code> (for instance,
+<code>hal_nfc)</code>. This attribute must be applied to the daemon that runs a
+particular HAL (if the same process serves multiple HALs, multiple attributes
+can be applied to it).</p>
+
+</body>
+</html>

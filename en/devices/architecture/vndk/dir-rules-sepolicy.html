@@ -1,0 +1,189 @@
+<html devsite>
+  <head>
+    <title>Directories, Rules, and sepolicy</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>This page describes the directory layout for devices running Android O, VNDK
+rules, and associated sepolicy.</p>
+
+<h2 id="directory">Directory layout</h2>
+<p>The <em>Degenerated Directory Layout</em> consists of the following
+directories:</p>
+<ul>
+<li><code>/system/lib[64]</code> contains all framework shared libraries,
+including LL-NDK, SP-NDK, VNDK, and framework-only libraries (including
+LL-NDK-Indirect, SP-NDK-Indirect, and some libraries with the same names as the
+ones in VNDK-SP).</li>
+<li><code>/system/lib[64]/vndk-sp</code> contains VNDK-SP libraries for
+same-process HALs.</li>
+<li><code>/vendor/lib[64]</code> contains the extended VNDK libraries (either
+DXUA or DXUX VNDK libraries), same-process HAL implementations, and other vendor
+shared libraries.</li>
+<li><code>/vendor/lib[64]/vndk-sp</code> may contain extra libraries that are
+used by VNDK-SP libraries.</li>
+</ul>
+
+<p>Vendor modules load the VNDK libraries from <code>/system/lib[64]</code>.</p>
+
+<h2 id="rules">VNDK rules</h2>
+<p>This section provides a comprehensive list of VNDK rules:</p>
+
+<ul>
+<li>Framework processes must not load non-SP-HAL shared libraries from vendor
+partitions (not strictly enforced in Android O but will be in a future release).
+</li>
+<li>Vendor processes must not load non-LL-NDK, non-SP-NDK, non-VNDK-SP, and
+non-VNDK libraries from the system partition. (not strictly enforced in Android
+O but will be in a future release).</li>
+
+<p class="note"><strong>NOTE</strong>: To benefit from the framework-only OTA
+beyond Android O, this rule must not be violated in devices launched with
+Android O.</p>
+
+<li>Installed VNDK libraries must be a subset of Google-defined eligible VNDK
+libraries.</li>
+<li>The outer dependencies of SP-HAL and SP-HAL-Dep must be restricted to
+LL-NDK, SP-NDK, or Google-defined VNDK-SP libraries.
+ <ul>
+ <li>The dependencies of an SP-HAL shared library must be restricted to LL-NDK
+ libraries, SP-NDK libraries, SP-NDK libraries, Google-defined VNDK-SP
+ libraries, other SP-HAL libraries, and/or other vendor shared libraries that
+ can be labeled as SP-HAL-Dep libraries.</li>
+ <li>A vendor shared library can be labeled as a SP-HAL-Dep library only if it
+ is not an AOSP library and its dependencies are restricted to LL-NDK libraries,
+ SP-NDK libraries, Google-defined VNDK-SP libraries, SP-HAL libraries, and/or
+ other SP-HAL-Dep libraries.</li>
+ </ul>
+</li>
+<li>VNDK-SP must be self-contained. <code>libRS_internal.so</code> gets special
+treatment in Android O, but will be revisited in a future release.</li>
+<li>No framework-vendor communication through non-HIDL interfaces, including
+(but not limited to) binder, sockets, shared memories, files, etc.</li>
+<li>The size of the system partition must be large enough to contain two copies
+of all eligible VNDK libraries and a copy of ineligible framework shared
+libraries.</li>
+</ul>
+
+<h2 id="sepolicy">sepolicy</h2>
+<p>Framework processes described in this section correspond to
+<code>coredomain</code> in sepolicies while vendor processes correspond to
+<code>non-coredomain</code>. For example, <code>/dev/binder</code> can be
+accessed only in <code>coredomain</code> and <code>/dev/vndbinder</code> can be
+accessed only in non-<code>coredomain</code>.</p>
+
+<p>Similar policies restrict the access to the shared libraries on system and
+vendor partitions. The following table shows the rights to access shared
+libraries of different categories:</p>
+
+<table>
+  <tr>
+   <th style="width:35%">Category</th>
+   <th>Partition</th>
+   <th>Accessible from<br>coredomain</th>
+   <th>Accessible from<br>non-coredomain</th>
+  </tr>
+  <tr>
+   <td>LL-NDK</td>
+   <td>System</td>
+   <td>Y</td>
+   <td>Y</td>
+  </tr>
+  <tr>
+   <td>LL-NDK-Indirect</td>
+   <td>System</td>
+   <td>Y</td>
+   <td>Y</td>
+  </tr>
+  <tr>
+   <td>SP-NDK</td>
+   <td>System</td>
+   <td>Y</td>
+   <td>Y</td>
+  </tr>
+  <tr>
+   <td>SP-NDK-Indirect</td>
+   <td>System</td>
+   <td>Y</td>
+   <td>Y</td>
+  </tr>
+  <tr>
+   <td>VNDK-SP/VNDK-SP-Indirect/VNDK-SP-Indirect-Private</td>
+   <td>System</td>
+   <td>Y</td>
+   <td>Y</td>
+  </tr>
+  <tr>
+   <td>VNDK-SP-Ext/VNDK-SP-Indirect-Ext</td>
+   <td>Vendor</td>
+   <td>Y</td>
+   <td>Y</td>
+  </tr>
+  <tr>
+   <td>VNDK</td>
+   <td>System</td>
+   <td>Y</td>
+   <td>Y</td>
+  </tr>
+  <tr>
+   <td>VNDK-Ext</td>
+   <td>Vendor</td>
+   <td>N</td>
+   <td>Y</td>
+  </tr>
+  <tr>
+   <td>FWK-ONLY</td>
+   <td>System</td>
+   <td>Y</td>
+   <td>N</td>
+  </tr>
+  <tr>
+   <td>FWK-ONLY-RS</td>
+   <td>System</td>
+   <td>Y</td>
+   <td>N</td>
+  </tr>
+  <tr>
+   <td>SP-HAL</td>
+   <td>Vendor</td>
+   <td>Y</td>
+   <td>Y</td>
+  </tr>
+  <tr>
+   <td>SP-HAL-Dep</td>
+   <td>Vendor</td>
+   <td>Y</td>
+   <td>Y</td>
+  </tr>
+  <tr>
+   <td>VND-ONLY</td>
+   <td>Vendor</td>
+   <td>N</td>
+   <td>Y</td>
+  </tr>
+</table>
+
+<p>LL-NDK-Indirect, SP-NDK-Indirect, VNDK-SP-Indirect, and
+VNDK-SP-Indirect-Private must be accessible from both domains because
+non-<code>coredomain</code> will indirectly access them. Similarly, SP-HAL-Dep
+must be accessible from <code>coredomain</code> because SP-HAL relies on it.</p>
+
+  </body>
+</html>

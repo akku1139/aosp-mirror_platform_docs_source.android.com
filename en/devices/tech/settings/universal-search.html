@@ -1,0 +1,199 @@
+<html devsite>
+  <head>
+    <title>Universal Search</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>
+Android 8.0 adds expanded search capabilities for the <em>Settings</em> menu. This
+document describes how to add a setting and ensure it is properly indexed for
+Settings search.
+</p>
+
+<h2 id="indexable-settings">Creating indexable settings</h2>
+
+<p>
+Each Settings fragment that needs to be indexed implements the
+<code>Indexable</code>interface, AND requires the static
+field:
+
+<pre
+class="prettyprint">public static final SearchIndexProvider SEARCH_INDEX_DATA_PROVIDER
+</pre>
+
+<p>
+Once you have your fragment set up for indexing, add it to
+<code>SearchIndexableResources</code> found at:<br>
+<code>packages/apps/Settings/src/com/android/settings/search/SearchIndexableResources.java
+</code>
+</p>
+
+<h2 id="optional-methods">Optional methods</h2>
+
+<p>This <code>SearchIndexProvider</code>interface has four optional
+  methods.</p>
+  
+<h3 id="getXmlResourcesToIndex">getXmlResourcesToIndex</h3>
+  <ul>
+    <li>Override this if your fragment content is from: <code>preference xml</code></li>
+    <li>Returns an XML preference as a list to be indexed.</li>
+  </ul>
+  
+ <p>XML resources example:</p>
+
+<pre
+class="prettyprint">public List&lt;SearchIndexableResource&gt; getXmlResourcesToIndex(Context context, boolean enabled) {
+    ArrayList&lt;SearchIndexableResource&gt; result =  new ArrayList&lt;SearchIndexableResource&gt;();
+SearchIndexableResource sir = new SearchIndexableResource(context);
+	sir.xmlResId = R.xml.display_settings;
+	result.add(sir);
+
+    return result;
+}</pre>
+
+<h3 id="getRawDataToIndex">getRawDataToIndex</h3>
+  <ul>
+    <li>Override this if your fragment content is NOT from: <code>preference
+xml</code></li>
+    <li>Returns a list of Raw data (<code>SearchIndexableRaw</code>) to be indexed.</li>
+  </ul>
+  
+<p>Raw data example:</p>
+
+<pre
+class="prettyprint">
+public List&lt;SearchIndexableRaw> getRawDataToIndex(Context context, boolean enabled) {
+              final List&lt;SearchIndexableRaw> result = new ArrayList&lt;>();
+              final Resources res = context.getResources();
+
+              // Add fragment title
+       SearchIndexableRaw data = new SearchIndexableRaw(context);
+       data.title = res.getString(R.string.wifi_settings);
+       data.screenTitle = res.getString(R.string.wifi_settings);
+       data.keywords = res.getString(R.string.keywords_wifi);
+       data.key = DATA_KEY_REFERENCE;
+       result.add(data);
+
+       return result;
+}
+</pre>
+
+<h3 id="getRawDataToIndex">getNonIndexableKeys</h3>
+  <ul>
+   <li>If your fragment is a <code>DashboardFragment</code>, you rarely need to
+override this.</li>
+   <li>Returns a list of keys that corresponds to results that should not show up
+for the given user, device, configuration, etc.The keys provided here should
+match the <em>KEY</em> field in <code>SearchIndexableResource</code> and
+<code>SearchIndexableRaw</code>.</li>
+   <li>For example: Data Usage should not show up for users who have never had a
+SIM card in their device.</li>
+  </ul>
+
+<p>Non-indexable keys example:</p>
+
+<pre
+class="prettyprint">
+public List&lt;String&gt; getNonIndexableKeys(Context context) {
+      final List&lt;String&gt; keys = super.getNonIndexableKeys(context);
+              if (!checkIntentAction(context, "android.settings.TERMS")) {
+                  keys.add(KEY_TERMS);
+              }
+              if (!checkIntentAction(context, "android.settings.LICENSE")) {
+                  keys.add(KEY_LICENSE);
+              }
+              if (!checkIntentAction(context, "android.settings.COPYRIGHT")) {
+                  keys.add(KEY_COPYRIGHT);
+              }
+              if (!checkIntentAction(context, "android.settings.WEBVIEW_LICENSE")) {
+                  keys.add(KEY_WEBVIEW_LICENSE);
+              }
+              return keys;
+}</pre>
+
+<h3 id="getPreferenceControllers">getPreferenceControllers</h3>
+
+<p>
+Returns a list of preference controllers associated with this fragment.
+This list is used to form inline results, update non-indexables, etc.
+</p>
+
+<p>
+Thus, everything you want to show up in search must be included in either
+<code>getXmlResourcesToIndex</code> or <code>getRawDataToIndex</code>.
+</p>
+
+<h2 id="keywords">Adding keywords for your settings</h2>
+
+<p>
+To ensure a setting is easily searchable, add keywords that are relevant for the
+setting that a user may use to search for the setting.
+</p>
+
+<p>
+Things to consider when adding keywords:
+</p>
+   <ul>
+     <li>Keywords are a list of words that the user does not necessarily see but may
+be part of their mental model for how the setting works.</li>
+     <li>These are words that the user might type to get to your setting.</li>
+     <li>They can be synonyms or any words associated to the setting can be used.</li>
+     <li>For example, "mute" might be used to find the Volume setting.</li>
+   </ul>
+   
+<h2 id="duplication">Avoiding duplication</h2>
+
+<p>
+If you are unconditionally suppressing a settings page, remove the indexing of
+the original page to avoid duplication of results.
+</p>
+
+   <ol>
+     <li>Find the <code>PreferenceFragment</code> of the page you are suppressing.</li>
+     <li>Remove the <code>SearchIndexProvider</code>.</li>
+   </ol>
+
+<h2 id="validation">Validation</h2>
+
+<p>
+To test the searchability of a new setting:
+</p>
+
+   <ol>
+     <li>Instal a recent version of O on the device.</li>
+     <li>Reindex the database by selecting:</li>
+<em>Settings > Apps & Notifications > Apps info > Settings > Storage >
+<strong>Clear Data</strong></em></li>
+     <li>Verify the target settings shows up in search.<br>
+     Searching for a prefix of the title of a setting will match it.</li>
+   </ol>
+
+<p>
+These robolectric tests may be run to validate the implementation of this
+feature:<br>
+<code>packages/apps/Settings/tests/robotests/src/com/android/settings/search</code>
+</p>
+
+<p>
+The build target is: <code>RunSettingsRoboTests</code>
+</p>
+
+</body>
+</html>
