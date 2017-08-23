@@ -1,0 +1,718 @@
+<html devsite>
+  <head>
+    <title>Code Style Guide</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+
+<p>The HIDL code style resembles C++ code in the Android framework, with 4-space
+indents and mixed-case filenames. Package declarations, imports, and docstrings
+are similar to those in Java, with slight modifications.</p>
+
+<p>The following examples for <code>IFoo.hal</code> and <code>types.hal</code>
+illustrate HIDL code styles and provide quick links to details on each style
+(<code>IFooClientCallback.hal</code>, <code>IBar.hal</code>, and
+<code>IBaz.hal</code> have been omitted).</p>
+
+<table>
+<tr><th><code>hardware/interfaces/foo/1.0/IFoo.hal</code></th></tr>
+<tr><td><pre class="prettyprint">
+/*
+ * (License Notice)
+ */
+
+<a href="#package-names">package</a> android.hardware.foo@<a href="#versions">1.0</a>;
+
+<a href="#imports">import</a> android.hardware.bar@1.0::IBar;
+
+import IBaz;
+import IFooClientCallback;
+
+/**
+ * IFoo is an interface that&#8230;
+ */
+interface <a href="#interface-names">IFoo</a> {
+
+    /**
+     * This is a <a href="#comments">multiline docstring</a>.
+     * <a href="#return">@return</a> result 0 if successful, nonzero otherwise.
+     */
+     <a href="#function-declarations">foo() generates (FooStatus result);</a>
+
+    /**
+     * Restart controller by power cycle.
+     * <a href="#param">@param</a> bar callback interface that&#8230;
+     * @return result 0 if successful, nonzero otherwise.
+     */
+    <a href="#functions">powerCycle</a>(IBar bar) generates (FooStatus <a href="#functions">result</a>);
+
+    /** <a href="#comments">Single line docstring</a>. */
+    baz();
+
+
+    /**
+     * The bar function.
+     * <a href="#param">@param</a> <a href="#functions">clientCallback</a> callback after function is called
+     * @param baz related baz object
+     * @param data input data blob
+     */
+    bar(IFooClientCallback clientCallback,
+        IBaz baz,
+        FooData data);
+
+};
+</pre>
+</td></tr></table>
+
+<table>
+<tr><th><code>hardware/interfaces/foo/1.0/types.hal</code></th></tr>
+<tr><td><pre class="prettyprint">
+/*
+ * (License Notice)
+ */
+
+package android.hardware.foo@1.0;
+
+<a href="#comments">/** Replied status. */</a>
+<a href="#enum-declarations">enum Status : int32_t</a> {
+    <a href="#enum-values">OK</a>,
+    ERR_ARG, <a href="#comments">// invalid arguments</a>
+    ERR_UNKNOWN = -1, // note, no transport related errors
+};
+
+<a href="#struct-declarations">struct ArgData</a> {
+    <a href="#array-declarations">int32_t[20]  someArray;</a>
+    <a href="#vectors">vec&lt;uint8_t&gt; data;</a>
+};
+</pre>
+</td></tr></table>
+
+<h2 id=naming>Naming conventions</h2>
+<p>Function names, variable names, and filenames should be descriptive; avoid
+over-abbreviation. Treat acronyms as words (e.g., use <code>INfc</code> instead
+of <code>INFC</code>.</p>
+
+<h3 id=dir-structure>Directory structure and file naming</h3>
+<p>The directory structure should appear as follows:</p>
+<ul>
+<li><code><var>ROOT-DIRECTORY</var></code>
+  <ul>
+  <li><code><var>MODULE</var></code>
+    <ul>
+    <li><code><var>SUBMODULE</var></code> (optional, could be more than one
+    level)
+      <ul>
+      <li><code><var>VERSION</var></code>
+        <ul>
+        <li><code>Android.mk</code></li>
+        <li><code>I<var>INTERFACE_1</var>.hal</code></li>
+        <li><code>I<var>INTERFACE_2</var>.hal</code></li>
+        <li><code>&#8230;</code></li>
+        <li><code>I<var>INTERFACE_N</var>.hal</code></li>
+        <li><code>types.hal</code> (optional)</li>
+        </ul>
+      </li>
+      </ul>
+    </li>
+    </ul>
+  </li>
+  </ul>
+</li>
+</ul>
+
+<p>Where:</p>
+<ul>
+<li><code><var>ROOT-DIRECTORY</var></code> is:
+  <ul>
+  <li><code>hardware/interfaces</code> for core HIDL packages.</li>
+  <li><code>vendor/<var>VENDOR</var>/interfaces</code> for vendor packages,
+  where <code><var>VENDOR</var></code> refers to an SoC vendor or an
+  OEM/ODM.</li>
+  </ul>
+  </li>
+<li><code><var>MODULE</var></code> should be one lowercase word that describes
+the subsystem (e.g. <code>nfc</code>). If more than one word is needed, use
+nested <code><var>SUBMODULE</var></code>. There can be more than one level of
+nesting.</li>
+<li><code><var>VERSION</var></code> should be the exact same version
+(major.minor) as described in <a href="#versions">Versions</a>.</li>
+<li><code>I<var>INTERFACE_X</var></code> should be the interface name with
+<code>UpperCamelCase</code>/<code>PascalCase</code> (e.g. <code>INfc</code>)
+as described in <a href="#interface-names">Interface names</a>.</li>
+</ul>
+
+<p>Example:</p>
+<ul>
+<li><code>hardware/interfaces</code>
+  <ul>
+  <li><code>nfc</code>
+    <ul>
+    <li><code>1.0</code>
+      <ul>
+      <li><code>Android.mk</code></li>
+      <li><code>INfc.hal</code></li>
+      <li><code>INfcClientCallback.hal</code></li>
+      <li><code>types.hal</code></li>
+      </ul>
+    </li>
+    </ul>
+  </li>
+  </ul>
+</li>
+</ul>
+
+<p class="note"><strong>Note:</strong> All files must have non-executable
+permissions (in Git).
+
+<h3 id=package-names>Package names</h3>
+<p>Package names must use the following <a href="#fqn">fully-qualified name
+(FQN)</a> format (referred to as <code><var>PACKAGE-NAME</var></code>):</p>
+
+<pre class="prettyprint">
+<var>PACKAGE</var>.<var>MODULE</var>[.<var>SUBMODULE</var>[.<var>SUBMODULE</var>[&#8230;]]]@<var>VERSION</var>
+</pre>
+
+<p>Where:</p>
+<ul>
+<li><code><var>PACKAGE</var></code> is the package that maps to the
+<code><var>ROOT-DIRECTORY</var></code>. In particular,
+<code><var>PACKAGE</var></code> is:
+  <ul>
+  <li><code>android.hardware</code> for core HIDL packages (mapping to
+  <code>hardware/interfaces</code>).</li>
+  <li><code>vendor.<var>VENDOR</var>.hardware</code> for vendor packages, where
+  <code><var>VENDOR</var></code> refers to an SoC vendor or an OEM/ODM (mapping
+  to <code>vendor/<var>VENDOR</var>/interfaces</code>).</li>
+  </ul>
+<li><code><var>MODULE</var>[.<var>SUBMODULE</var>[.<var>SUBMODULE</var>[&#8230;]]]@<var>VERSION</var></code>
+are the exact same folder names in the structure described in
+<a href="#dir-structure">Directory structure</a>.</li>
+<li>Package names should be lowercase. If they are more than one word long, the
+words should either be used as submodules or written in <code>snake_case</code>.
+</li>
+<li>No spaces are allowed.</li>
+</ul>
+
+<p>The FQN is always used in package declarations.</p>
+
+<h3 id=versions>Versions</h3>
+<p>
+Versions should have the following format:
+</p>
+
+<pre class="prettyprint"><var>MAJOR</var>.<var>MINOR</var></pre>
+
+<p>Both the <var>MAJOR</var> and the <var>MINOR</var> version should be a single
+integer. HIDL uses <a href="http://semver.org/" class="external">semantic
+versioning</a> rules.</p>
+
+<h3 id=imports>Imports</h3>
+<p>An import has one of the following three formats:</p>
+<ul>
+<li>Whole-package imports: <code>import <var>PACKAGE-NAME</var>;</code></li>
+<li>Partial imports: <code>import
+<var>PACKAGE-NAME</var>::<var>UDT</var>;</code> (or, if the imported
+type is in the same package,<code>import <var>UDT</var>;</code></li>
+<li>Types-only imports: <code>import <var>PACKAGE-NAME</var>::types;</code></li>
+</ul>
+
+<p>The <code><var>PACKAGE-NAME</var></code> follows the format in
+<a href="#package-names">Package names</a>. The current package's
+<code>types.hal</code> (if it exists) is automatically imported (do not import
+it explicitly).</p>
+
+<h4 id=fqn>Fully qualified names (FQNs)</h4>
+<p>Use fully qualified names for a user-defined type import only when necessary.
+Omit <code><var>PACKAGE-NAME</var></code> if the import type is in the same
+package. An FQN must not contain spaces. Example of a fully qualified name:</p>
+
+<pre class="prettyprint">android.hardware.nfc@1.0::INfcClientCallback</pre>
+
+<p>In another file under <code>android.hardware.nfc@1.0</code>, refer to the
+above interface as <code>INfcClientCallback</code>. Otherwise, use only the
+fully qualified name.</p>
+
+<h4 id=grouping>Grouping and ordering imports</h4>
+<p>Use an empty line after package declaration (before the imports). Each import
+should occupy a single line and should not be indented. Group imports in the
+following order:</p>
+
+<ol>
+<li>Other <code>android.hardware</code> packages (use fully qualified names).
+</li>
+<li>Other <code>vendor.<var>VENDOR</var></code> packages (use fully qualified
+names).
+  <ul>
+  <li>Each vendor should be a group.</li>
+  <li>Order vendors alphabetically.</li>
+  </ul>
+  </li>
+<li>Imports from other interfaces in the same package (use simple names).</li>
+</ol>
+
+<p>Use an empty line between groups. Inside each group, sort imports
+alphabetically. Example:</p>
+
+<pre class="prettyprint">
+import android.hardware.nfc@1.0::INfc;
+import android.hardware.nfc@1.0::INfcClientCallback;
+
+// Importing the whole module.
+import vendor.barvendor.bar@3.1;
+
+import vendor.foovendor.foo@2.2::IFooBar;
+import vendor.foovendor.foo@2.2::IFooFoo;
+
+import IBar;
+import IFoo;
+</pre>
+
+<h3 id=interface-names>Interface names</h3>
+<p>Interface names must start with an <code>I</code>, followed by an
+<code>UpperCamelCase</code>/<code>PascalCase</code> name. An interface with name
+<code>IFoo</code> must be defined in the file <code>IFoo.hal</code>. This file
+can contain definitions only for the <code>IFoo</code> interface (the interface
+<code>I<var>NAME</var></code> should be in <code>I<var>NAME</var>.hal</code> ).
+</p>
+
+<h3 id=functions>Functions</h3>
+<p>For function names, arguments, and return variable names, use
+<code>lowerCamelCase</code>. Example:</p>
+
+<pre class="prettyprint">
+open(INfcClientCallback clientCallback) generates (int32_t retVal);
+oneway pingAlive(IFooCallback cb);
+</pre>
+
+<h3 id=struct-union>Struct/union field names</h3>
+<p>For struct/union field names, use <code>lowerCamelCase</code>. Example:</p>
+
+<pre class="prettyprint">
+struct FooReply {
+    vec&lt;uint8_t&gt; replyData;
+}
+</pre>
+
+<h3 id=type-names>Type names</h3>
+<p>Type names refer to struct/union definitions, enum type definitions, and
+<code>typedef</code>s. For these name, use
+<code>UpperCamelCase</code>/<code>PascalCase</code>. Examples:</p>
+
+<pre class="prettyprint">
+enum NfcStatus : int32_t {
+    /*...*/
+};
+struct NfcData {
+    /*...*/
+};
+</pre>
+
+<h3 id=enum-values>Enum values</h3>
+<p>Enum values should be <code>UPPER_CASE_WITH_UNDERSCORES</code>. When passing
+enum values as function arguments and returning them as function returns, use
+the actual enum type (not the underlying integer type). Example:</p>
+
+<pre class="prettyprint">
+enum NfcStatus : int32_t {
+    HAL_NFC_STATUS_OK               = 0,
+    HAL_NFC_STATUS_FAILED           = 1,
+    HAL_NFC_STATUS_ERR_TRANSPORT    = 2,
+    HAL_NFC_STATUS_ERR_CMD_TIMEOUT  = 3,
+    HAL_NFC_STATUS_REFUSED          = 4
+};
+</pre>
+
+<p class="note"><strong>Note:</strong> The underlying type of an enum type is
+explicitly declared after the colon. As it is not compiler dependent, using the
+actual enum type is clearer.</p>
+
+<p>For fully qualified names for enum values, a <strong>colon</strong> is used
+between the enum type name and the enum value name:</p>
+
+<pre class="prettyprint">
+<var>PACKAGE-NAME</var>::<var>UDT</var>[.<var>UDT</var>[.<var>UDT</var>[&#8230;]]:<var>ENUM_VALUE_NAME</var>
+</pre>
+
+<p>There must not be spaces inside a fully qualified name. Use a fully qualified
+name only when necessary and omit unnecessary parts. Example:</p>
+
+<pre class="prettyprint">
+android.hardware.foo@1.0::IFoo.IFooInternal.FooEnum:ENUM_OK
+</pre>
+
+<h2 id=comments>Comments</h2>
+<p>For a single line comment, both <code>// </code>and <code>/** */</code> are
+fine.</p>
+<pre class="prettyprint">
+// This is a single line comment
+/* This is also single line comment */
+/** This is documentation comment */
+</pre>
+
+<ul>
+<li>Use <code>//</code> mainly for:
+  <ul>
+  <li>trailing comments</li>
+  <li>Comments that will not be used for generated documentation</li>
+  <li>TODOs</li>
+  </ul>
+</li>
+<li>Use <code>/** */</code> mainly for Function documents/"docstrings" used for
+generated documentation. Example:
+<pre class="prettyprint">
+/** Replied status */
+enum FooStatus {
+    OK            = 0, // no error
+    ERR_TRANSPORT = 1, // transport level error
+    ERR_ARG       = 2  // invalid args
+}
+</pre>
+<li>Multi-line comments should start a new line with <code>/**</code>, use
+<code>*</code> at the beginning of each line, and place <code>*/</code> on the
+last line all on its own (asterisks should align). Example:
+<pre class="prettyprint">
+/**
+ * My multi-line
+ * comment
+ */
+</pre>
+</li>
+<li>Licensing notice and changelogs should start a new line with <code>/*</code>
+(a single asterisk), use <code>*</code> at the beginning of each line, and place
+<code>*/</code> on the last line all on its own (asterisks should align).
+Example:
+<pre class="prettyprint">
+/*
+ * Copyright (C) 2017 The Android Open Source Project
+ * ...
+ */
+
+/*
+ * Changelog:
+ * ...
+ */
+</pre>
+</li>
+</ul>
+
+<h3 id=file-comments>File comments</h3>
+<p>Start each file with the appropriate licensing notice. For core HALs, this
+should be the AOSP Apache license in
+<a href="https://android.googlesource.com/platform/development/+/master/docs/copyright-templates/c.txt" class="external"><code>development/docs/copyright-templates/c.txt</code></a>.
+Remember to update the year and use <code>/* */</code> style multi-line comments
+as explained above.</p>
+
+<p>You can optionally place an empty line after the license notice, followed
+by a changelog/versioning information. Use <code>/* */</code> style
+multi-line comments as explained above, place the empty line after the
+changelog, then follow with the package declaration.</p>
+
+<h3 id=todo-comments>TODO comments</h3>
+<p>TODOs should include the string <code>TODO</code> in all caps followed by a
+colon. Example:</p>
+<pre>// TODO: remove this code before foo is checked in.</pre>
+
+<p class="alert">TODO comments are allowed only during development; they must
+not exist in published interfaces.</p>
+
+<h3 id=docstrings>Interface/Function comments (docstrings)</h3>
+<p>Use <code>/** */</code> for multi-line and single line docstrings. Do not use
+<code>//</code> for docstrings.</p>
+
+<p>Docstrings for interfaces should describe general mechanisms of the
+interface, design rationale, purpose, etc. Docstrings for functions should be
+specific to the function (package-level documentation goes in a README file in
+the package directory).</p>
+
+<pre class="prettyprint">
+/**
+ * IFooController is the controller for foos.
+ */
+interface IFooController {
+    /**
+     * Opens the controller.
+     * @return status HAL_FOO_OK if successful.
+     */
+    open() generates (FooStatus status);
+
+    /** Close the controller. */
+    close();
+};
+</pre>
+
+<p>You must add <code>@param</code>s and <code>@return</code>s for each
+parameter/return value:</p>
+
+<ul>
+<li id=param><code>@param</code> must be added for each parameter. It should be
+followed by the name of the parameter then the docstring.</li>
+<li id=return><code>@return</code> must be added for each return value. It
+should be followed by the name of the return value then the docstring.</li>
+</ul>
+<p>Example:</p>
+
+<pre class="prettyprint">
+/**
+ * Explain what foo does.
+ * @param arg1 explain what arg1 is
+ * @param arg2 explain what arg2 is
+ * @return ret1 explain what ret1 is
+ * @return ret2 explain what ret2 is
+ */
+foo(T arg1, T arg2) generates (S ret1, S ret2);
+</pre>
+
+<h2>Formatting</h2>
+<p>General formatting rules include:</p>
+<ul>
+<li><strong>Line length</strong>. Each line of text should be at most
+<strong>80</strong> columns long.</li>
+<li><strong>Whitespaces</strong>. No trailing whitespace on lines; empty lines
+must not contain whitespaces.</li>
+<li><strong>Spaces vs. tabs</strong>. Use only spaces.</li>
+<li><strong>Indent size</strong>. Use <strong>4</strong> spaces for blocks and
+<strong>8</strong> spaces for line wraps</li>
+<li><strong>Bracing</strong>. Except for <a href="#annotations">annotation
+values</a>, an <strong>open</strong> brace goes on the same line as preceding
+code but a <strong>close</strong> brace and the following semicolon occupies
+the entire line. Example:
+<pre class="prettyprint">
+interface INfc {
+    close();
+};
+</pre>
+</li>
+</ul>
+
+<h3 id=package-declarations>Package declaration</h3>
+<p>Package declaration should be at the top of the file after the license
+notice, should occupy the entire line, and should not be indented. Packages are
+declared using the following format (for name formatting, see
+<a href="#package-names">Package names</a>):</p>
+
+<pre class="prettyprint">
+package <var>PACKAGE-NAME</var>;
+</pre>
+
+<p>Example:</p>
+
+<pre class="prettyprint">
+package android.hardware.nfc@1.0;
+</pre>
+
+<h3 id=function-declarations>Function declarations</h3>
+<p>Function name, parameters, <code>generates</code>, and return values should
+be on the same line if they fit. Example:</p>
+<pre class="prettyprint">
+interface IFoo {
+    /** ... */
+    easyMethod(int32_t data) generates (int32_t result);
+};
+</pre>
+
+<p>If they don't fit on the same line, attempt to put parameters and return
+values in the same indent level and distinguish <code>generate</code> to help
+the reader quickly see the parameters and return values. Example:</p>
+
+<pre class="prettyprint">
+interface IFoo {
+    suchALongMethodThatCannotFitInOneLine(int32_t theFirstVeryLongParameter,
+                                          int32_t anotherVeryLongParameter);
+    anEvenLongerMethodThatCannotFitInOneLine(int32_t theFirstLongParameter,
+                                             int32_t anotherVeryLongParameter)
+                                  generates (int32_t theFirstReturnValue,
+                                             int32_t anotherReturnValue);
+    superSuperSuperSuperSuperSuperSuperLongMethodThatYouWillHateToType(
+            int32_t theFirstVeryLongParameter, // 8 spaces
+            int32_t anotherVeryLongParameter
+        ) generates (
+            int32_t theFirstReturnValue,
+            int32_t anotherReturnValue
+        );
+    // method name is even shorter than 'generates'
+    foobar(AReallyReallyLongType aReallyReallyLongParameter,
+           AReallyReallyLongType anotherReallyReallyLongParameter)
+        generates (ASuperLongType aSuperLongReturnValue, // 4 spaces
+                   ASuperLongType anotherSuperLongReturnValue);
+}
+</pre>
+
+<p>Additional details:</p>
+<ul>
+<li>An open parenthesis is always on the same line as the function name.</li>
+<li>No spaces between the function name and the open parenthesis.</li>
+<li>No spaces between the parentheses and parameters <em>except</em> when there
+are line feeds between them.</li>
+<li>If <code>generates</code> is on the same line as the previous closing
+parenthesis, use a preceding space. If <code>generates</code> is on the same
+line as the next open parenthesis, follow with a space.</li>
+<li>Align all parameters and return values (if possible).</li>
+<li>Default indentation is 4 spaces.</li>
+<li>Wrapped parameters are aligned to the first parameters on the previous line,
+otherwise they have an 8-space indent.</li>
+</ul>
+
+<h3 id=annotations>Annotations</h3>
+<p>Use the following format for annotations:</p>
+
+<pre class="prettyprint">
+@annotate(keyword = value, keyword = {value, value, value})
+</pre>
+
+<p>Sort annotations in alphabetical order, and use spaces around equal signs.
+Example:</p>
+
+<pre class="prettyprint">
+@callflow(key = value)
+@entry
+@exit
+</pre>
+
+<p>Ensure an annotation occupies the entire line. Examples:</p>
+<pre class="prettyprint">
+// Good
+@entry
+@exit
+
+// Bad
+@entry @exit
+</pre>
+
+<p>If annotations cannot fit on the same line, indent with 8 spaces.
+Example:</p>
+
+<pre class="prettyprint">
+@annotate(
+        keyword = value,
+        keyword = {
+                value,
+                value
+        },
+        keyword = value)
+</pre>
+
+<p>If the entire value array cannot fit in the same line, put line breaks after
+open braces <code>{</code> and after each comma inside the array. Place closing
+parenthesis immediately after the last value. Do not put the braces if there is
+only one value.</p>
+
+<p>If the entire value array can fit in the same line, do not use spaces after
+open braces and before closing braces and use one space after each comma.
+Examples:</p>
+
+<pre class="prettyprint">
+// Good
+@callflow(key = {"val", "val"})
+
+// Bad
+@callflow(key = { "val","val" })
+</pre>
+
+<p>There must NOT be empty lines between annotations and the function
+declaration. Examples:</p>
+<pre class="prettyprint">
+// Good
+@entry
+foo();
+
+// Bad
+@entry
+
+foo();
+</pre>
+
+<h3 id=enum-declarations>Enum declarations</h3>
+<p>Use the following rules for enum declarations:</p>
+<ul>
+<li>If enum declarations are shared with another package, put the declarations
+in <code>types.hal</code> rather than embedding inside an interface.</li>
+<li>Use a space before and after the colon, and space after the underlying type
+before the open brace.</li>
+<li>The last enum value may or may not have an extra comma.</li>
+</ul>
+
+<h3 id=struct-declarations>Struct declarations</h3>
+<p>Use the following rules for struct declarations:</p>
+<ul>
+<li>If struct declarations are shared with another package, put the declarations
+in <code>types.hal</code> rather than embedding inside an interface.</li>
+<li>Use a space after the struct type name before the open brace.</li>
+<li>Align field names (optional). Example:
+<pre class="prettyprint">
+struct MyStruct {
+    vec&lt;uint8_t&gt;   data;
+    int32_t        someInt;
+}
+</pre>
+</li>
+</ul>
+
+<h3 id=array-declarations>Array declarations</h3>
+<p>Do not put spaces between the following:</p>
+<ul>
+<li>Element type and open square bracket.</li>
+<li>Open square bracket and array size.</li>
+<li>Array size and close square bracket.</li>
+<li>Close square bracket and the next open square bracket, if more than one
+dimension exists.</li>
+</ul>
+
+<p>Examples:</p>
+<pre class="prettyprint">
+// Good
+int32_t[5] array;
+
+// Good
+int32_t[5][6] multiDimArray;
+
+// Bad
+int32_t [ 5 ] [ 6 ] array;
+</pre>
+
+<h3 id=vectors>Vectors</h3>
+<p>Do not put spaces between the following:</p>
+<ul>
+<li><code>vec</code> and open angle bracket.</li>
+<li>Open angle bracket and element type (<em>Exception: element type is also a
+<code>vec</code></em>).</li>
+<li>Element type and close angle bracket (<em>Exception: element type is also a
+<code>vec</code>)</em>.</li>
+</ul>
+
+<p>Examples:</p>
+<pre class="prettyprint">
+// Good
+vec&lt;int32_t&gt; array;
+
+// Good
+vec&lt;vec&lt;int32_t&gt;&gt; array;
+
+// Good
+vec&lt; vec&lt;int32_t&gt; &gt; array;
+
+// Bad
+vec &lt; int32_t &gt; array;
+
+// Bad
+vec &lt; vec &lt; int32_t &gt; &gt; array;
+</pre>
+
+  </body>
+</html>

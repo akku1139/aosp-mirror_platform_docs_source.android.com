@@ -1,0 +1,356 @@
+<html devsite>
+  <head>
+    <title>LLVM Sanitizers</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>
+LLVM, the compiler infrastructure used to build Android, contains multiple
+components that perform static and dynamic analysis. Of these components, the
+sanitizers—specifically AddressSanitizer and UndefinedBehaviorSanitizer—can be
+used extensively to analyze Android. Sanitizers are compiler-based
+instrumentation components contained in external/compiler-rt that can be used
+during development and testing to push out bugs and make Android better.
+Android's current set of sanitizers can discover and diagnose many memory misuse
+bugs and potentially dangerous undefined behavior.
+</p>
+<p>
+It's best practice for Android builds to boot and run with sanitizers
+enabled, such as AddressSanitizer and UndefinedBehaviorSanitizer. This page
+introduces AddressSanitizer, UndefinedBehaviorSanitizer, and
+KernelAddressSanitizer, shows how they can be used within the Android build
+system, and gives example Android.mk and Android.bp files that build native
+components with these sanitizers enabled.
+</p>
+
+<h2 id="addresssanitizer">AddressSanitizer</h2>
+<p>
+<a href="https://clang.llvm.org/docs/AddressSanitizer.html">AddressSanitizer</a>
+(ASan) is a compiler-based instrumentation capability that detects many types of
+memory errors in C/C++ code at runtime. ASan can detect many classes of memory
+errors, including:
+</p>
+<ul>
+  <li>Out-of-bounds memory access</li>
+  <li>Double free</li>
+  <li>Use-after-free</li>
+</ul>
+<p>
+Android allows for
+<a href="/devices/tech/debug/asan">ASan
+instrumentation</a> at the full-build level and the <a
+href="/devices/tech/debug/asan#addresssanitizer_in_the_apps">app
+level</a> with asanwrapper.
+</p>
+<p>
+AddressSanitizer combines instrumentation of all memory-related function
+calls—including alloca, malloc, and free—and padding all variables and allocated
+memory regions with memory that triggers an ASan callback when it is read or
+written to.
+</p>
+<p>
+The instrumentation lets ASan detect invalid memory usage bugs, including
+double-free, and use-after scope, return, and free, while the memory-region
+padding detects out-of-bounds read or writes. If a read or write to this padding
+region occurs, ASan catches it and outputs information to help diagnosing the
+memory violation, including the call stack, shadow memory map, the type of
+memory violation, what was read or written, the instruction that caused the
+violation, and the memory contents.
+</p>
+
+
+<pre class="devsite-click-to-copy">
+pixel-xl:/ # sanitizer-status                                                                                            
+=================================================================
+==14164==ERROR: AddressSanitizer: heap-buffer-overflow on address 0x0032000054b0 at pc 0x005df16ffc3c bp 0x007fc236fdf0 sp 0x007fc236fdd0
+WRITE of size 1 at 0x0032000054b0 thread T0
+    #0 0x5df16ffc3b in test_crash_malloc sanitizer-status/sanitizer-status.c:36:13
+    #1 0x5df17004e3 in main sanitizer-status/sanitizer-status.c:76:7
+    #2 0x794cf665f3 in __libc_init (/system/lib64/libc.so+0x1b5f3)
+    #3 0x5df16ffa53 in do_arm64_start (/system/bin/sanitizer-status+0xa53)
+
+0x0032000054b0 is located 0 bytes to the right of 32-byte region [0x003200005490,0x0032000054b0)
+allocated by thread T0 here:
+    #0 0x794d0bdc67 in malloc (/system/lib64/libclang_rt.asan-aarch64-android.so+0x74c67)
+    #1 0x5df16ffb47 in test_crash_malloc sanitizer-status/sanitizer-status.c:34:25
+    #2 0x5df17004e3 in main sanitizer-status/sanitizer-status.c:76:7
+    #3 0x794cf665f3 in __libc_init (/system/lib64/libc.so+0x1b5f3)
+    #4 0x5df16ffa53 in do_arm64_start (/system/bin/sanitizer-status+0xa53)
+    #5 0x794df78893  (&lt;unknown module&gt;)
+
+SUMMARY: AddressSanitizer: heap-buffer-overflow sanitizer-status/sanitizer-status.c:36:13 in test_crash_malloc
+</pre>
+
+<p>
+Sometimes, the bug discovery process can appear to be non-deterministic,
+especially for bugs that require special setup or more advanced techniques, such
+as heap priming or race condition exploitation. Many of these bugs are not
+immediately apparent, and could surface thousands of instructions away from the
+memory violation that was the actual root cause. ASan instruments all
+memory-related functions and pads data with areas that cannot be accessed
+without triggering an ASan callback. This means that memory violations are
+caught the instant they occur, instead of waiting for a crash-inducing
+corruption. This is extremely useful in bug discovery and root cause diagnosis.
+</p>
+<p>
+To verify that ASAN is functional on a target device, Android has included the
+asan_test executable. The asan_test executable tests and validates the ASAN
+functionality on a target device, giving diagnostics messages with the status of
+each test. When using an ASAN Android build, it is located in
+<code>/data/nativetest/asan_test/asan_test</code> or
+<code>/data/nativetest64/asan_test/asan_test</code> by default.
+</p>
+
+<h2 id="undefinedbehaviorsanitizer">UndefinedBehaviorSanitizer</h2>
+<p>
+UndefinedBehaviorSanitizer (UBSan) performs compile-time instrumentation to
+check for various types of undefined behavior. While UBSan is capable of
+detecting
+<a href="https://clang.llvm.org/docs/UndefinedBehaviorSanitizer.html">many
+undefined behaviors</a>, Android supports alignment, bool, bounds, enum,
+float-cast-overflow, float-divide-by-zero, integer-divide-by-zero,
+nonnull-attribute, null, return, returns-nonnull-attribute, shift-base,
+shift-exponent, signed-integer-overflow, unreachable, unsigned-integer-overflow,
+and vla-bound. unsigned-integer-overflow, while not technically an undefined
+behavior, is included in the sanitizer and used in many Android modules,
+including the mediaserver components, to eliminate any latent integer-overflow
+vulnerabilities.
+</p>
+
+<h3 id="ubsan-implementation">Implementation</h3>
+<p>
+In the Android build system, you can enable UBSan globally or locally. To enable
+UBSan globally, set SANITIZE_TARGET in Android.mk. To enable UBSan at a
+per-module level, set LOCAL_SANITIZE and specify the undefined behaviors that
+you want to look for in Android.mk. For example:
+</p>
+
+<pre class="devsite-click-to-copy">LOCAL_PATH:= $(call my-dir)
+include $(CLEAR_VARS)
+
+LOCAL_CFLAGS := -std=c11 -Wall -Werror -O0
+
+LOCAL_SRC_FILES:= sanitizer-status.c
+
+LOCAL_MODULE:= sanitizer-status
+LOCAL_MODULE_TAGS := debug
+
+LOCAL_SANITIZE := alignment bounds null unreachable integer
+LOCAL_SANITIZE_DIAG := alignment bounds null unreachable integer
+
+include $(BUILD_EXECUTABLE)
+</pre>
+
+<p>
+The Android build system does not yet support as detailed diagnostics in
+blueprint files as it does makefiles. Here is the closest equivalent written as
+a blueprint (Android.bp):
+</p>
+
+
+<pre class="devsite-click-to-copy">cc_binary {
+
+    cflags: [
+        "-std=c11",
+        "-Wall",
+        "-Werror",
+        "-O0",
+    ],
+
+    srcs: ["sanitizer-status.c"],
+
+    name: "sanitizer-status",
+    tags: ["debug"],
+
+    sanitize: {
+        misc_undefined: [
+            "alignment",
+            "bounds",
+            "null",
+            "unreachable",
+            "integer",
+        ],
+        diag: {
+            undefined : true
+        },
+    },
+
+}
+</pre>
+
+<h3 id="ubsan-shortcuts">UBSan shortcuts</h3>
+<p>
+Android also has two shortcuts, <code>integer</code> and
+<code>default-ub</code>, to enable a set of sanitizers at the same time. integer
+enables<code> integer-divide-by-zero</code>,
+<code>signed-integer-overflow</code> and <code>unsigned-integer-overflow</code>.
+<code>default-ub</code> enables the checks that have minimal compiler
+performance issues: bool, integer-divide-by-zero, return,
+returns-nonnull-attribute, shift-exponent, unreachable and vla-bound. The
+integer sanitizer class can be used with SANITIZE_TARGET and LOCAL_SANITIZE,
+while default-ub can only be used with SANITIZE_TARGET.
+</p>
+
+<h3 id="better-error-reporting">Better error reporting</h3>
+<p>
+Android's default UBSan implementation invokes a specified function when
+undefined behavior is encountered. By default, this function is abort. However,
+starting in October 2016, UBSan on Android has an optional runtime library that
+gives more detailed error reporting, including type of undefined behavior
+encountered, file and source code line information. To enable this error
+reporting with integer checks add the following to an Android.mk file:
+</p>
+
+
+<pre class="devsite-click-to-copy">LOCAL_SANITIZE:=integer
+LOCAL_SANITIZE_DIAG:=integer
+</pre>
+
+<p>
+The LOCAL_SANITIZE value enables the sanitizer during the build.
+LOCAL_SANITIZE_DIAG turns on diagnostic mode for the specified sanitizer. It is
+possible to set LOCAL_SANITIZE and LOCAL_SANITIZE_DIAG to different values, but
+only those checks in LOCAL_SANITIZE are enabled. If a check is not specified in
+LOCAL_SANITIZE, but is specified in LOCAL_SANITIZE_DIAG, the check isn't enabled
+and diagnostic messages aren't given.
+</p>
+<p>
+Here is an example of the information provided by the UBSan runtime library:
+</p>
+
+<pre class="devsite-click-to-copy">pixel-xl:/ # sanitizer-status ubsan
+sanitizer-status/sanitizer-status.c:53:6: runtime error: unsigned integer overflow: 18446744073709551615 + 1 cannot be represented in type 'size_t' (aka 'unsigned long')
+</pre>
+
+<h2 id="kernel-address-sanitizer">Kernel Address Sanitizer</h2>
+<p>
+Similar to the LLVM-based sanitizers for userspace components, Android includes
+the Kernel Address Sanitizer (KASAN). KASAN is a combination of kernel and
+compile time modifications that result in an instrumented system that allows for
+simpler bug discovery and root cause analysis.
+</p>
+<p>
+KASAN can detect many types of memory violations in the kernel. It can also
+detect out-of-bound reads and writes on stack, heap and global variables, and
+can detect use-after-free and double frees.
+</p>
+<p>
+Similar to ASAN, KASAN uses a combination of memory-function instrumentation at
+compile time and shadow memory to track memory accesses at runtime. In KASAN, an
+eighth of the kernel memory space is dedicated to shadow memory, which
+determines if a memory access is valid or not.
+</p>
+<p>
+KASAN is supported on x86_64 and arm64 architectures. It has been part of the
+upstream kernel since 4.0, and has been backported to Android 3.18-based
+kernels. KASAN has been tested on Android kernels compiled with gcc based on
+4.9.2.
+</p>
+<p>
+In addition to KASAN, kcov is another kernel modification that is useful for
+testing. kcov was developed to allow for coverage-guided fuzz testing in the
+kernel. It measures coverage in terms of syscall inputs and is useful with
+fuzzing systems, such as <a
+href="https://github.com/google/syzkaller">syzkaller</a>.
+</p>
+
+<h3 id="kasan-implementation">Implementation</h3>
+<p>
+To compile a kernel with KASAN and kcov enabled, add the following build flags
+to your kernel build configuration:
+</p>
+<pre class="devsite-click-to-copy">
+CONFIG_KASAN 
+CONFIG_KASAN_INLINE 
+CONFIG_TEST_KASAN 
+CONFIG_KCOV 
+CONFIG_SLUB 
+CONFIG_SLUB_DEBUG 
+CONFIG_CC_OPTIMIZE_FOR_SIZE
+</pre>
+
+<p>
+And removing the following:
+</p>
+<pre class="devsite-click-to-copy">
+CONFIG_SLUB_DEBUG_ON 
+CONFIG_SLUB_DEBUG_PANIC_ON 
+CONFIG_KASAN_OUTLINE 
+CONFIG_KERNEL_LZ4
+</pre>
+<p>
+Then build and flash your kernel as usual. The KASAN kernel is considerably
+larger than the original. If applicable, modify any boot parameters and
+bootloader settings to take this into consideration.
+</p>
+<p>
+After flashing the kernel, check the kernel boot logs to see if KASAN is enabled
+and running. The kernel will start up with memory map information for KASAN,
+such as:
+</p>
+
+<pre class="devsite-click-to-copy">
+...
+[    0.000000] c0      0 Virtual kernel memory layout:
+[    0.000000] c0      0     kasan   : 0xffffff8000000000 - 0xffffff9000000000   (    64 GB)
+[    0.000000] c0      0     vmalloc : 0xffffff9000010000 - 0xffffffbdbfff0000   (   182 GB)
+[    0.000000] c0      0     vmemmap : 0xffffffbdc0000000 - 0xffffffbfc0000000   (     8 GB maximum)
+[    0.000000] c0      0               0xffffffbdc0000000 - 0xffffffbdc3f95400   (    63 MB actual)
+[    0.000000] c0      0     PCI I/O : 0xffffffbffa000000 - 0xffffffbffb000000   (    16 MB)
+[    0.000000] c0      0     fixed   : 0xffffffbffbdfd000 - 0xffffffbffbdff000   (     8 KB)
+[    0.000000] c0      0     modules : 0xffffffbffc000000 - 0xffffffc000000000   (    64 MB)
+[    0.000000] c0      0     memory  : 0xffffffc000000000 - 0xffffffc0fe550000   (  4069 MB)
+[    0.000000] c0      0       .init : 0xffffffc001d33000 - 0xffffffc001dce000   (   620 KB)
+[    0.000000] c0      0       .text : 0xffffffc000080000 - 0xffffffc001d32284   ( 29385 KB)
+...
+</pre>
+
+<p>
+And this is how a bug will look:
+</p>
+
+<pre class="devsite-click-to-copy">
+[   18.539668] c3      1 ==================================================================
+[   18.547662] c3      1 BUG: KASAN: null-ptr-deref on address 0000000000000008
+[   18.554689] c3      1 Read of size 8 by task swapper/0/1
+[   18.559988] c3      1 CPU: 3 PID: 1 Comm: swapper/0 Tainted: G        W      3.18.24-xxx #1
+[   18.569275] c3      1 Hardware name: Android Device
+[   18.577433] c3      1 Call trace:
+[   18.580739] c3      1 [&lt;ffffffc00008b32c&gt;] dump_backtrace+0x0/0x2c4
+[   18.586985] c3      1 [&lt;ffffffc00008b600&gt;] show_stack+0x10/0x1c
+[   18.592889] c3      1 [&lt;ffffffc001481194&gt;] dump_stack+0x74/0xc8
+[   18.598792] c3      1 [&lt;ffffffc000202ee0&gt;] kasan_report+0x11c/0x4d0
+[   18.605038] c3      1 [&lt;ffffffc00020286c&gt;] __asan_load8+0x20/0x80
+[   18.611115] c3      1 [&lt;ffffffc000bdefe8&gt;] android_verity_ctr+0x8cc/0x1024
+[   18.617976] c3      1 [&lt;ffffffc000bcaa2c&gt;] dm_table_add_target+0x3dc/0x50c
+[   18.624832] c3      1 [&lt;ffffffc001bdbe60&gt;] dm_run_setup+0x50c/0x678
+[   18.631082] c3      1 [&lt;ffffffc001bda8c0&gt;] prepare_namespace+0x44/0x1ac
+[   18.637676] c3      1 [&lt;ffffffc001bda170&gt;] kernel_init_freeable+0x328/0x364
+[   18.644625] c3      1 [&lt;ffffffc001478e20&gt;] kernel_init+0x10/0xd8
+[   18.650613] c3      1 ==================================================================
+</pre>
+
+<p>
+In addition, if modules are enabled in your kernel, you can load the test_kasan
+kernel module for further testing. The module attempts out-of-bounds memory
+accesses and use-after-free and is useful in testing KASAN on a target device.
+</p>
+</body>
+</html>

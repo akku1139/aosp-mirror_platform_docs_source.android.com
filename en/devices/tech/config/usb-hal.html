@@ -1,0 +1,94 @@
+<html devsite>
+  <head>
+    <title>Implementing USB HAL</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>
+The Android O release moves handling of USB commands out of <code>init</code>
+scripts and into a native USB daemon for better configuration and code
+reliability. For the Gadget function configuration, <code>init</code> scripts
+(property triggers) are used to perform device-specific gadget operations.
+</p>
+
+<p>
+In previous releases, these device-specific configurations were achieved through
+device-specific <code>init</code> scripts (using property triggers). Moving to a
+Hardware Abstraction Layer (HAL) design results in a much cleaner implementation
+that solves these problems:
+</p>
+
+<ol>
+<li>Operations such as writes to the kernel sysfs nodes could fail but not be
+propagated back to the frameworks code that sets the property trigger. As a
+result, frameworks incorrectly assumes the operations have succeeded even though
+they have silently failed.</li>
+<li><code>init</code> scripts have a limited number of operations that could be
+executed.</li>
+</ol>
+
+<h2 id="hal-and-treble">HAL and Treble</h2>
+
+<p>
+The device-specific <code>init</code> scripts were used as a substitution for
+HAL layers to perform device-specific USB operations. USB (through ADB) is a
+primary interface for debugging system issues. Having a native daemon to perform
+USB configuration eliminates the dependency on the framework code so even if the
+framework crashes USB should be running.
+</p>
+
+<p>
+Under the <a
+href="https://android-developers.googleblog.com/2017/05/here-comes-treble-modular-base-for.html">Treble</a>
+model also introduced in Android O, all of the HALs are isolated from System
+services and are required to run in their own native daemons. This eliminates
+the requirement to have an exclusive USB daemon as the HAL layer nicely doubles
+as a USB daemon.
+</p>
+
+<p>
+The default HAL implementation takes care of all pre-O devices. Therefore, there
+wouldn't be any device-specific work for the pre-O devices. O uses the HAL
+interface to query the status of USB ports and to perform data role and power
+role swaps.
+</p>
+
+<h2 id="implementation">Implementation</h2>
+
+<p>
+New USB HAL interface needs to be implemented on every device launching on O.
+The default implementation should take care of Pre-O devices. The default
+implementation is sufficient if the device uses the <code>dual_role_usb</code> class to report
+type-c port status. Trivial changes might be required in device-specific USB scripts
+to transfer ownership of the typc-c nodes to system.
+</p>
+
+<p>
+No new platform APIs are introduced.
+</p>
+
+<h2 id="validation">Validation</h2>
+
+<p>
+VTS will test the new USB HAL.
+</p>
+
+</body>
+</html>

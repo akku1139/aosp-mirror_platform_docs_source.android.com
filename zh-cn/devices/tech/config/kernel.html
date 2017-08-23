@@ -1,0 +1,149 @@
+<html devsite><head>
+    <title>内核配置</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>您可以将以下配置设置用作 Android 内核配置的基础。设置会整理到 <code>android-base</code> 和 <code>android-recommended</code> .cfg 文件：</p><ul>
+<li><code>android-base</code>。这些选项可实现核心 Android 功能，所有设备都应该启用。</li>
+
+<li><code>android-recommended</code>。这些选项可实现高级 Android 功能，设备可选择性启用。</li>
+</ul>
+
+<p>android-base.cfg 和 android-recommended.cfg 文件均位于 android-common 内核 Repo：
+<a href="https://android.googlesource.com/kernel/common/">https://android.googlesource.com/kernel/common/</a>。</p><p>上游 Linux 内核 4.8 版本中为内核配置片段指定了新的位置 (kernel/configs)。对于基于版本 4.8 或更高版本的分支，Android 基础和建议的配置片段位于该目录中。对于基于版本 4.8 之前版本的内核分支，配置片段位于 android/ 目录中。</p>
+
+<p>如需详细了解已用于加强设备内核的控件，请参阅<a href="/security/overview/kernel-security.html">系统和内核安全</a>。如需详细了解必需的设置，请参阅 <a href="/compatibility/cdd.html">Android 兼容性定义文档 (CDD)</a>。</p>
+
+<h2 id="generating">生成内核配置</h2>
+<p>对于具有极简 defconfig 的设备，您可以使用以下命令来启用选项：</p>
+
+<pre><code>ARCH=<em>arch</em> scripts/kconfig/merge_config.sh <em>path</em>/<em>device</em>_defconfig android/configs/android-base.cfg android/configs/android-recommended.cfg</code></pre>
+
+<p>这会生成一个.config 文件，您可以使用该文件来保存新的 defconfig 或编译一个启用 Android 功能的新内核。</p>
+
+<h2 id="usb">启用 USB 主机模式选项</h2>
+
+<p>对于 USB 主机模式音频，请启用以下选项：</p>
+<pre><code>CONFIG_SND_USB=y
+CONFIG_SND_USB_AUDIO=y
+# CONFIG_USB_AUDIO is for a peripheral mode (gadget) driver
+</code></pre>
+
+<p>对于 USB 主机模式 MIDI，请启用以下选项：</p>
+<pre><code>CONFIG_SND_USB_MIDI=y</code></pre>
+
+<h2 id="Seccomp-BPF-TSYNC">Seccomp-BPF 与 TSYNC</h2>
+<p>Seccomp-BPF 是一种内核安全技术，支持创建沙盒来限制进程可以进行的系统调用。TSYNC 功能可以实现从多线程程序中使用 Seccomp-BPF。这种能力仅限具有 seccomp 支持上游的架构：ARM、ARM64、x86 和 x86_64。</p>
+
+<h3 id="backport-ARM-32">用于 ARM-32、X86、X86_64 的内核 3.10 向后移植</h3>
+
+<p>确保 Kconfig 中已启用 <code>CONFIG_SECCOMP_FILTER=y</code>（截至 Android 5.0 CTS 已验证），然后择优挑选来自 AOSP kernel/common:android-3.10 存储区的以下变更：<a href="https://android.
+googlesource.com/kernel/common/+log/9499cd23f9d05ba159
+fac6d55dc35a7f49f9ce76..a9ba4285aa5722a3b4d84888e78ba8adc0046b28">9499cd23f9d05ba159fac6d55dc35a7f49f9ce76..a9ba4285aa5722a3b4d84888e78ba8adc0046b28</a>
+</p>
+
+<ul>
+<li><a href="https://android.googlesource.com/kernel/common/+/a03a2426ea9f1d9dada33cf4a824f63e8f916c9d">a03
+a242 arch: Introduce smp_load_acquire(), smp_store_release()</a>（a242 架构：引入 smp_load_acquire()、smp_store_release()），作者：Peter Zijlstra</li>
+<li><a href="https://android.googlesource.com/kernel/common/+/987a0f1102321853565c4bfecde6a5a58ac6db11">987a0f1
+introduce for_each_thread() to replace the buggy while_each_thread()</a>（引入 for_each_thread() 以替换有问题的 while_each_thread()），作者：Oleg Nesterov</li>
+ <li><a href="https://android.googlesource.com/kernel/common/+/2a30a4386e4a7e1283157c4cf4cfcc0306b22ac8">2a30a43
+seccomp: create internal mode-setting function</a>（seccomp：创建内部 mode-setting 函数），作者：Kees Cook</li>
+<li><a href="https://android.googlesource.com/kernel/common/+
+/b8a9cff6dbe9cfddbb4d17e2dea496e523544687">b8a9cff
+seccomp: extract check/assign mode helpers</a>（seccomp：提取检查/分配模式帮助程序），作者：Kees Cook</li>
+<li><a href="https://android.googlesource.com/kernel/common/+/8908dde5a7fdca974374b0dbe6dfb10f69df7216">8908dde
+seccomp: split mode setting routines</a>（seccomp：拆分模式设置例行程序），作者：Kees Cook</li>
+<li><a href="https://android.googlesource.com/kernel/common/+/e985fd474debedb269fba27006eda50d0b6f07ef">e985fd4
+seccomp: add "seccomp" syscall</a>（seccomp：添加“seccomp”系统调用），作者：Kees Cook</li>
+<li><a href="https://android.googlesource.com/kernel/common/+/9d0ff
+694bc22fb458acb763811a677696c60725b">9d0ff69
+sched: move no_new_privs into new atomic flags</a>（sched：将 no_new_privs 移至新的原子标志中），作者：Kees Cook</li>
+<li><a href="https://android.googlesource.com/kernel/common/+/b6a12bf4dd762236c7f637b19cfe10a268304b9b">b6a12bf
+seccomp: split filter prep from check and apply</a>（seccomp：将过滤器准备工作从检查和应用流程中分离出来），作者：Kees Cook</li>
+<li><a href="https://android.googlesource.com/kernel/common/+/61b6b882a0abfeb627d25a069cfa1d232b84c8eb">61b6b88
+seccomp: introduce writer locking</a>（seccomp：引入写入者锁定），作者：Kees Cook</li>
+<li><a href="https://android.googlesource.com/kernel/common/+/c852ef778224ecf5fe995d74ad96087038778bca">c852ef7
+seccomp: allow mode setting across threads</a>（seccomp：允许跨线程模式设置），作者：Kees Cook</li>
+<li><a href="https://android.googlesource.com/kernel/common/+/f14a5db2398afed8f416d244e6da6b23940997c6">f14a5db
+seccomp: implement SECCOMP_FILTER_FLAG_TSYNC</a>（seccomp：实施 SECCOMP_FILTER_FLAG_TSYNC），作者：Kees Cook</li>
+<li><a href="https://android.googlesource.com/kernel/common/+/9ac860041db
+860a59bfd6ac82b31d6b6f76ebb52">9ac8600
+seccomp: Replace BUG(!spin_is_locked()) with assert_spin_lock</a>（seccomp：用 assert_spin_lock 替换 BUG(!spin_is_locked())），作者：Guenter Roeck</li>
+<li><a href="https://android.googlesource.com/kernel/common/+/900e9fd0d5d15c596cacfb89ce007c933cea6e1c">900e9fd
+seccomp: fix syscall numbers for x86 and x86_64</a>（seccomp：修复 x86 和 x86_64 的系统调用号），作者：Lee Campbell</li>
+<li><a href="https://android.googlesource.com/kernel/common/+/a9ba4285aa5722a3b4d84888e78ba8adc0046b28">a9ba428
+ARM: add seccomp syscall</a>（ARM：添加 seccomp 系统调用），作者：Kees Cook</li>
+</ul>
+
+<h3 id="backport-ARM-64">用于 ARM-64 的内核 3.10 向后移植</h3>
+<p>确保 Kconfig 中已启用 <code>CONFIG_SECCOMP_FILTER=y</code>（截至 Android 5.0 CTS 已验证），然后择优挑选来自 AOSP kernel/common:android-3.10 存储区的以下变更：</p>
+<ul>
+<li><a href="https://android.googlesource.com/kernel/common/+/cfc7e99e9e3900056028a7d90072e9ea0d886f8d">cfc7e99e9
+arm64: Add __NR_* definitions for compat syscalls</a>（arm64：为兼容性系统调用添加 __NR_* 定义），作者：JP Abgrall</li>
+<li><a href="https://android.googlesource.com/kernel/common/+/bf11863d45eb3dac0d0cf1f818ded11ade6e28d3">bf11863
+arm64: Add audit support</a>（arm64：添加审计支持），作者：AKASHI Takahiro</li>
+<li><a href="https://android.googlesource.com/kernel/common/+/3
+e21c0bb663a23436e0eb3f61860d4fedc233bab">3e21c0b
+arm64: audit: Add audit hook in syscall_trace_enter/exit()</a>（arm64：审计：在 syscall_trace_enter/exit() 中添加审计钩），作者：JP Abgrall</li>
+<li><a href="https://android.googlesource.com/kernel
+/common/+/9499cd23f9d05ba159fac6d55dc35a7f49f9ce76">9499cd2
+syscall_get_arch: remove useless function arguments</a>（syscall_get_arch：移除无用的函数参数），作者：Eric Paris</li>
+<li><a href="https://android.googlesource.com/kernel/common/+/2a30a4386e4a7e1283157c4cf4cfcc0306b22ac8">2a30a43
+seccomp: create internal mode-setting function</a>（seccomp：创建内部 mode-setting 函数），作者：Kees Cook</li>
+<li><a href="https://android.googlesource.com/kernel/common/+/b8a9cff6dbe9cfddbb4d17e2dea496e523544687">b8a9cff
+seccomp: extract check/assign mode helpers</a>（seccomp：提取检查/分配模式帮助程序），作者：Kees Cook</li>
+<li><a href="https://android.googlesource.com/kernel/common/+/8908dde5a7fdca974374b0dbe6dfb10f69df7216">8908dde
+seccomp: split mode setting routines</a>（seccomp：拆分模式设置例行程序），作者：Kees Cook</li>
+<li><a href="https://android.googlesource.com/kernel/common/+/e985fd474debedb269fba27006eda50d0b6f07ef">e985fd4
+seccomp: add "seccomp" syscall</a>（seccomp：添加“seccomp”系统调用），作者：Kees Cook</li>
+<li><a href="https://android.googlesource.com/kernel/common/+/9d0ff694bc22fb458acb763811a677696c60725b">9d0ff69
+sched: move no_new_privs into new atomic flags</a>（sched：将 no_new_privs 移至新的原子标志中），作者：Kees Cook</li>
+<li><a href="https://android.googlesource.com/kernel/common/+/b6a12bf4dd762236c7f637b19cfe10a268304b9b">b6a12bf
+seccomp: split filter prep from check and apply</a>（seccomp：将过滤器准备工作从检查和应用流程中分离出来），作者：Kees Cook</li>
+<li><a href="https://android.googlesource.com/kernel/common/+/61b6b882a0abfeb627d25a069cfa1d232b84c8eb">61b6b88
+seccomp: introduce writer locking</a>（seccomp：引入写入者锁定），作者：Kees Cook</li>
+<li><a href="https://android.googlesource.com/kernel/common/+/c852ef778224ecf5fe995d74ad96087038778bca">c852ef7
+seccomp: allow mode setting across threads</a>（seccomp：允许跨线程模式设置），作者：Kees Cook</li>
+<li><a href="https://android.googlesource.com/kernel/common/+/f14a5db2398afed8f416d244e6da6b23940997c6">f14a5db
+seccomp: implement SECCOMP_FILTER_FLAG_TSYNC</a>（seccomp：实施 SECCOMP_FILTER_FLAG_TSYNC），作者：Kees Cook</li>
+<li><a href="https://android.googlesource.com/kernel/common/+/9ac860041db860a59bfd6ac82b31d6b6f76ebb52">9ac8600
+seccomp: Replace BUG(!spin_is_locked()) with assert_spin_lock</a>（seccomp：用 assert_spin_lock 替换 BUG(!spin_is_locked())），作者：Guenter Roeck</li>
+<li><a href="https://android.googlesource.com/kernel/common/+/900e9fd0d5d15c596cacfb89ce007c933cea6e1c">900e9fd
+seccomp: fix syscall numbers for x86 and x86_64</a>（seccomp：修复 x86 和 x86_64 的系统调用号），作者：Lee Campbell</li>
+<li><a href="https://android.googlesource.com/kernel/common/+/a9ba4285aa5722a3b4d84888e78ba8adc0046b28">a9ba428
+ARM: add seccomp syscall</a>（ARM：添加 seccomp 系统调用），作者：Kees Cook</li>
+<li><a href="https://android.googlesource.com/kernel/common/+/41900903483eb96602dd72e719a798c208118aad">4190090
+ARM: 8087/1: ptrace: reload syscall number after secure_computing() check</a>（ARM：8087/1：ptrace：在 secure_computing() 检查后重新加载系统调用号），作者：Will Deacon</li>
+<li><a href="https://android.googlesource.com/kernel/common/+/abbfed9ed1a78701ef3db74f5287958feb897035">abbfed9
+arm64: ptrace: add PTRACE_SET_SYSCALL</a>（arm64：ptrace：添加 PTRACE_SET_SYSCALL），作者：AKASHI Takahiro</li>
+<li><a href="https://android.googlesource.com/kernel/common/+/feb28436457d33fef9f264635291432df4b74122">feb2843
+arm64: ptrace: allow tracer to skip a system call</a>（arm64：ptrace：允许跟踪进程跳过系统调用），作者：AKASHI Takahiro</li>
+<li><a href="https://android.googlesource.com/kernel/common/+/dab10731da65a0deba46402ca9fadf6974676cc8">dab1073
+asm-generic: add generic seccomp.h for secure computing mode 1</a>（asm-generic：为安全计算模式 1 添加常规 seccomp.h），作者：AKASHI Takahiro</li>
+<li><a href="https://android.googlesource.com/kernel/common/+/4f12b53f28a751406a27ef7501a22f9e32a9c30b">4f12b53
+add seccomp syscall for compat task</a>（为兼容性任务添加 seccomp 系统调用），作者：AKASHI Takahiro</li>
+<li><a href="https://android.googlesource.com/kernel/common/+/77227239d20ac6381fb1aee7b7cc902f0d14cd85">7722723
+arm64: add SIGSYS siginfo for compat task</a>（arm64：为兼容性任务添加 SIGSYS siginfo），作者：AKASHI Takahiro</li>
+<li><a href="https://android.googlesource.com/kernel/common/+/210957c2bb3b4d111963bb296e2c42beb8721929">210957c
+arm64: add seccomp support</a>（arm64：添加 seccomp 支持），作者：AKASHI Takahiro</li>
+</ul>
+
+</body></html>

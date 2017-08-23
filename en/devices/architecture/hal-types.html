@@ -1,0 +1,154 @@
+<html devsite>
+  <head>
+    <title>HAL Types</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>As part of the Android O rearchitecture of the lower layers of the Android OS
+to support better modularity, devices running Android O must support binderized
+or passthrough HALs:</p>
+
+<ul>
+<li><strong>Binderized HALs</strong>. HALs expressed in HAL interface definition
+language (HIDL). These HALs replace both conventional and legacy HALs used in
+earlier versions of Android and can serve the HAL in binderized mode. All
+devices launching with Android O or later must support binderized HALs only.</li>
+
+<li><strong>Passthrough HALs</strong>. A HIDL-wrapped conventional or legacy
+HAL. These HALs wrap existing HALs and can serve the HAL in binderized and
+same-process (passthrough) modes. Devices upgrading to Android O can use
+passthrough HALs.</li>
+</ul>
+
+<h2 id=requirements>HAL mode requirements</h2>
+
+<table>
+<tbody>
+
+<tr>
+<th>Device</th>
+<th>Passthrough</th>
+<th>Binderized</th>
+</tr>
+
+<tr>
+<td><em>Launch with Android O</em></td>
+<td>HALs listed in <a href="#passthrough">Passthrough HALs</a> must be
+passthrough.</td>
+<td>All other HALs are binderized (including HALs that are vendor
+extensions).</td>
+</tr>
+
+<tr>
+<td rowspan=2><em>Upgrade to Android O</em></td>
+<td>HALs listed in <a href="#passthrough">Passthrough HALs</a> must be
+passthrough.</td>
+<td>HALs listed in <a href="#binderized">Binderized HALs</a> must be
+binderized.</td>
+</tr>
+
+<tr>
+<td colspan=2>All other HALs provided by the vendor image can be in passthrough
+OR binderized mode.</td>
+</tr>
+
+</tbody>
+</table>
+
+<h2 id=binderized>Binderized HALs</h2>
+<p>Android requires the following HALS to to be binderized on all Android
+devices regardless of whether they are launch devices or upgrade devices:</p>
+
+<ul>
+<li><code>android.hardware.biometrics.fingerprint@2.1</code>. Replaces
+<code>fingerprintd</code> which is no longer in Android O.</li>
+<li><code>android.hardware.configstore@1.0</code>. New in Android O.</li>
+<li><code>android.hardware.dumpstate@1.0</code>. The original interface provided
+by this HAL could not be shimmed and was changed. Because of this,
+<code>dumpstate_board</code> must be re-implemented on a given device (this is
+an optional HAL).</li>
+<li><code>android.hardware.graphics.allocator@2.0</code>. Required to be
+binderized in Android O so file descriptors don't have to be shared between
+trusted and untrusted processes.</li>
+<li><code>android.hardware.radio@1.0</code>. Replaces the interface provided by
+<code>rild</code> which lives in its own process.</li>
+<li><code>android.hardware.usb@1.0</code>. New in Android O.</li>
+<li><code>android.hardware.wifi@1.0</code>. New in Android O, replaces the
+legacy Wi-Fi HAL library that was loaded into <code>system_server</code>.</li>
+<li><code>android.hardware.wifi.supplicant@1.0</code>. A HIDL interface over the
+existing <code>wpa_supplicant</code> process.</li>
+</ul>
+
+<p class=note><strong>NOTE</strong>: Android provides the following HIDL
+interfaces which will always be in binderized mode:
+<code>android.frameworks.*</code>, <code>android.system.*</code> , and
+<code>android.hidl.*</code> (except for <code>android.hidl.memory@1.0</code>
+as described below).</p>
+
+<h2 id=passthrough>Passthrough HALs</h2>
+<p>Android requires the following HALs to be in passthrough mode on all Android
+devices regardless of whether they are launch devices or upgrade devices:</p>
+
+<ul>
+<li><code>android.hardware.graphics.mapper@1.0</code>. Maps memory into the
+process it lives in.</li>
+<li><code>android.hardware.renderscript@1.0</code>. Passes items in the same
+process (equivalent to <code>openGL</code>).</li>
+</ul>
+<p>All HALs not listed above must be binderized for launch devices.</p>
+
+<h2 id=same-process>Same-Process HALs</h2>
+<p>Same-Process HALs (SP-HALs) always open in the same process in which they are
+used. They include all HALs not expressed in HIDL as well as some that are
+<strong>not</strong> binderized. Membership in the SP-HAL set is controlled only
+by Google, with no exceptions.</p>
+
+<p>SP-HALs include the following:</p>
+
+<ul>
+<li><code>openGL</code></li>
+<li><code>Vulkan</code></li>
+<li><code>android.hidl.memory@1.0</code> (provided by the Android system, always
+passthrough)</li>
+<li><code>android.hardware.graphics.mapper@1.0</code>.</li>
+<li><code>android.hardware.renderscript@1.0</code></li>
+</ul>
+
+<h2 id=legacy>Conventional &amp; legacy HALs</h2>
+
+<p>Conventional HALs (deprecated in Android O) are interfaces that conform to a
+specific named and versioned application binary interface (ABI). The bulk of
+Android system interfaces
+(<a href="https://android.googlesource.com/platform/hardware/libhardware/+/master/include/hardware/camera3.h">camera</a>,
+<a href="https://android.googlesource.com/platform/hardware/libhardware/+/master/include/hardware/audio.h">audio</a>,
+<a href="https://android.googlesource.com/platform/hardware/libhardware/+/master/include/hardware/sensors.h">sensors</a>,
+etc.) are in the form of conventional HALs, which are defined under
+<a href="https://android.googlesource.com/platform/hardware/libhardware/+/master/include/hardware">hardware/libhardware/include/hardware</a>.</p>
+
+<p>Legacy HALs (also deprecated in Android O) are interfaces that predate
+conventional HALs. A few important subsystems (Wi-Fi, Radio Interface Layer, and
+Bluetooth) are legacy HALs. While there's no uniform or standardized way to
+describe a legacy HAL, anything predating Android O that is not a conventional
+HAL is a legacy HAL. Parts of some legacy HALs are contained in
+<a href="https://android.googlesource.com/platform/hardware/libhardware_legacy/+/master">libhardware_legacy</a>,
+while other parts are interspersed throughout the codebase.</p>
+
+  </body>
+</html>

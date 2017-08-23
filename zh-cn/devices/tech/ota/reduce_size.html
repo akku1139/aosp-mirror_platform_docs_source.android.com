@@ -1,0 +1,138 @@
+<html devsite><head>
+    <title>减小 OTA 大小</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>本页介绍了为减少不同构建之间的不必要文件变更，而添加到 AOSP 的构建变更。维护自己的构建系统的设备实现人员，可依照此信息减小无线 (OTA) 更新的大小。</p>
+
+<p>有时 Android OTA 包含的变更文件并非对应于代码变更，而是对应于构建系统的软件工件。在不同时间、不同目录或不同机器上构建相同代码时，会产生大量变更文件，这时便会发生上述情况。这些多余的文件不仅会增加 OTA 的大小，而且会导致难以确定 OTA 中发生变更的代码。</p>
+
+<p>为了使 OTA 的内容更加透明，AOSP 加入了构建系统变更，旨在通过消除不同构建之间不必要的文件变更来减小 OTA 的大小。这样做是为了减小 OTA 的大小，使其只包括与 OTA 中包含的补丁程序相关的文件。AOSP 还会加入<a href="#the_build_diff_tool">构建 diff 工具</a>，以过滤出常见的构建相关文件变更并提供更加清晰的构建文件 diff。</p>
+
+<p>构建系统可能会通过多种方式创建不必要的文件 diff。下文讨论了其中一些问题和解决方案，并尽可能提供了 AOSP 中的修复示例。</p>
+
+<h2 id="file_order">文件顺序</h2>
+
+<p><strong>问题</strong>：文件系统在请求目录中的文件列表时，并不保证文件顺序，尽管对于同一查询，文件顺序通常是相同的。诸如 <code>ls</code> 之类的工具在默认情况下会对结果进行排序，但 <code>find</code> 和 <code>make</code> 之类的命令使用的通配符函数却不会对结果进行排序。用户在使用此类工具之前，必须对输出进行排序。</p>
+
+<p><strong>解决方案</strong>：用户在使用带有通配符的 <code>find</code> 和 <code>make</code> 之类的工具之前，必须对这些命令的输出进行排序。要在 Android.mk 文件中使用 <code>$(wildcard )</code> 或 <code>$(shell find )</code>，也应该进行排序。有些工具（例如 Java）确实会对输入进行排序，因此有必要对排序进行验证。</p>
+
+<p><strong>示例</strong>：很多实例使用内建的 <code>all-*-files-under</code> 宏固定在核心构建系统中，其中包括 <code>all-cpp-files-under</code>（一些定义分散在其他 makefile 中）。有关详情，请参阅以下 CL：</p>
+
+<ul>
+  <li><a href="https://android.googlesource.com/platform/build/+/4d66adfd0e6d599d8502007e4ea9aaf82e95569f">https://android.googlesource.com/platform/build/+/4d66adfd0e6d599d8502007e4ea9aaf82e95569f</a>
+  </li><li><a href="https://android.googlesource.com/platform/build/+/379f9f9cec4fe1c66b6d60a6c19fecb81b9eb410">https://android.googlesource.com/platform/build/+/379f9f9cec4fe1c66b6d60a6c19fecb81b9eb410</a>
+  </li><li><a href="https://android.googlesource.com/platform/build/+/7c3e3f8314eec2c053012dd97d2ae649ebeb5653">https://android.googlesource.com/platform/build/+/7c3e3f8314eec2c053012dd97d2ae649ebeb5653</a>
+  </li><li><a href="https://android.googlesource.com/platform/build/+/5c64b4e81c1331cab56d8a8c201f26bb263b630c">https://android.googlesource.com/platform/build/+/5c64b4e81c1331cab56d8a8c201f26bb263b630c</a>
+</li></ul>
+
+<h2 id="build_directory">构建目录</h2>
+
+<p><strong>问题</strong>：变更构建内容所在的目录会导致二进制文件有所变化。Android 构建中的大多数路径是相对路径，因此 C/C ++ 中的 <code>__FILE__</code> 不是问题。不过，默认情况下调试符号会对完整的路径名进行编码，而对预剥离二进制文件进行哈希处理会生成 <code>.note.gnu.build-id</code>，因此调试符号变更会使二进制文件发生变化。</p>
+
+<p><strong>解决方案</strong>：AOSP 现在会使调试路径变成相对路径。有关详情，请参阅 CL：
+<a href="https://android.googlesource.com/platform/build/+/6a66a887baadc9eb3d0d60e26f748b8453e27a02">https://android.googlesource.com/platform/build/+/6a66a887baadc9eb3d0d60e26f748b8453e27a02</a>。</p>
+
+<h2 id="timestamps">时间戳</h2>
+
+<p><strong>问题</strong>：构建输出中的时间戳会导致不必要的文件变更。这可能发生在以下位置：</p>
+
+<ul>
+  <li>C 或 C++ 代码中的<code> __DATE__/__TIME__/__TIMESTAMP__ </code>宏。</li>
+  <li>基于 ZIP 的归档中嵌入的时间戳。</li>
+</ul>
+
+<p><strong>解决方案/示例</strong>：要从构建输出中移除时间戳，请遵循下文中的说明操作。</p>
+
+<h3 id="date_time_timestamp_in_c_c">C/C++ 中的 __DATE__/__TIME__/__TIMESTAMP__</h3>
+
+<p>这些宏总是会为不同的构建生成不同的输出，因此不应使用。
+  您可选择以下方法来消除这些宏：</p>
+
+<ul>
+  <li>直接移除，这些宏通常并非必需。要查看示例，请参阅：
+<a href="https://android.googlesource.com/platform/system/core/+/30622bbb209db187f6851e4cf0cdaa147c2fca9f">https://android.googlesource.com/platform/system/core/+/30622bbb209db187f6851e4cf0cdaa147c2fca9f</a></li>
+  <li>要对运行中的二进制文件进行唯一标识，请从 ELF 标头中读取 build-id。</li>
+  <li>要了解操作系统的构建时间，请读取 <code>ro.build.date</code>（应该适合除增量构建之外的所有项目，增量构建可能不会更新此日期）。要查看示例，请参阅：
+<a href="https://android.googlesource.com/platform/external/libchrome/+/8b7977eccc94f6b3a3896cd13b4aeacbfa1e0f84">https://android.googlesource.com/platform/external/libchrome/+/8b7977eccc94f6b3a3896cd13b4aeacbfa1e0f84</a></li>
+</ul>
+
+    <p class="note"><strong>注意</strong>：我们开启了 <code>-Werror=date-time</code>，因此使用时间戳是一种构建错误。</p>
+
+<h3 id="embedded_timestamps_in_zip-based_archives_zip_jar">归档（zip、jar）中的嵌入时间戳</h3>
+
+<p>我们通过将 <code>-X</code> 添加到 <code>zip</code> 命令的所有用例中，解决了嵌入时间戳的问题，因此构建工具的 UID/GID 和扩展的 Unix 时间戳不会嵌入到 ZIP 文件中。</p>
+
+<p>新工具 <code>ziptime</code>（位于 <code>
+  <a href="https://android.googlesource.com/platform/build/+/master/tools/ziptime/">/platform/build/+/master/tools/ziptime/</a></code>）会重置 zip 标头中的正常时间戳。有关详情，请参阅 <a href="https://android.googlesource.com/platform/build/+/master/tools/ziptime/README.txt">README 文件</a>。</p>
+
+<p><code>signapk</code> 工具为 APK 文件设置的时间戳可能因服务器所在的时区而异。有关详情，请参阅 CL：
+<a href="https://android.googlesource.com/platform/build/+/6c41036bcf35fe39162b50d27533f0f3bfab3028">https://android.googlesource.com/platform/build/+/6c41036bcf35fe39162b50d27533f0f3bfab3028</a>。</p>
+
+<h2 id="version_strings">版本字符串</h2>
+
+<p><strong>问题</strong>：APK 版本字符串通常包含附加到硬编码版本的 BUILD_NUMBER。即使 APK 中并未发生任何其他变更，APK 仍然会有所不同。</p>
+
+<p><strong>解决方案</strong>：从 APK 版本字符串中移除版本号。</p>
+
+<p><strong>示例：</strong></p>
+
+<ul>
+  <li><a href="https://android.googlesource.com/platform/packages/apps/Camera2/+/5e0f4cf699a4c7c95e2c38ae3babe6f20c258d27">https://android.googlesource.com/platform/packages/apps/Camera2/+/5e0f4cf699a4c7c95e2c38ae3babe6f20c258d27</a></li>
+  <li><a href="https://android.googlesource.com/platform/build/+/d75d893da8f97a5c7781142aaa7a16cf1dbb669c">https://android.googlesource.com/platform/build/+/d75d893da8f97a5c7781142aaa7a16cf1dbb669c</a></li>
+</ul>
+
+<h2 id="consistent_build_tools">一致的构建工具</h2>
+
+<p><strong>问题</strong>：生成安装文件的工具必须一致（相同的输入应始终产生相同的输出）。</p>
+
+<p><strong>解决方案/示例</strong>：以下构建工具需要进行变更：</p>
+
+<ul>
+  <li><strong>NOTICE 文件创建工具</strong>。NOTICE 文件创建工具需要变更。请参阅 CL：
+<a href="https://android.googlesource.com/platform/build/+/8ae4984c2c8009e7a08e2a76b1762c2837ad4f64">https://android.googlesource.com/platform/build/+/8ae4984c2c8009e7a08e2a76b1762c2837ad4f64</a></li>
+  <li><strong>Java Android 编译器套件 (Jack)</strong>。Jack 工具链需要更新，才能处理生成的构造函数排序的偶然性变更。请参阅 CL：
+<a href="https://android.googlesource.com/toolchain/jack/+/056a5425b3ef57935206c19ecb198a89221ca64b">https://android.googlesource.com/toolchain/jack/+/056a5425b3ef57935206c19ecb198a89221ca64b</a></li>
+  <li><strong>ART AOT 编译器 (dex2oat)</strong>。ART 编译器二进制文件需要更新才能创建确定性图像。请参阅 CL：
+<a href="https://android.googlesource.com/platform/art/+/ace0dc1dd5480ad458e622085e51583653853fb9">https://android.googlesource.com/platform/art/+/ace0dc1dd5480ad458e622085e51583653853fb9</a></li>
+  <li><strong>libpac.so 文件 (V8)</strong>。每个构建会创建不同的 <code>/system/lib/libpac.so</code> 文件，因为 V8 快照会针对每个构建发生变化。解决方案是移除快照。请参阅 CL：
+<a href="https://android.googlesource.com/platform/external/v8/+/e537f38c36600fd0f3026adba6b3f4cbcee1fb29">https://android.googlesource.com/platform/external/v8/+/e537f38c36600fd0f3026adba6b3f4cbcee1fb29</a></li>
+  <li><strong>预先经过 dexopt 处理 (.odex) 的应用文件</strong>。预先经过 dexopt 处理 (.odex) 的文件包含 64 位系统上的未初始化填充。请参阅 CL：
+<a href="https://android.googlesource.com/platform/art/+/34ed3afc41820c72a3c0ab9770be66b6668aa029">https://android.googlesource.com/platform/art/+/34ed3afc41820c72a3c0ab9770be66b6668aa029</a></li>
+</ul>
+
+<h2 id="the_build_diff_tool">使用构建 diff 工具</h2>
+
+<p>对于无法消除构建相关文件变更的情况，我们提供构建 diff 工具 <code><a href="https://android.googlesource.com/platform/build/+/master/tools/releasetools/target_files_diff.py">target_files_diff.py</a></code> 来比较两个文件包。该工具会在两个构建之间执行递归 diff，从而排除常见的构建相关文件变更，例如：</p>
+
+<ul>
+  <li>构建输出中的预期变更（例如，由于版本号变更所导致）。</li>
+  <li>由于当前构建系统中的已知问题所导致的变更。</li>
+</ul>
+
+<p>要使用构建 diff 工具，请运行以下命令：</p>
+
+<pre class="prettyprint">
+$ target_files_diff.py dir1 dir2
+</pre>
+
+<p><code>dir1</code> 和 <code>dir2</code> 是包含每个构建的提取目标文件的基础目录。</p>
+
+</body></html>
