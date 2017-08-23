@@ -1,0 +1,267 @@
+<html devsite>
+  <head>
+    <title>Vendor Native Development Kit (VNDK)</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>The Vendor Native Development Kit (VNDK) is a set of libraries
+exclusively for vendors to implement their HALs. The VNDK ships in
+<code>system.img</code> and is dynamically linked to vendor code at runtime.</p>
+
+<h2 id=why-vndk>Why VNDK?</h2>
+<p>Android O enables framework-only updates in which the system partition can be
+upgraded to the latest version while vendor partitions are left unchanged. This
+implies that binaries built at different times must be able to work with each
+other; VNDK covers API/ABI changes across Android releases.</p>
+
+<p>Framework-only updates include the following challenges:</p>
+
+<ul>
+<li><strong>Dependency between framework modules and vendor modules</strong>.
+Before Android O, modules from both sides could link with modules from the other
+side. However, dependencies from vendor modules imposed undesired restrictions
+to framework modules development.</li>
+<li><strong>Extensions to AOSP libraries</strong>. Android O requires all
+Android devices to pass CTS when the system partition is replaced with a
+standard AOSP system image. However, as vendors extend AOSP libraries to boost
+performance or to add extra functionalities for their HIDL implementations,
+flashing the system partition with a standard AOSP system image might break a
+vendor's HIDL implementation. (For guidelines on preventing such breakages, see
+<a href="/devices/architecture/vndk/extensions.html">VNDK extensions</a>.)</li>
+</ul>
+
+<p>To address these challenges, Android O introduces several techniques such as
+VNDK (described in this section),
+<a href="/devices/architecture/hidl/index.html">HIDL</a>, hwbinder,
+<a href="/devices/architecture/dto/index.html">device tree overlay</a>, and
+sepolicy overlay.</p>
+
+<h2 id=resources>VNDK resources</h2>
+<p>This section includes the following VNDK resources:</p>
+<ul>
+<li><em><a href="#vndk-concepts">VNDK concepts</a></em> (below) describes
+framework shared libraries, same-process HALs (SP-HALs), and VNDK terminology.
+</li>
+<li><em><a href="/devices/architecture/vndk/extensions.html">VNDK
+extensions</a></em> classifies vendor-specific changes into categories. For
+example, libraries with extended functionalities on which vendor modules rely
+must be copied into the vendor partition, but ABI-incompatible changes are
+prohibited.</li>
+<li>The <em><a href="/devices/architecture/vndk/deftool.html">VNDK Definition
+Tool</a></em> helps migrate your source tree to Android O.</li>
+<li>The <em><a href="/devices/architecture/vndk/linker-namespace.html">Linker
+Namespace</a></em> provides fine-grained control over shared library linkages.
+</li>
+<li><em><a href="/devices/architecture/vndk/dir-rules-sepolicy.html">Directories,
+Rules, and sepolicy</a></em> defines the directory structure for devices running
+Android O, VNDK rules, and associated sepolicy.</li>
+<li>The <em><a href="../images/vndk_design_android_o.pdf">VNDK Design in Android
+O</a></em> presentation illustrates fundamental VDNK concepts used in Android
+O.</li>
+</ul>
+
+<h2 id="concepts">VNDK concepts</h2>
+<p>In an ideal Android O world, framework processes do not load vendor shared
+libraries, all vendor processes load only vendor shared libraries (and a portion
+of framework shared libraries), and communications between framework processes
+and vendor processes are governed by HIDL and hardware binder.</p>
+
+<p>Such a world includes the possibility that stable, public APIs from
+framework shared libraries might not be sufficient for vendor module developers
+(although APIs can change between Android releases), requiring that some portion
+of framework shared libraries be accessible to vendor processes. In addition, as
+performance requirements can lead to compromises, some response-time-critical
+HALs must be treated differently.</p>
+
+<p>The following sections detail how VNDK handles framework shared libraries for
+vendors and Same-Process HALs (SP-HALs).</p>
+
+<h3 id="framework-shared-libraries">Framework shared libraries for vendor</h3>
+<p>This section describes the criteria for classifying shared libraries that are
+accessible to vendor processes. There are two approaches to support vendor
+modules across multiple Android releases:</p>
+
+<ol>
+<li><strong>Stabilize the ABIs/APIs of the framework shared libraries</strong>.
+New framework modules and old vendor modules can use the same shared library to
+reduce memory footprint and storage size. A unique shared library also avoids
+several double-loading issues. However, the development cost to maintain stable
+ABIs/APIs is high and it is unrealistic to stabilize all ABIs/APIs exported by
+every framework shared library.</li>
+<li><strong>Copy old framework shared libraries</strong>. Comes with the strong
+restriction against side channels, defined as all mechanisms to communicate
+among framework modules and vendor modules, including (but not limited to)
+binder, socket, pipe, shared memory, shared file, and system properties. There
+must be no communication unless the communication protocol is frozen and stable
+(e.g. HIDL through hwbinder). Double-loading shared libraries might cause
+problems as well; for example, if an object created by the new library is passed
+into the functions from the old library, an error may occur as these libraries
+may interpret the object differently.</li>
+</ol>
+
+<p>Different approaches are used depending on the characteristics of the shared
+libraries. As a result, framework shared libraries are classified into three
+sub-categories:</p>
+
+<ul>
+<li><em>LL-NDK</em> and <em>SP-NDK</em> are <em>Framework Shared Libraries</em>
+that are known to be stable. Their developers are committed to maintain their
+API/ABI stabilities.
+ <ul>
+ <li>LL-NDK includes the following libraries: <code>libandroid_net.so</code>,
+ <code>libc.so</code>, <code>libstdc++.so</code>, <code>libdl.so</code>,
+ <code>liblog.so</code>, <code>libm.so</code>, <code>libz.so</code>, and
+ <code>libvndksupport.so</code>.</li>
+ <li>SP-NDK includes the following libraries: <code>libEGL.so</code>,
+ <code>libGLESv1_CM.so</code>, <code>libGLESv2.so</code>,
+ <code>libGLESv3.so</code>, <code>libvulkan.so</code>,
+ <code>libnativewindow.so</code>, and <code>libsync.so</code>.</li>
+ </ul>
+</li>
+<li><em>Eligible VNDK Libraries (VNDK)</em> are <em>Framework Shared
+Libraries</em> that are safe to be copied twice. <em>Framework Modules</em> and
+<em>Vendor Modules</em> can link with their own copies. A framework shared
+library can become an eligible VNDK library only if it satisfies the following
+criteria:
+ <ul>
+ <li>It does not send/receive IPCs to/from the framework.</li>
+ <li>It is not related to ART virtual machine.</li>
+ <li>It does not read/write files/partitions with unstable file formats.</li>
+ <li>It does not have special software license which requires legal reviews.</li>
+ <li>Its code owner does not have objections to vendor usages.</li>
+ </ul>
+</li>
+<li><em>Framework-Only Libraries (FWK-ONLY)</em> are <em>Framework Shared
+Libraries</em> that do not belong to the categories mentioned above. These
+libraries:
+ <ul>
+ <li>Are considered framework internal implementation details.</li>
+ <li>Must not be accessed by vendor modules.</li>
+ <li>Have unstable ABIs/APIs and no API/ABI compatibility guarantees.</li>
+ <li>Are not copied.</li>
+ </ul>
+</li>
+</ul>
+
+<h3 id="sp-hal">Same-Process HAL (SP-HAL)</h3>
+<p>
+<em>Same-Process HAL</em> (<em>SP-HAL</em>) is a set of predetermined HALs
+implemented as <em>Vendor Shared Libraries</em> and loaded into <em>Framework
+Processes</em>. SP-HALs are isolated by a linker namespace (controls the
+libraries and symbols that are visible to the shared libraries). SP-HALs must
+depend only on <em>LL-NDK</em>, <em>SP-NDK</em>, and <em>VNDK-SP</em>.</p>
+
+<p>VNDK-SP is a predefined subset of eligible VNDK libraries. VNDK-SP libraries
+are carefully reviewed to ensure double-loading VNDK-SP libraries into framework
+processes does not cause problems. Both SP-HALs and VNDK-SPs are defined by
+Google.</p>
+
+<p>The following libraries are approved SP-HALs:</p>
+
+<ul>
+<li><code>libGLESv2_${driver}.so</code></li>
+<li><code>libGLESv1_CM_${driver}.so</code></li>
+<li><code>libEGL_${driver}.so</code></li>
+<li><code>vulkan.${driver}.so</code></li>
+<li><code>android.hardware.renderscript@1.0-impl.so</code></li>
+<li><code>android.hardware.graphics.mapper@2.0-impl.so</code></li>
+</ul>
+
+<p>The following libraries are VNDK-SP libraries that are accessible by SP-HALs:
+</p>
+
+<ul>
+<li><code>android.hardware.graphics.allocator@2.0.so</code></li>
+<li><code>android.hardware.graphics.common@1.0.so</code></li>
+<li><code>android.hardware.graphics.mapper@2.0.so</code></li>
+<li><code>android.hardware.renderscript@1.0.so</code> (Renderscript)</li>
+<li><code>libRS_internal.so</code>  (Renderscript)</li>
+<li><code>libbase.so</code></li>
+<li><code>libc++.so</code></li>
+<li><code>libcutils.so</code></li>
+<li><code>libhardware.so</code></li>
+<li><code>libhidlbase.so</code></li>
+<li><code>libhidltransport.so</code></li>
+<li><code>libhwbinder.so</code></li>
+<li><code>libutils.so</code></li>
+</ul>
+
+<p>
+The following <em>VNDK-SP dependencies (VNDK-SP-Indirect)</em> are invisible to
+<em>SP-HALs</em>:
+</p><ul>
+<li><code>libRSCpuRef.so</code> (Renderscript)</li>
+<li><code>libRSDriver.so</code> (Renderscript)</li>
+<li><code>libbacktrace.so</code></li>
+<li><code>libblas.so</code> (Renderscript)</li>
+<li><code>libbcinfo.so</code> (Renderscript)</li>
+<li><code>liblzma.so</code></li>
+<li><code>libunwind.so</code></li>
+</ul>
+
+<p>The following <em>private VNDK-SP dependency (VNDK-SP-Indirect-Private)</em>
+is invisible to all vendor modules:</p>
+
+<ul>
+<li><code>libcompiler_rt.so</code> (Renderscript)</li>
+</ul>
+
+<p>The following are <em>framework-only libraries with RS exceptions
+(FWK-ONLY-RS)</em>:</p>
+<ul>
+<li><code>libft2.so</code> (Renderscript)</li>
+<li><code>libmediandk.so</code> (Renderscript)</li>
+</ul>
+
+
+<h2 id="vndk-terminology">VNDK terminology</h2>
+<ul>
+<li><em>Modules</em> refer to either <em>Shared Libraries</em> or
+<em>Executables</em>.</li>
+<li><em>Processes</em> are operating system tasks spawned from
+<em>Executables</em>.</li>
+<li><em>Framework</em>-qualified terms refer to the concepts related to the
+<strong>system</strong> partition.</li>
+<li><em>Vendor</em>-qualified terms refer to the concepts related to
+<strong>vendor</strong> partitions.</li>
+</ul>
+
+<p>For example:</p>
+<ul>
+<li><em>Framework Executables</em> refer to executables in
+<code>/system/bin</code> or <code>/system/xbin</code>.</li>
+<li><em>Framework Shared Libraries</em> refer to shared libraries under
+<code>/system/lib[64]</code>.</li>
+<li><em>Framework Modules</em> refer to both <em>Framework Shared Libraries</em>
+and <em>Framework Executables</em>.</li>
+<li><em>Framework Processes</em> are processes spawned from <em>Framework
+Executables</em> (e.g. <code>/system/bin/app_process</code>).</li>
+<li><em>Vendor Executables</em> refer to executables in <code>/vendor/bin</code>
+<li><em>Vendor Shared Libraries</em> refer to shared libraries under
+<code>/vendor/lib[64]</code>.</li>
+<li><em>Vendor Modules</em> refer to both <em>Vendor Executables</em> and
+<em>Vendor Shared Libraries</em>.</li>
+<li><em>Vendor Processes</em> are processes spawned from <em>Vendor
+Executables</em> (e.g.</li>
+<code>/vendor/bin/android.hardware.camera.provider@2.4-service</code>).</li>
+</ul>
+
+  </body>
+</html>

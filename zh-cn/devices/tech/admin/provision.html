@@ -1,0 +1,122 @@
+<html devsite><head>
+    <title>配置设备管理</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>本页面介绍了使用 NFC 或通过云服务向企业用户部署设备的过程（要查看完整的要求列表，请参阅<a href="/devices/tech/admin/implement.html">实现设备管理</a>）。</p>
+
+<p>首先，请下载 <a href="https://github.com/googlesamples/android-NfcProvisioning">NfcProvisioning APK</a> 和 <a href="https://github.com/googlesamples/android-DeviceOwner">Android-DeviceOwner APK</a>。</p>
+
+<p class="caution"><strong>注意</strong>：如果配置已经开始，则必须先将受影响的设备恢复出厂设置。</p>
+
+<h2 id="managed_provisioning">托管配置</h2>
+
+<p>托管配置是一个框架式界面流程，用于确保用户充分了解设置设备所有者或受管理资料的含义。它旨在充当受管理资料的设置向导。</p>
+
+<p class="note"><strong>注意</strong>：只能为未配置的设备设置设备所有者。如果 <code>Settings.Secure.USER_SETUP_COMPLETE</code> 已设置，则设备被视为已配置，不能再设置设备所有者。</p>
+
+<p>如果启用设备的默认加密功能，则设备的管理配置流程会相当简单和快速。受管理配置组件会：</p>
+
+<ul>
+  <li>加密设备</li>
+  <li>创建受管理资料</li>
+  <li>停用不需要的应用</li>
+  <li>将企业移动管理 (EMM) 应用设置为资料所有者</li>
+</ul>
+
+<p>反过来，EMM 应用会：</p>
+
+<ul>
+  <li>添加用户帐号</li>
+  <li>落实设备合规性</li>
+  <li>启用任何其他系统应用</li>
+</ul>
+
+<p>在此流程中，托管配置会触发设备加密。在托管配置过程中，框架会将 EMM 应用复制到受管理资料中。受管理资料中的 EMM 应用实例在配置完成时从框架获取回调。接着，EMM 可以添加帐号并执行政策；然后调用 <code>setProfileEnabled()</code>，这样一来，启动器图标就变为可见。</p>
+
+<h2 id="profile_owner_provisioning">资料所有者配置</h2>
+
+<p>资料所有者配置假定设备的用户（而不是公司 IT 部门）监督设备管理。要启用资料所有者配置，您必须发送包含相应附加内容的 intent。例如，使用 TestDPC 应用（<a href="https://play.google.com/store/apps/details?id=com.afwsamples.testdpc&hl=zh-cn">从 Google Play 下载</a>或<a href="https://github.com/googlesamples/android-testdpc/">从 GitHub 构建</a>）。在设备上安装 TestDPC，从启动器启动该应用，然后按照应用说明进行操作。启动器抽屉式导航栏中出现带有标记的图标时，则表示配置完成。</p>
+
+<p>移动设备管理 (MDM) 应用通过发送包含操作的 intent 来触发受管理资料的创建：<a href="https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/app/admin/DevicePolicyManager.java">DevicePolicyManager.ACTION_PROVISION_MANAGED_PROFILE</a>。以下是触发受管理资料创建并将 DeviceAdminSample 设为资料所有者的示例 intent：</p>
+
+<pre>adb shell am start -a android.app.action.PROVISION_MANAGED_PROFILE \
+          -c android.intent.category.DEFAULT \
+	      -e wifiSsid $(printf '%q' \"WifiSSID\") \
+          -e deviceAdminPackage "com.google.android.deviceadminsample" \
+	      -e android.app.extra.deviceAdminPackageName $(printf '%q'
+                        .DeviceAdminSample\$DeviceAdminSampleReceiver) \
+	      -e android.app.extra.DEFAULT_MANAGED_PROFILE_NAME "My Organisation"
+</pre>
+
+<h2 id="device_owner_provisioning_via_nfc">设备所有者配置</h2>
+<p>使用以下方法之一来设置设备所有者 (DO) 配置。</p>
+
+<h3 id="do_provision_nfc">通过 NFC 进行配置</h3>
+<p>通过 NFC 进行 DO 配置与资料所有者的配置方法类似，但前者需要更多的引导。要使用此方法，请在初始设置步骤（即设置向导的第一页）<a href="http://developer.android.com/guide/topics/connectivity/nfc/nfc.html">NFC 触碰</a>设备。此低接触流程会配置 WLAN、安装 DPC，并将 DPC 设置为设备所有者。</p>
+
+<p>典型的 NFC 包包括以下内容：</p>
+
+<pre>
+                EXTRA_PROVISIONING_DEVICE_ADMIN_PACKAGE_NAME
+                EXTRA_PROVISIONING_DEVICE_ADMIN_PACKAGE_LOCATION
+                EXTRA_PROVISIONING_DEVICE_ADMIN_PACKAGE_CHECKSUM
+                EXTRA_PROVISIONING_WIFI_SSID
+                EXTRA_PROVISIONING_WIFI_SECURITY_TYPE
+</pre>
+
+<p>设备必须将 NFC 配置为接受来自设置体验的托管配置 Mimetype：</p>
+
+<pre>/packages/apps/Nfc/res/values/provisioning.xml
+
+      &lt;bool name="enable_nfc_provisioning"&gt;true&lt;/bool&gt;
+      &lt;item&gt;application/com.android.managedprovisioning&lt;/item&gt;
+</pre>
+
+<h3 id="do_provision_cs">通过云服务进行配置</h3>
+<p>另一种方法是通过云服务进行设备所有者配置，其中设备可在开机设置时以设备所有者模式进行配置。设备可以收集凭据（或令牌），并使用它们来执行对云服务的查询，然后可以使用该服务来启动设备所有者的配置过程。</p>
+
+<h2 id="emm_benefits">EMM 的优势</h2>
+
+<p>企业移动管理 (EMM) 应用可以通过执行以下任务来提供帮助：</p>
+
+<ul>
+  <li>配置受管理资料</li>
+  <li>应用安全政策<ul>
+    <li>设置密码复杂度</li>
+    <li>锁定：停用屏幕截图，禁止从受管理资料中进行分享等。</li>
+  </ul></li>
+  <li>配置企业的网络连接<ul>
+    <li>使用 WifiEnterpriseConfig 配置企业 WLAN</li>
+    <li>配置设备 VPN</li>
+    <li>使用 <code>DPM.setApplicationRestrictions()</code> 配置企业 VPN</li>
+  </ul></li>
+  <li>启用企业应用单点登录 (SSO)<ul>
+    <li>安装所需的企业应用</li><li>使用 <code>DPM.installKeyPair()</code> 静默安装企业客户端证书</li>
+    <li>使用 <code>DPM.setApplicationRestrictions()</code> 配置企业应用的主机名、证书别名</li>
+  </ul></li>
+</ul>
+
+<p>托管配置只是 EMM 端到端工作流程的一部分，最终目标是让受管理资料中的应用能够访问企业数据。要获取测试指导，请参阅<a href="/devices/tech/admin/testing-setup.html">设置设备测试</a>。</p>
+
+<h2 id="automate">自动配置测试</h2>
+<p>要自动化企业配置测试过程，请使用 Android for Work (AfW) 自动化测试框架。如需了解详情，请参阅<a href="/devices/tech/admin/testing-provision.html">测试设备配置</a>。</p>
+
+</body></html>

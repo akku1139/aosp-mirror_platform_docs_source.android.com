@@ -1,0 +1,408 @@
+<html devsite>
+  <head>
+    <title>Data Types</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>This section describes HIDL data types. For implementation details, see
+<a href="/devices/architecture/hidl-cpp/index.html">HIDL C++</a> (for C++
+implementations) or <a href="/devices/architecture/hidl-java/index.html">HIDL
+Java</a> (for Java implementations).</p>
+
+<p>Similarities to C++ include:</p>
+<ul>
+<li><code>structs</code> use C++ syntax; <code>unions</code> support C++ syntax
+by default. Both must be named; anonymous structs and unions are not supported.
+</li>
+<li>Typedefs are allowed in HIDL (as they are in C++).</li>
+<li>C++-style comments are allowed and are copied to the generated header file.
+</li>
+</ul>
+
+<p>Similarities to Java include:</p>
+<ul>
+<li>For each file, HIDL defines a Java-style namespace that must begin with
+<code>android.hardware.</code>. The generated C++ namespace is
+<code>::android::hardware::&#8230;</code>.</li>
+<li>All definitions of the file are contained within a Java-style
+<code>interface</code> wrapper.</li>
+<li>HIDL array declarations follow the Java style, not the C++ style. Example:
+<pre class="prettyprint">
+struct Point {
+    int32_t x;
+    int32_t y;
+};
+Point[3] triangle;   // sized array
+</pre>
+</li>
+<li>Comments are similiar to the javadoc format.</li>
+</ul>
+
+<h2 id=represent>Data representation</h2>
+<p>A <code>struct</code> or <code>union</code> composed of
+<a href="http://en.cppreference.com/w/cpp/language/data_members#Standard_layout">Standard-Layout</a>
+(a subset of the requirement of plain-old-data types) has a consistent memory
+layout in generated C++ code, enforced with explicit alignment attributes on
+<code>struct</code> and <code>union</code> members.</p>
+
+<p>Primitive HIDL types, as well as <code>enum</code> and <code>bitfield</code>
+types (which always derive from primitive types), map to standard C++ types
+such as <code>std::uint32_t</code> from
+<a href="http://en.cppreference.com/w/cpp/types/integer">cstdint</a>.</p>
+
+<p>As Java does not support unsigned types, unsigned HIDL types are mapped to
+the corresponding signed Java type. <em>Structs</em> map to Java classes;
+<em>arrays</em> map to Java arrays; <em>unions</em> are not currently supported
+in Java. <em>Strings</em> are stored internally as UTF8. Since Java supports
+only UTF16 strings, string values sent to or from a Java implementation are
+translated, and may not be identical on re-translation as the character sets do
+not always map smoothly.</p>
+
+<p>Data received over IPC in C++ is marked <code>const</code> and is in
+read-only memory that persists only for the duration of the function call. Data
+received over IPC in Java has already been copied into Java objects, so it can
+be retained without additional copying (and may be modified).</p>
+
+<h2 id=annotations>Annotations</h2>
+<p>Java-style annotations may be added to type declarations. Annotations are
+parsed by the Vendor Test Suite (VTS) backend of the HIDL compiler but none of
+such parsed annotations are actually understood by the HIDL compiler. Instead,
+parsed VTS annotations are handled by the VTS Compiler (VTSC).</p>
+
+<p>Annotations use Java syntax: <code>@annotation</code> or
+<code>@annotation(value)</code> or <code>@annotation(id=value, id=value…)</code>
+where value may be either a constant expression, a string, or a list of values
+inside <code>{}</code>, just as in Java. Multiple annotations of the same name
+can be attached to the same item.</p>
+
+<h2 id=forward>Forward declarations</h2>
+<p>In HIDL, structs may not be forward-declared, making user-defined,
+self-referential data types impossible (e.g., you cannot describe a linked list
+or a tree in HIDL). Most existing (pre-Android O) HALs have limited use of
+forward declarations, which can be removed by rearranging data structure
+declarations.</p>
+
+<p>This restriction allows data structures to be copied by-value with a simple
+deep-copy, rather than keeping track of pointer values that may occur multiple
+times in a self-referential data structure. If the same data is passed twice,
+such as with two method parameters or <code>vec&lt;T&gt;</code>'s that point to
+the same data, two separate copies are made and delivered.</p>
+
+<h2 id=nested>Nested declarations</h2>
+<p>HIDL supports nested declarations to as many levels as desired (with one
+exception noted below). For example:</p>
+
+<pre class="prettyprint">
+interface IFoo {
+    uint32_t[3][4][5][6] multidimArray;
+
+    vec&lt;vec&lt;vec&lt;int8_t&gt;&gt;&gt; multidimVector;
+
+    vec&lt;bool[4]&gt; arrayVec;
+
+    struct foo {
+        struct bar {
+            uint32_t val;
+        };
+        bar b;
+    }
+    struct baz {
+        foo f;
+        foo.bar fb; // HIDL uses dots to access nested type names
+    }
+    …
+</pre>
+
+<p>The exception is that interface types can only be embedded in
+<code>vec&lt;T&gt;</code> and only one level deep (no
+<code>vec&lt;vec&lt;IFoo&gt;&gt;</code>).</p>
+
+<h2 id=raw-pointer>Raw pointer syntax</h2>
+<p>The HIDL language does not use <strong>*</strong> and does not support the
+full flexibility of C/C++ raw pointers. For details on how HIDL encapsulates
+pointers and arrays/vectors, see <a href="#vec">vec&lt;T&gt; template</a>.</p>
+
+<h2 id=interfaces>Interfaces</h2>
+<p>The <code>interface</code> keyword has two usages.</p>
+
+<ul>
+<li>It opens the definition of an interface in a .hal file.</li>
+<li>It can be used as a special type in struct/union fields, method parameters,
+and returns. It is viewed as a general interface and synonym to
+<code>android.hidl.base@1.0::IBase</code>.</li>
+</ul>
+
+<p>For example, <code>IServiceManager</code> has the following method:</p>
+<pre class="prettyprint">
+get(string fqName, string name) generates (interface service);
+</pre>
+
+<p>The method promises to lookup <em>some interface</em> by name. It is also
+identical to replace interface with <code>android.hidl.base@1.0::IBase</code>.
+</p>
+
+<p>Interfaces can be only passed in two ways: as top-level parameters, or as
+members of a <code>vec&lt;IMyInterface&gt;</code>. They cannot be members of
+nested vecs, structs, arrays, or unions.</p>
+
+<h2 id=mqdescriptor>MQDescriptorSync &amp; MQDescriptorUnsync</h2>
+<p>The <code>MQDescriptorSync</code> and <code>MQDescriptorUnsync</code> types
+pass a synchronized or unsynchronized Fast Message Queue (FMQ) descriptors
+across a HIDL interface. For details, see
+<a href="/devices/architecture/hidl-cpp/index.html">HIDL C++</a> (FMQs are not
+supported in Java).</p>
+
+<h2 id=memory>memory type</h2>
+<p>The <code>memory</code> type is used to represent unmapped shared memory in
+HIDL. It is only supported in C++. A value of this type can be used on the
+receiving end to initialize an <code>IMemory</code> object, mapping the memory
+and making it usable. For details, see
+<a href="/devices/architecture/hidl-cpp/index.html">HIDL C++</a>.</p>
+
+<p class=warning><strong>Warning:</strong> Structured data placed in shared
+memory MUST be a type whose format will never change for the lifetime of the
+interface version passing the <code>memory</code>. Otherwise, HALs may suffer
+fatal compatibility problems.</p>
+
+<h2 id=pointer>pointer type</h2>
+<p>The <code>pointer</code> type is for HIDL internal use only.</p>
+
+<h2 id=bitfield>bitfield&lt;T&gt; type template</h2>
+<p><code>bitfield&lt;T&gt;</code> in which <code>T</code> is a
+<a href="#enum">user-defined enum</a> suggests the value is a bitwise-OR of the
+enum values defined in <code>T</code>. In generated code,
+<code>bitfield&lt;T&gt;</code> appears as the underlying type of T. For
+example:</p>
+
+<pre class="prettyprint">
+enum Flag : uint8_t {
+    HAS_FOO = 1 &lt;&lt; 0,
+    HAS_BAR = 1 &lt;&lt; 1,
+    HAS_BAZ = 1 &lt;&lt; 2
+};
+typedef bitfield&lt;Flag&gt; Flags;
+setFlags(Flags flags) generates (bool success);
+</pre>
+
+<p>The compiler handles the type Flags the same as <code>uint8_t</code>.</p>
+
+<p>Why not use
+<code>(u)int8_t</code>/<code>(u)int16_t</code>/<code>(u)int32_t</code>/<code>(u)int64_t</code>?
+Using <code>bitfield</code> provides additional HAL information to the reader,
+who now knows that <code>setFlags</code> takes a bitwise-OR value of Flag (i.e.
+knows that calling <code>setFlags</code> with 16 is invalid). Without
+<code>bitfield</code>, this information is conveyed only via documentation. In
+addition, VTS can actually check if the value of flags is a bitwise-OR of Flag.
+</p>
+
+<h2 id=handle-primitive>handle primitive type</h2>
+
+<p class=warning><strong>WARNING:</strong> Addresses of any kind (even physical
+device addresses) must never be part of a native handle. Passing this
+information between processes is dangerous and makes them susceptible to attack.
+Any values passed between processes must be validated before they are used to
+look up allocated memory within a process. Otherwise, bad handles may cause bad
+memory access or memory corruption.</p>
+
+<p>HIDL semantics are copy-by-value, which implies that parameters are copied.
+Any large pieces of data, or data that needs to be shared between processes
+(such as a sync fence), are handled by passing around file descriptors pointing
+to persistent objects: <code>ashmem</code> for shared memory, actual files, or
+anything else that can hide behind a file descriptor. The binder driver
+duplicates the file descriptor into the other process.</p>
+
+<h3 id=handle_t>native_handle_t</h3>
+<p>Android supports <code>native_handle_t</code>, a general handle concept
+defined in <code>libcutils</code>.</p>
+
+<pre class="prettyprint">
+typedef struct native_handle
+{
+  int version;        /* sizeof(native_handle_t) */
+  int numFds;         /* number of file-descriptors at &amp;data[0] */
+  int numInts;        /* number of ints at &amp;data[numFds] */
+  int data[0];        /* numFds + numInts ints */
+} native_handle_t;
+</pre>
+
+<p>A native handle is a collection of ints and file descriptors that gets passed
+around by value. A single file descriptor can be stored in a native handle with
+no ints and a single file descriptor. Passing handles using native handles
+encapsulated with the <code>handle</code> primitive type ensures that native
+handles are directly included in HIDL.</p>
+
+<p>As a <code>native_handle_t</code> has variable size, it cannot be included
+directly in a struct. A handle field generates a pointer to a separately
+allocated <code>native_handle_t</code>.</p>
+
+<p>In earlier versions of Android, native handles were created using the same
+functions present in
+<a href="https://android.googlesource.com/platform/system/core/+/master/libcutils/native_handle.c">libcutils</a>.
+In Android O, these functions are now copied to the
+<code>android::hardware::hidl</code> namespace or moved to the NDK. HIDL
+autogenerated code serializes and deserializes these functions automatically,
+without involvement from user-written code.</p>
+
+<h3 id=ownership>Handle and file descriptor ownership</h3>
+<p>When you call a HIDL interface method that passes (or returns) a
+<code>hidl_handle</code> object (either top-level or part of a compound type),
+the ownership of the file descriptors contained in it is as follows:</p>
+
+<ul>
+<li>When passing a <code>hidl_handle</code> object as an argument, the caller
+retains ownership of the file descriptors contained in the
+<code>native_handle_t</code> it wraps, and must close them when it is done with
+them. Likewise, when returning a <code>hidl_handle</code> object (by passing it
+into a <code>_cb</code> function), the process returning it retains ownership of
+the file descriptors contained in the <code>native_handle_t</code> it wraps, and
+must close them when it is done with them.</li>
+<li>When receiving a <code>hidl_handle</code> object, the
+<strong>transport</strong> owns the file descriptors inside the
+<code>native_handle_t</code> it wraps; the receiver can use them as-is during
+the transaction callback, but must clone the native handle if it wants to keep
+using its file descriptors beyond the callback. The transport will automatically
+<code>close()</code> the file descriptors when the transaction is done.</li>
+</ul>
+
+<p>HIDL does not support handles in Java (as Java doesn't support handles at
+all).</p>
+
+<h2 id=sized-arrays>Sized arrays</h2>
+<p>For sized arrays in HIDL structs, their elements can be of any type a struct
+can contain:</p>
+
+<pre class="prettyprint">
+struct foo {
+uint32_t[3] x; // array is contained in foo
+};
+</pre>
+
+<h2 id=strings>Strings</h2>
+<p>Strings appear differently in C++ and Java, but the underlying transport
+storage type is a C++ structure. For details, see
+<a href="/devices/architecture/hidl-cpp/types.html">HIDL C++ Data Types</a> or
+<a href="/devices/architecture/hidl-java/types.html">HIDL Java Data Types</a>.
+</p>
+
+<p class=note><strong>Note:</strong> Passing a string to or from Java through a
+HIDL interface (including Java to Java) will cause character set conversions
+that may not exactly preserve the original encoding.</p>
+
+<h2 id=vec>vec&lt;T&gt; type template</h2>
+<p>The <code>vec&lt;T&gt;</code> template represents a variable-sized buffer
+containing instances of <code>T</code>. <code>T</code> can be any HIDL-provided
+or user-defined type except handle. (A <code>vec&lt;&gt;</code> of
+<code>vec&lt;T&gt;</code> will point to an array of the
+<code>vec&lt;T&gt;</code> structs, not an array of the inner T buffers.)</p>
+
+<p><code>T</code> can be one of the following:</p>
+<ul>
+<li>Primitive types (e.g. uint32_t)</li>
+<li>Strings</li>
+<li>User-defined enums</li>
+<li>User-defined structs</li>
+<li>Interfaces, or the <code>interface</code> keyword
+(<code>vec&lt;IFoo&gt;</code>, <code>vec&lt;interface&gt;</code> is supported
+only as a top-level parameter)</li>
+<li>Handles</li>
+<li>bitfield&lt;U&gt;</li>
+<li>vec&lt;U&gt;, where U is in this list except interface (e.g.
+<code>vec&lt;vec&lt;IFoo&gt;&gt;</code> is not supported)</li>
+<li>U[] (sized array of U), where U is in this list except interface</li>
+</ul>
+
+<h2 id=user>User-defined types</h2>
+<p>This section describes user-defined types.</p>
+
+<h3 id=enum>Enum</h3>
+<p>HIDL does not support anonymous enums. Otherside, enums in HIDL are similar
+to C++11:</p>
+<pre class="prettyprint">
+enum name : type { enumerator , enumerator = constexpr , …  }
+</pre>
+
+<p>Enums are defined in terms of one of the primitive types in HIDL, or as an
+extension of other enums. For example:</p>
+<pre class="prettyprint">
+enum Color : uint32_t { RED = 0, GREEN, BLUE = 2 } // GREEN == 1
+</pre>
+
+<p>Values of enums are referred to with the colon syntax (not dot syntax as
+nested types). The syntax is <code>Type:VALUE_NAME</code>. No need to specify
+type if the value is referred in the same enum type or child types. Example:</p>
+<pre class="prettyprint">
+enum Grayscale : uint32_t { BLACK = 0, WHITE = BLACK + 1 };
+enum Color : Grayscale { RED = WHITE + 1 };
+enum Unrelated : uint32_t { FOO = Color:RED + 1 };
+</pre>
+
+<h3 id=struct>Struct</h3>
+<p>HIDL does not support anonymous structs. Otherwise, structs in HIDL are very
+similar to C.</p>
+
+<p>HIDL does not support variable-length data structures contained wholly within
+a struct.  This includes the indefinite-length array that is sometimes used as
+the last field of a struct in C/C++ (sometimes seen with a size of
+<code>[0]</code>). HIDL <code>vec&lt;T&gt;</code> represents dynamically-sized
+arrays with the data stored in a separate buffer; such instances are represented
+with an instance of the <code>vec&lt;T&gt;</code> in the <code>struct</code>.
+</p>
+
+<p>Similarly, <code>string</code> can be contained in a <code>struct</code>
+(associated buffers are separate). In the generated C++, instances of the HIDL
+handle type are represented via a pointer to the actual native handle as
+instances of the underlying data type are variable-length.</p>
+
+<h3 id=union>Union</h3>
+<p>HIDL does not support anonymous unions. Otherwise, unions are similar to C.
+</p>
+
+<p>Unions cannot contain fix-up types (pointers, file descriptors, binder
+objects, etc.). They do not need special fields or associated types and are
+simply copied via <code>memcpy()</code> or equivalent. An union may not directly
+contain (or contain via other data structures) anything that requires setting
+binder offsets (i.e., handle or binder-interface references). For example:</p>
+
+<pre class="prettyprint">
+union UnionType {
+uint32_t a;
+//  vec&lt;uint32_t&gt; r;  // Error: can't contain a vec&lt;T&gt;
+uint8_t b;1
+};
+fun8(UnionType info); // Legal
+</pre>
+
+<p>Unions can also be declared inside of structs. For example:</p>
+<pre class="prettyprint">
+struct MyStruct {
+    union MyUnion {
+      uint32_t a;
+      uint8_t b;
+    }; // declares type but not member
+
+    union MyUnion2 {
+      uint32_t a;
+      uint8_t b;
+    } data; // declares type but not member
+  }
+</pre>
+
+  </body>
+</html>

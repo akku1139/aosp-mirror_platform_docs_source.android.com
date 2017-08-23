@@ -1,0 +1,732 @@
+<html devsite>
+  <head>
+    <title>Keymaster Authorization Tags</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+
+<p>This page provides details to assist implementers of Keymaster HALs.
+It covers each tag in the HAL, which Keymaster version that tag is available
+in, and whether the tag is repeatable. Except as noted in the tag descriptions,
+all of the tags below are used during key generation to specify key
+characteristics. For functions, see the
+<a href="/security/keystore/implementer-ref">Keymaster Functions</a> page.</p>
+
+<h2 id="active_datetime">KM_TAG_ACTIVE_DATETIME</h2>
+
+<p><strong>Version</strong>: 1, 2</p>
+<p><strong>Repeatable</strong>? No</p>
+
+<p>Specifies the date and time at which the key becomes active. Prior to this
+time, any attempt to use the key fails with
+<code>KM_ERROR_KEY_NOT_YET_VALID</code>.</p>
+
+<p>The value is a 64-bit integer representing milliseconds since January 1,
+1970.</p>
+
+
+<h2 id="algorithm">KM_TAG_ALGORITHM</h2>
+
+<p><strong>Version</strong>: 1, 2</p>
+<p><strong>Repeatable</strong>? No</p>
+
+<p>Specifies the cryptographic algorithm with which the key is used.</p>
+
+<p>Possible values are defined by the following enumeration:</p>
+
+<pre class="devsite-click-to-copy">
+typedef enum {
+    KM_ALGORITHM_RSA = 1,
+    KM_ALGORITHM_EC = 3,
+    KM_ALGORITHM_AES = 32,
+    KM_ALGORITHM_HMAC = 128,
+} keymaster_algorithm_t;
+</pre>
+
+
+<h2 id="all_applications">KM_TAG_ALL_APPLICATIONS</h2>
+
+<p><strong>Version</strong>: 1, 2</p>
+<p><strong>Repeatable</strong>? No</p>
+
+<p>Reserved for future use.</p>
+
+
+<h2 id="allow_while_on_body">KM_TAG_ALLOW_WHILE_ON_BODY</h2>
+
+<p><strong>Version</strong>: 2</p>
+<p><strong>Repeatable</strong>? No</p>
+
+<p>This tag is applicable only for Android Wear devices with on-body sensors. At
+this point, it's not expected that any TEE will be able to provide secure access
+to an on-body sensor, or that on-body sensors are very secure, so this is
+expected to be a purely software-enforced feature.</p>
+
+<h2 id="application_data">KM_TAG_APPLICATION_DATA</h2>
+
+<p><strong>Version</strong>: 1, 2</p>
+<p><strong>Repeatable</strong>? No</p>
+
+<p>When provided to
+<a href="/security/keystore/implementer-ref#generate_key">generate_key</a>
+or <a href="/security/keystore/implementer-ref#import_key">import_key</a>,
+this tag specifies data that is necessary during all uses of the key. In
+particular, calls to
+<a href="/security/keystore/implementer-ref#export_key">export_key</a> and
+<a href="/security/keystore/implementer-ref#get_key_characteristics">get_key_characteristics</a>
+need to provide the same value to the <code>client_id</code> parameter, and calls
+to <a href="/security/keystore/implementer-ref#begin">begin</a> need to provide
+this tag and the same associated data as part of the <code>in_params</code>
+set. If the correct data is not provided, the function returns
+<code>KM_ERROR_INVALID_KEY_BLOB</code>.</p>
+
+<p>The content of this tag is bound to the key <em>cryptographically</em>,
+meaning it must not be possible for an adversary who has access to all of the
+secure world secrets but does not have access to the tag content to decrypt the
+key without brute-forcing the tag content, which applications can prevent by
+specifying sufficiently high-entropy content.</p>
+
+<p>The value is a blob, an arbitrary-length array of bytes.</p>
+
+
+<h2 id="application_id">KM_TAG_APPLICATION_ID</h2>
+
+<p><strong>Version</strong>: 1, 2</p>
+<p><strong>Repeatable</strong>? No</p>
+
+<p>When provided to
+<a href="/security/keystore/implementer-ref#generate_key">generate_key</a>
+or <a href="/security/keystore/implementer-ref#import_key">import_key</a>,
+this tag specifies data that is necessary during all uses of the key. In
+particular, calls to
+<a href="/security/keystore/implementer-ref#export_key">export_key</a> and
+<a href="/security/keystore/implementer-ref#get_key_characteristics">get_key_characteristics</a>
+need to provide the same value in the <code>client_id</code> parameter, and
+calls to <a href="/security/keystore/implementer-ref#begin">begin</a> need to
+provide this tag and the same associated data as part of the
+<code>in_params</code> set. If the correct data is not provided, the function
+returns <code>KM_ERROR_INVALID_KEY_BLOB</code>.</p>
+
+<p>The content of this tag is bound to the key <em>cryptographically</em>,
+meaning it an adversary who can access all of the secure world secrets—but
+does not have access to the tag content—can't decrypt the
+key (without brute-forcing the tag content).</p>
+
+<p>The value is a blob, an arbitrary-length array of bytes.</p>
+
+
+<h2 id="associated_data">KM_TAG_ASSOCIATED_DATA</h2>
+
+<p><strong>Version</strong>: 1, 2</p>
+<p><strong>Repeatable</strong>? No</p>
+
+<p>Provides "associated data" for AES-GCM encryption or decryption. This tag is
+provided to <a href="/security/keystore/implementer-ref#update">update</a> and
+specifies data that is not encrypted/decrypted, but is used in computing
+the GCM tag.</p>
+
+<p>The value is a blob, an arbitrary-length array of bytes.</p>
+
+
+<h2 id="auth_timeout">KM_TAG_AUTH_TIMEOUT</h2>
+
+<p><strong>Version</strong>: 1, 2</p>
+<p><strong>Repeatable</strong>? No</p>
+
+<p>Specifies the time in seconds for which the key is authorized for use, after
+authentication. If <a href="#user_secure_id">KM_TAG_USER_SECURE_ID</a>
+is present and this tag is not, then the key needs authentication for every
+usage (see <a href="/security/keystore/implementer-ref#begin">begin</a> for the
+details of the authentication-per-operation flow).</p>
+
+<p>The value is a 32-bit integer specifying the time in seconds after a successful
+authentication of the user specified by
+<a href="#user_secure_id">KM_TAG_USER_SECURE_ID</a> with
+the authentication method specified
+by <a href="#mac_length">KM_TAG_USER_AUTH_TYPE</a> that the key can be used.</p>
+
+
+<h2 id="auth_token">KM_TAG_AUTH_TOKEN</h2>
+
+<p><strong>Version</strong>: 1, 2</p>
+<p><strong>Repeatable</strong>? No</p>
+
+<p>Provides an authentication token (see the
+<a href="/security/keystore/features#user_authentication">Authentication</a>
+page) to <a href="/security/keystore/implementer-ref#begin">begin</a>,
+<a href="/security/keystore/implementer-ref#update">update</a> or
+<a href="/security/keystore/implementer-ref#finish">finish</a>,
+to prove user authentication for a key operation that requires
+it (key has <a href="#user_secure_id">KM_TAG_USER_SECURE_ID</a>).</p>
+
+<p>The value is a blob which contains a <code>hw_auth_token_t</code> structure.</p>
+
+
+<h2 id="blob_usage_requirements">KM_TAG_BLOB_USAGE_REQUIREMENTS</h2>
+
+<p><strong>Version</strong>: 1, 2</p>
+<p><strong>Repeatable</strong>? No</p>
+
+<p>Specifies the necessary system environment conditions for the generated
+key to be used.</p>
+
+<p>Possible values are defined by the following enumeration:</p>
+
+<pre class="devsite-click-to-copy">
+typedef enum {
+    KM_BLOB_STANDALONE = 0,
+    KM_BLOB_REQUIRES_FILE_SYSTEM = 1,
+} keymaster_key_blob_usage_requirements_t;
+</pre>
+
+<p>This tag can be specified during key generation to require that the key is
+usable in the specified condition. It needs to be returned with the key
+characteristics from
+<a href="/security/keystore/implementer-ref#generate_key">generate_key</a> and
+<a href="/security/keystore/implementer-ref#get_key_characteristics">get_key_characteristics</a>.
+If the caller specifies <code>KM_TAG_BLOB_USAGE_REQUIREMENTS</code> with
+value <code>KM_BLOB_STANDALONE</code> the trustlet returns a key blob
+that can be used without file system support. This is critical for devices
+with encrypted disks, where the file system may not be available until
+after a Keymaster key is used to decrypt the disk.</p>
+
+
+<h2 id="block_mode">KM_TAG_BLOCK_MODE</h2>
+
+<p><strong>Version</strong>: 1, 2</p>
+<p><strong>Repeatable</strong>? Yes</p>
+
+<p>Specifies the block cipher mode(s) with which the key may be used.
+This tag is only relevant to AES keys.</p>
+
+<p>Possible values are defined by the following enumeration:</p>
+
+<pre class="devsite-click-to-copy">
+typedef enum {
+    KM_MODE_ECB = 1,
+    KM_MODE_CBC = 2,
+    KM_MODE_CTR = 3,
+    KM_MODE_GCM = 32,
+} keymaster_block_mode_t;
+</pre>
+
+<p>This tag is repeatable, and for AES key operations specify a mode in
+the <code>additional_params</code> argument of
+<a href="/security/keystore/implementer-ref#begin">begin</a>.
+If the specifiedmode is not in the modes associated with the key, the
+operation fails with <code>KM_ERROR_INCOMPATIBLE_BLOCK_MODE</code>.</p>
+
+
+<h2 id="bootloader_only">KM_TAG_BOOTLOADER_ONLY</h2>
+
+<p><strong>Version</strong>: 1, 2</p>
+<p><strong>Repeatable</strong>? No</p>
+
+<p>Specifies only the bootloader can use the key.</p>
+
+<p>This tag is boolean, so the possible values are true (if the tag is present)
+and false (if the tag is not present).</p>
+
+<p>Any attempt to use a key with <code>KM_TAG_BOOTLOADER_ONLY</code> from the
+Android system fails with <code>KM_ERROR_INVALID_KEY_BLOB</code>.</p>
+
+
+<h2 id="caller_nonce">KM_TAG_CALLER_NONCE</h2>
+
+<p><strong>Version</strong>: 1, 2</p>
+<p><strong>Repeatable</strong>? No</p>
+
+<p>Specifies that the caller can provide a nonce for nonce-requiring operations.</p>
+
+<p>This tag is boolean, so the possible values are true (if the tag is present)
+and false (if the tag is not present).</p>
+
+<p>This tag is used only for AES keys, and is only relevant for CBC, CTR and GCM
+block modes. If the tag is not present, implementations should reject any
+operation that provides <a href="#nonce">KM_TAG_NONCE</a> to
+<a href="/security/keystore/implementer-ref#begin">begin</a>
+with <code>KM_ERROR_CALLER_NONCE_PROHIBITED</code>.</p>
+
+
+<h2 id="creation_datetime">KM_TAG_CREATION_DATETIME</h2>
+
+<p><strong>Version</strong>: 1, 2</p>
+<p><strong>Repeatable</strong>? No</p>
+
+<p>Specifies the date and time the key was created, in milliseconds since January
+1, 1970. This tag is optional and informational only.</p>
+
+
+<h2 id="digest">KM_TAG_DIGEST</h2>
+
+<p><strong>Version</strong>: 1, 2</p>
+<p><strong>Repeatable</strong>? Yes</p>
+
+<p>Specifies the digest algorithms that may be used with the key to perform
+signing and verification operations. This tag is relevant to RSA, ECDSA and
+HMAC keys.</p>
+
+<p>Possible values are defined by the following enumeration:</p>
+
+<pre class="devsite-click-to-copy">
+typedef enum {
+    KM_DIGEST_NONE = 0,
+    KM_DIGEST_MD5 = 1,
+    KM_DIGEST_SHA1 = 2,
+    KM_DIGEST_SHA_2_224 = 3,
+    KM_DIGEST_SHA_2_256 = 4,
+    KM_DIGEST_SHA_2_384 = 5,
+    KM_DIGEST_SHA_2_512 = 6,
+}
+keymaster_digest_t;
+</pre>
+
+<p>This tag is repeatable. For signing and verification operations, specify
+a digest in the <code>additional_params</code> argument of
+<a href="/security/keystore/implementer-ref#begin">begin</a>.
+If the specified digest is not in the digests associated with the key, the
+operation fails with <code>KM_ERROR_INCOMPATIBLE_DIGEST</code>.</p>
+
+<h2 id="ec_curve">KM_TAG_EC_CURVE</h2>
+
+<p><strong>Version</strong>: 2</p>
+<p><strong>Repeatable</strong>? No</p>
+
+<p>In Keymaster 1, the curve used for EC keys was guessed from the specified key
+size. To improve flexibility moving forward, Keymaster 2 introduced an explicit
+way to specify curves. EC key generation requests may have
+<code>KM_TAG_EC_CURVE</code>, <code>KM_TAG_KEY_SIZE</code>, or both.</p>
+
+<p>Possible values are defined by the following enumeration:</p>
+
+<pre class="devsite-click-to-copy">
+enum class EcCurve : uint32_t {
+    P_224 = 0,
+    P_256 = 1,
+    P_384 = 2,
+P_521 = 3,
+};
+</pre>
+
+<p>If a generation request only contains <code>KM_TAG_KEY_SIZE</code>,
+fall back to the Keymaster 1 logic, choosing the appropriate NIST curve.</p>
+
+<p>If the request only contains <code>KM_TAG_EC_CURVE</code>, use the
+specified curve. Curves are defined in <code>keymaster_ec_curve_t</code>.</p>
+
+<p>If the request contains both, use the curve specified by
+<code>KM_TAG_EC_CURVE</code>, and validate that the specified key size is
+appropriate for that curve. If not, return
+<code>KM_ERROR_INVALID_ARGUMENT</code>.</p>
+
+
+<h2 id="include_unique_id">KM_TAG_INCLUDE_UNIQUE_ID</h2>
+
+<p><strong>Version</strong>: 2</p>
+<p><strong>Repeatable</strong>? No</p>
+
+<p>This tag is specified during key generation to indicate that an attestation
+certificate for the generated key should contain a Unique ID.</p>
+
+
+<h2 id="key_size">KM_TAG_KEY_SIZE</h2>
+
+<p><strong>Version</strong>: 1, 2</p>
+<p><strong>Repeatable</strong>? No</p>
+
+<p>Specifies the size, in bits, of the key, measuring in the normal way for the
+key's algorithm. For example, for RSA keys, <code>KM_TAG_KEY_SIZE</code> specifies
+the size of the public modulus. For AES keys it specifies the length
+of the secret key material.</p>
+
+
+<h2 id="mac_length">KM_TAG_MAC_LENGTH</h2>
+
+<p><strong>Version</strong>: 1, 2</p>
+<p><strong>Repeatable</strong>? No</p>
+
+<p>Provides the requested length of a MAC or GCM authentication tag, in bits.</p>
+
+<p>The value is the MAC length in bits. It is a multiple of 8 and at
+least as large as the value of <a href="#min_mac_length">KM_TAG_MIN_MAC_LENGTH</a>
+associated with the key.</p>
+
+
+<h2 id="max_uses_per_boot">KM_TAG_MAX_USES_PER_BOOT</h2>
+
+<p><strong>Version</strong>: 1, 2</p>
+<p><strong>Repeatable</strong>? No</p>
+
+<p>Specifies the maximum number of times that a key may be used between system
+reboots. This is another mechanism to rate-limit key use.</p>
+
+<p>The value is a 32-bit integer representing uses per boot.</p>
+
+<p>When a key with this tag is used in an operation, a key-associated counter
+should be incremented during the
+<a href="/security/keystore/implementer-ref#begin">begin</a> call. After the key
+counter has exceeded this value, all subsequent attempts to use the key fail
+with <code>KM_ERROR_MAX_OPS_EXCEEDED</code>, until the device is restarted. This
+implies that a trustlet keeps a table of use counters for keys with this tag.
+Because Keymaster memory is often limited, this table can have a fixed maximum
+size and Keymaster can fail operations that attempt to use keys with this tag
+when the table is full. The table needs to acommodate at least 16 keys. If an
+operation fails because the table is full, Keymaster returns
+<code>KM_ERROR_TOO_MANY_OPERATIONS</code>.</p>
+
+
+<h2 id="min_mac_length">KM_TAG_MIN_MAC_LENGTH</h2>
+
+<p><strong>Version</strong>: 1, 2</p>
+<p><strong>Repeatable</strong>? No</p>
+
+<p>This tag specifies the minimum length of MAC that can be requested or
+ verified with this key for HMAC keys and AES keys that support GCM mode.</p>
+
+<p>This value is the minimum MAC length, in bits. It is a multiple of 8. For
+HMAC keys, the value is at least 64. For GCM keys, the value is at least 96
+and no more than 128.</p>
+
+
+<h2 id="min_seconds_between_ops">KM_TAG_MIN_SECONDS_BETWEEN_OPS</h2>
+
+<p><strong>Version</strong>: 1, 2</p>
+<p><strong>Repeatable</strong>? No</p>
+
+<p>Specifies the minimum amount of time that elapses between allowed
+operations using a key. This can be used to rate-limit uses of keys in contexts
+where unlimited use may enable brute force attacks.</p>
+
+<p>The value is a 32-bit integer representing seconds between allowed operations.</p>
+
+<p>When a key with this tag is used in an operation, start a timer
+during the <a href="/security/keystore/implementer-ref#finish">finish</a> or
+<a href="/security/keystore/implementer-ref#abort">abort</a> call. Any
+call to <a href="/security/keystore/implementer-ref#begin">begin</a> that is received
+before the timer indicates that the interval specified by
+<code>KM_TAG_MIN_SECONDS_BETWEEN_OPS</code> has elapsed fails with
+<code>KM_ERROR_KEY_RATE_LIMIT_EXCEEDED</code>.This
+implies that a trustlet keeps a table of use counters for keys with this tag.
+Because Keymaster memory is often limited, this table can have a fixed maximum size
+and Keymaster can fail operations that attempt to use keys with this tag
+when the table is full. The table needs to acommodate at least 32 in-use
+keys and aggressively reuse table slots when key minimum-usage intervals expire.
+If an operation fails because the table is full, Keymaster returns
+<code>KM_ERROR_TOO_MANY_OPERATIONS</code>.</p>
+
+
+<h2 id="no_auth_required">KM_TAG_NO_AUTH_REQUIRED</h2>
+
+<p><strong>Version</strong>: 1, 2</p>
+<p><strong>Repeatable</strong>? No</p>
+
+<p>Specifies that no authentication is required to use this key. This tag is
+mutually exclusive with <a href="#user_secure_id">KM_TAG_USER_SECURE_ID</a>.</p>
+
+<p>This tag is boolean, so the possible values are true (if the tag is present)
+and false (if the tag is not present).</p>
+
+
+<h2 id="nonce">KM_TAG_NONCE</h2>
+
+<p><strong>Version</strong>: 1, 2</p>
+<p><strong>Repeatable</strong>? No</p>
+
+<p>Provides or returns a nonce or Initialization Vector (IV) for AES GCM, CBC, or
+CTR encryption or decryption. This tag is provided to
+<a href="/security/keystore/implementer-ref#begin">begin</a>
+during encryption and decryption operations. It is only provided to
+<a href="/security/keystore/implementer-ref#begin">begin</a>
+if the key has <a href="#caller_nonce">KM_TAG_CALLER_NONCE</a>. If not provided,
+an appropriate nonce or IV will be randomly generated by
+Keymaster and returned from begin.</p>
+
+<p>The value is a blob, an arbitrary-length array of bytes. Allowed lengths depend
+on the mode: GCM nonces are 12 bytes in length; CBC and CTR IVs are 16 bytes in
+length.</p>
+
+
+<h2 id="origin">KM_TAG_ORIGIN</h2>
+
+<p><strong>Version</strong>: 1, 2</p>
+<p><strong>Repeatable</strong>? No</p>
+
+<p>Specifies where the key was created, if known. This tag may not be specified
+during key generation or import, and must be added to the key characteristics
+by the trustlet.</p>
+
+<p>The possible values are defined in <code>keymaster_origin_t</code>:</p>
+
+<pre class="devsite-click-to-copy">
+typedef enum {
+    KM_ORIGIN_GENERATED = 0,
+    KM_ORIGIN_IMPORTED = 2,
+    KM_ORIGIN_UNKNOWN = 3,
+} keymaster_key_origin_t
+</pre>
+
+<p>The full meaning of the value depends not only on the value but on whether it's
+found in the hardware-enforced or software-enforced characteristics list.</p>
+
+<p><code>KM_ORIGIN_GENERATED</code> indicates that Keymaster generated the key.
+If in the hardware-enforced list,
+the key was generated in secure hardware and is permanently hardware-bound. If
+in the software-enforced list, the key was generated in SoftKeymaster and is
+not hardware-bound.</p>
+
+<p><code>KM_ORIGIN_IMPORTED</code> indicates that the key was generated outside
+of Keymaster and imported into
+Keymaster. If in the hardware-enforced list, it is permanently hardware-bound,
+although copies outside of secure hardware may exist. If in the
+software-enforces list, the key was imported into SoftKeymaster and is not
+hardware-bound.</p>
+
+<p><code>KM_ORIGIN_UNKNOWN</code> should only appear in the hardware-enforced list.
+It indicates that the key is
+hardware-bound, but it is not known whether the key was originally generated in
+secure hardware or was imported. This only occurs when keymaster0 hardware is
+being used to emulate keymaster1 services.</p>
+
+
+<h2 id="origination_expire_datetime">KM_TAG_ORIGINATION_EXPIRE_DATETIME</h2>
+
+<p><strong>Version</strong>: 1, 2</p>
+<p><strong>Repeatable</strong>? No</p>
+
+<p>Specifies the date and time at which the key expires for signing and encryption
+purposes. After this time, any attempt to use a key
+with <a href="#purpose">KM_PURPOSE_SIGN</a> or
+<a href="#purpose">KM_PURPOSE_ENCRYPT</a> provided
+to <a href="/security/keystore/implementer-ref#begin">begin</a> fails
+with <code>KM_ERROR_KEY_EXPIRED</code>.</p>
+
+<p>The value is a 64-bit integer representing milliseconds since January 1, 1970.</p>
+
+
+<h2 id="os_patchlevel">KM_TAG_OS_PATCHLEVEL</h2>
+
+<p><strong>Version</strong>: 2</p>
+<p><strong>Repeatable</strong>? No</p>
+
+<p>This tag is never sent to the keymaster TA, but is added to the
+hardware-enforced authorization list by the TA.</p>
+
+<p>The value of the tag is an integer of the form YYYYMM, where YYYY is the
+four-digit year of the last update and MM is the two-digit month of the last
+update. For example, for a key generated on an Android device last updated in
+December 2015, the value would be 201512.</p>
+
+<p>Keys that have a patch level different than the current patch level are not
+usable. An attempt to use such a key causes
+<a href="/security/keystore/implementer-ref#begin">begin</a>,
+<a href="/security/keystore/implementer-ref#get_key_characteristics">get_key_characteristics</a>,
+or <a href="/security/keystore/implementer-ref#export_key">export_key</a>
+to return <code>KM_ERROR_KEY_REQUIRES_UPGRADE</code>. See
+<a href="/security/keystore/version-binding">Version Binding</a> for more details.</p>
+
+
+<h2 id="os_version">KM_TAG_OS_VERSION</h2>
+
+<p><strong>Version</strong>: 2</p>
+<p><strong>Repeatable</strong>? No</p>
+
+<p>This tag is never sent to the keymaster TA, but is added to the
+hardware-enforced authorization list by the TA.</p>
+
+<p>The value of the tag is an integer of the form MMmmss, where MM is the major
+version number, mm is the minor version number, and ss is the sub-minor version
+number. For example, for a key generated on Android version 4.0.3, the value
+would be 040003.</p>
+
+
+<h2 id="padding">KM_TAG_PADDING</h2>
+
+<p><strong>Version</strong>: 1, 2</p>
+<p><strong>Repeatable</strong>? Yes</p>
+
+<p>Specifies the padding modes that may be used with the key. This tag is
+relevant to RSA and AES keys.</p>
+
+<p>Possible values are defined by the following enumeration:</p>
+
+<pre class="devsite-click-to-copy">
+typedef enum {
+    KM_PAD_NONE = 1,
+    KM_PAD_RSA_OAEP = 2,
+    KM_PAD_RSA_PSS = 3,
+    KM_PAD_RSA_PKCS1_1_5_ENCRYPT = 4,
+    KM_PAD_RSA_PKCS1_1_5_SIGN = 5,
+    KM_PAD_PKCS7 = 64,
+} keymaster_padding_t;
+</pre>
+
+<p><code>KM_PAD_RSA_OAEP</code> and <code>KM_PAD_RSA_PKCS1_1_5_ENCRYPT</code> are used
+only for RSA encryption/decryption keys and specify RSA PKCS#1v2 OAEP
+padding and RSA PKCS#1 v1.5 randomized padding, respectively. <code>KM_PAD_RSA_PSS</code> and
+<code>KM_PAD_RSA_PKCS1_1_5_SIGN</code> are used only for RSA signing/verification keys and
+specify RSA PKCS#1v2 PSS
+padding and RSA PKCS#1 v1.5 deterministic padding, respectively. Note also that
+the RSA PSS padding mode is incompatible with <a href="#digest">KM_DIGEST_NONE</a>.</p>
+
+<p><code>KM_PAD_NONE</code> may be used with either RSA or AES keys. For AES keys,
+if <code>KM_PAD_NONE</code> is used with block mode ECB or CBC and the data to be encrypted
+or decrypted
+is not a multiple of the AES block size in length, the call to finish fails
+with <code>KM_ERROR_INVALID_INPUT_LENGTH</code>.</p>
+
+<p><code>KM_PAD_PKCS7</code> may only be used with AES keys, and only with ECB and CBC modes.</p>
+
+<p>This tag is repeatable. A padding mode must be specified in the call to
+<a href="/security/keystore/implementer-ref#begin">begin</a>.
+If the specified mode is not authorized for the key, the operation fails
+with <code>KM_ERROR_INCOMPATIBLE_BLOCK_MODE</code>.</p>
+
+
+<h2 id="purpose">KM_TAG_PURPOSE</h2>
+
+<p><strong>Version</strong>: 1, 2</p>
+<p><strong>Repeatable</strong>? Yes</p>
+
+<p>Specifies the set of purposes for which the key may be used.</p>
+
+<p>Possible values are defined by the following enumeration:</p>
+
+<pre class="devsite-click-to-copy">
+typedef enum {
+    KM_PURPOSE_ENCRYPT = 0,
+    KM_PURPOSE_DECRYPT = 1,
+    KM_PURPOSE_SIGN = 2,
+    KM_PURPOSE_VERIFY = 3,
+} keymaster_purpose_t;
+</pre>
+
+<p>This tag is repeatable; keys may be generated with multiple values, although an
+operation has a single purpose. When the
+<a href="/security/keystore/implementer-ref#begin">begin</a> function is called to
+start an operation, the purpose of the operation is
+specified. If the purpose specified to the operation is not authorized by the
+key, the operation fails with <code>KM_ERROR_INCOMPATIBLE_PURPOSE</code>.</p>
+
+<h2 id="rollback_resistant">KM_TAG_ROLLBACK_RESISTANT</h2>
+
+<p><strong>Version</strong>: 1, 2</p>
+<p><strong>Repeatable</strong>? No</p>
+
+<p>Indicates that the key is rollback-resistant, meaning that when deleted
+by <a href="/security/keystore/implementer-ref#delete_key">delete_key</a> or
+<a href="/security/keystore/implementer-ref#delete_all_keys">delete_all_keys</a>,
+the key is guaranteed to be permanently deleted and unusable. It's possible
+that keys without this tag could be deleted and then restored from backup.</p>
+
+<p>This tag is boolean, so the possible values are true (if the tag is present)
+and false (if the tag is not present).</p>
+
+
+<h2 id="root_of_trust">KM_TAG_ROOT_OF_TRUST</h2>
+
+<p><strong>Version</strong>: 1, 2</p>
+<p><strong>Repeatable</strong>? No</p>
+
+
+<p>Specifies the <em>root of trust</em>, the key used by verified boot to
+validate the operating system booted (if any). This tag is never provided
+to or returned from Keymaster in the key characteristics.</p>
+
+<h2 id="rsa_public_exponent">KM_TAG_RSA_PUBLIC_EXPONENT</h2>
+
+<p><strong>Version</strong>: 1, 2</p>
+<p><strong>Repeatable</strong>? No</p>
+
+<p>Specifies the value of the public exponent for an RSA key pair. This tag is
+relevant only to RSA keys, and necessary for all RSA keys.</p>
+
+<p>The value is a 64-bit unsigned integer that satisfies the requirements of an
+RSA public exponent. Because it is specified by the caller and therefore cannot
+be chosen by the implementation, it is a prime number. Trustlets support the
+value 2^16+1 and may support other reasonable values, in particular the value 3.
+If no exponent is specified or if the specified exponent is not supported,
+key generation fails with <code>KM_ERROR_INVALID_ARGUMENT</code>.</p>
+
+
+<h2 id="usage_expire_datetime">KM_TAG_USAGE_EXPIRE_DATETIME</h2>
+
+<p><strong>Version</strong>: 1, 2</p>
+<p><strong>Repeatable</strong>? No</p>
+
+<p>Specifies the date and time at which the key expires for verification and
+decryption purposes. After this time, any attempt to use a key with
+<a href="#purpose">KM_PURPOSE_VERIFY</a> or <a href="#purpose">KM_PURPOSE DECRYPT</a>
+provided to <a href="/security/keystore/implementer-ref#begin">begin</a> fails
+with <code>KM_ERROR_KEY_EXPIRED</code>.</p>
+
+<p>The value is a 64-bit integer representing milliseconds since January 1, 1970.</p>
+
+
+<h2 id="user_auth_type">KM_TAG_USER_AUTH_TYPE</h2>
+
+<p><strong>Version</strong>: 1, 2</p>
+<p><strong>Repeatable</strong>? No</p>
+
+<p>Specifies the types of user authenticators that may be used to authorize this
+key. When Keymaster is requested to perform an operation with a key with this
+tag, it receives an authentication token, and the token's
+<code>authenticator_type</code> field needs to match the value in the tag. For example,
+<code>(ntoh(token.authenticator_type) & auth_type_tag_value) != 0</code>,
+where <code>ntoh</code> is a function that converts
+network-ordered integers to host-ordered integers and
+<code>auth_type_tag_value</code> is the value of this tag.</p>
+
+<p>The value is a 32-bit integer bitmask of values from the enumeration:</p>
+
+<pre class="devsite-click-to-copy">
+typedef enum {
+    HW_AUTH_NONE = 0,
+    HW_AUTH_PASSWORD = 1 &lt;&lt; 0,
+    HW_AUTH_FINGERPRINT = 1 &lt;&lt; 1,
+    // Additional entries should be powers of 2.
+    HW_AUTH_ANY = UINT32_MAX,
+} hw_authenticator_type_t;
+</pre>
+
+
+<h2 id="user_secure_id">KM_TAG_USER_SECURE_ID</h2>
+
+<p><strong>Version</strong>: 1, 2</p>
+<p><strong>Repeatable</strong>? No</p>
+
+<p>Specifies that a key may only be used under a particular secure user
+authentication state. This tag is mutually exclusive
+with <a href="#no_auth_required">KM_TAG_NO_AUTH_REQUIRED</a>.</p>
+
+<p>The value is a 64-bit integer specifying the authentication policy state value
+which needs to be present in an authentication token (provided to
+<a href="/security/keystore/implementer-ref#begin">begin</a> with
+the <a href="#auth_token">KM_TAG_AUTH_TOKEN</a>) to authorize use of the key. Any
+call to <a href="/security/keystore/implementer-ref#begin">begin</a>
+with a key with this tag that does not provide an
+authentication token, or provides an
+authentication token without a matching policy state value, fails.</p>
+
+<p>This tag is repeatable. If any of the provided values matches any policy state
+value in the authentication token, the key is authorized for use. Otherwise the operation
+fails with <code>KM_ERROR_KEY_USER_NOT_AUTHENTICATED</code>.</p>
+
+</body>
+</html>

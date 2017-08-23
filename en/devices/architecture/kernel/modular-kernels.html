@@ -1,0 +1,751 @@
+<html devsite>
+  <head>
+    <title>Modular Kernel Requirements</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>In Android O, the device kernel splits into System-on-Chip (SoC), device, and
+board-specific deliverables. This sets up the kernel and Android such that
+Original Device Manufacturers (ODMs) and Original Equipment Manufacturers (OEMs)
+can work in isolated board–specific trees for board–specific features, drivers,
+etc., enabling them to override common kernel configuration, add new drivers in
+the form of kernel modules, etc.</p>
+
+<p>This page provides details on requirements for:</p>
+
+<ul>
+<li>Platform support for independent SoC and OEM/ODM kernel development. Android
+O recommends all board–specific code to be built and shipped as kernel modules
+in devices. As a result:
+ <ul>
+ <li>All platforms should support either
+ <a href="https://www.devicetree.org/" class="external">Device Tree</a> or
+ <a href="http://www.uefi.org/acpi/specs" class="external">Advanced
+ Configuration and Power Interface (ACPI)</a> to describe all non-discoverable
+ devices.</li>
+ <li>For device tree-based platforms, board–specific device nodes should be
+ added to the kernel device tree as
+ <a href="/devices/architecture/dto/index.html">overlays</a>.</li>
+ </ul>
+</li>
+<li>Application binary interface (ABI)/application programming interface (API)
+tests in <a href="/devices/tech/vts/index.html">Vendor Test Suite (VTS)</a> to
+ensure a given kernel can run the Android Open Source Project (AOSP)
+framework.</li>
+<li>Minimum kernel version per Android release and support for generating
+<a href="/devices/architecture/vintf/index.html">Android Vendor Interface
+(VINTF) kernel objects</a>.</li>
+</ul>
+
+<h2 id="loadable-kernel-modules">Loadable kernel modules</h2>
+<p>All SoC kernels should support loadable kernel modules. As a starting point,
+the following kernel-config options (or their kernel-version equivalent) have
+been added to
+<a href="https://android.googlesource.com/kernel/common/+/android-4.4/android/configs/android-base.cfg" class="external">android-base.cfg</a>
+in all common kernels and must be enabled in all device kernels:</p>
+
+<pre class="prettyprint">
+CONFIG_MODULES=y
+CONFIG_MODULE_UNLOAD=y
+CONFIG_MODVERSIONS=y
+</pre>
+
+<p>All kernel modules are subject to module load/unload testing to ensure the
+correctness of the driver/module.</p>
+
+<aside class="note"><strong>Note:</strong>
+<code>CONFIG_MODULE_SRCVERSION_ALL</code> is optional and will not be tested
+against.</aside>
+
+<h3 id="module-signing">Module signing</h3>
+<p>Optionally, ODMs can enable module signing in their own kernel configuration
+by enabling following kernel config options:</p>
+
+<pre class="prettyprint">
+CONFIG_MODULE_SIG=y
+CONFIG_MODULE_SIG_FORCE=y
+</pre>
+
+<p>On devices required to support verified boot, Android requires the kernel
+modules to be in the partitions that have dm-verity enabled. Module signing is
+not mandatory and will not be tested against; however, if desired, an ODM can
+enable module signing as long as they have the key signing and other
+infrastructure required to ensure independent kernel and filesystem OTA updates
+in the future.</p>
+
+<h3 id="file-locations">File locations</h3>
+<p>While Android 7.x and earlier do not mandate against kernel modules (and
+include support for <code>insmod</code> and <code>rmmod</code>), Android O
+recommends the use of kernel modules in the ecosystem. The following table shows
+potential board–specific peripheral support required across three Android boot
+modes:</p>
+
+<table>
+<tr>
+<th>Boot Mode</th>
+<th>Storage</th>
+<th>Display</th>
+<th>Keypad</th>
+<th>Battery</th>
+<th>PMIC</th>
+<th>Touchscreen</th>
+<th>NFC, Wi-Fi,<br>Bluetooth</th>
+<th>Sensors</th>
+<th>Camera</th>
+</tr>
+<tr>
+<td>Recovery</td>
+<td><span class="compare-yes"></span></td>
+<td><span class="compare-yes"></span></td>
+<td><span class="compare-yes"></span></td>
+<td><span class="compare-yes"></span></td>
+<td><span class="compare-yes"></span></td>
+<td><span class="compare-no"></span></td>
+<td><span class="compare-no"></span></td>
+<td><span class="compare-no"></span></td>>
+<td><span class="compare-no"></span></td>
+</tr>
+<tr>
+<td>Charger</td>
+<td><span class="compare-yes"></span></td>
+<td><span class="compare-yes"></span></td>
+<td><span class="compare-yes"></span></td>
+<td><span class="compare-yes"></span></td>
+<td><span class="compare-yes"></span></td>
+<td><span class="compare-no"></span></td>
+<td><span class="compare-no"></span></td>
+<td><span class="compare-no"></span></td>
+<td><span class="compare-no"></span></td>
+</tr>
+<tr>
+<td>Android</td>
+<td><span class="compare-yes"></span></td>
+<td><span class="compare-yes"></span></td>
+<td><span class="compare-yes"></span></td>
+<td><span class="compare-yes"></span></td>
+<td><span class="compare-yes"></span></td>
+<td><span class="compare-yes"></span></td>
+<td><span class="compare-yes"></span></td>
+<td><span class="compare-yes"></span></td>
+<td><span class="compare-yes"></span></td>
+</tr>
+</table>
+
+<p>In addition to availability in Android boot modes, kernel modules may also be
+categorized by who owns them (the SoC vendor or the ODM). If kernel modules are
+being used, requirements for their placement in filesystem are as follows:</p>
+
+<ul>
+<li>All kernels should have built-in support for booting and mounting partitions.
+</li>
+<li>Kernel modules should be loaded from a read-only partition.</li>
+<li>For devices required to have verified boot, kernel modules should be loaded
+from verified partitions.</li>
+<li>Kernel modules should not be located in <code>/system</code>.</li>
+<li>Kernel modules from the SoC vendor that are required for full Android or
+Charger modes should be located in <code>/vendor/lib/modules</code>.</li>
+<li>If an ODM partition exists, kernel modules from the ODM that are required
+for full Android or Charger modes should be located in
+<code>/odm/lib/modules</code>. Otherwise, these modules should be located in
+<code>/vendor/lib/modules</code>.</li>
+<li>Kernel modules from both the SoC vendor and ODM that are required for
+Recovery mode should be located in the recovery <code>ramfs</code> at
+<code>/lib/modules</code>.</li>
+<li>If a kernel module is required for both Recovery mode and full Android or
+Charger modes, it should exist both in the recovery <code>rootfs</code> and
+either the <code>/vendor</code> or <code>/odm<strong> </strong></code>partitions
+(as described above).</li>
+<li>Kernel modules used in Recovery mode should not depend on modules located
+only in <code>/vendor</code> or <code>/odm</code>, as those partitions are not
+mounted in Recovery mode.</li>
+<li>SoC vendor kernel modules should not depend on ODM kernel modules.</li>
+</ul>
+
+<p>In Android 7.x and earlier, <code>/vendor</code> and <code>/odm</code>
+partitions are <strong>not</strong> mounted early. In Android O, to make module
+loading from these partitions possible, provisions have been made to mount
+partitions early for both
+<a href="https://source.android.com/devices/tech/ota/ab_updates">non-A/B and A/B
+devices</a>. This also ensures the partitions are mounted in both Android and
+Charger modes.</p>
+
+<h3 id="android-build-system-support">Android build system support</h3>
+<p>In <code>BoardConfig.mk</code>, the Android build defines a
+<code>BOARD_VENDOR_KERNEL_MODULES</code> variable that provides a full list of
+the kernel modules intended for the vendor image. The modules listed in this
+variable are copied into the vendor image at <code>/lib/modules/</code>, and,
+after being mounted in Android, appear in <code>/vendor/lib/modules</code> (in
+accordance with the above requirements). Example configuration of the vendor
+kernel modules:</p>
+
+<pre class="prettyprint">
+vendor_lkm_dir := device/$(vendor)/lkm-4.x
+BOARD_VENDOR_KERNEL_MODULES := \
+  $(vendor_lkm_dir)/vendor_module_a.ko \
+  $(vendor_lkm_dir)/vendor_module_b.ko \
+  $(vendor_lkm_dir)/vendor_module_c.ko
+</pre>
+
+<p>… where a vendor kernel module pre-built repository is mapped into the
+Android build at the location listed above.</p>
+
+<p>The recovery image is likely to contain a subset of the vendor modules. The
+Android build defines the variable <code>BOARD_RECOVERY_KERNEL_MODULES</code>
+for these modules. Example:</p>
+
+<pre class="prettyprint">
+vendor_lkm_dir := device/$(vendor)/lkm-4.x
+BOARD_RECOVERY_KERNEL_MODULES := \
+  $(vendor_lkm_dir)/vendor_module_a.ko \
+  $(vendor_lkm_dir)/vendor_module_b.ko
+</pre>
+
+<p>The Android build takes care of running <code>depmod</code> to generate the
+required <code>modules.dep</code> files in <code>/vendor/lib/modules</code> and
+<code>/lib/modules</code> (<code>recovery ramfs</code>).</p>
+
+<h3 id="module-loading-&-versioning">Module loading &amp; versioning</h3>
+<p>We recommend loading all kernel modules in one pass from
+<code>init.rc*</code> by invoking <code>modprobe -a</code>. This avoids the
+overhead of repeatedly initializing the C runtime environment for the
+<code>modprobe</code> binary. The <code>early-init</code> event can be modified
+to invoke <code>modprobe</code>:</p>
+
+<pre class="prettyprint">
+on early-init
+    exec u:r:modprobe:s0 -- /vendor/bin/modprobe -a -d \
+        /vendor/lib/modules module_a module_b module_c ...
+</pre>
+
+<p>The kernel image may be updated separately from the vendor image, meaning
+that kernel modules may be used with kernels other than the one they were
+originally compiled against. To allow for this, and to protect against ABI
+breakages, module versioning is used. Module versioning is enabled by
+<code>CONFIG_MODVERSIONS=y</code> (one of the required kernel configuration
+options mentioned above) and is documented in the kernel tree at
+<code>Documentation/kbuild/modules.txt</code>.</p>
+
+<h2 id="mounting-partitions-early-first-stage-mount">Mounting partitions early
+(first stage mount)</h2>
+<font style="font-family: Roboto, Arial, Helvetica, sans-serif; background-color: green; color: white">&nbsp;REQUIRED&nbsp;</font>
+<p>All Treble-enabled devices must enable first stage mount to make sure
+<code>init</code> can load SELinux policy fragments that are spread across
+<code>system</code> and <code>vendor</code> partitions (this also enables
+loading of kernel modules as soon as possible after kernel boot).</p>
+
+<aside class="note"><strong>Note:</strong> For details on SELinux in Android
+8.0, see <a href="/security/selinux/images/SELinux_Treble.pdf">SELinux for
+Android 8.0</a>.</aside>
+
+<p>Android must have access to the filesystem(s) on which the modules reside. To
+enable, Android O supports mounting <code>/system</code>, <code>/vendor</code>,
+or <code>/odm</code> as early as <code>init</code>'s first stage (i.e before
+selinux is initialized). Device makers can use
+<a href="/devices/architecture/dto/index.html">device tree overlays</a> to
+specify <code>fstab</code> entries for early mounted partitions.</p>
+
+<aside class="key-point"><strong>Summary of AOSP early mount changes:</strong>
+<ul>
+<li>
+<a href="https://android-review.googlesource.com/#/q/topic:pre-early-mount" class="external">Pre-early
+mount v1</a> &amp;
+<a href="https://android-review.googlesource.com/#/q/status:merged+project:platform/system/core+branch:master+topic:pre-early-mount-2" class="external">v2</a></li>
+<li><a href="https://android-review.googlesource.com/#/c/339471/" class="external">Miscellaneous
+partition lookup removal</a></li>
+<li>
+<a href="https://android-review.googlesource.com/#/q/branch:master+topic:early-mount-support" class="external">Early
+mount support</a></li>
+<li>
+<a href="https://android-review.googlesource.com/#/q/branch:master+topic:early-mount-support" class="external">Early
+mount with VBoot 2.0 (AVB)</a></li>
+</ul>
+</aside>
+
+<h3 id="early-mounting-partitions-vboot-1-0">Early mounting partitions, VBoot
+1.0</h3>
+<p>Requirements to early mount partitions with vboot 1.0 include:</p>
+<ol>
+<li>Device node paths must use their <em>by-name</em> symlinks in
+<code>fstab</code> and device tree entries. For example, instead of specifying
+partitions using <code>/dev/block/mmcblk0pX</code>, ensure partitions are named
+and the device node is <code>/dev/block/…./by-name/{system,vendor,odm}</code>.
+</li>
+<li>Paths given for <code>PRODUCT_{SYSTEM,VENDOR}_VERITY_PARTITION</code> and
+<code>CUSTOM_IMAGE_VERITY_BLOCK_DEVICE</code> in the device configuration for
+the product (i.e. in
+<code>device/<em>oem</em>/<em>project</em>/device.mk</code>) must match the
+corresponding block device nodes specified <em>by-name</em> in the
+<code>fstab</code>/device tree entries. Example:
+<pre class="prettyprint">
+PRODUCT_SYSTEM_VERITY_PARTITION := /dev/block/…./by-name/system
+PRODUCT_VENDOR_VERITY_PARTITION := /dev/block/…./by-name/vendor
+CUSTOM_IMAGE_VERITY_BLOCK_DEVICE := /dev/block/…./by-name/odm
+</pre>
+</li>
+<li>Entries provided via device tree overlays must not repeat in the
+<code>fstab</code> file fragments. For example, when specifying an entry to
+mount <code>/vendor</code> in the device tree, the <code>fstab</code> file must
+not repeat that entry.</li>
+<li>Only <code>/system</code>, <code>/odm</code>, or <code>/vendor</code> can be
+mounted early. Android does not include support to mount any other partitions in
+<code>init</code> first stage.</li>
+<li>Partitions requiring <code>verifyatboot</code> <strong>must not</strong> be
+early mounted (doing so is unsupported).</li>
+<li>The verity mode/state for verified partitions must be specified in kernel
+cmdline using <code>androidboot.veritymode</code> option (existing
+requirement).</li>
+</ol>
+
+<h3 id="early-mounting-device-tree-vboot-1-0">Early mounting device tree, VBoot
+1.0</h3>
+<p>In Android O, <code>init</code> parses the device tree and creates
+<code>fstab</code> entries to mount the partition early during its first stage.
+An fstab entry takes the form:</p>
+
+<pre class="prettyprint">src mnt_point type mnt_flags fs_mgr_flags</pre>
+
+<p>Device tree properties are defined to mimic that format:</p>
+
+<ul>
+<li><code>fstab</code>entries must be under <code>/firmware/android/fstab</code>
+in the device tree and must have compatible string set to
+<code>android,fstab</code>. </li>
+<li>Each node under <code>/firmware/android/fstab</code> is treated as a single
+early mount <code>fstab</code> entry. A node must have the following properties
+defined:
+ <ul>
+ <li><code>dev</code>. Must point to the device node representing the
+ partition <em>by-name</em>.</li>
+ <li><code>type</code>. Must be the filesystem type (as in the
+ <code>fstab</code> files).</li>
+ <li><code>mnt_flags</code>. Must be the comma-separated list of mount
+ flags (as in <code>fstab</code> files).</li>
+ <li><code>fsmgr_flags</code>. Must be the list of Android <code>fs_mgr
+ flags</code> (as in <code>fstab</code> files).
+  <ul>
+  <li>A/B partitions must have <code>slotselect fs_mgr</code>option.</li>
+  <li>dm-verity enabled partitions must have <code>verify fs_mgr</code> option.
+  </li>
+  </ul>
+ </li>
+ </ul>
+</li>
+</ul>
+
+<h4><strong>Example:</strong> /system and /vendor on N6P</h4>
+<p>The following example shows device tree early mount for <code>system</code>
+and <code>vendor</code> partitions on Nexus 6P:</p>
+
+<pre class="prettyprint">
+/ {
+  firmware {
+    android {
+      compatible = "android,firmware";
+  fstab {
+    compatible = "android,fstab";
+    system {
+      compatible = "android,system";
+      dev = "/dev/block/platform/soc.0/f9824900.sdhci/by-name/system";
+      type = "ext4";
+      mnt_flags = "ro,barrier=1,inode_readahead_blks=8";
+      fsmgr_flags = "wait,verify";
+    };
+    vendor {
+      compatible = "android,vendor";
+      dev = "/dev/block/platform/soc.0/f9824900.sdhci/by-name/vendor";
+      type = "ext4";
+      mnt_flags = "ro,barrier=1,inode_readahead_blks=8";
+      fsmgr_flags = "wait";
+    };
+      };
+    };
+  };
+};
+</pre>
+
+<h4><strong>Example:</strong> /vendor on Pixel</h4>
+<p>The following example shows device tree early mount for
+<code>/vendor</code> on Pixel (remember to add <code>slotselect</code> for
+partitions subject to A/B):</p>
+
+<pre class="prettyprint">
+/ {
+  firmware {
+    android {
+      compatible = "android,firmware";
+      fstab {
+        compatible = "android,fstab";
+        vendor {
+          compatible = "android,vendor";
+          dev = "/dev/block/platform/soc/624000.ufshc/by-name/vendor";
+          type = "ext4";
+          mnt_flags = "ro,barrier=1,discard";
+          fsmgr_flags = "wait,slotselect,verify";
+        };
+      };
+    };
+  };
+};
+</pre>
+
+<h3 id="early-mounting-partitions-vboot-2-0">Early mounting partitions, VBoot
+2.0</h3>
+<p>VBoot 2.0 is
+<a href="https://android.googlesource.com/platform/external/avb/" class="external">Android
+Verified Boot (AVB).</a> The requirements to early mount partitions with VBoot
+2.0 are:</p>
+<ol>
+<li>The device node paths must use their <em>by-name</em> symlinks in
+<code>fstab</code> and device tree entries. For example, instead of specifying
+partitions using <code>/dev/block/mmcblk0pX</code>, ensure the partitions are
+named and the device node is
+<code>/dev/block/…./by-name/{system,vendor,odm}</code>.</li>
+<li>Build system variables (such as
+<code>PRODUCT_{SYSTEM,VENDOR}_VERITY_PARTITION</code> and
+<code>CUSTOM_IMAGE_VERITY_BLOCK_DEVICE</code>) used for VBoot 1.0 are NOT
+required for VBoot 2.0. Instead, new build variables introduced in VBoot 2.0
+(including <code>BOARD_AVB_ENABLE := true</code>) should be defined; for a full
+configuration, refer to
+<a href="https://android.googlesource.com/platform/external/avb/#Build-System-Integration" class="external">Build-System-Integration
+for AVB</a>.</li>
+<li>Entries provided via device tree overlays must not repeat in the
+<code>fstab</code> file fragments. For example, if you specify an entry to mount
+<code>/vendor</code> in the device tree, the <code>fstab</code> file must not
+repeat that entry.</li>
+<li>Only <code>/system</code>, <code>/odm</code>, or <code>/vendor</code> can be
+mounted early. Android does not include support to mount any other partitions in
+<code>init</code> first stage.</li>
+<li>VBoot 2.0 does not support <code>verifyatboot</code>, regardless of whether
+early mount is enabled or not.</li>
+<li>The verity mode/state for verified partitions must be specified in kernel
+cmdline using <code>androidboot.veritymode</code> option (existing requirement).
+Make sure to include the following fixes for AVB:
+ <ul>
+ <li>
+ <a href="https://android-review.googlesource.com/#/q/topic:libavb-api-rev-for-verity-modes+(status:open+OR+status:merged)" class="external">https://android-review.googlesource.com/#/q/topic:libavb-api-rev-for-verity-modes+(status:open+OR+status:merged)</a></li>
+ <li>
+ <a href="https://android-review.googlesource.com/#/c/394215/" class="external">https://android-review.googlesource.com/#/c/394215/</a></li>
+ </ul>
+</li>
+</ol>
+
+<h3 id="early-mounting-device-tree-vboot-2-0">Early mounting device tree, VBoot
+2.0</h3>
+<p>The configuration in device tree for VBoot 2.0 is the same as that in
+<a href="#early-mounting-device-tree-vboot-1-0">VBoot 1.0</a>, with the
+following exceptions:</p>
+<ul>
+<li>The <code>fsmgr_flag</code> is switched from <code>verify</code> to
+<code>avb</code>.</li>
+<li>All partitions with AVB metadata must be in the vbmeta entry in device tree,
+even when the partition isn't mounting early (e.g., <code>/boot</code>).</li>
+</ul>
+
+<h4><strong>Example:</strong> /system and /vendor on N5X</h4>
+<p>The following example shows device tree early mount for <code>system</code>
+and <code>vendor</code> partitions on Nexus 5X. Note that:</p>
+<ul>
+<li><code>/system</code> is mounted with AVB and <code>/vendor</code> is mounted
+without integrity verification.</li>
+<li>As the Nexus 5X has no <code>/vbmeta</code> partition, so the top-level
+vbmeta resides at the end of <code>/boot</code> partition (for details, refer to
+the
+<a href="https://android-review.googlesource.com/#/c/344907/" class="external">AOSP
+changelist</a>).
+
+<pre class="prettyprint">
+/ {
+  firmware {
+    android {
+      compatible = "android,firmware";
+      vbmeta {
+      compatible = "android,vbmeta";
+      parts = "boot,system,vendor";
+      };
+  fstab {
+    compatible = "android,fstab";
+    system {
+      compatible = "android,system";
+      dev = "/dev/block/platform/soc.0/f9824900.sdhci/by-name/system";
+      type = "ext4";
+      mnt_flags = "ro,barrier=1,inode_readahead_blks=8";
+      fsmgr_flags = "wait,avb";
+        };
+    vendor {
+      compatible = "android,vendor";
+      dev = "/dev/block/platform/soc.0/f9824900.sdhci/by-name/vendor";
+      type = "ext4";
+      mnt_flags = "ro,barrier=1,inode_readahead_blks=8";
+      fsmgr_flags = "wait";
+        };
+      };
+    };
+  };
+};
+</pre>
+</li>
+</ul>
+
+<h4><strong>Example:</strong> /vendor on Pixel</h4>
+<p>The following example shows mounting <code>/vendor</code> early on a Pixel.
+Note that:</p>
+
+<ul>
+<li>More partitions are specified in the vbmeta entry because those partitions
+are
+<a href="https://android.googlesource.com/platform/external/avb/#The-VBMeta-struct">protected
+by AVB.</a></li>
+<li>All AVB partitions must be included, even if only <code>/vendor</code> is
+early mounted.</li>
+<li>Remember to add <strong><code>slotselect</code></strong> for partitions
+subject to A/B.
+<pre class="prettyprint">
+/ {
+  vbmeta {
+      compatible = "android,vbmeta";
+  parts = "vbmeta,boot,system,vendor,dtbo";
+  };
+  firmware {
+    android {
+      compatible = "android,firmware";
+      fstab {
+        compatible = "android,fstab";
+        vendor {
+          compatible = "android,vendor";
+          dev = "/dev/block/platform/soc/624000.ufshc/by-name/vendor";
+          type = "ext4";
+          mnt_flags = "ro,barrier=1,discard";
+          fsmgr_flags = "wait,slotselect,avb";
+        };
+      };
+    };
+  };
+};
+</pre>
+</li>
+</ul>
+
+<h2 id="device-tree-overlay-support-bootloader">Device tree overlay support
+(Bootloader)</h2>
+<p>
+<a href="https://lkml.org/lkml/2012/11/5/615">Device Tree Overlay</a> (DTO) was
+designed to extend the existing
+<a href="https://events.linuxfoundation.org/sites/events/files/slides/petazzoni-device-tree-dummies.pdf" class="external">flattened
+device-tree (FDT)</a> implementation so that the initial device-tree data in
+kernel can be modified by userspace at runtime by loading additional overlay
+FDTs that amend the original data. Android does not require runtime updates of
+DT blobs from user space, but instead recommends that vendors add the device
+tree patching in the bootloader with the help of
+<code>libfdt</code>/<code>libufdt</code>.</p>
+
+<p>In Android 7.x and earlier, Android did not require device tree support and
+did not provide recommendations regarding how vendors pass DT blobs to the
+kernel or where they store them. Android O recommends such support to keep the
+board–specific and SoC-only parts of the kernel separate.</p>
+
+<h3 id="partitioning-requirements">Partitioning requirements</h3>
+<p>Most Android devices today append the DT blob to the kernel at build time,
+which the bootloader knows how to read from. As Android has no specific
+requirements for how to build/store DT blobs (which is considered as part of the
+SoC kernel), the DT blob can be appended to the kernel or stored in a separate
+partition. The only assumption is that the bootloader already knows how and
+where to load the DT blob from.</p>
+
+<p>Requirements for Device Tree Overlay support (if used):</p>
+<ul>
+<li>Device should have new device tree blob for overlay (DTBO) partion per
+kernel image for board–specific DT overlay (for details on the partition format,
+see <a href="/devices/architecture/dto/partitions.html">DTB/DTBO Partitions</a>.
+The assumption is that bootloader already knows where and how to load the
+SoC–specific DTB.</li>
+<li>Overlay DT partition should be
+<a href="https://source.android.com/devices/tech/ota/ab_updates.html">A/B-ed</a>
+for A/B devices. For these devices, the recovery kernel is the same as Android
+kernel, but the partition must be A/B-ed as it can be updated via OTA.</li>
+<li>Partition size is board–specific.
+ <ul>
+ <li>The DT overlay partition size depends on the device and the amount of
+ changes needed on top of the main SoC kernel DT blob.</li>
+ <li>The size of the DTBO partition is a function of number of changes needed to
+ make the SoC kernel. Choose a size with room to grow for future updates
+ (typically, 8MB partition size is more than enough).</li>
+ </ul>
+</li>
+</ul>
+
+<h3 id="bootloader-requirements">Bootloader requirements</h3>
+<p>Requirements for bootloader include the following:</p>
+<ul>
+<li>Bootloader should know how and where (considering the boot slot for A/B
+devices) to load the SoC–specific DT blob from in a vendor-specific way. This is
+typically extracted from the end of the kernel image as blobs are appended to
+the kernel.</li>
+<li>Bootloader should know how and where (considering the boot slot for A/B
+devices) to load the overlay DT blob from in a vendor-specific way.</li>
+<li>Bootloader must patch the main DT blob with the overlay before passing the
+combined device tree to the kernel.</li>
+</ul>
+
+<p>For more details about adding support for DTO in bootloader, see
+<a href="/devices/architecture/dto/index.html">Device Tree Overlays</a>.</p>
+
+<h2 id="core-kernel-requirements">Core kernel requirements</h2>
+<p>Android O mandates a minimum kernel version and kernel configuration and
+checks them both in VTS as well as during an OTA. Android device kernels must
+enable the kernel <code>.config</code> support along with the option to read the
+kernel configuration at runtime through <code>procfs</code>.</p>
+
+<h3 id="kernel-config-support">Kernel .config support</h3>
+<p>All device kernels must enable the entirety of
+<a href="https://android.googlesource.com/kernel/common/+/android-4.4/android/configs/android-base.cfg" class="external">android-base.cfg</a>,
+which must include the following kernel–config options (or their kernel–version
+equivalent):</p>
+
+<pre class="prettyprint">
+CONFIG_IKCONFIG=y
+CONFIG_IKCONFIG_PROC=y
+</pre>
+
+<h3 id="kernel-version">Kernel version</h3>
+<p>Kernel version requirements:</p>
+<ul>
+<li>All SoCs productized in 2017 must launch with kernel 4.4 or newer.</li>
+<li>All other SoCs launching new Android devices running Android O must use
+kernel 3.18 or newer.</li>
+<li>Regardless of launch date, all SoCs with device launches on Android O remain
+subject to kernel changes required to enable Treble.</li>
+<li>Older Android devices released prior to Android O but that will be upgraded
+to Android O can continue to use their original base kernel version if
+desired.</li>
+</ul>
+
+<h3 id="device-tree-support">Device tree support</h3>
+<p>Device tree support in the kernel must be enabled and bootloaders must pass
+the hardware description in the form of device tree to the kernel (unless the
+platform supports ACPI). The device tree must also be available for Android to
+read and be able to pass vendor/odm specific parameters to Android.
+<code>CONFIG_OF</code> (along with all other device/subsystem specific
+<code>CONFIG_OF_*</code> kernel config options) are mandatory.</p>
+
+<p><code>CONFIG_PROC_DEVICETREE</code> is required on kernels prior to 3.15 so
+Android can access vendor/odm specific configuration very early during boot. On
+kernels 3.15 and later, the functionality of this option is merged into
+<code>CONFIG_OF</code>.</p>
+
+<pre class="prettyprint">
+CONFIG_OF=y
+CONFIG_PROC_DEVICETREE=y (kernels prior to 3.15)
+</pre>
+
+<p>For an example of using device tree to early mount
+<code>vendor</code>/<code>odm</code> partitions, refer to the
+<a href="https://android-review.googlesource.com/#/c/337310/" class="external">AOSP
+changelist</a>.</p>
+
+<h3 id="debugfs">DebugFS</h3>
+<p>The implementation of the vendor interface should not rely on
+<code>debugfs</code>. It may be enabled, but VTS testing may be done with
+<code>debugfs</code> unmounted.</p>
+
+<h2 id="beyond-android-o">Beyond Android O</h2>
+<p>Android O recommends any board–specific kernel functionality to be in the
+form of loadable kernel modules and device–tree overlays. The rest of the kernel
+is treated monolithically with respect to Android (whether or not is it is
+actually a monolithic kernel, or parts of it are compiled as kernel modules).
+</p>
+
+<p>This monolithic kernel is an SoC kernel that can boot on the SoC vendor's
+reference hardware but nothing beyond that. Today, SoC kernels are treated
+similar to the common kernel; they are also heavily replicated in board–specific
+repos. This distribution model causes them to be fixed differently for the same
+bug in each branch, delaying future updates to the kernel due to cherry–picking
+at different times or fixing the same bug differently. To counter this, the SoC
+kernels must be a separate deliverable, with everyone who uses the SoC
+contributing to the same SoC kernel.</p>
+
+<p>Figure 1 (below) illustrates a common example of how SoC kernels get
+fragmented over time, across Android releases, and across ODMs.</p>
+
+<img src="../images/treble_kernel_current.png">
+<figcaption><strong>Figure 1.</strong> Device kernel replication.</figcaption>
+
+<p>Figure 1 shows the following:</p>
+<ol>
+<li>It takes a significant amount of effort and time for everyone to cross-merge
+across board–specific branches/tags.</li>
+<li>While waiting for the cross-merge, Android device manufacturers patch their
+own kernel for bugs/security fixes.</li>
+<li>Divergence from the ancestor make future upgrades/merges really
+difficult.</li>
+</ol>
+<p>The proposed model for a common SoC kernel addresses problems created by
+upmerging changes (SoC-specific bug fixes, LTS upgrades, security fixes, etc.).
+Figure 2 (below) illustrates how the workflow will change in an ideal,
+unified–per–SoC–kernel scenario:</p>
+
+<img src="../images/treble_kernel_treble.png">
+<figcaption><strong>Figure 2.</strong> Android O and higher device
+kernels.</figcaption>
+
+<p>This is intended to solve the problem of fragmented kernel repos by
+recommending and working with device manufacturers to stay up to date with the
+common SoC kernel. Android O provides all possible options to ODMs to help them
+avoid maintaining their own SoC kernels and instead rely on the common SoC
+kernel for LTS upgrades/bug fixes/security patches/etc.</p>
+
+<p>As a start, we want to facilitate all ODMs/vendors using a single kernel
+source for an SoC. In the future, we want to move towards a single binary
+distribution of kernel per-SoC.</p>
+
+<h3 id="upstreaming">Upstreaming</h3>
+<p>To make updating to newer kernel versions much easier and almost automatic,
+and to provide a more secure and reliable platform for ODMs to build a product
+with, it is strongly recommended that SoC vendors work to upstream their kernel
+changes and get them accepted into the main kernel.org repository. While doing
+so requires additional, up front efforts in time and engineering resources, it
+is well documented to save both time and money in the long run. It has also been
+documented that merged code is of a much higher quality with fewer bugs and
+security issues (and usually smaller) than code that has not been reviewed by
+the community.</p>
+
+<p>If full support for the SoC is merged upstream, the community can make needed
+API changes as the internal kernel API evolves over time, automatically
+extending the longevity of the platform. The kernel can also be automatically
+tested for any regressions in development and stable releases by adding the
+hardware platform to one of the many community-managed kernel test platforms
+(such as
+<code><a href="https://kernelci.org" class="external">kernelci.org</a></code>).
+</p>
+
+<p>For help working with the Linux kernel community to upstream your code, refer
+to the following resources:</p>
+<ul>
+<li><code>Documentation/process</code>
+(<code>Documentation/development-process</code> in 4.9 and earlier)</li>
+<li><code>Documentation/CodingStyle</code></li>
+<li><code>Documentation/SubmittingPatches</code></li>
+</ul>
+
+<p>The community uses a minimal review process to accept stand-alone drivers and
+filesystems into the staging portion of the kernel, where the community works to
+improve code quality.</p>
+
+  </body>
+</html>

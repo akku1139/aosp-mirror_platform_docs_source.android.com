@@ -1,0 +1,449 @@
+<html devsite>
+  <head>
+    <title>Renderscript</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p><em>RenderScript</em> is a framework for running computationally intensive
+tasks at high performance on Android. It is designed for use with data-parallel
+computation, although serial workloads can benefit as well. The RenderScript
+runtime parallelizes work across processors available on a device, such as
+multi-core CPUs and GPUs, enabling developers to focus on expressing algorithms
+rather than scheduling work. RenderScript is especially useful for applications
+performing image processing, computational photography, or computer vision.</p>
+
+<p>Android O devices use the following RenderScript framework and vendor HALs:
+</p>
+<img src="../images/treble_rs_linking.png">
+<figcaption><strong>Figure 1.</strong> Vendor code linking to internal libs.
+</figcaption>
+
+<p>Differences from RenderScript in Android 7.x and earlier include:</p>
+<ul>
+<li>Two instances of RenderScript internal libs in a process. One set is for CPU
+fallback path and is from directly at <code>/system/lib</code>; the other set is
+for GPU path and is from <code>/system/lib/vndk-sp</code>.</li>
+<li>RS internal libs in <code>/system/lib</code> are built as part of the
+platform and are updated as <code>system.img</code> is upgraded. However, libs
+in <code>/system/lib/vndk-sp</code> are built for the vendor and are not updated
+when <code>system.img</code> is upgraded (while they can be updated for a
+security fix, their ABI remains the same).</li>
+<li>Vendor code (RS HAL, RS driver, and the bcc plugin) are linked against the
+RenderScript internal libs located at <code>/system/lib/vndk-sp</code>. They
+cannot link against libs in <code>/system/lib</code> because libs in that
+directory are built for the platform and thus may not be compatible with the
+vendor code (i.e., symbols may be removed). Doing so would make a framework-only
+OTA impossible.</li>
+</ul>
+
+<p>For more details, see
+<a href="https://developer.android.com/guide/topics/renderscript/compute.html" class="external">Renderscript</a>
+on developer.android.com.</p>
+
+<h2 id="design">Design</h2>
+<p>The following sections detail RenderScript design in Android O.</p>
+
+<h3 id="renderscript-libs-available-to-vendors">RenderScript libs available to
+vendors</h3>
+<p>This section lists the RenderScript libs (known as Vendor NDK for
+Same-Process HALs or VNDK-SP) that are available to vendor code and which can be
+linked against. It also details additional libraries that are unrelated to
+RenderScript but which are also provided to vendor code.</p>
+
+<p>While the following list of libraries might differ between Android release,
+it is immutable for a specific Android release; for an up-to-date list of
+available libraries, refer to <code>/system/etc/ld.config.txt</code>.</p>
+
+<aside class="note"><strong>Note:</strong> Libraries not listed below cannot be
+used by any vendor code; i.e. <code>libLLVM.so</code> cannot be used by the
+vendor's bcc plugin as the lib is not in the list.</aside>
+
+<table>
+<tr>
+<th style="width:50%">RenderScript Libs</th>
+<th>Non-RenderScript Libs</th>
+</tr>
+<tr>
+<td><ul>
+<li><code>android.hardware.graphics.renderscript@1.0.so</code></li>
+<li><code>libRS_internal.so</code></li>
+<li><code>libRSCpuRef.so</code></li>
+<li><code>libblas.so</code></li>
+<li><code>libbcinfo.so</code></li>
+<li><code>libcompiler_rt.so</code></li>
+<li><code>libRSDriver.so</code></li>
+</ul></td>
+<td><ul>
+<li><code>libc.so</code></li>
+<li><code>libm.so</code></li>
+<li><code>libdl.so</code></li>
+<li><code>libstdc++.so</code></li>
+<li><code>liblog.so</code></li>
+<li><code>libnativewindow.so</code></li>
+<li><code>libsync.so</code></li>
+<li><code>libvndksupport.so</code></li>
+<li><code>libbase.so</code></li>
+<li><code>libc++.so</code></li>
+<li><code>libcutils.so</code></li>
+<li><code>libutils.so</code></li>
+<li><code>libhardware.so</code></li>
+<li><code>libhidlbase.so</code></li>
+<li><code>libhidltransport.so</code></li>
+<li><code>libhwbinder.so</code></li>
+<li><code>liblzma.so</code></li>
+<li><code>libz.so</code></li>
+<li><code>libEGL.so</code></li>
+<li><code>libGLESv1_CM.so</code></li>
+<li><code>libGLESv2.so</code></li>
+</ul></td>
+  </tr>
+</table>
+
+<h3 id="linker-namespace-configuration">Linker namespace configuration</h3>
+<p>The linking restriction that prevents libs not in VNDK-SP from being used by
+vendor code is enforced at runtime using the linker namespace. (For details,
+refer to the
+<a href="/devices/architecture/images/vndk_design_android_o.pdf">VNDK Design in
+Android O</a> presentation.)</p>
+
+<p>On a device running Android O, all Same-Process HALs (SP-HALs) <em>except
+RenderScript</em> are loaded inside the linker namespace <code>sphal</code>.
+RenderScript is loaded into the RenderScript-specific namespace <code>rs</code>,
+a location that enables a slightly looser enforcement for RenderScript libs.
+Because the RS implementation needs to load the compiled bitcode,
+<code>/data/*/*.so</code> is added to the path of the <code>rs</code> namespace
+(other SP-HALs are not allowed to load libs from the data partition).</p>
+
+<p>In addition, the <code>rs</code> namespace allows more libs than provided for
+by other namespaces. <code>libmediandk.so</code> and <code>libft2.so</code> are
+exposed to the <code>rs</code> namespace because <code>libRS_internal.so</code>
+has an internal dependency to these libraries.</p>
+
+<img src="../images/treble_rs_namespace.png">
+<figcaption><strong>Figure 2.</strong> Namespace configuration for linker.
+</figcaption>
+
+<h3 id="loading-drivers">Loading drivers</h3>
+
+<h4>CPU fallback path</h4>
+<p>Depending on the existence of the <code>RS_CONTEXT_LOW_LATENCY</code> bit
+when creating an RS context, either the CPU or GPU path is selected. When the
+CPU path is selected, <code>libRS_internal.so</code> (the main implementation of
+the RS framework) is directly <code>dlopen</code>ed from the default linker
+namespace where the platform version of RS libs are provided.</p>
+
+<p>The RS HAL implementation from the vendor is not used at all when the CPU
+fallback path is taken, and an <code>RsContext</code> object is created with
+null <code>mVendorDriverName</code>. <code>libRSDriver.so</code> is (by default)
+<code>dlopen</code>ed and the driver lib is loaded from the <code>default</code>
+namespace because the caller (<code>libRS_internal.so</code>) is also loaded in
+the <code>default</code> namespace.</p>
+
+<img src="../images/treble_rs_cpu_fallback.png">
+<figcaption><strong>Figure 4.</strong> CPU fallback path.</figcaption>
+
+<h4 id="gpu-path">GPU path</h4>
+<p>For the GPU path, the <code>libRS_internal.so</code> is loaded differently.
+First, <code>libRS.so</code> uses
+<code>android.hardware.renderscript@1.0.so</code> (and its underlying
+<code>libhidltransport.so</code>) to load
+<code>android.hardware.renderscript@1.0-impl.so</code> (a vendor implementation
+of RS HAL) into a different linker namespace called <code>sphal</code>. The RS
+HAL then <code>dlopen</code>s <code>libRS_internal.so</code> in a another linker
+namespace called <code>rs</code>.</p>
+
+<p>Vendors can provide their own RS driver by setting the build-time flag
+<code>OVERRIDE_RS_DRIVER</code>, which is embedded into the RS HAL
+implementation
+(<code>hardware/interfaces/renderscript/1.0/default/Context.cpp</code>). This
+driver name is then <code>dlopen</code>ed for the RS context for the GPU path.
+</p>
+
+<p>The creation of the <code>RsContext</code> object is delegated to the RS HAL
+implementation. The HAL calls back to the RS framework using
+<code>rsContextCreateVendor()</code> function with the name of the driver to use
+as an argument. The RS framework then loads the specified driver when the
+<code>RsContext</code> is initialized. In this case, the driver library is
+loaded into the <code>rs</code> namespace because the <code>RsContext</code>
+object is created inside the <code>rs</code> namespace and
+<code>/vendor/lib</code> is in the search path of the namespace.</p>
+
+<img src="../images/treble_rs_gpu_fallback.png">
+<figcaption><strong>Figure 5.</strong> GPU fallback path.</figcaption>
+
+<p>When transitioning from the <code>default</code> namespace to the
+<code>sphal</code> namespace, <code>libhidltransport.so</code> uses the
+<code>android_load_sphal_library()</code> function to explicitly order the
+dynamic linker to load the <code>-impl.so</code> library from the
+<code>sphal</code> namespace.</p>
+
+<p>When transitioning from the <code>sphal</code> namespace to the <code>rs</code>
+namespace, loading is done indirectly by the following line in
+<code>/system/etc/ld.config.txt</code>:</p>
+
+<pre class="prettyprint">
+namespace.sphal.link.rs.shared_libs = libRS_internal.so
+</pre>
+
+<p>This line specifies the dynamic linker should load
+<code>libRS_internal.so</code> from the <code>rs</code> namespace when the lib
+can't be found/loaded from the <code>sphal</code> namespace (which is always the
+case because <code>sphal</code> namespace does not search
+<code>/system/lib/vndk-sp</code> where <code>libRS_internal.so</code> resides).
+With this configuration, a simple <code>dlopen()</code> call to
+<code>libRS_internal.so</code> is enough to make the namespace transition.</p>
+
+<h3 id="loading-bcc-plugin">Loading bcc plugin</h3>
+<p><code>bcc plugin</code> is a vendor-provided library loaded into the
+<code>bcc</code> compiler. Because <code>bcc</code> is a system process in the
+<code>/system/bin</code> directory, the <code>bcc plugin</code> library can be
+considered an SP-HAL (i.e., a vendor HAL that can be directly loaded into the
+system process without being binderized). As an SP-HAL, the
+<code>bcc-plugin</code> library:</p>
+<ul>
+<li>Cannot link against framework-only libraries such as
+<code>libLLVM.so</code>.</li>
+<li>Can link against only the VNDK-SP libraries available to the
+vendor.</li>
+</ul>
+
+<p>This restriction is enforced by loading the bcc plugin into the
+<code>sphal</code> namespace using the <code>android_sphal_load_library()</code>
+function. In previous versions of Android, the plugin name was specified using
+the <code>-load</code> option and the lib was loaded using the simple
+<code>dlopen()</code> by <code>libLLVM.so</code>. In Android O, this is
+specified in <code>-plugin</code> option and the lib is directly loaded by the
+<code>bcc</code> itself. This option enables a non-Android-specific path to
+the open source LLVM project.</p>
+
+<img src="../images/treble_rs_bcc_plugin_old.png">
+<figcaption><strong>Figure 6.</strong> Loading bcc plugin, Android 7.x and
+earlier.</figcaption>
+<br>
+<br>
+<img src="../images/treble_rs_bcc_plugin_new.png">
+<figcaption><strong>Figure 7. </strong>Loading bcc plugin, Android O.
+</figcaption>
+
+<h3 id="search-paths-for-ld-mc">Search paths for ld.mc</h3>
+<p>When executing <code>ld.mc</code>, some RS runtime libs are given as inputs
+to the linker. The RS bitcode from the app is linked against the runtime libs
+and when the converted bitcode is loaded into an app process, the runtime libs
+are again dynamically linked from the converted bitcode.</p>
+
+<p>Runtime libs include:</p>
+<ul>
+<li><code>libcompiler_rt.so</code></li>
+<li><code>libm.so</code></li>
+<li><code>libc.so</code></li>
+<li>RS driver (either <code>libRSDriver.so</code> or
+<code>OVERRIDE_RS_DRIVER</code>)</li>
+</ul>
+
+<p>When loading the compiled bitcode into the app process, we must provide the
+exact same library that was used by <code>ld.mc</code>. Otherwise, the compiled
+bitcode may not find a symbol which was available when it was linked.</p>
+
+<p>To do so, RS framework uses different search paths for the runtime libs when
+executing <code>ld.mc</code>, depending on whether the RS framework itself is
+loaded from <code>/system/lib</code> or from <code>/system/lib/vndk-sp</code>.
+This can be determined by reading the address of an arbitrary symbol of a RS
+framework lib and using <code>dladdr()</code> to get the file path mapped to the
+address.</p>
+
+<h3 id="selinux-policy">SELinux policy</h3>
+<p>As a result of the SELinux policy changes in Android O, you must follow
+specific rules (enforced through <code>neverallows</code>) when labelling
+additional files in <code>vendor</code> partition:</p>
+<ul>
+<li><code>vendor_file</code> must be the default label in for all files in
+<code>vendor</code> partition. The platform policy requires this to access
+passthrough HAL implementations.</li>
+<li>All new <code>exec_types</code> added in <code>vendor</code> partition
+through vendor SEPolicy must have <code>vendor_file_type</code> attribute. This
+is enforced through <code>neverallows</code>.</li>
+<li>To avoid conflicts with future platform/framework updates, avoid labelling
+files other than <code>exec_types</code> in <code>vendor</code> partition.
+<li>All library dependencies for AOSP-identified same process HALs must be
+labelled as <code>same_process_hal_file</code>.</li>
+</ul>
+
+<aside class="note"><strong>Note:</strong> For details on Android 8.0 SELinux,
+see <a href="/security/selinux/images/SELinux_Treble.pdf">SELinux for Android
+8.0</a>.</aside>
+
+<h3 id="abi-compatibility-for-bitcode">ABI compatibility for bitcode</h3>
+<p>If no new APIs are added, which means no HAL version bump, the RS frameworks
+will keep using the existing GPU (HAL 1.0) driver.</p>
+
+<p>For minor HAL changes (HAL 1.1) not affecting bitcode, the frameworks should
+fallback to CPU for these newly added APIs and keep using GPU (HAL 1.0) driver
+elsewhere.</p>
+
+<p>For major HAL changes (HAL 2.0) affecting bitcode compilation/linking, RS
+frameworks should choose not to load vendor-provided GPU drivers and instead use
+the CPU or Vulkan path for acceleration.</p>
+
+<p>Consuming RenderScript bitcode occurs in three stages:</p>
+
+<table>
+<tr>
+<th>Stage</th>
+<th>Details</th>
+</tr>
+<tr>
+<td><em>Compile</em></td>
+<td><ul>
+<li>The input bitcode (.bc) for <code>bcc</code> must be in
+<code>LLVM 3.2</code> bitcode format and <code>bcc</code> must be backward
+compatible with existing (legacy) apps.</li>
+<li>However, the meta-data in .bc could change (there could new runtime
+functions, e.g, Allocation setters &mp; getters, math functions, etc.). Part
+of the runtime functions lives in <code>libclcore.bc</code>, part of them
+lives in LibRSDriver or vendor equivalent.</li>
+<li>New runtime functions or breaking meta-data changes require incrementing
+the bitcode API level. Because vendor drivers won't be able to consume it, the
+HAL version must also be incremented.</li>
+<li>Vendors may have their own compilers, but the conclusions/requirements for
+<code>bcc</code> also apply to those compilers.</li>
+</ul></td>
+</tr>
+<tr>
+<td><em>Link</em></td>
+<td><ul>
+<li>The compiled .o will be linked with vendor driver, e.g,
+<code>libRSDriver_foo.so</code>, and <code>libcompiler_rt.so</code>. The CPU
+path will link with <code>libRSDriver.so</code>.</li>
+<li>If the .o requires a new runtime API from <code>libRSDriver_foo</code>, the
+vendor driver has to be updated to support it.</li>
+<li>Certain vendors may have their own linkers, but the argument for
+<code>ld.mc</code> also apply to them.</li>
+</ul></td>
+</tr>
+<tr>
+<td><em>Load</em></td>
+<td><ul>
+<li><code>libRSCpuRef</code> loads the the shared object. If there are changes
+to this interface, a HAL version bump is needed.</li>
+<li>Vendors would either rely on <code>libRSCpuRef</code> to load the shared
+object, or implement their own.</li>
+</ul></td>
+</tr>
+</table>
+
+<p>In addition to the HAL, runtime APIs and the exported symbols are also
+interfaces. Neither interface has changed since Android 7.0 (API 24) and there
+are no immediate plans to change it in Android O and beyond. However, if the
+interface does change, the HAL version will also increment.</p>
+
+<h2 id="vendor-implementations">Vendor implementations</h2>
+<p>Android O requires some GPU driver changes for the GPU driver to work
+correctly.</p>
+
+<h3 id="driver-modules">Driver modules</h3>
+<ul>
+<li>Driver modules must not depend on any system libraries that are not in
+<a href="#renderscript-libs-available-to-vendors">the list</a>.</li>
+<li>Driver must provide its own
+<code>android.hardware.renderscript@1.0-impl_{NAME}</code>, or declare the
+default implementation <code>android.hardware.renderscript@1.0-impl</code> as
+its dependency.</li>
+<li>CPU implementation <code>libRSDriver.so</code> is a good example of how to
+remove non-VNDK-SP dependencies.</li>
+</ul>
+
+<h3 id="bitcode-compiler">Bitcode compiler</h3>
+<p>You can compile RenderScript bitcode for the vendor driver in two ways:</p>
+<ol>
+<li>Invoke vendor-specific RenderScript compiler in <code>/vendor/bin/</code>
+(preferred method of GPU compilation). Similar to other driver modules, the
+vendor compiler binary cannot depend on any system library that is not in the
+list of <a href="#renderscript-libs-available-to-vendors">RenderScript libs
+available to vendors</a>.</li>
+<li>Invoke system bcc: <code>/system/bin/bcc</code> with a vendor-provided bcc
+plugin. The <code>bcc plugin</code> cannot depend on any system library that is
+not in the list of
+<a href="#renderscript-libs-available-to-vendors">RenderScript libs available to
+vendors</a>.</li>
+</ol>
+
+<p>If the vendor <code>bcc plugin</code> needs to interfere with the CPU
+compilation and its dependency on <code>libLLVM.so</code> cannot be easily
+removed, the vendor should copy <code>bcc</code> (and all the non-LL-NDK
+dependencies, including <code>libLLVM.so</code>, <code>libbcc.so</code>) into
+<code>/vendor</code> partition.</p>
+
+<p>In addition, vendors need to make the following changes:</p>
+<img src="../images/treble_rs_vendor_driver.png">
+<figcaption><strong>Figure 8.</strong> Changes to vendor driver.</figcaption>
+<ol>
+<li>Copy <code>libclcore.bc</code> to <code>/vendor</code> partition. This
+ensures <code>libclcore.bc</code>, <code>libLLVM.so</code>, and
+<code>libbcc.so</code> are in sync.</li>
+<li>Change the path to the <code>bcc</code> executable by setting
+<code>RsdCpuScriptImpl::BCC_EXE_PATH</code> from the RS HAL implementation.</li>
+</ol>
+
+<aside class="note"><strong>Note:</strong> Restrictions for
+<code>/vendor/bin/*</code> processes are not fully implemented in Android O.
+While not recommended, it is theoretically possible to just copy
+<code>bcc</code> to <code>/vendor/bin/ </code>without copying its dependencies.
+</aside>
+
+<h3 id="selinux-policy">SELinux policy</h3>
+<p>SELinux policy affects both the driver and the compiler executables. All
+driver modules must be labeled <code>same_process_hal_file</code> in the
+device's <code>file_contexts</code>. For example:</p>
+
+<pre class="prettyprint">
+/vendor/lib(64)?/libRSDriver_EXAMPLE\.so     u:object_r:same_process_hal_file:s0
+</pre>
+
+<p>The compiler executable must be able to be invoked by an app process, as does
+the vendor copy of bcc (<code>/vendor/bin/bcc</code>). For example:</p>
+
+<pre class="prettyprint">
+device/vendor_foo/device_bar/sepolicy/file.te:
+type renderscript_exec, exec_type, file_type;
+
+device/vendor_foo/device_bar/sepolicy/app.te:
+allow appdomain renderscript_exec:file { read open getattr execute execute_no_trans };
+
+device/vendor_foo/device_bar/sepolicy/file_contexts:
+/vendor/bin/bcc                    u:object_r:renderscript_exec:s0
+</pre>
+
+<h3 id="legacy-devices">Legacy devices</h3>
+<p>Legacy devices are those that satisfy the following conditions:</p>
+<ol>
+<li><em>PRODUCT_SHIPPING_API_LEVEL</em> is lower than 26.</li>
+<li><em>PRODUCT_FULL_TREBLE_OVERRIDE</em> is not defined.</li>
+</ol>
+
+<p>For legacy devices, the restrictions detailed throughout this document are
+not enforced when upgrading to Android O, meaning the drivers can continue to
+link to libraries in <code>/system/lib[64]</code>. However, because of the
+architecture change related with <code>OVERRIDE_RS_DRIVER</code>,
+<code>android.hardware.renderscript@1.0-impl</code> must be installed to
+<code>/vendor</code> partition; failing to do so forces RenderScript runtime
+fallback to CPU path.</p>
+
+  </body>
+</html>
