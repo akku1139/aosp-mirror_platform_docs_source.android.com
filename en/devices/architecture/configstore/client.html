@@ -1,0 +1,166 @@
+<html devsite>
+  <head>
+    <title>Client-Side Usage</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>You can refactor conditionally-compiled code to read values dynamically from
+the HAL interface. For example:</p>
+
+<pre class="devsite-click-to-copy">
+#ifdef TARGET_FORCE_HWC_FOR_VIRTUAL_DISPLAYS
+//some code fragment
+#endif
+</pre>
+
+<p>Framework code can then call an appropriate utility function defined in
+<code>&lt;configstore/Utils.h&gt;</code> depending on its type.</p>
+
+<h2 id=example>ConfigStore example</h2>
+<p>This example shows reading
+<code>TARGET_FORCE_HWC_FOR_VIRTUAL_DISPLAYS</code>, defined in ConfigStore HAL
+as <code>forceHwcForVirtualDisplays()</code> with return type
+<code>OptionalBool</code>:</p>
+
+<pre class="devsite-click-to-copy">
+#include &lt;configstore/Utils.h&gt;
+using namespace android::hardware::configstore;
+using namespace android::hardware::configstore::V1_0;
+
+static bool vsyncPhaseOffsetNs = getBool&lt;ISurfaceFlingerConfigs,
+        ISurfaceFlingerConfigs::forceHwcForVirtualDisplays&gt;(false);
+</pre>
+
+<p>The utility function (<code>getBool</code> in the example above) contacts the
+<code>configstore</code> service to get the handle for the proxy of the
+interface function, then retrieves the value by invoking the handle via
+HIDL/hwbinder.</p>
+
+<h2 id=utility-functions>Utility functions</h2>
+<p><code>&lt;configstore/Utils.h&gt;</code>
+(<code>configstore/1.0/include/configstore/Utils.h</code>) provides utility
+functions for each primitive return type, including
+<code>Optional[Bool|String|Int32|UInt32|Int64|UInt64]</code>, as listed
+below:</p>
+
+<table>
+
+<tr>
+<th>Type</th>
+<th>Function <em>(template parameters omitted)</em></th>
+</tr>
+
+<tr>
+<td><code>OptionalBool</code></td>
+<td><code>bool getBool(const bool defValue)</code></td>
+</tr>
+
+<tr>
+<td><code>OptionalInt32</code></td>
+<td><code>int32_t getInt32(const int32_t defValue)</code></td>
+</tr>
+
+<tr>
+<td><code>OptionalUInt32</code></td>
+<td><code>uint32_t getUInt32(const uint32_t defValue)</code></td>
+</tr>
+
+<tr>
+<td><code>OptionalInt64</code></td>
+<td><code>int64_t getInt64(const int64_t defValue)</code></td>
+</tr>
+
+<tr>
+<td><code>OptionalUInt64</code></td>
+<td><code>uint64_t getUInt64(const uint64_t defValue)</code></td>
+</tr>
+
+<tr>
+<td><code>OptionalString</code></td>
+<td><code>std::string getString(const std::string &defValue)</code></td>
+</tr>
+
+</table>
+
+<p><code>defValue</code> is a default value returned when the HAL implementation
+does not specify a value for the configuration item. Each function takes two
+template parameters:</p>
+<ul>
+<li><code><strong>I</code></strong>. Interface class name.</li>
+<li><code><strong>Func</code></strong>. Member function pointer for getting the
+configuration item.</li>
+</ul>
+<p>Because the configuration value is read-only and does not change, the utility
+function internally caches the configuration value. Subsequent calls are
+serviced more efficiently using the cached value in the same linking unit.</p>
+
+<h2 id=utils>Using configstore-utils</h2>
+<p>The ConfigStore HAL is designed to be forward-compatible for minor version
+upgrades, meaning that when the HAL is up-revisioned and some framework code
+uses the newly-introduced items, the ConfigStore service with older minor
+version in <code>/vendor</code> can still be used.</p>
+
+<p>For forward-compatibility, ensure your implementation adheres to the
+following guidelines:</p>
+
+<ol>
+<li>New items use the default value when <em>only</em> the old version service
+is available. Example:
+
+<pre class="devsite-click-to-copy">
+service = V1_1::IConfig::getService(); // null if V1_0 is installed
+value = DEFAULT_VALUE;
+  if(service) {
+    value = service-&gt;v1_1API(DEFAULT_VALUE);
+  }
+</pre>
+
+</li>
+
+<li>Client uses the earliest interface in which the ConfigStore item was
+introduced. Example:
+
+<pre class="devsite-click-to-copy">
+V1_1::IConfig::getService()-&gt;v1_0API(); // NOT ALLOWED
+
+V1_0::IConfig::getService()-&gt;v1_0API(); // OK
+</pre>
+</li>
+<li>New version service can be retrieved for old version interface. In the
+following example, if the installed version is v1_1, the v1_1 service must be
+returned for getService():
+
+<pre class="devsite-click-to-copy">
+V1_0::IConfig::getService()-&gt;v1_0API();
+</pre>
+
+<p class=note><strong>Note:</strong> The
+<a href="https://android-review.googlesource.com/c/393736/">current AOSP
+implementation</a> satisfies this requirement.</p>
+</li>
+</ol>
+
+<p>When the access functions in <code>configstore-utils</code> library are used
+for accessing the ConfigStore item, #1 is guaranteed by the implementation and
+#2 is guaranteed by compiler errors. For these reasons we strongly recommend
+using <code>configstore-utils</code> wherever possible.</p>
+
+  </body>
+</html>

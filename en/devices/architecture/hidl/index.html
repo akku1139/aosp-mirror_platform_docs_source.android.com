@@ -1,0 +1,337 @@
+<html devsite>
+  <head>
+    <title>HIDL</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+
+<p>HAL interface definition language or HIDL (pronounced "hide-l") is an
+interface description language (IDL) to specify the interface between a HAL and
+its users. It allows specifying types and method calls, collected into
+interfaces and packages. More broadly, HIDL is a system for communicating
+between codebases that may be compiled independently.</p>
+
+<p>HIDL is intended to be used for inter-process communication (IPC).
+Communication between processes is referred to as
+<a href="/devices/architecture/hidl/binder-ipc"><em>Binderized</em></a>. For
+libraries that must be linked to a process, a <a href="#passthrough">passthough
+mode</a> is also available (not supported in Java).</p>
+
+<p>HIDL specifies data structures and method signatures, organized in interfaces
+(similar to a class) that are collected into packages. The syntax of HIDL will
+look familiar to C++ and Java programmers, though with a different set of
+keywords. HIDL also uses Java-style annotations.</p>
+
+<h2 id=design>HIDL design</h2>
+<p>The goal of HIDL is that the framework can be replaced without having to
+rebuild HALs. HALs will be built by vendors or SOC makers and put in a
+<code>/vendor</code> partition on the device, enabling the framework, in its own
+partition, to be replaced with an OTA without recompiling the HALs.</p>
+
+<p>HIDL design balances the following concerns:</p>
+<ul>
+<li><strong>Interoperability</strong>. Create reliably interoperable interfaces
+between processes which may be compiled with various architectures, toolchains,
+and build configurations. HIDL interfaces are versioned and cannot be changed
+after they are published.</li>
+<li><strong>Efficiency</strong>. HIDL tries to minimize the number of copy
+operations. HIDL-defined data is delivered to C++ code in C++ standard layout
+data structures that can be used without unpacking. HIDL also provides shared
+memory interfaces and, as RPCs are inherently somewhat slow, HIDL supports two
+ways to transfer data without using an RPC call: shared memory and a Fast
+Message Queue (FMQ).</li>
+<li><strong>Intuitive</strong>. HIDL avoids thorny issues of memory ownership by
+using only <code>in</code> parameters for RPC (see
+<a href="https://developer.android.com/guide/components/aidl.html" class="external">Android
+Interface Definition Language (AIDL)</a>); values that cannot be efficiently
+returned from methods are returned via callback functions. Neither passing data
+into HIDL for transfer nor receiving data from HIDL changes the ownership of the
+data&mdash;ownership always remains with the calling function. Data needs to
+persist only for the duration of the called function and may be destroyed
+immediately after the called function returns.</li>
+</ul>
+
+<h2 id=passthrough>Using passthrough mode</h2>
+<p>To update devices running earlier versions of Android to Android O, you can
+wrap both conventional (and legacy) HALs in a new HIDL interface that serves the
+HAL in binderized and same-process (passthrough) modes. This wrapping is
+transparent to both the HAL and the Android framework.</p>
+
+<p>Passthrough mode is available only for C++ clients and implementations.
+Devices running earlier versions of Android do not have HALs written in Java, so
+Java HALs are inherently binderized.</p>
+
+<h3 id=header>Passthrough header files</h3>
+<p>When a <code>.hal</code> file is compiled, <code>hidl-gen</code> produces an
+extra passthrough header file <code>BsFoo.h</code> in addition to the headers
+used for binder communication; this header defines functions to be
+<code>dlopen</code>ed. As passthrough HALs run in the same process in which
+they are called, in most cases passthrough methods are invoked by direct
+function call (same thread). <code>oneway</code> methods run in their own thread
+as they are not intended to wait for the HAL to process them (this means any HAL
+that uses <code>oneway</code> methods in passthrough mode must be thread-safe).
+</p>
+
+<p>Given an <code>IFoo.hal</code>, <code>BsFoo.h</code> wraps the HIDL-generated
+methods to provide additional features (such as making <code>oneway</code>
+transactions run in another thread). This file is similar to
+<code>BpFoo.h</code>, however instead of passing on calls IPC using binder, the
+desired functions are directly invoked. Future implementations of HALs
+<strong>may provide</strong> multiple implementations, such as FooFast HAL and a
+FooAccurate HAL. In such cases, a file for each additional implementation would
+be created (e.g., <code>PTFooFast.cpp</code> and
+<code>PTFooAccurate.cpp</code>).</p>
+
+<h3 id=binderized>Binderizing passthrough HALs</h3>
+<p>You can binderize HAL implementations that support passthrough mode. Given a
+HAL interface <code>a.b.c.d@M.N::IFoo</code>, two packages are created:</p>
+
+<ul>
+<li><code>a.b.c.d@M.N::IFoo-impl</code>. Contains the implementation of the HAL
+and exposes function <code>IFoo* HIDL_FETCH_IFoo(const char* name)</code>. On
+legacy devices, this package is <code>dlopen</code>ed and the implementation is
+instantiated using <code>HIDL_FETCH_IFoo</code>. You can generate the base code
+using <code>hidl-gen</code> and <code>-Lc++-impl</code> and
+<code>-Landroidbp-impl</code>.</li>
+<li><code>a.b.c.d@M.N::IFoo-service</code>. Opens the passthrough HAL and
+registers itself as a binderized service, enabling the same HAL implementation
+to be used as both passthrough and binderized.</li>
+</ul>
+
+<p>Given the type <code>IFoo</code>, you can call <code>sp&lt;IFoo&gt;
+IFoo::getService(string name, bool getStub)</code> to get access to an instance
+of <code>IFoo</code>. If <code>getStub</code> is true, <code>getService</code>
+attempts to open the HAL only in passthrough mode. If <code>getStub</code> is
+false, <code>getService</code> attempts to find a binderized service; if that
+fails, it then tries to find the passthrough service. The <code>getStub</code>
+parameter should never be used except in
+<code>defaultPassthroughServiceImplementation</code>. (Devices launching with
+Android O are fully binderized devices, so opening a service in passthrough mode
+is disallowed.)</p>
+
+<h2 id=grammar>HIDL grammar</h2>
+<p>By design, the HIDL language is similar to C (but does not use the C
+preprocessor). All punctuation not described below (aside from the obvious use
+of <code>=</code> and <code>|</code>) is part of the grammar.</p>
+
+<p class=note><strong>Note:</strong> For details on HIDL code style, see the
+<a href="code-style.html">Code Style Guide</a>.</p>
+
+<ul>
+<li><code>/** */</code> indicates a documentation comment.</li>
+<li><code>/* */</code> indicates a multiline comment.</li>
+<li><code>//</code> indicates a comment to end of line. Aside from
+<code>//</code>, newlines are the same as any other whitespace. </li>
+<li>In the example grammar below, text from <code>//</code> to the end of the
+line is not part of the grammar but is instead a comment on the grammar.</li>
+<li><code>[empty]</code> means that the term may be empty. </li>
+<li><code>?</code> following a literal or term means it is optional.</li>
+<li><code>...</code> indicates sequence containing zero or more items with
+separating punctuation as indicated. There are no variadic arguments in HIDL.</li>
+<li>Commas separate sequence elements.</li>
+<li>Semicolons terminate each element, including the last element.</li>
+<li>UPPERCASE is a nonterminal.</li>
+<li><code><em>italics</code></em> is a token family such as
+<code><em>integer</code></em> or <code><em>identifier</code></em> (standard C
+parsing rules).</li>
+<li><code><em>constexpr</em> </code>is a C style constant expression (such as
+<code>1 + 1</code> and <code>1L &lt;&lt; 3</code>).</li>
+<li><code><em>import_name</code></em> is a package or interface name, qualified
+as described in <a href="/devices/architecture/hidl/versioning.html"> HIDL
+Versioning</a>.</li>
+<li>Lowercase <code>words</code> are literal tokens.</li>
+</ul>
+<p>Example:</p>
+<pre class="prettyprint">
+ROOT =
+    PACKAGE IMPORTS PREAMBLE { ITEM ITEM ... }  // not for types.hal
+    PREAMBLE = interface identifier EXTENDS
+  | PACKAGE IMPORTS ITEM ITEM...  // only for types.hal; no method definitions
+
+ITEM =
+    ANNOTATIONS? oneway? identifier(FIELD, FIELD ...) GENERATES?;
+  |  struct identifier { SFIELD; SFIELD; ...};  // Note - no forward declarations
+  |  union identifier { UFIELD; UFIELD; ...};
+  |  enum identifier: TYPE { ENUM_ENTRY, ENUM_ENTRY ... }; // TYPE = enum or scalar
+  |  typedef TYPE identifier;
+
+VERSION = integer.integer;
+
+PACKAGE = package android.hardware.identifier[.identifier[...]]@VERSION;
+
+PREAMBLE = interface identifier EXTENDS
+
+EXTENDS = &lt;empty&gt; | extends import_name  // must be interface, not package
+
+GENERATES = generates (FIELD, FIELD ...)
+
+// allows the Binder interface to be used as a type
+// (similar to typedef'ing the final identifier)
+IMPORTS =
+   [empty]
+  |  IMPORTS import import_name;
+
+TYPE =
+  uint8_t | int8_t | uint16_t | int16_t | uint32_t | int32_t | uint64_t | int64_t |
+ float | double | bool | string
+|  identifier  // must have been previously typedef'd
+               // or defined with struct, union, enum, or import
+|  memory
+|  pointer
+|  vec&lt;TYPE&gt;
+|  bitfield&lt;TYPE&gt;  // TYPE is user-defined enum
+|  fmq_sync&lt;TYPE&gt;
+|  fmq_unsync&lt;TYPE&gt;
+|  TYPE[SIZE]
+
+FIELD =
+   TYPE identifier
+
+UFIELD =
+   TYPE identifier
+  |  struct identifier { FIELD; FIELD; ...} identifier;
+  |  union identifier { FIELD; FIELD; ...} identifier;
+
+SFIELD =
+   TYPE identifier
+  |  struct identifier { FIELD; FIELD; ...};
+  |  union identifier { FIELD; FIELD; ...};
+  |  struct identifier { FIELD; FIELD; ...} identifier;
+  |  union identifier { FIELD; FIELD; ...} identifier;
+
+SIZE =  // Must be greater than zero
+     constexpr
+
+ANNOTATIONS =
+     [empty]
+  |  ANNOTATIONS ANNOTATION
+
+ANNOTATION =
+  |  @identifier
+  |  @identifier(VALUE)
+  |  @identifier(ANNO_ENTRY, ANNO_ENTRY  ...)
+
+ANNO_ENTRY =
+     identifier=VALUE
+
+VALUE =
+     "any text including \" and other escapes"
+  |  constexpr
+  |  {VALUE, VALUE ...}  // only in annotations
+
+ENUM_ENTRY =
+     identifier
+  |  identifier = constexpr
+</pre>
+
+<h2 id=terms>Terminology</h2>
+<p>This section uses the following HIDL-related terms:</p>
+
+<table>
+<tbody>
+
+<tr>
+<th>binderized</th>
+<td>Indicates HIDL is being used for remote procedure calls between processes,
+implemented over a Binder-like mechanism. See also <em>passthrough</em>.</td>
+</tr>
+
+<tr>
+<th>callback, asynchronous</th>
+<td>Interface served by a HAL user, passed to the HAL (via a HIDL method), and
+called by the HAL to return data at any time.</td>
+</tr>
+
+<tr>
+<th>callback, synchronous</th>
+<td>Returns data from a server's HIDL method implementation to the client.
+Unused for methods that return void or a single primitive value.</td>
+</tr>
+
+<tr>
+<th>client</th>
+<td>Process that calls methods of a particular interface. A HAL or framework
+process may be a client of one interface and a server of another. See also
+<em>passthrough</em>.</td>
+</tr>
+
+<tr>
+<th>extends</th>
+<td>Indicates an interface that adds methods and/or types to another interface.
+An interface can extend only one other interface. Can be used for a minor
+version increment in the same package name or for a new package (e.g. a vendor
+extension) to build on an older package.</td>
+</tr>
+
+<tr>
+<th>generates</th>
+<td>Indicates an interface method that returns values to the client. To return
+one non-primitive value, or more than one value, a synchronous callback function
+is generated.</td>
+</tr>
+
+<tr>
+<th>interface</th>
+<td>Collection of methods and types. Translated into a class in C++ or Java. All
+methods in an interface are called in the same direction: a client process
+invokes methods implemented by a server process.</td>
+</tr>
+
+<tr>
+<th>oneway</th>
+<td>When applied to a HIDL method, indicates the method returns no values and
+does not block.</td>
+</tr>
+
+<tr>
+<th>package</th>
+<td>Collection of interfaces and data types sharing a version.</td>
+</tr>
+
+<tr>
+<th>passthrough</th>
+<td>Mode of HIDL in which the server is a shared library, <code>dlopen</code>ed
+by the client. In passthrough mode, client and server are the same process but
+separate codebases. Used only to bring legacy codebases into the HIDL model.
+See also <em>Binderized</em>.</td>
+</tr>
+
+<tr>
+<th>server</th>
+<td>Process that implements methods of an interface. See also
+<em>passthrough</em>.</td>
+</tr>
+
+<tr>
+<th>transport</th>
+<td>HIDL infrastructure that moves data between the server and client.</td>
+</tr>
+
+<tr>
+<th>version</th>
+<td>Version of a package. Consists of two integers, major and minor. Minor
+version increments may add (but not change) types and methods.</td>
+</tr>
+
+</tbody>
+</table>
+
+  </body>
+</html>

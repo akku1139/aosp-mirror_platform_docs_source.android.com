@@ -1,0 +1,63 @@
+<html devsite><head>
+    <title>识别与负载能力相关的卡顿</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>负载能力是设备在一段时间内拥有的某种资源（CPU、GPU 等）的总量。本页介绍了如何识别和应对负载能力相关的卡顿问题。</p>
+
+<h2 id="governor">调节器反应缓慢</h2>
+<p>要避免卡顿，CPU 频率调节器必须能对突发性的工作负载做出快速响应。大多数界面应用出现卡顿的规律基本上是一样的：</p>
+<ol>
+<li>用户浏览屏幕。</li>
+<li>用户触摸屏幕：点按某个按钮、滚动等</li>
+<li>屏幕滚动、更改活动，或以某种动画方式响应输入。</li>
+<li>随着新内容的显示，系统发生停顿。</li>
+<li>用户返回以浏览屏幕。</li>
+</ol>
+
+<p>Pixel 和 Nexus 设备实施了触摸增强，以修改 CPU 频率调节器（和调度程序）应对触摸的行为。为了避免系统缓慢爬升到高时钟频率（这可能会导致触摸时掉帧），触摸增强通常会在 CPU 上设置频率下限，以确保在用户触摸时有足够的 CPU 负载能力。下限设置会在用户触摸后持续一定时间（通常为 2 秒左右）。</p>
+
+<p>Pixel 还会使用 Energy Aware Scheduling (EAS) 提供的 schedtune cgroup 作为额外触摸增强信号：顶层应用可通过 schedtune 增加权重，以确保获得足够的 CPU 负载能力来实现快速运行。在 Nexus 5X 和 6P 上，小 CPU 集群与大 CPU 集群（分别是 A53 和 A57）之间的性能差距大于采用 Kryo CPU 的 Pixel。我们发现，小 CPU 集群并不能始终保证界面顺畅呈现，尤其是在设备上存在其他抖动来源时。</p>
+
+<p>相应地，在 Nexus 5X 和 6P 上，触摸增强会修改调度程序行为，使前台应用更有可能移动到大核心上（从概念上类似于 CPU 频率下限）。如果不进行调度程序更改以增加前台应用移动到大 CPU 集群的可能性，则在调度程序决定将线程均衡负载到大 CPU 核心之前，前台应用可能没有足够的 CPU 负载能力来进行呈现。通过在触摸增强期间更改调度程序行为，界面线程更有可能立即在大核心上运行并避免卡顿，同时又不会强制它始终在大核心上运行（这会对耗电量造成严重影响）。</p>
+
+<h2 id="thermal-throttling">温控调频</h2>
+<p>当设备必须减少整体热输出时，则会发生温控调频，通常通过减少 CPU、GPU 和 DRAM 时钟周期数来执行。毫无意外，这通常会导致卡顿，因为系统可能无法再在给定的时间片内提供足够的负载能力来进行呈现。避免温控调频的唯一方法是减少用电量。实现这一目标的方法不是很多，不过根据我们处理以往 SOC 的经验，我们可以为系统供应商提供一些建议。</p>
+
+<p>首先，在使用异构 CPU 架构构建新 SOC 时，请确保 CPU 集群的性能（功耗）曲线重叠在一起。整个处理器的整体性能（功耗）曲线应该是一条连续的线。性能（功耗）曲线不连续会迫使调度程序和频率调节器猜测工作负载的需要；为避免卡顿，调度程序和频率调节器会为工作负载提供超过实际要求的负载能力。这样会导致消耗过多电量，进而导致温控调频。</p>
+
+<p>假设 SOC 有两个 CPU 集群：</p>
+<ul>
+<li>集群 1 是小集群，功耗为 100-300mW，根据基于时钟数的吞吐量基准，其得分为 100-300。</li>
+<li>集群 2 是大集群，功耗为 1000-1600mW，根据基于时钟数的吞吐量基准，其得分为 800-1200。</li>
+</ul>
+<p>在此基准测试中，得分越高，速度越快。不过，就可取性而言，快速并不比慢速更富吸引力，因为速度快意味着耗电量高。</p>
+
+<p>如果调度程序认为界面工作负载需要 310 分（根据该吞吐量基准）的负载能力，则避免卡顿的最佳选择是以最低频率运行大集群，但会浪费大量电量。（这取决于 cpuidle 行为和加速进入闲置模式；拥有连续性能（功耗）曲线的 SOC 更易于优化。）</p>
+
+<p>其次，使用 cpuset。确保您已在内核和 <code>BoardConfig.mk</code> 中启用了 cpuset。您还必须在设备特有的 <code>init.rc</code> 中设置实际的 cpuet 分配。一些供应商并未在自己的 BSP 中启用 cpuset，而是寄希望于能够使用其他提示来影响调度程序的行为，我们认为这种做法不可取。cpuset 之所以有助于确保 CPU 之间的负载平衡，其方法是反映出用户在设备上实际进行的操作。</p>
+
+<p>ActivityManager 会根据应用（最上层应用、前台应用、后台应用）的相对重要程度，将应用分配到不同的 cpuset，更重要的应用使用 CPU 核心的权限更高。这有助于确保前台和最上层应用的服务质量。</p>
+
+<p>cpusets 对于同构 CPU 配置很有用，但您不应在未启用 cpuset 的情况下为设备实施异构 CPU 配置。Nexus 6P 是关于如何基于异构 CPU 配置使用 cpuset 的范例；您可以使用它作为皆准来配置自己的设备。</p>
+
+<p>cpuset 还有助于降低功耗，它可以确保非性能关键型的后台线程不会被均衡负载到大 CPU 核心，从而不会发生耗电量大幅增加而用户方面无任何受益的情况。这也有助于避免温控调频。虽然温控调频是负载能力问题，但抖动改进也会对温控调频期间的界面性能产生巨大影响。由于系统的运行会更加接近呈现 60 帧/秒所需的负载能力，因此会更容易因为抖动而掉帧。</p>
+
+</body></html>

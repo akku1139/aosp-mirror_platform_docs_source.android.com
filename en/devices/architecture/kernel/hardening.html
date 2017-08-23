@@ -1,0 +1,100 @@
+<html devsite>
+  <head>
+    <title>Kernel Hardening</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+<p>
+Android 8.0 added kernel hardening features to help mitigate kernel
+vulnerabilities and find bugs in kernel drivers. The features are in <a
+href="https://android.googlesource.com/kernel/common/">kernel/common</a> in
+branches android-3.18, android-4.4, and android-4.9.
+</p>
+<h2 id="implementation">Implementation</h2>
+<p>
+To acquire these features, device manufacturers and SOCs should merge all
+hardening patches from <code>kernel/common</code> to their kernel tree and
+enable the following kernel configuration options:
+</p>
+<ul>
+  <li>Hardened usercopy: <code>CONFIG_HARDENED_USERCOPY=y</code></li>
+  <li>PAN emulation - arm64: <code>CONFIG_ARM64_SW_TTBR0_PAN=y</code></li>
+  <li>PAN emulation - arm: <code>CONFIG_CPU_SW_DOMAIN_PAN=y</code></li>
+  <li>KASLR - 4.4 and later kernels:
+  <code>CONFIG_RANDOMIZE_BASE=y</code></li>
+</ul>
+<p>
+KASLR also requires bootloader support for passing hardware entropy through
+either the device tree node <code>/chosen/kaslr-seed</code> or by implementing
+<code>EFI_RNG_PROTOCOL</code>.
+</p>
+<p>
+Also ensure existing hardening features are enabled:
+</p>
+<ul>
+  <li>Stack buffer overflow mitigation:
+  <code>CONFIG_CC_STACKPROTECTOR_STRONG=y</code></li>
+  <li>Internal memory protection: <code>CONFIG_DEBUG_RODATA=y</code> or
+  <code>CONFIG_STRICT_KERNEL_RWX=y</code></li>
+  <li>Restrict user-space access from kernel - x86 (enabled by default):
+  <code>CONFIG_X86_SMAP=y</code></li>
+</ul>
+<h2 id="testing">Testing</h2>
+<p>
+To test your implementation, add <code>CONFIG_LKDTM=y</code> to the kernel
+configuration and confirm that each of the following commands lead to a kernel
+panic:
+</p>
+
+<pre class="devsite-click-to-copy">
+<code class="devsite-terminal" data-terminal-prefix="# ">echo ACCESS_USERSPACE &gt; /sys/kernel/debug/provoke-crash/DIRECT</code>
+<code class="devsite-terminal" data-terminal-prefix="# ">echo EXEC_USERSPACE &gt; /sys/kernel/debug/provoke-crash/DIRECT</code>
+<code class="devsite-terminal" data-terminal-prefix="# ">echo WRITE_RO &gt; /sys/kernel/debug/provoke-crash/DIRECT</code>
+<code class="devsite-terminal" data-terminal-prefix="# ">echo WRITE_RO_AFTER_INIT &gt; /sys/kernel/debug/provoke-crash/DIRECT</code>
+<code class="devsite-terminal" data-terminal-prefix="# ">echo WRITE_KERN &gt; /sys/kernel/debug/provoke-crash/DIRECT</code>
+<code class="devsite-terminal" data-terminal-prefix="# ">echo EXEC_STACK &gt; /sys/kernel/debug/provoke-crash/DIRECT</code>
+<code class="devsite-terminal" data-terminal-prefix="# ">echo EXEC_RODATA &gt; /sys/kernel/debug/provoke-crash/DIRECT</code>
+<code class="devsite-terminal" data-terminal-prefix="# ">echo EXEC_KMALLOC &gt; /sys/kernel/debug/provoke-crash/DIRECT</code>
+<code class="devsite-terminal" data-terminal-prefix="# ">echo EXEC_VMALLOC &gt; /sys/kernel/debug/provoke-crash/DIRECT</code>
+<code class="devsite-terminal" data-terminal-prefix="# ">echo CORRUPT_STACK &gt; /sys/kernel/debug/provoke-crash/DIRECT</code>
+</pre>
+<p>
+<strong>For android-4.9:</strong>
+</p>
+
+<pre class="devsite-click-to-copy">
+<code class="devsite-terminal" data-terminal-prefix="# ">echo USERCOPY_HEAP_SIZE_TO &gt; /sys/kernel/debug/provoke-crash/DIRECT</code>
+<code class="devsite-terminal" data-terminal-prefix="# ">echo USERCOPY_HEAP_SIZE_FROM &gt; /sys/kernel/debug/provoke-crash/DIRECT</code>
+</pre>
+
+<h2 id="common-issues">Common issues</h2>
+<p>
+These changes are likely to expose bugs in kernel drivers, which need to be
+fixed either by the device manufacturer or the owner of the kernel driver.
+</p>
+<ul>
+  <li>Hardened usercopy exposes incorrect bounds checking when copying data
+  to/from user space. These should be fixed like any other memory corruption bugs.</li>
+  <li>PAN emulation exposes direct user space access from the kernel, which is not
+  allowed. Drivers attempting to access user space memory need to be changed to
+  use the standard <code>copy_to_user()</code>/<code>copy_from_user()</code>
+  functions instead.</li>
+</ul>
+</body>
+</html>

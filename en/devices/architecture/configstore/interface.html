@@ -1,0 +1,186 @@
+<html devsite>
+  <head>
+    <title>Creating the HAL Interface</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>You must use HIDL to describe all build flags used for conditionally
+compiling the framework. Relevant build flags must be grouped and included in a
+single <code>.hal</code> file. Using HIDL for specifying configuration items
+includes the following benefits:</p>
+<ul>
+<li>Versioned (to add new config items, vendors/OEMs must explicitly extend the
+HAL)</li>
+<li>Well-documented</li>
+<li>Access control using SELinux</li>
+<li>Sanity check for configuration items via
+<a href="/devices/tech/test_infra/tradefed/fundamentals/vts">Vendor Test
+Suite</a> (range check, inter-dependency check among items, etc.)</li>
+<li>Auto-generated APIs in both C++ and Java</li>
+</ul>
+
+<h2 id=identify-flags>Identifying build flags used by the framework</h2>
+<p>Start by identifying the build configs used to conditionally compile the
+framework, then abandon obsolete configs to make the set smaller. For example,
+the following set of build flags are identified for <code>surfaceflinger</code>:
+</p>
+<ul>
+<li><code>TARGET_USES_HWC2</code> (will be obsoleted)</li>
+<li><code>TARGET_BOARD_PLATFORM</code></li>
+<li><code>TARGET_DISABLE_TRIPLE_BUFFERING</code></li>
+<li><code>TARGET_FORCE_HWC_FOR_VIRTUAL_DISPLAYS</code></li>
+<li><code>NUM_FRAMEBUFFER_SURFACE_BUFFERS</code></li>
+<li><code>TARGET_RUNNING_WITHOUT_SYNC_FRAMEWORK</code></li>
+<li><code>VSYNC_EVENT_PHASE_OFFSET_NS</code></li>
+<li><code>SF_VSYNC_EVENT_PHASE_OFFSET_NS</code> (will be obsoleted)</li>
+<li><code>PRESENT_TIME_OFFSET_FROM_VSYNC_NS</code></li>
+<li><code>MAX_VIRTUAL_DISPLAY_DIMENSION</code></li>
+</ul>
+
+<h2 id="create-interface">Creating a HAL interface</h2>
+<p>Build configs for a subsystem are accessed via a HAL interface, while
+interfaces for giving configuration values are grouped in the HAL package <code>android.hardware.configstore</code> (currently at version 1.0). For example, to
+create a HAL interface file for <code>surfaceflinger</code>, in
+<strong><code>hardware/interfaces/configstore/1.0/ISurfaceFlingerConfigs.hal</code></strong>:
+</p>
+
+<pre class="devsite-click-to-copy">
+package android.hardware.configstore@1.0;
+
+interface ISurfaceFlingerConfigs {
+    // TO-BE-FILLED-BELOW
+};
+</pre>
+
+<p>After creating the <code>.hal</code> file, run
+<code>hardware/interfaces/update-makefiles.sh</code> to add the new
+<code>.hal</code> file to the <code>Android.bp</code> and
+<code>Android.mk</code> files.</p>
+
+<h2 id="add-functions">Adding functions for build flags</h2>
+<p>For each build flag, add a new function to the interface. For example, in
+<strong><code>hardware/interfaces/configstore/1.0/ISurfaceFlingerConfigs.hal</code></strong>:
+</p>
+
+<pre class="devsite-click-to-copy">
+interface ISurfaceFlingerConfigs {
+    disableTripleBuffering() generates(OptionalBool ret);
+    forceHwcForVirtualDisplays() generates(OptionalBool ret);
+    enum NumBuffers: uint8_t {
+        USE_DEFAULT = 0,
+        TWO = 2,
+        THREE = 3,
+    };
+    numFramebufferSurfaceBuffers() generates(NumBuffers ret);
+    runWithoutSyncFramework() generates(OptionalBool ret);
+    vsyncEventPhaseOffsetNs generates (OptionalUInt64 ret);
+    presentTimeOffsetFromSyncNs generates (OptionalUInt64 ret);
+    maxVirtualDisplayDimension() generates(OptionalInt32 ret);
+};
+</pre>
+
+<p>When adding a function:</p>
+<ul>
+<li><strong>Be concise with names</strong>. Avoid converting makefile variable
+names into function names and keep in mind that <code>TARGET_</code> and
+<code>BOARD_</code> prefixes are no longer necessary.</li>
+<li><strong>Add comments</strong>. Help developers understand the purpose of the
+config item, how it changes framework behavior, valid values, etc.</li>
+</ul>
+<p>Function return types can be
+<code>Optional[Bool|String|Int32|UInt32|Int64|UInt64]</code>. Types are defined
+in <code>types.hal</code> in the same directory and wrap primitive values with a
+field that indicates if the value is specified by the HAL; if not, the default
+value is used.</p>
+
+<pre class="devsite-click-to-copy">
+struct OptionalString {
+    bool specified;
+    string value;
+};
+</pre>
+
+<p>When appropriate, define the enum that best represents the type of the
+configuration item and use that enum as the return type. In the example above,
+the <code>NumBuffers</code> enum is defined to limit the number of valid
+values. When defining such custom data types, add a field or a enum value (e.g.,
+<code>USE_DEFAULT</code>) for denoting if the value is/is not specified by
+HAL.</p>
+
+<p>It is not mandatory for a single build flag to become a single function in
+HIDL. Module owners can alternatively aggregate closely-related build flags into
+a struct and have a function that returns that struct (doing so can reduce
+number of function calls).</p>
+
+<p>For example, an option for aggregating two build flags into a single struct
+in <strong><code>hardware/interfaces/configstore/1.0/ISurfaceFlingerConfigs.hal</code></strong>
+is:</p>
+
+<pre class="devsite-click-to-copy">
+ interface ISurfaceFlingerConfigs {
+    // other functions here
+    struct SyncConfigs {
+        OptionalInt64 vsyncEventPhaseoffsetNs;
+        OptionalInt64 presentTimeoffsetFromSyncNs;
+    };
+    getSyncConfigs() generates (SyncConfigs ret);
+    // other functions here
+};
+</pre>
+
+<h2 id=alternatives>Alternatives to a single HAL function</h2>
+
+<p>As an alternative to using a single HAL function for all build flags, the HAL
+interface also provides simple functions such as <code>getBoolean(string
+key)</code> and <code>getInteger(string key)</code>. The actual
+<code>key=value</code> pairs are stored in separate files and the HAL service
+provides values by reading/parsing those files.</p>
+
+<p>While this approach is easy to define, it does not include the benefits
+provided by HIDL (enforced versioning, ease of documentation, access control)
+and is therefore not recommended.</p>
+
+<p class=note><strong>Note:</strong> When using simple functions, access
+control is almost impossible as HAL cannot identify clients by itself.</p>
+
+<h2 id=single-multiple>Single vs. multiple interfaces</h2>
+<p>The design of the HAL interface for configuration items presents two
+choices:</p>
+
+<ol>
+<li>Single interface that covers all configuration items</li>
+<li>Multiple interfaces, each of which covers a set of related configuration
+items</li>
+</ol>
+<p>A single interface is easier but can become unmaintainable as more
+configuration items are added to the single file. In addition, access control
+is not fine-grained, so a process granted access to the interface can read all
+configuration items (access to a partial set of configuration items cannot be
+granted). Alternatively, if access is not granted, no configuration item can be
+read.</p>
+
+<p>Because of these issues, Android uses multiple interfaces with a single HAL
+interface for a group of related configuration items. For example,
+<code>ISurfaceflingerConfigs</code> for <code>surfaceflinger</code>-related
+configuration items, <code>IBluetoothConfigs</code> for Bluetooth-related
+configuration items, etc.</p>
+
+  </body>
+</html>

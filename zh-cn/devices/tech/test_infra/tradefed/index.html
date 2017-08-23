@@ -1,0 +1,61 @@
+<html devsite><head>
+    <title>Trade Federation 概览</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>Trade Federation（简称 tradefed 或 TF）是一种连续的测试框架，专门用于在 Android 设备上运行测试。这款 Java 应用会在主机上运行，并会使用 ddmlib（DDMS 背后的内容库）通过 adb 与一部或多部 Android 设备进行通信。</p>
+
+<p>我们在下面列出了 TF 的一些主要功能以及几个使用情形示例。也就是说，如果您想直接进入正题并开始使用，则可直接前往<a href="/devices/tech/test_infra/tradefed/fundamentals/index.html">开始使用</a>页面。</p>
+
+<h2 id="features">功能</h2>
+<ul>
+<li>模块化、灵活、可扩展的设计</li>
+<li>已内置对运行很多不同类型 Android 测试的支持：<a href="http://developer.android.com/tools/testing/testing_android.html#Instrumentation">instrumentation</a>、<a href="http://developer.android.com/tools/testing/testing_ui.html">uiautomator</a>、native/gtest、基于主机的 JUnit，等等</li>
+<li>在 adb 的基础之上提供可靠性和恢复机制</li>
+<li>支持同时在多部设备上安排和运行测试</li>
+</ul>
+
+<h2 id="usecases">Trade Federation 使用情形示例</h2>
+<p>使用 Trade Federation 的模块化功能可以轻松进入具有现有构建、测试和报告基础设施的环境。我们在下面列出了几个示范性使用情形，在这些情形中，tradefed 能够实施有效的可扩展测试做法。</p>
+
+<p>首先，从“哪些部分可被修改，哪些部分固定不变？”这个问题来考虑潜在使用情形的格局非常有用。例如，原始设备制造商 (OEM) 可以修改框架、系统和硬件，但对现有应用的影响微乎其微。与此相反，应用开发者可以修改应用，但对系统或框架的大多数方面几乎没有控制权。</p>
+
+<p>因此，每个使用情形中的实体将会具有不同的测试目标，并会具有不同的选项（如果一组测试失败的话）。尽管存在这些差异，Trade Federation 仍有助于确保每个测试流程有效、灵活且可扩展。</p>
+
+<h3 id="oem">原始设备制造商</h3>
+<p>原始设备制造商会构建硬件，且通常会调整 Android 系统和框架以使其在该硬件上运行良好。原始设备制造商可能会努力实现这些目标，同时在硬件和系统级别保持稳定性和性能，并确保框架变更不会破坏与现有应用的兼容性。</p>
+
+<p>原始设备制造商可以实现将在<a href="/devices/tech/test_infra/tradefed/fundamentals/lifecycle.html">生命周期</a>的目标设置阶段执行的设备刷写模块。该模块将在其执行期间完全控制设备，所以它可能会强制设备进入引导加载程序、进行刷写，然后强制设备重新启动回用户空间模式。与模块结合以连接到连续构建系统，这使得原始设备制造商能够在更改系统级固件和 Java 级框架时在其设备上运行测试。</p>
+
+<p>当设备完全启动后，原始设备制造商将能够利用基于 JUnit 的现有测试，或者编写新测试，来验证相关功能。最后，他们可以编写一个或多个结果报告模块，以连接到现有的测试结果存储区，或者直接报告结果（例如<a href="/reference/com/android/tradefed/result/EmailResultReporter.html">通过电子邮件</a>）。</p>
+
+<h3 id="developer">应用开发者</h3>
+<p>应用开发者会构建需能在各种平台版本和各种设备上运行良好的应用。如果某个特定的平台版本和/或设备出现问题，唯一的补救措施就是添加解决方法并继续操作。对于大型开发者而言，测试流程可能会并入连续构建序列。对于小型开发者而言，测试流程可能会定期或手动启动。</p>
+
+<p>大多数应用开发者会使用 TF 中已有的 apk 测试安装模块。其中有一个可<a href="/reference/com/android/tradefed/targetprep/InstallApkSetup.html">从本地文件系统安装</a>的版本，还有一个可<a href="/reference/com/android/tradefed/targetprep/InstallBuildEnvApkSetup.html">安装从构建服务下载的 apk</a> 的版本。请务必注意，无论同一主机上运行着多少个 TF 实例，后一版本都能持续正常运行。</p>
+
+<p>由于 TF 能够游刃有余地处理多部设备，所以按照该测试所用设备的类型对每项测试结果进行分类会很简便。因此，TF 有可能会分别为相应应用的每个版本生成一个二维（或多维）兼容性矩阵。</p>
+
+<h3 id="testing">测试服务</h3>
+<p>举例来说，测试服务让应用开发者既能提交应用，又能在使用电量测量工具以确定应用的耗电量的设备上运行测试。这与之前的两个使用情形不同，因为服务构建工具不会控制设备或所运行的应用。</p>
+
+<p>因为 Trade Federation 可以运行任何能实现简单的 <a href="/reference/com/android/tradefed/testtype/IRemoteTest.html"><code>IRemoteTest</code></a> 接口的 Java 类，所以编写可协调某些外部硬件与在设备上运行的测试情形的驱动程序轻而易举。驱动程序本身可以生成线程、向其他服务器发送请求，或执行它可能需要的其他任何操作。此外，结果报告接口 <a href="/reference/com/android/tradefed/result/ITestInvocationListener.html"><code>ITestInvocationListener</code></a> 的简单性和多功能性意味着，在标准结果报告渠道中呈现任意测试结果（包括数字功率指标等）会同样简便。</p>
+
+</body></html>
