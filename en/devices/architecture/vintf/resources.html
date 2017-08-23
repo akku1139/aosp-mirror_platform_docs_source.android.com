@@ -1,0 +1,184 @@
+<html devsite>
+  <head>
+    <title>Additional Resources</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>The following resources provide details on code locations, tools, testing,
+licensing, and caveats.</p>
+
+<h2 id=query-api-code>Queryable code location</h2>
+<p>The code for the queryable vendor interface object goes to
+<code><a href="https://android.googlesource.com/platform/system/libvintf/+/master#" class="external">system/libvintf</a></code>
+(see the
+<a href="/devices/architecture/vintf/objects.html#queryable-api">queryable
+API</a>).</p>
+
+<h2 id="related-tools">Tools</h2>
+<p>Handwriting manifest files and compatibility matrices can be tough. Use the
+following tools to generate a boilerplate manifest/compatibility matrix to start
+from.</p>
+
+<h3 id="lshal">LSHAL</h3>
+<p>LSHAL is a device-side tool that lists all registered HALs to
+<code>hwservicemanager</code> and all available passthrough implementations
+(e.g. <code>android.hardware.foo@1.0-impl.so</code>) on the device. It can also
+generate a <strong>device manifest</strong> file based on the list:</p>
+
+<pre class="devsite-terminal">
+adb shell su 0 /system/bin/lshal --init-vintf
+</pre>
+
+<p>Note the following:</p>
+<ol>
+<li>If a package is both registered to <code>hwservicemanager</code> and found
+as a passthrough HAL, <code>&lt;transport&gt;</code> is set to
+<code>hwbinder</code>.</li>
+<li>A dummy <code>&lt;sepolicy&gt;<version>0.0</version>&lt;/sepolicy&gt;</code>
+element exists at the end of the manifest. It is suggested that the element is
+deleted and injected via <code>assemble_vintf</code> as explained below.</li>
+<li>The generated HAL manifest file may be inaccurate. Human attention is
+required to fix inconsistencies between the device manifest and what
+<code>vendor.img</code> actually provides.</li>
+</ol>
+
+<h3 id="assemble_vintf">ASSEMBLE_VINTF</h3>
+<p><code>assemble_vintf</code> is a host-side tool that:</p>
+<ol>
+<li>Verifies a compatibility matrix or manifest file is valid.</li>
+<li>Injects variables to manifests/compatibility matrices available at build
+time and generates a new file that should be installed to the device.</li>
+<li>Checks compatibility between the generated file and its dual.</li>
+<li>If a manifest file is given, optionally generates a boilerplate
+compatibility matrix that is compatible with the manifest file.</li>
+</ol>
+
+<h4><strong>Example:</strong> Generate <strong>device compatibility
+matrix</strong> from a framework manifest file</h4>
+
+<pre class="devsite-terminal">
+assemble_vintf -m \
+    -i system/libhidl/manifest.xml \
+    -o device/manufacturer/device_name/compatibility_matrix.xml
+</pre>
+<p>Note the following:</p>
+<ul>
+<li>Even though <code>&lt;vndk&gt;</code> entries are in the output
+compatibility matrix, they should be deleted and injected at build time.</li>
+<li>All HALs are set to <code>optional="true"</code>.</li>
+</ul>
+
+<h4><strong>Example:</strong> Generate a skeleton framework compatibility
+matrix from a device manifest file</h4>
+
+<pre class="devsite-terminal">
+BOARD_SEPOLICY_VERS=10000.0 assemble_vintf -m \
+    -i device/foo/bar/manifest.xml
+    -o path/to/place/output/compatibility_matrix.xml
+</pre>
+<p>Note the following:</p>
+<ul>
+<li>Even though <code>&lt;sepolicy&gt;</code> and <code>&lt;avb&gt;</code> are
+in the output compatibility matrix, they should be deleted and injected at
+build time.</li>
+<li>All HALs are set to <code>optional="true"</code>.</li>
+</ul>
+
+<h4><strong>Example:</strong> Generate XML files from variables</h4>
+
+<p>At build time, if the following variables are
+defined in <code>device/manufacturer/device_name/BoardConfig.mk</code>:</p>
+
+<pre class="prettyprint">
+DEVICE_MANIFEST_FILE := \
+    device/manufacturer/device_name/manifest.xml
+DEVICE_MATRIX_FILE := \
+    device/manufacturer/device_name/compatibility_matrix.xml
+</pre>
+
+<p>Then the following commands (modified to omit implementation details) are
+executed to generate all XML files:</p>
+
+<pre class="prettyprint">
+# device manifest; only when DEVICE_MANIFEST_FILE is set
+BOARD_SEPOLICY_VERS=10000.0 assemble_vintf \
+    -i device/manufacturer/device_name/manifest.xml \
+    -o $(TARGET_OUT_VENDOR)/manifest.xml
+
+# device compatibility matrix; only when DEVICE_MATRIX_FILE is set
+assemble_vintf \
+    -i device/manufacturer/device_name/compatibility_matrix.xml \
+    -o $(TARGET_OUT_VENDOR)/compatibility_matrix.xml
+
+# framework manifest
+assemble_vintf
+    -i system/libhidl/manifest.xml \
+    -o $(TARGET_OUT)/manifest.xml \
+    -c $(TARGET_OUT_VENDOR)/compatibility_matrix.xml
+
+# framework compatibility matrix
+BOARD_SEPOLICY_VERS=$(BOARD_SEPOLICY_VERS) \
+POLICYVERS=$(POLICYVERS) \
+BOARD_AVB_VBMETA_VERSION=$(BOARD_AVB_VBMETA_VERSION)
+assemble_vintf \
+    -i hardware/interfaces/compatibility_matrix.xml \
+    -o $(TARGET_OUT)/compatibility_matrix.xml \
+    -c $(TARGET_OUT_VENDOR)/manifest.xml \
+</pre>
+
+<p>For details, see:</p>
+
+<pre class="devsite-terminal">assemble_vintf --help</pre>
+
+<h2 id="testing">Testing</h2>
+<p>The <code>platform/system/libvintf</code> project uses
+<a href="https://github.com/google/googletest" class="external">GTest</a> for
+the serialization, deserialization, and compatibility checking.</p>
+
+<h2 id="licensing">Licensing</h2>
+<ul>
+<li><code>tinyxml2</code> (external/tinyxml2) for serializing/deserializing the
+object to/from XML. BSD-like license.</li>
+<li><code>libselinux</code> (external/selinux/libselinux) for getting policydb
+version. Public domain license.</li>
+<li><code>libz</code> (external/zlib) for decompressing
+<code>/proc/config.gz</code>. BSD-like license.</li>
+<li><code>libvintf</code> project uses Apache 2.0 license (with appropriate
+MODULE_LICENSE_APACHE2 and NOTICE files).</li>
+</ul>
+
+<h2 id="caveats">Caveats</h2>
+<p>It is also possible to determine the HALs at runtime by querying
+<code>hwservicemanager</code> (as <code>lshal</code> does). However:</p>
+<ul>
+<li><code>hwservicemanager</code> does not list passthrough services.</li>
+<li>If a service has just crashed and is restarting, it may be missing from the
+query result.</li>
+<li>It doesn't work for hot pluggable services.</li>
+<li><code>hwservicemanager</code> is not available in recovery mode (see
+below).</li>
+</ul>
+
+<p>In recovery mode, the API to retrieve the vendor interface object must still
+be available to allow the device to check the vendor interface against the
+compatibility matrix again.</p>
+
+  </body>
+</html>

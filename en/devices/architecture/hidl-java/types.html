@@ -1,0 +1,161 @@
+<html devsite>
+  <head>
+    <title>Data Types</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+
+<p>Given a HIDL interface file, the Java HIDL backend generates Java interfaces,
+Stub, and Proxy code. It supports all scalar HIDL types
+([<code>u</code>]<code>int</code>{<code>8,16,32,64}_t, float, double,</code> and
+<code>enum</code>s), as well as strings, interfaces, struct types, and arrays
+and vectors of supported HIDL types. The Java HIDL backend <strong>does NOT
+support union types, native handles, shared memory, and fmq types</strong>.</p>
+
+<p>As Java runtime does not support the concept of unsigned integers natively,
+all unsigned types (and enums based on them) are silently treated as their
+signed equivalents, i.e. <code>uint32_t</code> becomes an <code>int</code> in
+the Java interface. No value conversion is performed; the implementor on the
+Java side must use the signed values as if they were unsigned.</p>
+
+<h2 id=enum>Enums</h2>
+<p>Enums do not generate Java enum classes but are instead translated into inner
+classes containing a static constant definition for each enum case. If the enum
+class derives from some other enum class, it inherits that class's storage type.
+Enumerations based on an unsigned integer type are rewritten into their signed
+equivalent.</p>
+
+<p>For example, a <code>SomeBaseEnum</code> with a type of
+<code>uint8_t</code>:</p>
+
+<pre class="prettyprint">
+enum SomeBaseEnum : uint8_t { foo = 3 };
+enum SomeEnum : SomeBaseEnum {
+    quux = 33,
+    goober = 127
+};
+</pre>
+
+<p>… becomes:</p>
+
+<pre class="prettyprint">
+public final class SomeBaseEnum { public static final byte foo = 3; }
+public final class SomeEnum {
+    public static final byte foo = 3;
+    public static final byte quux = 33;
+    public static final byte goober = 127;
+}
+</pre>
+
+<p>And:</p>
+
+<pre class="prettyprint">
+enum SomeEnum : uint8_t {
+    FIRST_CASE = 10,
+    SECOND_CASE = 192
+};
+</pre>
+
+<p>… is rewritten as:</p>
+
+<pre class="prettyprint">
+public final class SomeEnum {
+    static public final byte FIRST_CASE  = 10;  // no change
+    static public final byte SECOND_CASE = -64;
+}
+</pre>
+
+<h2 id=string>Strings</h2>
+<p><code>String</code>s in Java are utf-8 or utf-16 but are converted to utf-8
+as the common HIDL type when transported. Additionally, a <code>String</code>
+must not be null when passed into HIDL.</p>
+
+<h2 id=array-vect>Arrays and vectors</h2>
+<p>Arrays are translated into Java arrays and vectors are translated into
+<code>ArrayList&lt;T&gt;</code> where T is the appropriate object type, possibly
+wrapping scalar types such as <code>vec&lt;int32_t&gt; =&gt;
+ArrayList&lt;Integer&gt;</code>). For example:</p>
+
+<pre class="prettyprint">
+takeAnArray(int32_t[3] array);
+returnAVector() generates (vec&lt;int32_t&gt; result);
+</pre>
+
+<p>… becomes:</p>
+
+<pre class="prettyprint">
+void takeAnArray(int[] array);
+ArrayList&lt;Integer&gt; returnAVector();
+</pre>
+
+<h2 id=struct>Structures</h2>
+<p>Structures are translated into Java classes with a similar layout. For
+example:</p>
+
+<pre class="prettyprint">
+struct Bar {vec&lt;bool&gt; someBools;
+  };
+  struct Foo {
+   int32_t a;
+   int8_t b;
+   float[10] c;
+   Bar d;
+  };
+</pre>
+
+<p>… becomes:</p>
+
+<pre class="prettyprint">
+class Bar {
+ public final ArrayList&lt;Boolean&gt; someBools = new ArrayList();
+};
+class Foo {
+ public int a;
+ public byte b;
+ public final float[] c = new float[10];
+ public final Bar d = new Bar();
+}
+</pre>
+
+<h2 id=declared>Declared types</h2>
+<p>Each top-level type declared in <code>types.hal</code> gets its own .java
+output file (as required by Java). For example, the following
+<code>types.hal</code> file results in two extra files being created (Foo.java
+and Bar.java):</p>
+
+<pre class="prettyprint">
+struct Foo {
+ ...
+};
+
+struct Bar {
+ ...
+
+ struct Baz {
+ };
+
+ ...
+};
+</pre>
+
+<p>The definition of Baz lives in a static inner class of Bar (in Bar.java).</p>
+
+  </body>
+</html>

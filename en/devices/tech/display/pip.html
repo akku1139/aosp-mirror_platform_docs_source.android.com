@@ -1,0 +1,181 @@
+<html devsite>
+  <head>
+    <title>Picture-in-picture</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+<p>
+Android 8.0 includes support for picture-in-picture (PIP) for Android handheld
+devices. PIP allows users to resize an app with an ongoing activity into a small
+window. PIP is especially useful for video apps because content continues to
+play while the user is free to perform other actions. Users can manipulate this
+window's position through the SystemUI and interact with the application currently
+in picture-in-picture with (up to three) app-provided actions.
+</p>
+<p>
+More information is available in the Android Developer
+<a href="https://developer.android.com/training/tv/playback/picture-in-picture.html">Picture-in-picture</a>
+documentation.
+</p>
+
+<h2 id="overview">Overview</h2>
+<p>
+PIP requires explicit opt-in from applications that support it and works on a
+per-activity basis. (A single application can have multiple activities, only one
+of which is in PIP.) Activities request to enter picture-in-picture by calling
+<code>enterPictureInPictureMode()</code>, and receive activity callbacks in the
+form of <code>onPictureInPictureModeChanged()</code>.
+</p>
+<p>
+Android 8.0 added additional methods, including
+<code>setPictureInPictureParams()</code>, which lets activities control their
+aspect ratio while in PIP and custom actions, which allow users to interact with
+the activity without having to expand it. In PIP, the activity is in a paused,
+but rendering, state and does not directly receive touch input or window focus.
+Only a single task can be in PIP at a time.
+</p>
+<h2 id="device-requirements">Device requirements</h2>
+<p>
+To support PIP, enable the
+<code>PackageManager#FEATURE_PICTURE_IN_PICTURE</code> system feature in
+<code><a href="https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/content/pm/PackageManager.java">/android/frameworks/base/core/java/android/content/pm/PackageManager.java</a></code>.
+Devices that support PIP must have a screen that is larger than 220dp at its
+smallest width. Similar to split screen multi-window, PIP allows multiple
+activities to run on-screen at the same time. Therefore, devices should have
+sufficient CPU and RAM to support this use case.
+</p>
+<h2 id="implementation">Implementation</h2>
+<p>
+Most of the activity lifecycle management is done in system between
+<code><a href="https://android.googlesource.com/platform/frameworks/base/+/master/services/core/java/com/android/server/am/">ActivityManager</a></code>
+and <code><a
+href="https://android.googlesource.com/platform/frameworks/base/+/master/services/core/java/com/android/server/wm/">WindowManager</a></code>.
+The reference UI implementation is in the <code><a
+href="https://android.googlesource.com/platform/frameworks/base/+/master/packages/SystemUI/">SystemUI</a></code>
+package.
+</p>
+
+<p>
+Modifications to the system should not affect its intrinsic behavior as defined
+by the <a href="#cts-tests">Compatibility Test Suite (CTS) tests</a>.
+The system logic for PIP mainly revolves around the management of tasks and
+activities within the "pinned" stack. Here is a quick class overview:
+</p>
+<ul>
+  <li><strong><code>ActivityRecord</code></strong>: tracks each activity's
+  picture-in-picture state. To prevent users from entering PIP in certain
+  circumstances, such as from the lock screen or during VR, add cases to
+  <code>checkEnterPictureInPictureState()</code>.</li>
+  <li><strong><code>ActivityManagerService</code></strong>: the primary interface
+  from the activity to request entering PIP and the interface to calls from
+  <code>WindowManager</code> and <code>SystemUI</code> to change the PIP activity
+  state.</li>
+  <li><strong><code>ActivityStackSupervisor</code></strong>: called from the
+  <code>ActivityManagerService</code> to move tasks in or out of the pinned stack,
+  updating the <code>WindowManager</code> as necessary.</li>
+  <li><strong><code>PinnedStackWindowController</code></strong>: the
+  <code>WindowManager</code> interface from <code>ActivityManager</code>.</li>
+  <li><strong><code>PinnedStackController</code></strong>: reports changes in the
+  system to <code>SystemUI</code>, such as IME shown/hidden, aspect ratio changed,
+  or actions changed.</li>
+  <li><strong><code>BoundsAnimationController</code></strong>: animates the PIP
+  activity windows in a way that does not trigger a configuration change while
+  resizing.</li>
+  <li><strong><code>PipSnapAlgorithm</code></strong>: a shared class used in both
+  the system and SystemUI that controls the snapping behaviour of the PIP window
+  near the edges of the screen.</li>
+</ul>
+
+<p>
+The reference <code><a
+href="https://android.googlesource.com/platform/frameworks/base/+/master/packages/SystemUI/">SystemUI</a></code>
+provides a complete implementation of PIP that supports presenting custom
+actions to users and general manipulation, such as expansion and dismissal.
+Device manufacturers can build upon these changes, as long as they do not affect
+the intrinsic behaviours as defined by the CDD. Here is a quick class
+overview:</p>
+<ul>
+  <li><strong><code>PipManager</code></strong>: the <code>SystemUI</code>
+  component that is started with <code>SystemUI</code>.</li>
+  <li><strong><code>PipTouchHandler</code></strong>: the touch handler, which
+  controls the gestures that manipulate the PIP. This is only used while the input
+  consumer for the PIP is active (see <code>InputConsumerController</code>). New
+  gestures can be added here.</li>
+  <li><strong><code>PipMotionHelper</code></strong>: a convenience class that
+  tracks the PIP position, and allowable region on-screen. Calls through to
+  <code>ActivityManagerService</code> to update or animate the position and size
+  of the PIP.</li>
+  <li><strong><code>PipMenuActivityController</code></strong>: starts an activity
+  that shows the actions provided by the activity currently in PIP. This activity
+  is a task-overlay activity, and removes the overlaying input consumer to allow
+  it to be interactive.</li>
+  <li><strong><code>PipMenuActivity</code></strong>: the implementation for the
+  menu activity.</li>
+  <li><strong><code>PipMediaController</code></strong>: the listener that updates
+  <code>SystemUI</code> when the media session changes in a way that might affect
+  the default actions on the PIP.</li>
+  <li><strong><code>PipNotificationController</code></strong>: the controller that
+  ensures that a notification is active while a user is using the PIP feature.</li>
+  <li><strong><code>PipDismissViewController</code></strong>: the overlay shown to
+  users when they start interacting with the PIP to indicate that it can be
+  dismissed.</li>
+</ul>
+<h2 id="default-placement">Default placement</h2>
+<p>
+There are various system resources that control the default placement of the
+PIP:
+</p>
+<ul>
+  <li><strong><code>config_defaultPictureInPictureGravity</code></strong>: the <a
+  href="https://developer.android.com/reference/android/view/Gravity.html">gravity</a>
+  integer, which controls the corner to place the PIP, such as
+  <code>BOTTOM|RIGHT</code>.</li>
+  <li><strong><code>config_defaultPictureInPictureScreenEdgeInsets</code></strong>:
+  the offsets from the sides of the screen to place the PIP.</li>
+  <li><strong><code>config_pictureInPictureDefaultSizePercent</code></strong> and
+  <strong><code>config_pictureInPictureDefaultAspectRatio</code></strong>: the
+  combination of percentage of the screen width and the aspect ratio controls the
+  size of the PIP. The computed default PIP size should not be smaller than
+  <code>@dimen/default_minimal_size_pip_resizable_task</code>, as defined by CTS
+  and the CDD.</li>
+  <li><strong><code>config_pictureInPictureSnapMode</code></strong>: the snapping
+  behaviour as defined in <code>PipSnapAlgorithm</code>.</li>
+</ul>
+<p>
+Device implementations should not change the minimum and maximum aspect ratios
+that are defined in the CDD and CTS.
+</p>
+<h2 id="permissions">Permissions</h2>
+<p>
+Android 8.0 added a per-package "application operation"
+(<code>OP_PICTURE_IN_PICTURE</code>) to <code>AppOpsManager</code>
+(<code>master/core/java/android/app/AppOpsManager.java)</code>, which allows
+users to control PIP on a per-application level through the system settings.
+Device implementations need to respect this check when an activity requests to
+enter picture-in-picture mode.
+</p>
+<h2 id="cts-tests">Testing</h2>
+<p>
+To test PIP implementations, run all picture-in-picture related tests found in
+the host-side CTS tests under <code><a
+href="https://android.googlesource.com/platform/cts/+/master/hostsidetests/services/activitymanager/src/android/server/cts">/cts/hostsidetests/services/activitymanager</a></code>,
+particularly in <code>ActivityManagerPinnedStackTests.java</code>. 
+</p>
+</body>
+</html>

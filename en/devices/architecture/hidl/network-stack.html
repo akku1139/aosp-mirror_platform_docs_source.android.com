@@ -1,0 +1,176 @@
+<html devsite>
+  <head>
+    <title>Network Stack Configuration Tools</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+<p>The Android operating system contains standard Linux networking utilities
+such as <code>ifconfig</code>, <code>ip</code>, and <code>ip6tables</code>.
+These utilities reside on the system image and enable configuration of the
+entire Linux networking stack. On devices running Android 7.x and earlier,
+vendor code is allowed to call these binaries directly, which presents the
+following problems:</p>
+
+<ul>
+<li>Because network utilities are updated in the system image, they do not
+provide a stable implementation.</li>
+<li>The scope of the networking utilities is so broad it is difficult to evolve
+the system image while guaranteeing predictable behaviour.</li>
+</ul>
+
+<p>On devices running Android 8.0, the vendor partition can remain the same
+while the system partition receives an update. To achieve this, Android 8.0
+provides the ability to define a stable, versioned interface while also using
+SELinux restrictions to keep the interdependency of vendor and system image to a
+known good set.</p>
+
+<p>Vendors can use the platform-provided network configuration utilities to
+configure the Linux networking stack, but these utilities do not yet include a
+HIDL interface wrapper. To define such an interface, Android 8.0 includes the
+<code>netutils-wrapper-1.0</code> tool.
+</p>
+
+<h2 id="netutils-wrapper">Netutils wrapper</h2>
+<p>The <code>netutils</code> wrapper utility provides a subset of the Linux
+network stack configuration that is not affected by system partition updates.
+Android 8.0 contains version 1.0 of the wrappers, which allows you to pass the
+same arguments as the wrapped utilities, installed in the system partition at
+<code>/system/bin</code> as follows:</p>
+
+<pre class="prettyprint">
+u:object_r:system_file:s0           /system/bin/ip-wrapper-1.0 -> netutils-wrapper-1.0
+u:object_r:system_file:s0           /system/bin/ip6tables-wrapper-1.0 -> netutils-wrapper-1.0
+u:object_r:system_file:s0           /system/bin/iptables-wrapper-1.0 -> netutils-wrapper-1.0
+u:object_r:system_file:s0           /system/bin/ndc-wrapper-1.0 -> netutils-wrapper-1.0
+u:object_r:netutils_wrapper_exec:s0 /system/bin/netutils-wrapper-1.0
+u:object_r:system_file:s0           /system/bin/tc-wrapper-1.0 -> netutils-wrapper-1.0
+</pre>
+
+<p>Symlinks show the networking utilities wrapped by the <code>netutils</code>
+wrapper, which include:</p>
+<ul>
+<li><code>ip</code></li>
+<li><code>iptables</code></li>
+<li><code>ip6tables</code></li>
+<li><code>ndc</code></li>
+<li><code>tc</code></li>
+</ul>
+
+<p>To use these utilities in Android 8.0 and later, vendor implementations must
+adhere to the following rules:</p>
+<ul>
+<li>Vendor processes must not execute
+<code>/system/bin/netutils-wrapper-1.0</code> directly; attempts to do so will
+result in error.</li>
+<li>All utilities wrapped by <code>netutils-wrapper-1.0</code> must be launched
+using their symlinks. For example, change the vendor code that did this before
+(<code>/system/bin/ip &lt;FOO&gt; &lt;BAR&gt;</code>) to
+<code>/system/bin/ip-wrapper-1.0 &lt;FOO&gt; &lt;BAR&gt;</code>.</li>
+<li>Executing the wrappers without domain transition is prohibited in platform
+SELinux policy. This rule must not be changed and is tested against in the
+<a href="/compatibility/cts.html">Android Compatibility Test Suite (CTS)</a>.
+</li>
+<li>Executing the utilities directly (e.g.,
+<code>/system/bin/ip &lt;FOO&gt; &lt;BAR&gt;</code>) from the vendor processes
+is also prohibited in the platform SELinux policies. This rule must not be
+changed and is tested against in CTS.</li>
+<li>Any vendor domain (process) that needs to launch a wrapper must add the
+following domain transition rule in the SELinux policy:
+<code>domain_auto_trans(<var>VENDOR-DOMAIN-NAME</var>, netutils_wrapper_exec,
+netutils_wrapper)</code>.</li>
+</ul>
+
+<aside class="note"><strong>Note:</strong> For details on Android 8.0 SELinux,
+see <a href="/security/selinux/images/SELinux_Treble.pdf">SELinux for Android
+8.0</a>.</aside>
+
+<h2 id="netutils-wrapper-filters">Netutils wrapper filters</h2>
+<p>Wrapped utilities can be used to configure almost any aspect of the Linux
+networking stack. However, to ensure it is possible to maintain a stable
+interface and allow updates to the system partition, only certain combinations
+of command line arguments are allowed; other commands will be rejected.</p>
+
+<h3 id="vendor-interfaces-and-chains">Vendor interfaces and chains</h3>
+<p>The wrapper has a concept of <em>vendor interfaces</em>. These are interfaces
+typically managed by vendor code, such as cellular data interfaces. Typically,
+other types of interfaces (such as Wi-Fi) are managed by the HALs and the
+framework. The wrapper recognizes vendor interfaces by name (using a regular
+expression) and allows vendor code to perform many operations on them.
+Currently, vendor interfaces are:</p>
+<ul>
+<li>Interfaces whose names end in "oem" followed by a number, such as
+<code>oem0</code> or <code>r_oem1234</code>.</li>
+<li>Interfaces used by current SOC and OEM implementations, such as
+<code>rmnet_data[0-9]</code>.</li>
+</ul>
+
+<p>Names of interfaces that are typically managed by the framework (such as
+<code>wlan0</code>) are never vendor interfaces.</p>
+
+<p>The wrapper has a similar concept of <em>vendor chains</em>. These are used
+in <code>iptables</code> commands and are also recognized by name. Currently,
+vendor chains:</p>
+<ul>
+<li>Start with <code>oem_</code>.</li>
+<li>Are used by current SOC and OEM implementations, e.g., chains starting in
+<code>nm_</code> or <code>qcom_</code>.</li>
+</ul>
+
+<h3 id="allowed-commands">Allowed commands</h3>
+<p>Currently allowed commands are listed below. Restrictions are implemented via
+a set of regular expressions on the executed command lines. For details, refer
+to <code>system/netd/netutils_wrappers/NetUtilsWrapper-1.0.cpp</code>.</p>
+
+<h4 id="ip">ip</h4>
+<p>The <code>ip</code> command is used to configure IP addresses, routing, IPsec
+encryption, and a number of other network parameters. The wrapper allows the
+following commands:</p>
+<ul>
+<li>Add and remove IP addresses from vendor-managed interfaces.</li>
+<li>Configure IPsec encryption.</li>
+</ul>
+
+<h4 id="iptables-ip6tables">iptables/ip6tables</h4>
+<p>The <code>iptables</code> and <code>ip6tables</code> commands are used to
+configure firewalling, packet mangling, NAT, and other per-packet processing.
+The wrapper allows the following commands:</p>
+<ul>
+<li>Add and delete vendor chains.</li>
+<li>Add and delete rules in any chain that refers to packets going into
+(<code>-i</code>) or out of (<code>-o</code>) a vendor interface.</li>
+<li>Jump to a vendor chain from any point in any other chain.</li>
+</ul>
+
+<h4 id="ndc">ndc</h4>
+<p><code>ndc</code> is used to communicate to the <code>netd</code> daemon that
+performs most network configuration on Android. The wrapper allows the following
+commands:</p>
+<ul>
+<li>Create and destroy OEM networks (<code>oemXX</code>).</li>
+<li>Add vendor-managed interfaces to OEM networks.</li>
+<li>Add routes to OEM networks.</li>
+<li>Enable or disable IP forwarding globally and on vendor interfaces.</li>
+</ul>
+
+<h4 id="tc">tc</h4>
+<p>The <code>tc</code> command is used to configure traffic queueing and shaping
+on vendor interfaces.</p>
+
+  </body>
+</html>

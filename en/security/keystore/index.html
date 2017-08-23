@@ -30,15 +30,6 @@ third-party apps. Developers seeking the Android-specific extensions should go
 to <a
 href="https://developer.android.com/reference/android/security/keystore/KeyGenParameterSpec.html">android.security.keystore</a>.</p>
 
-<p>Keystore has been <a href="features.html">significantly enhanced</a> in
-Android 6.0 with the addition of symmetric cryptographic primitives, AES and
-HMAC, and the addition of an access control system for hardware-backed
-keys. Access controls are specified during key generation and enforced for the
-lifetime of the key. Keys can be restricted to be usable only after the user has
-authenticated, and only for specified purposes or with specified cryptographic
-parameters. For more information, please see the <a
-href="implementer-ref.html">Implementer's Reference</a>.</p>
-
 <p>Before Android 6.0, Android already had a simple, hardware-backed crypto
 services API, provided by versions 0.2 and 0.3 of the Keymaster Hardware
 Abstraction Layer (HAL).  Keystore provided digital signing and verification
@@ -47,10 +38,38 @@ already implemented on many devices, but there are many security goals that
 cannot easily be achieved with only a signature API. Keystore in Android 6.0
 extends the Keystore API to provide a broader range of capabilities.</p>
 
+<p>In Android 6.0, Keystore added <a href="/security/keystore/features.html">symmetric cryptographic
+primitives</a>, AES and HMAC, and an access control system for hardware-backed
+keys. Access controls are specified during key generation and enforced for the
+lifetime of the key. Keys can be restricted to be usable only after the user has
+authenticated, and only for specified purposes or with specified cryptographic
+parameters. For more information, see the <a href="/security/keystore/tags">Authorization
+Tags</a> and <a href="/security/keystore/implementer-ref">Functions</a> pages.</p>
+
+<p>
+In Android 7.0, Keymaster 2 added support for key attestation and version binding.
+<a href="/security/keystore/attestation">Key attestation</a>
+provides public key certificates that contain a detailed
+description of the key and its access controls, to make the key's existence in
+secure hardware and its configuration remotely verifiable.
+</p>
+<p>
+<a href="/security/keystore/version-binding">Version binding</a>
+binds keys to operating system and patch
+level version. This ensures that an attacker who discovers a weakness in an old
+version of system or TEE software cannot roll a device back to the vulnerable
+version and use keys created with the newer version. In addition, when a key
+with a given version and patch level is used on a device that has been upgraded
+to a newer version or patch level, the key is upgraded before it can be used,
+and the previous version of the key invalidated. As the device is upgraded, the
+keys "ratchet" forward along with the device, but any reversion of the device to
+a previous release causes the keys to be unusable.
+</p>
+
 <h2 id=goals>Goals</h2>
 
-<p>The goal of the Android 6.0 Keystore API and the underlying Keymaster 1.0 HAL
-is to provide a basic but adequate set of cryptographic primitives to allow the
+<p>The Android 7.0 Keystore API and the underlying Keymaster HAL
+provides a basic but adequate set of cryptographic primitives to allow the
 implementation of protocols using access-controlled, hardware-backed keys.</p>
 
 <p>In addition to expanding the range of cryptographic primitives, Keystore in
@@ -66,11 +85,11 @@ clients, and a defined time range
 <h2 id=architecture>Architecture</h2>
 
 <p>The Keymaster HAL is an OEM-provided, dynamically-loadable library used by the
-Keystore service to provide hardware-backed cryptographic services.  HAL
-implementations must not perform any sensitive operations in user space, or even
-in kernel space.  Sensitive operations are delegated to a secure processor
-reached through some kernel interface. The resulting architecture looks
-like the following:</p>
+Keystore service to provide hardware-backed cryptographic services. To keep
+things secure, HAL implementations don't perform any sensitive operations in
+user space, or even in kernel space. Sensitive operations are delegated to a
+secure processor reached through some kernel interface.
+The resulting architecture looks like this:</p>
 
 <div align="center">
   <img src="/security/images/access-to-keymaster.png" alt="Access to Keymaster" id="figure1" />
@@ -91,14 +110,21 @@ wire format is implementation-defined.</p>
 
 <h2 id=compatibility_with_previous_versions>Compatibility with previous versions</h2>
 
-<p>The Keymaster v1.0 HAL is completely incompatible with the
-previously-released HALs, e.g. Keymaster v0.2 and v0.3.  To facilitate
-interoperability on pre-Marshmallow devices that launched with the older
-Keymaster HALs, Keystore provides an adapter that implements the 1.0 HAL with
-calls to the existing hardware library. The result cannot provide the full range
-of functionality in the 1.0 HAL. In particular, it will only support RSA and
-ECDSA algorithms, and all of the key authorization enforcement will be performed
-by the adapter, in the non-secure world.</p>
+<p>The Keymaster 1 HAL is completely incompatible with the
+previously-released HALs, e.g. Keymaster 0.2 and 0.3. To facilitate
+interoperability on devices running Android 5.0 and earlier that launched with
+the older Keymaster HALs, Keystore provides an adapter that implements the
+Keymaster 1 HAL with calls to the existing hardware library. The result cannot
+provide the full range of functionality in the Keymaster 1 HAL. In particular,
+it only supports RSA and ECDSA algorithms, and all of the key authorization
+enforcement is performed by the adapter, in the non-secure world.</p>
+
+<p>
+Keymaster 2 further simplified the HAL interface by removing the <code>get_supported_*</code>
+methods and allowing the <code>finish()</code> method to accept input. This reduces the
+number of round trips to the TEE in cases where the input is available all at
+once, and simplifies implementation of AEAD decryption.
+</p>
 
   </body>
 </html>

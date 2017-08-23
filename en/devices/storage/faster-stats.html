@@ -1,0 +1,106 @@
+<html devsite>
+  <head>
+    <title>Faster Storage Statistics</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>
+In earlier versions of Android, the system traversed all files owned by a
+particular app to measure disk usage. This manual measurement could take minutes
+to compute before displaying the results to users in Settings.
+</p>
+<p>
+In addition, the internal algorithm to clear cached data files only looked at
+modified time across all apps. This allowed malicious apps to degrade the
+overall user experience by setting modified times far in the future to unfairly
+favor themselves over other apps.
+</p>
+<p>
+To improve these experiences, Android 8.0 offers to leverage the ext4 filesystem's
+"quota" support to return disk usage statistics almost instantly. This quota
+feature also improves system stability by preventing any single app from using
+more than 90% of disk space or 50% of inodes.
+</p>
+<h2 id="implementation">Implementation</h2>
+<p>
+The quota feature is part of the default implementation of <code>installd</code>.
+<code>installd</code> automatically uses the quota feature when enabled on a
+particular filesystem. The system automatically and transparently resumes
+manual calculation when the quota feature isn't enabled or supported on the
+block device being measured.
+</p>
+<p>
+To enable quota support on a particular block device:
+</p>
+<ol>
+<li>Enable the <code>CONFIG_QUOTA</code>, <code>CONFIG_QFMT_V2</code>, and
+<code>CONFIG_QUOTACTL</code> kernel options.</li>
+<li>Add the <code>quota</code> option to your userdata partition in your fstab
+file:
+<pre>
+/dev/block/platform/soc/624000.ufshc/by-name/userdata   /data
+ext4    noatime,nosuid,nodev,barrier=1,noauto_da_alloc
+latemount,wait,check,formattable,fileencryption=ice<strong>,quota</strong></pre>
+</li>
+</ol>
+<p>
+The <code>fstab</code> option can safely be enabled or disabled on existing
+devices. During the first boot after changing the <code>fstab</code> option,
+<code>fsmgr</code> forces an <code>fsck</code> pass to update all quota data
+structures, which may cause that first boot to take slightly longer. Subsequent
+boots will not be affected.
+</p>
+<p>
+Quota support has only been tested on ext4 and Linux 3.18 or higher. If enabling
+on other filesystems, or on older kernel versions, device manufacturers are
+responsible for testing and vetting for statistics correctness.
+</p>
+<p>
+No special hardware support is required.
+</p>
+<h2 id="validation">Validation</h2>
+<p>
+There are CTS tests under <code>StorageHostTest</code>, which exercise public
+APIs for measuring disk usage. These APIs are expected to return correct values
+regardless of quota support being enabled or disabled.
+</p>
+<h3 id="debugging">Debugging</h3>
+<p>
+The test app carefully allocates disk space regions using unique prime numbers
+for the size. When debugging these tests, use this to determine the cause of any
+discrepancies. For example, if a test fails with a delta of 11MB, examine the
+<code>Utils.useSpace()</code> method to see that the 11MB blob was stored in
+<code>getExternalCacheDir()</code>.
+</p>
+<p>
+There are also some internal tests that may be useful for debugging, but they
+may require disabling security checks to pass:
+</p>
+
+
+<pre class="devsite-click-to-copy">
+<code class="devsite-terminal">runtest -x frameworks/base/services/tests/servicestests/ \
+  src/com/android/server/pm/InstallerTest.java</code>
+<code class="devsite-terminal">adb shell /data/nativetest64/installd_utils_test/installd_utils_test</code>
+<code class="devsite-terminal">adb shell /data/nativetest64/installd_cache_test/installd_cache_test</code>
+<code class="devsite-terminal">adb shell /data/nativetest64/installd_service_test/installd_service_test</code>
+</pre>
+</body>
+</html>

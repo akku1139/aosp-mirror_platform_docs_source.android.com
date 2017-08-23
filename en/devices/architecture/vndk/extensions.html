@@ -1,0 +1,150 @@
+<html devsite>
+  <head>
+    <title>VNDK Extensions</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>Android device manufacturers change the source code of AOSP libraries for
+various reasons. Some vendors reimplement functions in AOSP libraries to
+boost the performance while other vendors add new hooks, new APIs, or new
+functionalities to AOSP libraries. This section provides guidelines for
+extending AOSP libraries in a way that does not break CTS/VTS.</p>
+
+<h2 id="drop-in-replacement">Drop-in replacement</h2>
+<p>All modified shared libraries must be <strong>binary-compatible</strong>,
+<strong>drop-in replacements</strong> of their AOSP counterpart. All existing
+AOSP users must be able to use the modified shared library without
+recompilations. This requirement implies the following:</p>
+<ul>
+<li>AOSP functions must not be removed.</li>
+<li>Structures must not be altered if such structures are exposed to their
+users.</li>
+<li>Pre-condition of functions must not be strengthened.</li>
+<li>Functions must provide equivalent functionalities.</li>
+<li>Post-condition of functions must not be weakened.</li>
+</ul>
+
+<h2 id="extended-module-classifications">Extended module classifications</h2>
+<p>Classify modules by the functionalities they <strong>define</strong> and
+<strong>use</strong>.</p>
+<p class="note"><strong>Note</strong>: <em>Functionalities</em> is used here
+instead of API/ABI because it is possible to add functionality without changing
+any API/ABI.</p>
+
+<p>Depending on the functionalities defined in a module, modules can be
+classified into <strong>DA-Module</strong> and <strong>DX-Module</strong>:</p>
+<ul>
+<li><em>Defining-only-AOSP Modules (DA-Module)</em> do not define new
+functionalities which were not in the AOSP counterpart.
+ <ul>
+ <li><em>Example 1.</em> An intact unmodified AOSP library is a DA-Module.</li>
+ <li><em>Example 2.</em> If a vendor rewrites the functions in
+ <code>libcrypto.so</code> with SIMD instructions (without adding new
+ functions), then the modified <code>libcrypto.so</code> will be a DA-Module.
+ </li>
+ </ul>
+</li>
+<li><em>Defining-Extension Modules (DX-Module)</em> either define new
+functionalities or do not have an AOSP counterpart.
+ <ul>
+ <li><em>Example 1.</em> If a vendor adds a helper function to
+ <code>libjpeg.so</code> to access some internal data, then the modified
+ <code>libjpeg.so</code> will be a DX-Lib and the newly added function will be
+ the extended portion of the library.</li>
+ <li><em>Example 2.</em> If a vendor defines a non-AOSP library named
+ <code>libfoo.so</code>, then <code>libfoo.so</code> will be a DX-Lib.</li>
+ </ul>
+</li>
+</ul>
+
+<p>Depending on the functionalities used by a module, modules can be classified
+into <strong>UA-Module</strong> and <strong>UX-Module</strong>.</p>
+<ul>
+<li><em>Using-only-AOSP Modules (UA-Module)</em> only use AOSP functionalities
+in their implementations. They do not rely on any non-AOSP extensions.
+ <ul>
+ <li><em>Example 1.</em> An intact unmodified AOSP library is an UA-Module.</li>
+ <li><em>Example 2.</em> If a modified shared library <code>libjpeg.so</code>
+ only relies on other AOSP APIs, then it will be an UA-Module.</li>
+ </ul>
+</li>
+<li><em>Using-Extension Modules (UX-Module)</em> rely on some non-AOSP
+functionalities in their implementations.
+ <ul>
+ <li><em>Example 1.</em> If a modified <code>libjpeg.so</code> relies on another
+ non-AOSP library named <code>libjpeg_turbo2.so</code>, then the modified
+ <code>libjpeg.so</code> will be an UX-Module.</li>
+ <li><em>Example 2.</em> If a vendor adds a new function to their modified
+ <code>libexif.so</code> and their modified <code>libjpeg.so</code> uses the
+ newly added function from <code>libexif.so</code>, then their modified
+ <code>libjpeg.so</code> will be an UX-Module.</li>
+ </ul>
+</li>
+</ul>
+
+<p>Definitions and usages are independent from each other:</p>
+<table>
+  <tr>
+   <td rowspan="2" colspan="2" class="columns"></td>
+   <th colspan="2">Used Functionalities</th>
+  </tr>
+  <tr>
+   <td>Only AOSP (UA)</td>
+   <td>Extended (UX)</td>
+  </tr>
+  <tr>
+   <th rowspan="2">Defined Functionalities</th>
+   <td>Only AOSP (DA)</td>
+   <td>DAUA</td>
+   <td>DAUX</td>
+  </tr>
+  <tr>
+   <td>Extended (DX)</td>
+   <td>DXUA</td>
+   <td>DXUX</td>
+  </tr>
+</table>
+
+<h2 id="vndk-extension-mechanism">VNDK extension mechanism</h2>
+<p>
+Vendor modules that rely on extended functionalities won't work because the AOSP
+library with the same name does not have the extended functionality. If vendor
+modules directly or indirectly depend on extended functionalities, vendors
+should copy DAUX, DXUA, and DXUX shared libraries to the vendor partition
+(vendor processes always look for shared libraries in the vendor partition
+first). However, LL-NDK and SP-NDK libraries must not be copied, so vendor
+modules must not rely on the extended functionalities defined by the modified
+LL-NDK and SP-NDK libraries.
+</p>
+<p>
+DAUA shared libraries can remain on the system partition if the corresponding
+AOSP library can provide the same functionality and vendor modules continue to
+work when the system partition is overwritten by an AOSP system image.
+</p>
+<p>
+Drop-in replacement is important because the unmodified VNDK libraries in the
+AOSP system image will link with the modified shared libraries on name
+collision. If the AOSP libraries are modified in an API/ABI incompatible manner,
+the AOSP libraries in the AOSP system image might fail to link or result in
+undefined behaviors.
+</p>
+
+  </body>
+</html>

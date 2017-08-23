@@ -1,0 +1,655 @@
+<html devsite>
+  <head>
+    <title>Versioning</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>HIDL requires every interface written in HIDL be versioned. After a HAL
+interface is published, it is frozen and any further changes must be made to a
+new version of that interface. While a given published interface may not be
+modified, it can be extended by another interface.</p>
+
+<h2 id=code-structure>HIDL code structure</h2>
+
+<p>
+<a href="/reference/hidl/index.html">HIDL code is organized</a> in user-defined
+types, interfaces, and packages:</p>
+
+<ul>
+<li><strong>User-defined types (UDTs)</strong>. HIDL provides access to a set of
+primitive data types that can be used to compose more complex types via
+structures, unions, and enumerations</a>. UDTs are passed to methods of
+interfaces, and can be defined at the level of a package (common to all
+interfaces) or locally to an interface.</li>
+<li><strong>Interfaces</strong>. As a basic building block of HIDL, an interface
+consists of UDT and method declarations. Interfaces can also inherit from
+another interface.</li>
+<li><strong>Packages</strong>. Organizes related HIDL interfaces and the data
+types on which they operate. A package is identified by a name and a version and
+includes the following:
+<ul>
+ <li>Data-type definition file called <code>types.hal</code>.</li>
+ <li>Zero or more interfaces, each in their own <code>.hal</code> file.</li>
+</ul>
+</li>
+</ul>
+
+<p>The data-type definition file <code>types.hal</code> contains only UDTs (all
+package-level UDTs are kept in a single file). Representations in the target
+language are available to all interfaces in the package.</p>
+
+<h2 id=philosophy>Versioning philosophy</h2>
+<p>A HIDL package (such as <code>android.hardware.nfc</code>), after being
+published for a given version (such as <code>1.0</code>), is immutable; it
+cannot be changed. Modifications to the interfaces in the package or any
+changes to its UDTs can take place only in <em>another</em> package.</p>
+
+<p>In HIDL, versioning applies at the package level, not at the interface level,
+and all interfaces and UDTs in a package share the same version. Package
+versions follow <a href="http://semver.org/" class="external">semantic
+versioning</a> without the patch level and build-metadata components. Within a
+given package, a <strong>minor version</strong> bump implies the new version of
+the package is backwards-compatible with the old package and a <strong>major
+version</strong> bump implies the new version of the package is not
+backwards-compatible with the old package.</p>
+
+<p>Conceptually, a package can relate to another package in one of several ways:
+</p>
+
+<ul>
+<li><strong>Not at all</strong>.</li>
+<li><strong>Package-level backwards-compatible extensibility</strong>. This
+occurs for new minor-version uprevs (next incremented revision) of a package;
+the new package has the same name and major version as the old package, but a
+higher minor version. Functionally, the new package is a superset of the old
+package, meaning:
+<ul>
+  <li>Top-level interfaces of the parent package are present in the new package,
+  though the interfaces may have new methods, new interface-local UDTs (the
+  interface-level extension described below), and new UDTs in
+  <code>types.hal</code>.</li>
+  <li>New interfaces may also be added to the new package.</li>
+  <li>All data types of the parent package are present in the new package and
+  can be handled by the (possibly reimplemented) methods from the old package.
+  </li>
+  <li>New data types may also be added for use by either new methods of uprev'ed
+  existing interfaces, or by new interfaces.</li>
+</ul>
+</li>
+
+<li><strong>Interface-level backwards-compatible extensibility</strong>. The new
+package can also extend the original package by consisting of logically separate
+interfaces that simply provide additional functionality, and not the core one.
+For this purpose, the following may be desirable:
+<ul>
+  <li>Interfaces in the new package need recourse to the data types of the old
+  package.</li>
+  <li>Interfaces in new package may extend interfaces of one or more old
+  packages.</li>
+</ul>
+</li>
+<li><strong>Extend the original backwards-incompatibility</strong>. This is a
+major-version uprev of the package and there need not be any correlation between
+the two. To the extent that there is, it can be expressed with a combination of
+types from the older version of the package, and inheritance of a subset of
+old-package interfaces.</li>
+</ul>
+
+<h2 id=code-layout>HIDL code layout</h2>
+<p>HIDL includes core and vendor packages.</p>
+
+<p>Core HIDL interfaces are those specified by Google. The packages they belong
+to start with <code>android.hardware.</code> and are named by subsystem,
+potentially with nested levels of naming. For example, the NFC package is named
+<code>android.hardware.nfc</code> and the camera package is
+<code>android.hardware.camera</code>. In general, a core package has the name
+<code>android.hardware.</code>[<code>name1</code>].[<code>name2</code>]&#8230;.
+HIDL packages have a version in addition to their name. For example, the package
+<code>android.hardware.camera</code> may be at version <code>3.4</code>; this is
+important, as the version of a package affects its placement in the source tree.
+</p>
+
+<p>All core packages are placed under <code>hardware/interfaces/</code> in the
+build system. The package
+<code>android.hardware.</code>[<code>name1</code>].[<code>name2</code>]&#8230;
+at version <code>$m.$n</code> is under
+<code>hardware/interfaces/name1/name2/</code>…<code>/$m.$n/</code>; package
+<code>android.hardware.camera</code> version <code>3.4</code> is in directory
+<code>hardware/interfaces/camera/3.4/.</code> A hard-coded mapping exists
+between the package prefix <code>android.hardware.</code> and the path
+<code>hardware/interfaces/</code>.</p>
+
+<p>Non-core (vendor) packages are those produced by the SoC vendor or ODM. The
+prefix for non-core packages is <code>vendor.$(VENDOR).hardware.</code> where
+<code>$(VENDOR)</code>refers to an SoC vendor or OEM/ODM. This maps to the path
+<code>vendor/$(VENDOR)/interfaces</code> in the tree (this mapping is also
+hard-coded).</p>
+
+<h2 id=fqn>Fully-qualified user-defined-type names</h2>
+<p>In HIDL, every UDT has a fully-qualified name that consists of the UDT name,
+the package name where the UDT is defined, and the package version. The
+fully-qualified name is used only when instances of the type are declared and
+not where the type itself is defined. For example, assume package
+<code>android.hardware.nfc,</code> version <code>1.0</code> defines a struct
+named <code>NfcData</code>. At the site of the declaration (whether in
+<code>types.hal</code> or within an interface's declaration), the declaration
+simply states:</p>
+
+<pre class="prettyprint">
+struct NfcData {
+    vec&lt;uint8_t&gt; data;
+};
+</pre>
+
+<p>When declaring an instance of this type (whether within a data structure or
+as a method parameter), use the fully-qualified type name:</p>
+
+<pre class="prettyprint">android.hardware.nfc@1.0::NfcData</pre>
+
+<p>The general syntax is
+<code><var>PACKAGE</var>@<var>VERSION</var>::<var>UDT</var></code>, where:</p>
+
+<ul>
+<li><code><var>PACKAGE</var></code> is the dot-separated name of a HIDL package
+(e.g., <code>android.hardware.nfc</code>).</li>
+<li><code><var>VERSION</var></code> is the dot-separated major.minor-version
+format of the package (e.g., <code>1.0</code>).</li>
+<li><code><var>UDT</var></code> is the the dot-separated name of a HIDL UDT.
+Since HIDL supports nested UDTs and HIDL interfaces can contain UDTs (a type of
+nested declaration), dots are used to access the names.</li>
+</ul>
+
+<p>For example, if the following nested declaration was defined in the common
+types file in package <code>android.hardware.example</code> version
+<code>1.0</code>:</p>
+
+<pre class="prettyprint">
+// types.hal
+package android.hardware.example@1.0;
+struct Foo {
+    struct Bar {
+        // …
+    };
+    Bar cheers;
+};
+</pre>
+
+<p>The fully-qualified name for <code>Bar</code> is
+<code>android.hardware.example@1.0::Foo.Bar</code>. If, in addition to being in
+the above package, the nested declaration were in an interface called
+<code>IQuux</code>:</p>
+
+<pre class="prettyprint">
+// IQuux.hal
+package android.hardware.example@1.0;
+interface IQuux {
+    struct Foo {
+        struct Bar {
+            // …
+        };
+        Bar cheers;
+    };
+    doSomething(Foo f) generates (Foo.Bar fb);
+};
+</pre>
+
+<p>The fully-qualified name for <code>Bar</code> is
+<code>android.hardware.example@1.0::IQuux.Foo.Bar</code>.</p>
+
+<p>In both cases, <code>Bar</code> can be referred to as <code>Bar</code> only
+within the scope of the declaration of <code>Foo</code>. At the package or
+interface level, you must refer to <code>Bar</code> via <code>Foo</code>:
+<code>Foo.Bar</code>, as in the declaration of method <code>doSomething</code>
+above. Alternatively, you could declare the method more verbosely as:</p>
+
+<pre class="prettyprint">
+// IQuux.hal
+doSomething(android.hardware.example@1.0::IQuux.Foo f) generates (android.hardware.example@1.0::IQuux.Foo.Bar fb);
+</pre>
+
+<h2 id=enumeration>Fully-qualified enumeration values</h2>
+<p>If a UDT is an enum type, then each value of the enum type has a
+fully-qualified name that starts with the fully-qualified name of the enum type,
+followed by a colon, then followed by the name of the enum value. For example,
+assume package <code>android.hardware.nfc,</code> version <code>1.0</code>
+defines an enum type <code>NfcStatus</code>:</p>
+
+<pre class="prettyprint">
+enum NfcStatus {
+    STATUS_OK,
+    STATUS_FAILED
+};
+</pre>
+
+<p>When referring to <code>STATUS_OK</code>, the fully qualified name is:</p>
+
+<pre class="prettyprint">android.hardware.nfc@1.0::NfcStatus:STATUS_OK</pre>
+
+<p>The general syntax is
+<code><var>PACKAGE</var>@<var>VERSION</var>::<var>UDT</var>:<var>VALUE</var></code>,
+where:
+
+<ul>
+<li><code><var>PACKAGE</var>@<var>VERSION</var>::<var>UDT</var></code> is the
+exact same fully qualified name for the enum type.</li>
+<li><code><var>VALUE</var></code> is the value's name.</li>
+</ul>
+
+<h2 id=auto-interference>Auto-inference rules</h2>
+<p>A fully-qualified UDT name does not need to be specified. A UDT name can
+safely omit the following:</p>
+<ul>
+<li>The package, e.g. <code>@1.0::IFoo.Type</code></li>
+<li>Both package and version, e.g. <code>IFoo.Type</code></li>
+</ul>
+
+<aside class="caution"><strong>Caution:</strong> UDT names missing a version but
+specifying a package present are not allowed.</aside>
+
+<p>HIDL attempts to complete the name using auto-interference rules (lower rule
+number means higher priority).</p>
+
+<h3 id=rule1>Rule 1</h3>
+<p>If no package and version is provided, a local name lookup is attempted.
+Example:</p>
+
+<pre class="prettyprint">
+interface Nfc {
+    typedef string NfcErrorMessage;
+    send(NfcData d) generates (@1.0::NfcStatus s, NfcErrorMessage m);
+};
+</pre>
+
+<p><code>NfcErrorMessage</code> is looked up locally, and the <code>typedef</code>
+above it is found. <code>NfcData</code> is also looked up locally, but as it is
+not defined locally, rule 2 and 3 are used. <code>@1.0::NfcStatus</code>
+provides a version, so rule 1 does not apply.</p>
+
+<h3 id=rule2>Rule 2</h3>
+<p>If rule 1 fails and a component of the fully-qualified name is missing
+(package, version, or package and version), the component is autofilled with
+information from the current package. The HIDL compiler then looks in the
+current file (and all imports) to find the autofilled fully-qualified name.
+Using the example above, assume the declaration of <code>ExtendedNfcData</code>
+was made in the same package (<code>android.hardware.nfc</code>) at the same
+version (<code>1.0</code>) as <code>NfcData</code>, as follows:</p>
+
+<pre class="prettyprint">
+struct ExtendedNfcData {
+    NfcData base;
+    // … additional members
+};
+</pre>
+
+<p>The HIDL compiler fills out the package name and version name from the
+current package to produce the fully-qualified UDT name
+<code>android.hardware.nfc@1.0::NfcData</code>. As the name exists in the
+current package (assuming it is imported properly), it is used for the
+declaration.</p>
+
+<p>A name in the current package is imported only if one of the following is
+true:</p>
+<ul>
+<li>It is imported explicitly with an <code>import</code> statement.</li>
+<li>It is defined in <code>types.hal</code> in the current package</li>
+</ul>
+
+<p>The same process is followed if <code>NfcData</code> was qualified by only
+the version number:</p>
+
+<pre class="prettyprint">
+struct ExtendedNfcData {
+    // autofill the current package name (android.hardware.nfc)
+    @1.0::NfcData base;
+    // … additional members
+};
+</pre>
+
+<h3 id=rule3>Rule 3</h3>
+<p>If rule 2 fails to produce a match (the UDT is not defined in the current
+package), the HIDL compiler scans for a match within all imported packages.
+Using the above example, assume <code>ExtendedNfcData</code> is declared in
+version <code>1.1</code> of package <code>android.hardware.nfc</code>,
+<code>1.1</code> imports <code>1.0</code> as it should (see
+<a href="#package-ext">Package-Level Extensions</a>), and the definition
+specifies only the UDT name:</p>
+
+<pre class="prettyprint">
+struct ExtendedNfcData {
+    NfcData base;
+    // … additional members
+};
+</pre>
+
+<p>The compiler looks for any UDT named <code>NfcData</code> and finds one in
+<code>android.hardware.nfc</code> at version <code>1.0</code>, resulting in a
+fully-qualified UDT of <code>android.hardware.nfc@1.0::NfcData</code>. If more
+than one match is found for a given partially-qualified UDT, the HIDL compiler
+throws an error.</p>
+
+<h3 id=rule-example>Example</h3>
+<p>Using rule 2, an imported type defined in the current package is favored over
+an imported type from another package:</p>
+
+<pre class="prettyprint">
+// hardware/interfaces/foo/1.0/types.hal
+package android.hardware.foo@1.0;
+struct S {};
+
+// hardware/interfaces/foo/1.0/IFooCallback.hal
+package android.hardware.foo@1.0;
+interface IFooCallback {};
+
+// hardware/interfaces/bar/1.0/types.hal
+package android.hardware.bar@1.0;
+typedef string S;
+
+// hardware/interfaces/bar/1.0/IFooCallback.hal
+package android.hardware.bar@1.0;
+interface IFooCallback {};
+
+// hardware/interfaces/bar/1.0/IBar.hal
+package android.hardware.bar@1.0;
+import android.hardware.foo@1.0;
+interface IBar {
+    baz1(S s); // android.hardware.bar@1.0::S
+    baz2(IFooCallback s); // android.hardware.foo@1.0::IFooCallback
+};
+</pre>
+
+<ul>
+<li><strong><code>S</code></strong> is interpolated as
+<code>android.hardware.bar@1.0::S</code>, and is found in
+<code>bar/1.0/types.hal</code> (because <code>types.hal</code> is automatically
+imported).</li>
+<li><strong><code>IFooCallback</code></strong> is interpolated as
+<code>android.hardware.bar@1.0::IFooCallback</code> using rule 2, but it
+cannot be found because <code>bar/1.0/IFooCallback.hal</code> is not imported
+automatically (as <code>types.hal</code> is). Thus, rule 3 resolves it to
+<code>android.hardware.foo@1.0::IFooCallback</code> instead, which is imported
+via <code>import android.hardware.foo@1.0;</code>).</li>
+</ul>
+
+<h2 id=types>types.hal</h2>
+<p>Every HIDL package contains a <code>types.hal</code> file with UDTs share
+among all interfaces participating in that package. HIDL types are always
+public; regardless of whether a UDT is declared in <code>types.hal</code> or
+within an interface declaration, these types are accessible outside of the scope
+where they are defined. <code>types.hal</code> is not meant to describe the
+public API of a package, but rather to host UDTs used by all interfaces within
+the package. Due to the nature of HIDL, all UDTs are a part of the interface.
+</p>
+
+<p><code>types.hal</code> consists of UDTs and <code>import</code> statements.
+Because <code>types.hal</code> is made available to every interface of the
+package (it is an implicit import), these <code>import</code> statements are
+package-level by definition. UDTs in <code>types.hal</code> may also incorporate
+UDTs and interfaces thus imported.</p>
+
+<p>For example, for an <code>IFoo.hal</code>:</p>
+
+<pre class="prettyprint">
+package android.hardware.foo@1.0;
+// whole package import
+import android.hardware.bar@1.0;
+// types only import
+import android.hardware.baz@1.0::types;
+// partial imports
+import android.hardware.qux@1.0::IQux.Quux;
+// partial imports
+import android.hardware.quuz@1.0::Quuz;
+</pre>
+
+<p>The following are imported:</p>
+<ul>
+<li><code>android.hidl.base@1.0::IBase</code> (implicitly)</li>
+<li><code>android.hardware.foo@1.0::types</code> (implicitly)</li>
+<li>Everything in <code>android.hardware.bar@1.0</code> (including all
+interfaces and its <code>types.hal</code>)</li>
+<li><code>types.hal</code> from <code>android.hardware.baz@1.0::types</code>
+(interfaces in <code>android.hardware.baz@1.0</code> are not imported)</li>
+<li><code>IQux.hal</code> and <code>types.hal</code> from
+<code>android.hardware.qux@1.0</code></li>
+<li><code>Quuz</code> from <code>android.hardware.quuz@1.0</code> (assuming
+<code>Quuz</code> is defined in <code>types.hal</code>, the entire
+<code>types.hal</code> file is parsed, but types other than <code>Quuz</code>
+are not imported).</li>
+</ul>
+
+<h2 id=interface-version>Interface-level versioning</h2>
+<p>Each interface within a package resides in its own file. The package the
+interface belongs to is declared at the top of the interface using the
+<code>package</code> statement. Following the package declaration, zero or more
+interface-level imports (partial or whole-package) may be listed. For example:
+</p>
+
+<pre class="prettyprint">package android.hardware.nfc@1.0;</pre>
+
+<p>In HIDL, interfaces can inherit from other interfaces using the
+<code>extends</code> keyword. For an interface to extend another interface, it
+must have access to it via an <code>import</code> statement. The name of the
+interface being extended (the base interface) follows the rules for type-name
+qualification explained above. An interface may inherit only from one interface;
+HIDL does not support multiple inheritance.</p>
+
+<p>The uprev versioning examples below use the following package:</p>
+
+<pre class="prettyprint">
+// types.hal
+package android.hardware.example@1.0
+struct Foo {
+    struct Bar {
+        vec&lt;uint32_t&gt; val;
+    };
+};
+
+// IQuux.hal
+package android.hardware.example@1.0
+interface IQuux {
+    fromFooToBar(Foo f) generates (Foo.Bar b);
+}
+</pre>
+
+<h3 id=rules>Uprev rules</h3>
+<p>To define a package <code>package@major.minor</code>, either A or all of B
+must be true:</p>
+
+<table>
+<tr>
+<th width="10%">Rule A</th>
+<td>"Is a start minor version": All previous minor versions,
+<code>package@major.0</code>, <code>package@major.1</code>, &#8230;,
+<code>package@major.(minor-1)</code> must not be defined.
+</td>
+</tr>
+</table>
+
+<strong>OR</strong>
+
+<table>
+<tr>
+<th width="10%">Rule B</th>
+<td><p>All of the following is true:</p>
+
+<ol>
+<li>"Previous minor version is valid": <code>package@major.(minor-1)</code>
+must be defined and follow the same rule A (none of
+<code>package@major.0</code> through <code>package@major.(major-2)</code>
+are defined) or rule B (if it is an uprev from <code>@major.(major-2)</code>);
+<br><br>
+AND
+<br><br>
+</li>
+<li>"Inherit at least one interface with the same name": There exists an
+interface <code>package@major.minor::IFoo</code> that extends
+<code>package@major.(minor-1)::IFoo</code>;
+<br><br>
+AND
+<br><br>
+</li>
+<li>"No inherited interface with a different name": There must not exist
+<code>package@major.minor::IBar</code> that extends
+<code>package@major.(minor-1)::IBaz</code>, where <code>IBar</code> and
+<code>IBaz</code> are two different names. If there is an interface with the
+same name, <code>package@major.minor::IBar</code> must extend
+<code>package@major.(minor-k)::IBar</code> such that no IBar exists with a
+smaller k.</li>
+</ol>
+</td>
+</tr>
+</table>
+
+<p>Because of rule A:</p>
+<ul>
+<li>The package can start with any minor version number (for example,
+<code>android.hardware.biometrics.fingerprint</code> starts at
+<code>@2.1</code>.)</li>
+<li>The requirement "<code>android.hardware.foo@1.0</code> is not defined" means
+the directory <code>hardware/interfaces/foo/1.0</code> should not even exist.
+</li>
+</ul>
+
+<p>However, rule A does not affect a package with the same package name but a
+different <em>major</em> version (for example,
+<code>android.hardware.camera.device</code> has both <code>@1.0</code> and
+<code>@3.2</code> defined; <code>@3.2</code> doesn't need to interact with
+<code>@1.0</code>.) Hence, <code>@3.2::IExtFoo</code> can extend
+<code>@1.0::IFoo</code>.</p>
+
+<p>Provided the package name is different,
+<code>package@major.minor::IBar</code> may extend from an interface with a
+different name (for example, <code>android.hardware.bar@1.0::IBar</code> can
+extend <code>android.hardware.baz@2.2::IBaz</code>). If an interface does not
+explicitly declare a super type with the <code>extend</code> keyword, it will
+extend <code>android.hidl.base@1.0::IBase</code> (except <code>IBase</code>
+itself).</p>
+
+<p>B.2 and B.3 must be followed at the same time. For example, even if
+<code>android.hardware.foo@1.1::IFoo</code> extends
+<code>android.hardware.foo@1.0::IFoo</code> to pass rule B.2, if an
+<code>android.hardware.foo@1.1::IExtBar</code> extends
+<code>android.hardware.foo@1.0::IBar</code>, this is still not a valid uprev.
+</p>
+
+<h3 id=uprev>Upreving interfaces</h3>
+<p>To uprev <code>android.hardware.example@1.0</code> (defined above) to
+<code>@1.1</code>:</p>
+
+<pre class="prettyprint">
+// types.hal
+package android.hardware.example@1.1;
+<strong>import android.hardware.example@1.0;</strong>
+
+// IQuux.hal
+package android.hardware.example@1.1
+interface IQuux <strong>extends @1.0::IQuux</strong> {
+    <strong>fromBarToFoo(Foo.Bar b) generates (Foo f);</strong>
+}
+</pre>
+
+<p>This is a package-level <code>import</code> of version <code>1.0</code> of
+<code>android.hardware.example</code> in <code>types.hal</code>. While no new
+UDTs are added in version <code>1.1</code> of the package, references to UDTs in
+version <code>1.0</code> are still needed, hence the package-level import
+in <code>types.hal</code>. (The same effect could have been achieved with an
+interface-level import in <code>IQuux.hal</code>.)</p>
+
+<p>In <code>extends @1.0::IQuux</code> in the declaration of
+<code>IQuux</code>, we specified the version of <code>IQuux</code> that is being
+inherited (disambiguation is required because <code>IQuux</code> is used to
+declare an interface and to inherit from an interface). As declarations are
+simply names that inherit all package and version attributes at the site of the
+declaration, the disambiguation must be in the name of the base interface; we
+could have used the fully-qualified UDT as well, but that would have been
+redundant.</p>
+
+<p>The new interface <code>IQuux</code> does not re-declare method
+<code>fromFooToBar()</code> it inherits from <code>@1.0::IQuux</code>; it simply
+lists the new method it adds <code>fromBarToFoo()</code>. In HIDL, inherited
+methods may <strong>not</strong> be declared again in the child interfaces, so
+for <code>IQuux</code> it would not be an option to declare
+<code>fromFooToBar()</code> explicitly.</p>
+
+<aside class="key-point"><strong>Key Point:</strong> In HIDL, every inherited
+method from a base class must be explicitly implemented in the inheriting class.
+If a method implementation needs to fall back to that of the base, the fallback
+must be in the implementation.</aside>
+
+<h3 id=conventions>Uprev conventions</h3>
+<p>Sometimes interface names must rename the extending interface. We recommend
+that enum extensions, structs, and unions have the same name as what they extend
+unless they are sufficiently different to warrant a new name. Examples:</p>
+
+<pre class="prettyprint">
+// in parent hal file
+enum Brightness : uint32_t { NONE, WHITE };
+
+// in child hal file extending the existing set with additional similar values
+enum Brightness : @1.0::Brightness { AUTOMATIC };
+
+// extending the existing set with values that require a new, more descriptive name:
+enum Color : @1.0::Brightness { HW_GREEN, RAINBOW };
+</pre>
+
+<p>Unless a method warrants a new name, it should be named similarly to what it
+is extending. For example, the method <code>foo_1_1</code> in
+<code>@1.1::IFoo</code> may replace the functionality of the <code>foo</code>
+method in <code>@1.0::IFoo</code>.</p>
+
+<h2 id=package-ext>Package-level versioning</h2>
+<p>HIDL versioning occurs at the package level; after a package is published, it
+is immutable (its set of interfaces and UDTs cannot be changed). Packages can
+relate to each other in several ways, all of which are expressible via a
+combination of interface-level inheritance and building of UDTs by composition.
+</p>
+
+<p>However, one type of relationship is strictly-defined and must be enforced:
+<em>Package-level backwards-compatible inheritance</em>. In this scenario, the
+<em>parent</em> package is the package being inherited from and the
+<em>child</em> package is the one extending the parent. Package-level
+backwards-compatible inheritance rules are as follows:</p>
+
+<ol>
+<li>All interfaces of the parent package are inherited from by interfaces in the
+child package.</li>
+<li>All data types of the parent package are present in the new package and can
+be handled by the (possibly reimplemented) methods from the old package.</li>
+<li>New interfaces may also be added the new package (no restrictions about
+relationships to other interfaces in other packages).</li>
+<li>New data types may also be added for use by either new methods of uprev'ed
+existing interfaces, or by new interfaces.</li>
+</ol>
+
+<p>These rules can be implemented using HIDL interface-level inheritance and UDT
+composition, but require meta-level knowledge to know these relationships
+constitute a backwards-compatible package extension. This knowledge is inferred
+as follows:</p>
+
+<aside class="key-point"><strong>Key Point:</strong> For package
+<code>package</code> at version <code>major.minor</code>, if a
+<code>package</code> exists at <code>major.(minor-1)</code>, then
+<code>package@major.minor</code> is a minor uprev, and must follow the rules for
+backwards-compatibility.</aside>
+
+<p>If a package meets this requirement, <code>hidl-gen</code> enforces
+backwards-compatibility rules.</p>
+
+  </body>
+</html>

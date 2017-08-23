@@ -27,7 +27,8 @@
 Research suggests that blue light from screens can have a negative impact on
 sleep. Android 7.1.1 includes a feature called Night Light that reduces the
 amount of blue light emitted by the device display to better match the natural
-light of the user's time of day and location.
+light of the user's time of day and location. Android 8.0 includes a feature
+that gives users more control over the intensity of the Night Light effect.
 </p>
 <p>
 Night Light requires a
@@ -46,20 +47,28 @@ using the following flags defined in:
 <pre class="devsite-click-to-copy">
 &lt;!-- Control whether Night display is available. This should only be enabled
       on devices with HWC 2 color transform  support. --&gt;
- &lt;bool name="config_nightDisplayAvailable">false&lt;/bool&gt;
+ &lt;bool name="config_nightDisplayAvailable"&gt;false&lt;/bool&gt;
  &lt;!-- Default mode to control how Night display is automatically activated.
       One of the following values (see NightDisplayController.java):
           0 - AUTO_MODE_DISABLED
           1 - AUTO_MODE_CUSTOM
           2 - AUTO_MODE_TWILIGHT
  --&gt;
- &lt;integer name="config_defaultNightDisplayAutoMode">0&lt;/integer&gt;
+ &lt;integer name="config_defaultNightDisplayAutoMode"&gt;0&lt;/integer&gt;
  &lt;!-- Default time when Night display is automatically activated.
       Represented as milliseconds from midnight (e.g. 79200000 == 10pm). --&gt;
- &lt;integer name="config_defaultNightDisplayCustomStartTime">79200000&lt;/integer&gt;
+ &lt;integer name="config_defaultNightDisplayCustomStartTime"&gt;79200000&lt;/integer&gt;
  &lt;!-- Default time when Night display is automatically deactivated.
       Represented as milliseconds from midnight (e.g. 21600000 == 6am). --&gt;
- &lt;integer name="config_defaultNightDisplayCustomEndTime">21600000&lt;/integer&gt;
+ &lt;integer name="config_defaultNightDisplayCustomEndTime"&gt;21600000&lt;/integer&gt;
+
+ &lt;!-- Minimum color temperature, in Kelvin, supported by Night display. --&gt;
+ &lt;integer name="config_nightDisplayColorTemperatureMin"&gt;2596&lt;/integer&gt;
+ &lt;!-- Default color temperature, in Kelvin, to tint the screen when Night display is
+      activated. --&gt;
+ &lt;integer name="config_nightDisplayColorTemperatureDefault"&gt;2850&lt;/integer&gt;
+ &lt;!-- Maximum color temperature, in Kelvin, supported by Night display. --&gt;
+ &lt;integer name="config_nightDisplayColorTemperatureMax"&gt;4082&lt;/integer&gt;
 </pre>
 <p>
 The code is divided between framework, system services, SystemUI, and Settings:
@@ -93,6 +102,7 @@ platform/packages/apps/Settings
 ├ src/com/android/settings/Settings.java
 ├ src/com/android/settings/dashboard/conditional/NightDisplayCondition.java
 ├ src/com/android/settings/display/NightDisplayPreference.java
+├ src/com/android/settings/display/NightDisplayPreferenceController.java
 └ src/com/android/settings/display/NightDisplaySettings.java
 </pre>
 
@@ -103,7 +113,9 @@ it. There is a full implementation of the settings in the Android Open Source
 Project (AOSP)
 <a href="https://android.googlesource.com/platform/packages/apps/Settings/">packages/apps/Settings</a>
 project that device manufacturers can reference for their Settings
-implementation.
+implementation. Implementers must handle the
+<code><a href="https://developer.android.com/reference/android/provider/Settings.html#ACTION_NIGHT_DISPLAY_SETTINGS">Settings.ACTION_NIGHT_DISPLAY_SETTINGS</a></code>
+intent to expose this setting.
 </p>
 <h3 id="settings">Settings</h3>
 <p>
@@ -130,6 +142,10 @@ and turn it on or off.
   at 10:30 p.m.), Night Light will still turn off at 6:30 a.m. And if Night
   Light is toggled off at 5:30 a.m. (before it turns off at 6:30 a.m.), it will
   still turn on at 10:30 p.m.</li>
+  <li><strong>Intensity</strong>:
+  <a href="https://developer.android.com/reference/android/widget/SeekBar.html">Seekbar</a>
+  that controls the tint level by sliding from warm to cool. The seekbar can be
+  disabled when Night Light is not activated.</li>
   <li><strong>Informational text</strong>: Teaches the user what Night Light does
   and why.</li>
 </ul>

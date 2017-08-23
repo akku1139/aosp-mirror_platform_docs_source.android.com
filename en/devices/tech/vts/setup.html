@@ -1,0 +1,198 @@
+<html devsite>
+  <head>
+    <title>VTS Dashboard Setup</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>
+The VTS Dashboard provides a user backend and user interface for viewing test
+results from the VTS continuous integration system. It supports test-driven
+development with tools such as test status notifications to help developers to
+locate and prevent regression areas during the development cycle (include test
+monitoring and
+triaging support).
+</p>
+
+<p>
+The user interface supports new features (such as native code coverage) provided
+by the VTS infrastructure and enables the development of tools with optimized
+and well-characterized performance by offering continuous performance
+monitoring.
+</p>
+
+<h2 id=requirements>Requirements</h2>
+<p>
+The following services are required to use the VTS Dashboard:
+</p>
+<ul>
+<li><a href="https://maven.apache.org/">Apache Maven</a>, for building and
+deployment</li>
+<li><a href="https://cloud.google.com/appengine">Google Cloud App Engine</a>,
+for web-service hosting</li>
+<li><a href="https://cloud.google.com/datastore/docs/">Google Cloud
+Datastore</a>, for storage</li>
+<li><a href="http://www.stackdriver.com/">Google Stackdriver</a>, for
+monitoring</li>
+</ul>
+
+<p>
+Viewing <a href="/devices/architecture/testing/ui.html#coverage">test
+coverage</a> relies on a REST API to a source code server (e.g. Gerrit), which
+enables the web service to fetch original source code according to existing
+access control lists.
+</p>
+
+<h2 id=arch>Architecture</h2>
+<p>
+The VTS Dashboard uses the following architecture:
+</p>
+<img src="../images/treble_vts_dash_arch.png" title="VTS Dashboard Architecture">
+<figcaption><strong>Figure 1</strong>. VTS Dashboard architecture.</figcaption>
+
+<p>
+Test status results are continuously uploaded to the Cloud Datastore database
+via a REST interface. The VTS runner automatically processes the results and
+serializes them using the Protobuf format.
+</p>
+<p>
+Web servlets form the primary access point for users, delivering and processing
+data from the Datastore database. The servlets include: a main servlet for
+delivering all of the tests, a preferences servlet for managing user favorites,
+a results servlet for populating a test table, a graph servlet for preparing
+profiling data, and a coverage servlet for preparing coverage data for the
+client.
+</p>
+<p>
+Each test module has its own Datastore ancestry tree and test results are
+indexed with the Unix timestamp of the test start time. Coverage data in the
+database is stored with the test results as a vector of counts (i.e. for each
+line in the original source file) and identifying information to fetch the
+source code from a source code server.
+</p>
+<p>
+The notification service runs using task queues, identifying test case status
+changes, and notifying subscribers. Stateful information is stored in a status
+table to keep track of data freshness and existing failures. This allows for the
+notification service to provide rich information about individual test case
+failures and fixes.
+</p>
+
+<h2 id=code-structure>Code structure</h2>
+<p>
+VTS Dashboard essential components include the servlets implemented in Java,
+the front-end JSPs, CSS stylesheets, and configuration files. The following list
+details the locations and descriptions of these components (all paths relative
+to <code>test/vts/web/dashboard</code>):
+</p>
+<ul>
+<li><code>pom.xml</code><br>Settings file where environment variables and
+dependencies are defined.</li>
+<li><code>src/main/java/com/android/vts/api/</code><br>Contains endpoints for
+interacting with the data via REST.</li>
+<li><code>src/main/java/com/android/vts/entity/</code><br>Contains Java models
+of the Datastore entities.</li>
+<li><code>src/main/java/com/android/vts/proto/</code><br>Contains Java files
+for Protobuf, including <code>VtsReportMessage.java</code>, which is a Java
+implementation of Protobuf type used to describe VTS test results.</li>
+<li><code>src/main/java/com/android/vts/servlet/</code><br>Contains Java
+files for servlets.</li>
+<li><code>src/main/java/com/android/vts/util/</code><br>Contains Java files
+for utility functions and classes used by the servlets.</li>
+<li><code>src/test/java/com/android/vts/</code><br>Contains UI tests for the
+servlets and utils.</li>
+<li><code>src/main/webapp/</code><br>Contains files related to the UI (JSP,
+CSS, XML):
+ <ul>
+ <li><code>js/</code>. Contains Javascript files used by the web pages.</li>
+ <li><code>WEB-INF/</code>. Contains configuration and UI files.</li>
+ <li><code>jsp/</code>. Contains the JSP files for each web page.</li>
+ </ul>
+</li>
+<li><code>appengine-web.xml</code><br>Settings file where environment
+variables are loaded into variables.</li>
+<li><code>web.xml</code><br>Settings file where servlet mappings and
+security constraints are defined.</li>
+<li><code>cron.xml</code><br>Settings file defining scheduled tasks (i.e.
+the notifications service).</li>
+</ul>
+
+<h2 id=setup>Setting up the Dashboard</h2>
+<p>
+To set up the VTS Dashboard:
+</p>
+<ol>
+<li>Create a Google Cloud App Engine Project.</li>
+<li>Set up the deployment host by installing:
+ <ul>
+ <li>Java 8</li>
+ <li>Google App Engine SDK</li>
+ <li>Maven</li>
+ </ul>
+</li>
+<li>Generate an OAuth 2.0 Client ID in the Google Cloud API Manager.</li>
+<li>Create a Service Account and create a keyfile.</li>
+<li>Add an email address to the App Engine Email API Authorized Senders List.</li>
+<li>Set up a Google Analytics Account.</li>
+<li>Specify environment variables in the Dashboard <code>pom.xml</code>:
+ <ul>
+ <li>Set the client ID with the OAuth 2.0 ID (from step 3).</li>
+ <li>Set the service client ID with the identifier included in the keyfile (from
+ step 4).</li>
+ <li>Specify the sender email address for alerts (from step 5).</li>
+ <li>Specify an email domain to which all emails will be sent.</li>
+ <li>Specify the address to the Gerrit REST server.</li>
+ <li>Specify the OAuth 2.0 scope to use for the Gerrit REST server.</li>
+ <li>Specify the Google Analytics ID (from step 6).</li>
+ <li>Build and deploy the project.</li>
+ </ul>
+</li>
+<li>In a terminal, run <code>mvn clean appengine:update</code></li>
+</ol>
+
+<p>
+For more information regarding Dashboard setup and configuration, refer to the
+<a href="https://codelabs.developers.google.com/codelabs/android-vts">Android
+VTS Code Lab</a>.
+</p>
+
+<h2 id=security>Security considerations</h2>
+<p>
+Robust coverage information requires access to the original source code.
+However, some code may be sensitive and an additional gateway to it may allow
+for exploitation of existing access control lists.
+</p>
+<p>
+To avoid this threat, instead of serving the source code with the coverage
+information, the Dashboard directly handles a coverage vector (i.e., a vector of
+execution counts mapping to the lines in a source file). Along with the coverage
+vector, the Dashboard receives a Git project name and path so that the client
+can fetch the code from an external source code API. The client browser receives
+this information and uses cross-origin resource sharing (CORS) in Javascript to
+query the source code server for the original source code; the resulting code is
+combined with the coverage vector to produce a display.
+</p>
+<p>
+This approach does not widen the attack surface because the Dashboard uses the
+user's cookies to authenticate with an outside service. A user who cannot access
+source code directly cannot exploit the Dashboard to view sensitive information.
+</p>
+
+  </body>
+</html>

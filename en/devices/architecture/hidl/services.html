@@ -1,0 +1,219 @@
+<html devsite>
+  <head>
+    <title>Services &amp; Data Transfer</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+
+<p>This section describes how to register and discover services and how to send
+data to a service by calling methods defined in interfaces in <code>.hal</code>
+files.</p>
+
+<h2 id=register>Registering services</h2>
+<p>HIDL interface servers (objects implementing the interface) can be registered
+as named services. The registered name need not be related to the interface or
+package name. If no name is specified, the name "default" is used; this should
+be used for HALs that do not need to register two implementations of the same
+interface. For example, the C++ call for service registration defined in each
+interface is:</p>
+
+<pre class="prettyprint">
+registerAsService();
+registerAsService("another_foo_service");  // if needed
+</pre>
+
+<p>The version of a HIDL interface is included in the interface itself. It is
+automatically associated with service registration and can be retrieved via a
+method call (<code>android::hardware::IInterface::getInterfaceVersion()</code>)
+on every HIDL interface. Server objects need not be registered and can be passed
+via HIDL method parameters to another process that will make HIDL method calls
+into the server.</p>
+
+<h2 id=discover>Discovering services</h2>
+<p>Requests by client code are made for a given interface by name and by
+version, calling <code>getService</code> on the desired HAL class:</p>
+
+<pre class="prettyprint">
+sp&lt;V1_1::IFooService&gt; service = V1_1::IFooService::getService();
+sp&lt;V1_1::IFooService&gt; alternateService = 1_1::IFooService::getService("another_foo_service");
+</pre>
+
+<p>Each version of a HIDL interface is treated as a separate interface. Thus,
+<code>IFooService</code> version 1.1 and <code>IFooService</code> version 2.2
+can both be registered as "foo_service" and
+<code>getService("foo_service")</code> on either interface gets the registered
+service for that interface. This is why, in most cases, no name parameter needs
+to be supplied for registration or discovery (meaning name "default").</p>
+
+<p>The Vendor Interface Object also plays a part in the transport method of the
+returned interface. For an interface <code>IFoo</code> in package
+<code>android.hardware.foo@1.0</code>, the returned interface by
+<code>IFoo::getService</code> always use the transport method declared for
+<code>android.hardware.foo</code> in the device manifest if the entry exists;
+and if the transport method is not available, nullptr is returned.</p>
+
+<h2 id=death>Service death notifications</h2>
+<p>Clients who want to be notified when a service dies can receive death
+notifications delivered by the framework. To receive notifications, the client
+must:</p>
+<ol>
+<li>Subclass the HIDL class/interface <code>hidl_death_recipient</code> (in C++
+code, not in HIDL).</li>
+<li>Override its <code>serviceDied()</code> method.</li>
+<li>Instantiate an object of the <code>hidl_death_recipient</code> subclass.
+</li>
+<li>Call the <code>linkToDeath()</code> method on the service to monitor,
+passing in the <code>IDeathRecipient</code>'s interface object.</li>
+</ol>
+
+<p>A pseudocode example (C++ and Java are similar):</p>
+
+<pre class="prettyprint">
+class IMyDeathReceiver : hidl_death_recipient {
+  virtual void serviceDied(uint64_t cookie,
+                           wp&lt;IBase&gt;&amp; service) override {
+    log("RIP service %d!", cookie);  // Cookie should be 42
+  }
+};
+....
+IMyDeathReceiver deathReceiver = new IMyDeathReceiver();
+m_importantService-&gt;linkToDeath(deathReceiver, 42);
+</pre>
+
+<p>The same death recipient may be registered on multiple different services.
+</p>
+
+<h2 id=data-transwer>Data transfer</h2>
+<p>Data may be sent to a service by calling methods defined in interfaces in
+<code>.hal</code> files. There are two kinds of methods:</p>
+
+<ul>
+<li><strong>Blocking</strong> methods wait until the server has produced a
+result.</li>
+<li><strong>Oneway</strong> methods send data in only one direction and do not
+block. If the amount of data in-flight in RPC calls exceeds implementation
+limits, the calls may either block or return an error indication (behavior is
+not yet determined).</li>
+</ul>
+
+<p>A method that does not return a value but is not declared as
+<code>oneway</code> is still blocking.</p>
+
+<p>All methods declared in a HIDL interface are called in a single direction,
+either from the HAL or into the HAL. The interface does not specify which
+direction it will be called in. Architectures that need calls to originate from
+the HAL should provide two (or more) interfaces in the HAL package and serve the
+appropriate interface from each process. The words <em>client</em> and
+<em>server</em> are used with respect to the calling direction of the interface
+(i.e. the HAL can be a server of one interface and a client of another
+interface).</p>
+
+<h3 id=callbacks>Callbacks</h3>
+<p>The word <em>callback</em> refers to two different concepts, distinguished by
+<em>synchronous callback</em> and <em>asynchronous callback</em>.</p>
+
+<p><em>Synchronous callbacks</em> are used in some HIDL methods that return
+data. A HIDL method that returns more than one value (or returns one value of
+non-primitive type) returns its results via a callback function. If only one
+value is returned and it is a primitive type, a callback is not used and the
+value is returned from the method. The server implements the HIDL methods and
+the client implements the callbacks.</p>
+
+<p><em>Asynchronous callbacks</em> allow the server of a HIDL interface to
+originate calls. This is done by passing an instance of a second interface
+through the first interface. The client of the first interface must act as the
+server of the second. The server of the first interface can call methods on the
+second interface object. For example, a HAL implementation may send information
+asynchronously back to the process that is using it by calling methods on an
+interface object created and served by that process. Methods in interfaces used
+for asynchronous callback may be blocking (and may return values to the caller)
+or <code>oneway</code>. For an example, see "Asynchronous callbacks" in
+<a href="/devices/architecture/hidl-cpp/interfaces.html">HIDL C++</a>.</p>
+
+<p>To simplify memory ownership, method calls and callbacks take only
+<code>in</code> parameters and do not support <code>out</code> or
+<code>inout</code> parameters.</p>
+
+<h3 id=limits>Per-transaction limits</h3>
+<p>Per-transaction limits may be imposed on the amount of data sent in HIDL
+methods and callbacks. The limits are yet to be determined but may be as small
+as 4K. Calls exceeding these limits return failure immediately. Another
+limitation is the resources available to the HIDL infrastructure to handle
+multiple simultaneous transactions. Multiple transactions can be in-flight
+simultaneously due to multiple threads or processes sending calls to a process
+or multiple <code>oneway</code> calls that are not handled quickly by the
+receiving process.</p>
+
+<p>In a well-designed interface, exceeding these resource limitations should not
+happen; if it does, the call which exceeded them may either block until
+resources become available or signal a transport error. Each occurrence of
+exceeding per-transaction limits or overflowing HIDL implementation resources by
+aggregate in-flight transactions is logged to facilitate debugging.</p>
+
+<h3 id=method-implement>Method implementations</h3>
+<p>HIDL generates header files declaring the necessary types, methods, and
+callbacks in the target language (C++ or Java). The prototype of HIDL-defined
+methods and callbacks is the same for both client and server code. The HIDL
+system provides <strong>proxy</strong> implementations of the methods on the
+caller side that organize the data for IPC transport, and <strong>stub</strong>
+code on the callee side that passes the data into developer implementations of
+the methods.</p>
+
+<p>The caller of a function (HIDL method or callback) has ownership of the data
+structures passed into the function, and retains ownership after the call; in
+all cases the callee does not need to free or release the storage.</p>
+
+<ul>
+<li>In C++, the data may be read-only (attempts to write to it may cause a
+segmentation fault) and are valid for the duration of the call. The client can
+deep-copy the data to propagate it beyond the call.</li>
+<li>In Java, the code receives a local copy of the data (a normal Java object),
+which it may keep and modify or allow to be garbage-collected.</li>
+</ul>
+
+<h3 id=non-rpc>Non-RPC data transfer</h3>
+<p>HIDL has two ways to transfer data without using an RPC call: shared
+memory and a Fast Message Queue (FMQ), both supported only in C++.</p>
+
+<ul>
+<li><strong>Shared memory</strong>. The built-in HIDL type <code>memory</code>
+is used to pass an object representing shared memory that has been allocated.
+Can be used in a receiving process to map the shared memory.</li>
+<li><strong>Fast Message Queue (FMQ)</strong>. HIDL provides a templated message
+queue type that implements no-wait message-passing. It does not use the kernel
+or scheduler in passthrough or binderized mode (inter-device communication will
+not have these properties). Typically, the HAL sets up its end of the queue,
+creating an object that can be passed through RPC via a parameter of built-in
+HIDL type <code>MQDescriptorSync</code> or <code>MQDescriptorUnsync</code>. This
+object can be used by the receiving process to set up the other end of the queue.
+<ul>
+<li><em>Sync</em> queues are not allowed to overflow, and can only have one
+reader.</li>
+<li><em>Unsync</em> queues are allowed to overflow, and can have many readers,
+each of which must read data in time or lose it.</li>
+</ul>
+Neither type is allowed to underflow (read from an empty queue will fail), and
+each type can only have one writer.</li></ul>
+
+<p>For more details on FMQ, see
+<a href="/devices/architecture/hidl/fmq.html">Fast Message Queue (FMQ)</a>.</p>
+
+  </body>
+</html>
