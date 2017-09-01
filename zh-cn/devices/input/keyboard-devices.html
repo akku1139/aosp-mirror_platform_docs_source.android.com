@@ -1,0 +1,6305 @@
+<html devsite><head>
+    <title>键盘设备</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>Android 支持各种键盘设备，包括特殊功能小键盘（音量和电源控制），紧凑型嵌入式 QWERTY 键盘和全能型 PC 式外接键盘。</p>
+<p>本文档仅介绍物理键盘。有关软键盘（输入法编辑器）的信息，请参阅 Android SDK。</p>
+<h2 id="keyboard-classification">键盘分类</h2>
+<p>只要满足以下条件之一，输入设备即可归类为键盘：</p>
+<ul>
+<li>
+<p>输入设备报告存在任何用于键盘的 Linux 按键代码（包括 <code>0</code> 到 <code>0xff</code> 或 <code>KEY_OK</code> 到 <code>KEY_MAX</code>）。</p>
+</li>
+<li>
+<p>输入设备报告存在任何用于操纵杆和游戏手柄的 Linux 按键代码（包括 <code>BTN_0</code> 到 <code>BTN_9</code>、<code>BTN_TRIGGER</code> 到 <code>BTN_DEAD</code>，或 <code>BTN_A</code> 到 <code>BTN_THUMBR</code>）。</p>
+</li>
+</ul>
+<p>操纵杆目前被归类为键盘，这是因为 <code>EV_KEY</code> 事件报告操纵杆和游戏手柄按钮的方式与报告键盘按键的方式相同，因此操纵杆和游戏手柄也利用键映射文件来进行配置。</p>
+<p>一旦输入设备被归类为键盘，系统就会为此键盘加载输入设备配置文件和键盘布局。</p>
+<p>接下来系统会尝试确定此设备的其他特性。</p>
+<ul>
+<li>
+<p>如果输入设备存在任何被映射到 <code>KEYCODE_Q</code> 的按键，则系统将认为该设备具有字母键盘（而不是数字键盘）。字母键盘功能在资源 <code>Configuration</code> 对象中会被报告为 <code>KEYBOARD_QWERTY</code>。</p>
+</li>
+<li>
+<p>如果输入设备存在任何被映射到 <code>KEYCODE_DPAD_UP</code>、<code>KEYCODE_DPAD_DOWN</code>、<code>KEYCODE_DPAD_LEFT</code>、<code>KEYCODE_DPAD_RIGHT</code> 和 <code>KEYCODE_DPAD_CENTER</code>（必须全部存在）的按键，则系统将认为此设备具有方向键盘。
+    方向键盘功能在资源 <code>Configuration</code> 对象中会被报告为 <code>NAVIGATION_DPAD</code>。</p>
+</li>
+<li>
+<p>如果输入设备存在任何被映射到 <code>KEYCODE_BUTTON_A</code> 的按键或其他与游戏手柄相关的按键，则系统将认为此设备具有游戏手柄。</p>
+</li>
+</ul>
+<h2 id="keyboard-driver-requirements">键盘驱动程序要求</h2>
+<ol>
+<li>
+<p>键盘驱动程序只能为其实际支持的按键注册按键代码。注册过多的按键代码可能会扰乱设备分类算法，或导致系统无法正确地检测到设备的受支持键盘功能。</p>
+</li>
+<li>
+<p>键盘驱动程序应使用 <code>EV_KEY</code> 来报告按键操作；使用值 <code>0</code> 表示释放按键，使用值 <code>1</code> 来表示按下按键，使用值 <code>2</code> 或更大的值表示自动重复按键操作。</p>
+</li>
+<li>
+<p>Android 执行自己的键盘重复操作。在驱动程序中应停用自动重复功能。</p>
+</li>
+<li>
+<p>当按下按键时，键盘驱动程序可能会通过发送带 <code>MSC_SCANCODE</code> 的 <code>EV_MSC</code> 或通过 valud（用于指示用途或扫描代码），选择性地指示 HID 用途或低级扫描代码。Android 目前尚未使用此信息。</p>
+</li>
+<li>
+<p>在将 <code>EV_LED</code> 写入设备时，键盘驱动程序应支持设置 LED 状态。<code>hid-input</code> 驱动程序会自动处理这项事务。在这一写入期间，Android 会使用 <code>LED_CAPSLOCK</code>、<code>LED_SCROLLLOCK</code> 和 <code>LED_NUMLOCK</code>。只有当键盘实际上配有相关的指示灯时，系统才需要支持这些 LED 指示灯。</p>
+</li>
+<li>
+<p>应确保嵌入式键盘的键盘驱动程序（例如，使用 GPIO 矩阵）在设备即将进入休眠状态时，为尚处于按下状态的任何按键发送值为 <code>0</code> 的 <code>EV_KEY</code> 事件。否则按键可能会被卡住，并一直自动重复按键操作。</p>
+</li>
+</ol>
+<h2 id="keyboard-operation">键盘操作</h2>
+<p>下文简要汇总了 Android 设备上的键盘操作。</p>
+<ol>
+<li>
+<p><code>EventHub</code> 从 <code>evdev</code> 驱动程序中读取原始事件，并使用键盘的按键布局映射将 Linux 按键代码（有时也称扫描代码）映射到 Android 按键代码中。</p>
+</li>
+<li>
+<p><code>InputReader</code> 将消费原始事件，并更新 Meta 键状态。例如，如果您按下或释放左 Shift 键，则读取器会相应地设置或重置 <code>META_SHIFT_LEFT_ON</code> 和 <code>META_SHIFT_ON</code> 位。</p>
+</li>
+<li>
+<p><code>InputReader</code> 会向 <code>InputDispatcher</code> 发送按键事件的相关通知。</p>
+</li>
+<li>
+<p><code>InputDispatcher</code> 通过调用 <code>WindowManagerPolicy.interceptKeyBeforeQueueing</code> 询问 <code>WindowManagerPolicy</code> 如何处理按键事件。该方法（负责在按下某些按键时唤醒设备）属于关键路径的一部分。实际上，<code>EventHub</code> 会在此关键路径上一直持有唤醒锁，从而确保它运行至结束。</p>
+</li>
+<li>
+<p>如果目前正在使用 <code>InputFilter</code>，那么 <code>InputDispatcher</code> 将给予它机会来消费或转换按键。<code>InputFilter</code> 可用于实施低级别的全系统可访问性策略。</p>
+</li>
+<li>
+<p><code>InputDispatcher</code> 可将按键排入队列，以便在分配线程上对按键进行处理。</p>
+</li>
+<li>
+<p>当 <code>InputDispatcher</code> 将按键移出队列时，它会通过调用 <code>WindowManagerPolicy.interceptKeyBeforeDispatching</code> 使 <code>WindowManagerPolicy</code> 再次有机会拦截按键事件。此方法可用于处理系统快捷方式和其他功能。</p>
+</li>
+<li>
+<p>随后，<code>InputDispatcher</code> 会识别按键事件目标（活动窗口），并等待按键事件目标就绪。接下来，<code>InputDispatcher</code> 会将按键事件发送到应用。</p>
+</li>
+<li>
+<p>在应用内，按键事件会将视图层次传送到焦点视图，以进行 IME 按键预分配。</p>
+</li>
+<li>
+<p>如果按键事件未在 IME 按键预分配阶段进行处理，而某个 IME 正在使用中，那么按键事件会被发送到 IME。</p>
+</li>
+<li>
+<p>如果按键事件未被 IME 消费，则按键事件会将视图层次传送到焦点视图，从而进行标准按键分配。</p>
+</li>
+<li>
+<p>应用反过来向 <code>InputDispatcher</code> 报告有关按键事件是否被消费的情况。如果事件未被消费，则 <code>InputDispatcher</code> 会调用 <code>WindowManagerPolicy.dispatchUnhandledKey</code> 来应用“回退”行为。根据回退操作，可以使用不同的按键代码重新启动按键事件分配周期。例如，如果应用不处理 <code>KEYCODE_ESCAPE</code>，则系统可能会将按键事件作为 <code>KEYCODE_BACK</code> 再次分配。</p>
+</li>
+</ol>
+<h2 id="keyboard-configuration">键盘配置</h2>
+<p>键盘行为由键盘的按键布局、按键字符映射和输入设备配置所决定。</p>
+<p>要详细了解参与键盘配置的文件，请参阅以下部分：</p>
+<ul>
+<li><a href="key-layout-files.html">按键布局文件</a></li>
+<li><a href="key-character-map-files.html">按键字符映射文件</a></li>
+<li><a href="input-device-configuration-files.html">输入设备配置文件</a></li>
+</ul>
+<h3 id="properties">属性</h3>
+<p>以下是用于键盘的输入设备配置属性。</p>
+<h4 id="keyboardlayout"><code>keyboard.layout</code></h4>
+<p><em></em>定义：<code>keyboard.layout</code> = &lt;名称&gt;</p>
+<p>指定与输入设备相关的按键布局文件的名称（不包括 <code>.kl</code> 扩展名）。如果未找到此文件，则输入系统将改为使用默认按键布局。</p>
+<p>在查询过程中，文件名中的空格将被转换为下划线。</p>
+<p>如需了解更多详细信息，请参阅按键布局文件文档。</p>
+<h4 id="keyboardcharactermap"><code>keyboard.characterMap</code></h4>
+<p><em></em>定义：<code>keyboard.characterMap</code> = &lt;名称&gt;</p>
+<p>指定与输入设备相关的按键字符映射文件的名称（不包括 <code>.kcm</code> 扩展名）。如果未找到此文件，则输入系统将改为使用默认按键字符映射。</p>
+<p>在查询过程中，文件名中的空格将被转换为下划线。</p>
+<p>如需了解更多详细信息，请参阅按键字符映射文件文档。</p>
+<h4 id="keyboardorientationaware"><code>keyboard.orientationAware</code></h4>
+<p><em></em>定义：<code>keyboard.orientationAware</code> = <code>0</code> | <code>1</code></p>
+<p>指定键盘是否应对显示方向更改作出反应。</p>
+<ul>
+<li>
+<p>如果该值为 <code>1</code>，则当相关的显示方向发生改变时，方向键盘按键会相应地发生旋转。</p>
+</li>
+<li>
+<p>如果该值为 <code>0</code>，则键盘不受显示方向更改的影响。</p>
+</li>
+</ul>
+<p>默认值为 <code>0</code>。</p>
+<p>方向感知功能用于支持方向键盘按键的旋转（如在 Motorola Droid 上旋转按键一样）。例如，当设备从其自然方向顺时针旋转 90 度时，<code>KEYCODE_DPAD_UP</code> 会被重新映射以产生 <code>KEYCODE_DPAD_RIGHT</code>。这是因为当设备保持在该方向时，“向上”按键最后就变成了“向右”按键。</p>
+<h4 id="keyboardbuiltin"><code>keyboard.builtIn</code></h4>
+<p><em></em>定义：<code>keyboard.builtIn</code> = <code>0</code> | <code>1</code></p>
+<p>指定键盘是否是内置（物理连接）键盘。</p>
+<p>如果设备名称以 <code>-keypad</code> 作为结尾，则默认值为 <code>1</code>，否则为 <code>0</code>。</p>
+<p>内置键盘会一律获分配值为 <code>0</code> 的设备 ID。其他非内置的键盘则会获分配一个唯一非零设备 ID。</p>
+<p>对内置键盘采用值为 <code>0</code> 的 ID 有助于保持与 <code>KeyCharacterMap.BUILT_IN_KEYBOARD</code> 字段的兼容性，这样可指定内置键盘的 ID 并拥有值 <code>0</code>。API 中的该字段已弃用，但旧版应用可能仍在使用该字段。</p>
+<p>特殊功能键盘（其按键字符映射指定 <code>SPECIAL_FUNCTION</code> 类型）一律不得注册为内置键盘（无论此属性如何设置）。这是因为根据定义，特殊功能键盘并非为普通打字用途而设计。</p>
+<h3 id="example-configurations">示例配置</h3>
+<pre class="devsite-click-to-copy">
+# This is an example input device configuration file for a built-in
+# keyboard that has a DPad.
+
+# The keyboard is internal because it is part of the device.
+device.internal = 1
+
+# The keyboard is the default built-in keyboard so it should be assigned
+# an id of 0.
+keyboard.builtIn = 1
+
+# The keyboard includes a DPad which is mounted on the device.  As the device
+# is rotated the orientation of the DPad rotates along with it, so the DPad must
+# be aware of the display orientation.  This ensures that pressing 'up' on the
+# DPad always means 'up' from the perspective of the user, even when the entire
+# device has been rotated.
+keyboard.orientationAware = 1
+</pre>
+<h3 id="compatibility-notes">兼容性说明</h3>
+<p>在 Honeycomb 之前，键盘输入映射器没有使用任何配置属性。所有键盘都假定采用物理连接的方式并具有方向感知功能。默认的按键布局和按键字符映射会被命名为 <code>qwerty</code>，而非 <code>Generic</code>。按键字符映射格式也有很大差异，而且框架不支持 PC 式全键盘或外接键盘。</p>
+<p>将设备升级到 Honeycomb 时，请确保创建或更新必要的配置和按键映射文件。</p>
+<h2 id="hid-usages-linux-key-codes-and-android-key-codes">HID 用途、Linux 按键代码和 Android 按键代码</h2>
+<p>系统会采用几种不同的标识符来引用按键，具体取决于抽象层。</p>
+<p>对于 HID 设备，每个按键都对应相关联的 HID 用途。Linux <code>hid-input</code> 驱动程序和相关供应商和适用于特定设备的 HID 驱动程序负责解析 HID 报告，并将 HID 用途映射到 Linux 按键代码。</p>
+<p>当 Android 从 Linux 内核读取 <code>EV_KEY</code> 事件时，会根据设备的按键布局文件，将每个 Linux 按键代码转换为相应的 Android 按键代码。</p>
+<p>当按键事件被分配到应用时，<code>android.view.KeyEvent</code> 实例会将 Linux 按键代码报告为 <code>getScanCode()</code> 的值，并将 Android 按键代码报告为 <code>getKeyCode()</code> 的值。对于框架来说，只有 <code>getKeyCode()</code> 的值才是重要的。</p>
+<p>请注意，Android 本身并未使用 HID 用途信息，这些信息也不会传递给应用。</p>
+<h2 id="code-tables">代码表</h2>
+<p>下表列出了 HID 用途、Linux 按键代码和 Android 按键代码彼此之间的关系。</p>
+<p>LKC 列可采用十六进制格式指定 Linux 按键代码。</p>
+<p>AKC 列可采用十六进制格式指定 Android 按键代码。</p>
+<p>“备注”列是指附于表格后面的注释。</p>
+<p>“版本”列会指定已将该按键包含在其默认按键映射中的 Android 平台的第一个版本。当默认按键映射在版本之间有所变更时，该列中会显示多个行。已显示的最早版本是 1.6 版。</p>
+<ul>
+<li>
+<p>在 Gingerbread (2.3) 及更早的版本中，默认按键映射为 <code>qwerty.kl</code>。此按键映射仅适用于 Android 模拟器，并非为支持任意外接键盘而设计。不过，少数原始设备制造商 (OEM) 已将蓝牙键盘支持功能添加到平台上，并依赖 <code>qwerty.kl</code> 来提供必要的键盘映射。因此，正在为特定设备构建外围设备的 OEM 可能会对这些旧版本的映射颇感兴趣。请注意，这些映射与当前版本的映射大不相同，尤其是在 <code>HOME</code> 按键处理方面。我们建议您根据 Honeycomb 或较新版本的按键映射（即标准 HID）来开发所有新的外围设备。</p>
+</li>
+<li>
+<p>从 Honeycomb (3.0) 开始，默认按键映射为 <code>Generic.kl</code>。此按键映射旨在支持完全 PC 式键盘。标准 HID 键盘的大部分功能都应该支持“开箱即用”。</p>
+</li>
+</ul>
+<p>在 Linux 内核版本和 Android 版本中，按键代码映射可能有所不同。当发现 Android 默认按键映射中发生某些变化时，“版本”列中会显示这些变化。</p>
+<p>特定设备的 HID 驱动程序和按键映射所应用的映射可能与此处显示的不同。</p>
+<h3 id="hid-keyboard-and-keypad-page-0x07">HID 键盘和键盘页 (0x07)</h3>
+<table>
+<thead>
+<tr>
+<th>HID 用途</th>
+<th>HID 用途名称</th>
+<th>LKC</th>
+<th>Linux 按键代码名称</th>
+<th>版本</th>
+<th>AKC</th>
+<th>Android 按键代码名称</th>
+<th>备注</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0x07 0x0001</td>
+<td>键盘错误，防冲突功能</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x0002</td>
+<td>键盘 POST 失败</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x0003</td>
+<td>键盘错误未定义</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x0004</td>
+<td>键盘 a 和 A 键</td>
+<td>0x001e</td>
+<td>KEY_A</td>
+<td>1.6</td>
+<td>0x001d</td>
+<td>KEYCODE_A</td>
+<td>1</td>
+</tr>
+<tr>
+<td>0x07 0x0005</td>
+<td>键盘 b 和 B 键</td>
+<td>0x0030</td>
+<td>KEY_B</td>
+<td>1.6</td>
+<td>0x001e</td>
+<td>KEYCODE_B</td>
+<td>1</td>
+</tr>
+<tr>
+<td>0x07 0x0006</td>
+<td>键盘 c 和 C 键</td>
+<td>0x002e</td>
+<td>KEY_C</td>
+<td>1.6</td>
+<td>0x001f</td>
+<td>KEYCODE_C</td>
+<td>1</td>
+</tr>
+<tr>
+<td>0x07 0x0007</td>
+<td>键盘 d 和 D 键</td>
+<td>0x0020</td>
+<td>KEY_D</td>
+<td>1.6</td>
+<td>0x0020</td>
+<td>KEYCODE_D</td>
+<td>1</td>
+</tr>
+<tr>
+<td>0x07 0x0008</td>
+<td>键盘 e 和 E 键</td>
+<td>0x0012</td>
+<td>KEY_E</td>
+<td>1.6</td>
+<td>0x0021</td>
+<td>KEYCODE_E</td>
+<td>1</td>
+</tr>
+<tr>
+<td>0x07 0x0009</td>
+<td>键盘 f 和 F 键</td>
+<td>0x0021</td>
+<td>KEY_F</td>
+<td>1.6</td>
+<td>0x0022</td>
+<td>KEYCODE_F</td>
+<td>1</td>
+</tr>
+<tr>
+<td>0x07 0x000a</td>
+<td>键盘 g 和 G 键</td>
+<td>0x0022</td>
+<td>KEY_G</td>
+<td>1.6</td>
+<td>0x0023</td>
+<td>KEYCODE_G</td>
+<td>1</td>
+</tr>
+<tr>
+<td>0x07 0x000b</td>
+<td>键盘 h 和 H 键</td>
+<td>0x0023</td>
+<td>KEY_H</td>
+<td>1.6</td>
+<td>0x0024</td>
+<td>KEYCODE_H</td>
+<td>1</td>
+</tr>
+<tr>
+<td>0x07 0x000c</td>
+<td>键盘 i 和 I 键</td>
+<td>0x0017</td>
+<td>KEY_I</td>
+<td>1.6</td>
+<td>0x0025</td>
+<td>KEYCODE_I</td>
+<td>1</td>
+</tr>
+<tr>
+<td>0x07 0x000d</td>
+<td>键盘 j 和 J 键</td>
+<td>0x0024</td>
+<td>KEY_J</td>
+<td>1.6</td>
+<td>0x0026</td>
+<td>KEYCODE_J</td>
+<td>1</td>
+</tr>
+<tr>
+<td>0x07 0x000e</td>
+<td>键盘 k 和 K 键</td>
+<td>0x0025</td>
+<td>KEY_K</td>
+<td>1.6</td>
+<td>0x0027</td>
+<td>KEYCODE_K</td>
+<td>1</td>
+</tr>
+<tr>
+<td>0x07 0x000f</td>
+<td>键盘 l 和 L 键</td>
+<td>0x0026</td>
+<td>KEY_L</td>
+<td>1.6</td>
+<td>0x0028</td>
+<td>KEYCODE_L</td>
+<td>1</td>
+</tr>
+<tr>
+<td>0x07 0x0010</td>
+<td>键盘 m 和 M 键</td>
+<td>0x0032</td>
+<td>KEY_M</td>
+<td>1.6</td>
+<td>0x0029</td>
+<td>KEYCODE_M</td>
+<td>1</td>
+</tr>
+<tr>
+<td>0x07 0x0011</td>
+<td>键盘 n 和 N 键</td>
+<td>0x0031</td>
+<td>KEY_N</td>
+<td>1.6</td>
+<td>0x002a</td>
+<td>KEYCODE_N</td>
+<td>1</td>
+</tr>
+<tr>
+<td>0x07 0x0012</td>
+<td>键盘 o 和 O 键</td>
+<td>0x0018</td>
+<td>KEY_O</td>
+<td>1.6</td>
+<td>0x002b</td>
+<td>KEYCODE_O</td>
+<td>1</td>
+</tr>
+<tr>
+<td>0x07 0x0013</td>
+<td>键盘 p 和 P 键</td>
+<td>0x0019</td>
+<td>KEY_P</td>
+<td>1.6</td>
+<td>0x002c</td>
+<td>KEYCODE_P</td>
+<td>1</td>
+</tr>
+<tr>
+<td>0x07 0x0014</td>
+<td>键盘 q 和 Q 键</td>
+<td>0x0010</td>
+<td>KEY_Q</td>
+<td>1.6</td>
+<td>0x002d</td>
+<td>KEYCODE_Q</td>
+<td>1</td>
+</tr>
+<tr>
+<td>0x07 0x0015</td>
+<td>键盘 r 和 R 键</td>
+<td>0x0013</td>
+<td>KEY_R</td>
+<td>1.6</td>
+<td>0x002e</td>
+<td>KEYCODE_R</td>
+<td>1</td>
+</tr>
+<tr>
+<td>0x07 0x0016</td>
+<td>键盘 s 和 S 键</td>
+<td>0x001f</td>
+<td>KEY_S</td>
+<td>1.6</td>
+<td>0x002f</td>
+<td>KEYCODE_S</td>
+<td>1</td>
+</tr>
+<tr>
+<td>0x07 0x0017</td>
+<td>键盘 t 和 T 键</td>
+<td>0x0014</td>
+<td>KEY_T</td>
+<td>1.6</td>
+<td>0x0030</td>
+<td>KEYCODE_T</td>
+<td>1</td>
+</tr>
+<tr>
+<td>0x07 0x0018</td>
+<td>键盘 u 和 U 键</td>
+<td>0x0016</td>
+<td>KEY_U</td>
+<td>1.6</td>
+<td>0x0031</td>
+<td>KEYCODE_U</td>
+<td>1</td>
+</tr>
+<tr>
+<td>0x07 0x0019</td>
+<td>键盘 v 和 V 键</td>
+<td>0x002f</td>
+<td>KEY_V</td>
+<td>1.6</td>
+<td>0x0032</td>
+<td>KEYCODE_V</td>
+<td>1</td>
+</tr>
+<tr>
+<td>0x07 0x001a</td>
+<td>键盘 w 和 W 键</td>
+<td>0x0011</td>
+<td>KEY_W</td>
+<td>1.6</td>
+<td>0x0033</td>
+<td>KEYCODE_W</td>
+<td>1</td>
+</tr>
+<tr>
+<td>0x07 0x001b</td>
+<td>键盘 x 和 X 键</td>
+<td>0x002d</td>
+<td>KEY_X</td>
+<td>1.6</td>
+<td>0x0034</td>
+<td>KEYCODE_X</td>
+<td>1</td>
+</tr>
+<tr>
+<td>0x07 0x001c</td>
+<td>键盘 y 和 Y 键</td>
+<td>0x0015</td>
+<td>KEY_Y</td>
+<td>1.6</td>
+<td>0x0035</td>
+<td>KEYCODE_Y</td>
+<td>1</td>
+</tr>
+<tr>
+<td>0x07 0x001d</td>
+<td>键盘 z 和 Z 键</td>
+<td>0x002c</td>
+<td>KEY_Z</td>
+<td>1.6</td>
+<td>0x0036</td>
+<td>KEYCODE_Z</td>
+<td>1</td>
+</tr>
+<tr>
+<td>0x07 0x001e</td>
+<td>键盘 1 和 ! 键</td>
+<td>0x0002</td>
+<td>KEY_1</td>
+<td>1.6</td>
+<td>0x0008</td>
+<td>KEYCODE_1</td>
+<td>1</td>
+</tr>
+<tr>
+<td>0x07 0x001f</td>
+<td>键盘 2 和 @ 键</td>
+<td>0x0003</td>
+<td>KEY_2</td>
+<td>1.6</td>
+<td>0x0009</td>
+<td>KEYCODE_2</td>
+<td>1</td>
+</tr>
+<tr>
+<td>0x07 0x0020</td>
+<td>键盘 3 和 # 键</td>
+<td>0x0004</td>
+<td>KEY_3</td>
+<td>1.6</td>
+<td>0x000a</td>
+<td>KEYCODE_3</td>
+<td>1</td>
+</tr>
+<tr>
+<td>0x07 0x0021</td>
+<td>键盘 4 和 $ 键</td>
+<td>0×0005</td>
+<td>KEY_4</td>
+<td>1.6</td>
+<td>0x000b</td>
+<td>KEYCODE_4</td>
+<td>1</td>
+</tr>
+<tr>
+<td>0x07 0x0022</td>
+<td>键盘 5 和 % 键</td>
+<td>0x0006</td>
+<td>KEY_5</td>
+<td>1.6</td>
+<td>0x000c</td>
+<td>KEYCODE_5</td>
+<td>1</td>
+</tr>
+<tr>
+<td>0x07 0x0023</td>
+<td>键盘 6 和 ^ 键</td>
+<td>0x0007</td>
+<td>KEY_6</td>
+<td>1.6</td>
+<td>0x000d</td>
+<td>KEYCODE_6</td>
+<td>1</td>
+</tr>
+<tr>
+<td>0x07 0x0024</td>
+<td>键盘 7 和 &amp; 键</td>
+<td>0x0008</td>
+<td>KEY_7</td>
+<td>1.6</td>
+<td>0x000e</td>
+<td>KEYCODE_7</td>
+<td>1</td>
+</tr>
+<tr>
+<td>0x07 0x0025</td>
+<td>键盘 8 和 * 键</td>
+<td>0x0009</td>
+<td>KEY_8</td>
+<td>1.6</td>
+<td>0x000f</td>
+<td>KEYCODE_8</td>
+<td>1</td>
+</tr>
+<tr>
+<td>0x07 0x0026</td>
+<td>键盘 9 和 ( 键</td>
+<td>0x000a</td>
+<td>KEY_9</td>
+<td>1.6</td>
+<td>0x0010</td>
+<td>KEYCODE_9</td>
+<td>1</td>
+</tr>
+<tr>
+<td>0x07 0x0027</td>
+<td>键盘 0 和 ) 键</td>
+<td>0x000b</td>
+<td>KEY_0</td>
+<td>1.6</td>
+<td>0x0007</td>
+<td>KEYCODE_0</td>
+<td>1</td>
+</tr>
+<tr>
+<td>0x07 0x0028</td>
+<td>键盘返回 (Enter) 键</td>
+<td>0x001c</td>
+<td>KEY_ENTER</td>
+<td>1.6</td>
+<td>0x0042</td>
+<td>KEYCODE_ENTER</td>
+<td>1</td>
+</tr>
+<tr>
+<td>0x07 0x0029</td>
+<td>键盘 Esc 键</td>
+<td>0x0001</td>
+<td>KEY_ESC</td>
+<td>3.0</td>
+<td>0x006f</td>
+<td>KEYCODE_ESCAPE </td>
+<td></td>
+</tr>
+<tr>
+<td>""</td>
+<td>""</td>
+<td>""</td>
+<td>""</td>
+<td>2.3</td>
+<td>0x0004</td>
+<td>KEYCODE_BACK</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x002a</td>
+<td>键盘删除 (Backspace) 键</td>
+<td>0x000e</td>
+<td>KEY_BACKSPACE</td>
+<td>1.6</td>
+<td>0x0043</td>
+<td>KEYCODE_DEL</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x002b</td>
+<td>键盘 Tab 键</td>
+<td>0x000f</td>
+<td>KEY_TAB</td>
+<td>1.6</td>
+<td>0x003d</td>
+<td>KEYCODE_TAB</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x002c</td>
+<td>键盘空格键</td>
+<td>0x0039</td>
+<td>KEY_SPACE</td>
+<td>1.6</td>
+<td>0x003e</td>
+<td>KEYCODE_SPACE</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x002d</td>
+<td>键盘 - 和 _ 键</td>
+<td>0x000c</td>
+<td>KEY_MINUS </td>
+<td>1.6</td>
+<td>0x0045</td>
+<td>KEYCODE_MINUS</td>
+<td>1</td>
+</tr>
+<tr>
+<td>0x07 0x002e</td>
+<td>键盘 = 和 + 键</td>
+<td>0x000d</td>
+<td>KEY_EQUAL</td>
+<td>1.6</td>
+<td>0x0046</td>
+<td>KEYCODE_EQUALS</td>
+<td>1</td>
+</tr>
+<tr>
+<td>0x07 0x002f</td>
+<td>键盘 [ 和 { 键</td>
+<td>0x001a</td>
+<td>KEY_LEFTBRACE</td>
+<td>1.6</td>
+<td>0x0047 </td>
+<td>KEYCODE_LEFT_BRACKET</td>
+<td>1</td>
+</tr>
+<tr>
+<td>0x07 0x0030</td>
+<td>键盘 ] 和 } 键</td>
+<td>0x001b</td>
+<td>KEY_RIGHTBRACE</td>
+<td>1.6</td>
+<td>0x0048</td>
+<td>KEYCODE_RIGHT_BRACKET</td>
+<td>1</td>
+</tr>
+<tr>
+<td>0x07 0x0031</td>
+<td>键盘 \ 和 | 键</td>
+<td>0x002b</td>
+<td>KEY_BACKSLASH</td>
+<td>1.6</td>
+<td>0x0049</td>
+<td>KEYCODE_BACKSLASH</td>
+<td>1</td>
+</tr>
+<tr>
+<td>0x07 0x0032</td>
+<td>键盘非美式 # 和 ~ 键</td>
+<td>0x002b</td>
+<td>KEY_BACKSLASH</td>
+<td>1.6</td>
+<td>0x0049</td>
+<td>KEYCODE_BACKSLASH</td>
+<td>1</td>
+</tr>
+<tr>
+<td>0x07 0x0033</td>
+<td>键盘 ; 和 : 键</td>
+<td>0x0027</td>
+<td>KEY_SEMICOLON</td>
+<td>1.6</td>
+<td>0x004a</td>
+<td>KEYCODE_SEMICOLON</td>
+<td>1</td>
+</tr>
+<tr>
+<td>0x07 0x0034</td>
+<td>键盘 ' 和 " 键</td>
+<td>0x0028</td>
+<td>KEY_APOSTROPHE</td>
+<td>1.6</td>
+<td>0x004b</td>
+<td>KEYCODE_APOSTROPHE</td>
+<td>1</td>
+</tr>
+<tr>
+<td>0x07 0x0035 </td>
+<td>键盘 ` 和 ~ 键</td>
+<td>0x0029</td>
+<td>KEY_GRAVE</td>
+<td>3.0</td>
+<td>0x0044</td>
+<td>KEYCODE_GRAVE</td>
+<td>1</td>
+</tr>
+<tr>
+<td>0x07 0x0036</td>
+<td>键盘 , 和 &lt; 键</td>
+<td>0x0033</td>
+<td>KEY_COMMA</td>
+<td>1.6</td>
+<td>0x0037</td>
+<td>KEYCODE_COMMA</td>
+<td>1</td>
+</tr>
+<tr>
+<td>0x07 0x0037</td>
+<td>键盘 . 和 &gt; 键</td>
+<td>0x0034</td>
+<td>KEY_DOT</td>
+<td>1.6</td>
+<td>0x0038</td>
+<td>KEYCODE_PERIOD</td>
+<td>1</td>
+</tr>
+<tr>
+<td>0x07 0x0038</td>
+<td>键盘 / 和 ? 键</td>
+<td>0x0035</td>
+<td>KEY_SLASH</td>
+<td>1.6</td>
+<td>0x004c</td>
+<td>KEYCODE_SLASH</td>
+<td>1</td>
+</tr>
+<tr>
+<td>0x07 0x0039</td>
+<td>键盘 Caps Lock 键</td>
+<td>0x003a</td>
+<td>KEY_CAPSLOCK</td>
+<td>3.0</td>
+<td>0x0073</td>
+<td>KEYCODE_CAPS_LOCK</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x003a</td>
+<td>键盘 F1 键</td>
+<td>0x003b</td>
+<td>KEY_F1</td>
+<td>3.0</td>
+<td>0x0083</td>
+<td>KEYCODE_F1</td>
+<td></td>
+</tr>
+<tr>
+<td>""</td>
+<td>""</td>
+<td>""</td>
+<td>""</td>
+<td>1.6</td>
+<td>0x0052</td>
+<td>KEYCODE_MENU</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x003b</td>
+<td>键盘 F2 键</td>
+<td>0x003c</td>
+<td>KEY_F2</td>
+<td>3.0</td>
+<td>0x0084</td>
+<td>KEYCODE_F2</td>
+<td></td>
+</tr>
+<tr>
+<td>""</td>
+<td>""</td>
+<td>""</td>
+<td>""</td>
+<td>1.6</td>
+<td>0x0002</td>
+<td>KEYCODE_SOFT_RIGHT</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x003c</td>
+<td>键盘 F3 键</td>
+<td>0x003d</td>
+<td>KEY_F3</td>
+<td>3.0</td>
+<td>0x0085</td>
+<td>KEYCODE_F3</td>
+<td></td>
+</tr>
+<tr>
+<td>""</td>
+<td>""</td>
+<td>""</td>
+<td>""</td>
+<td>1.6</td>
+<td>0×0005</td>
+<td>KEYCODE_CALL</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x003d</td>
+<td>键盘 F4 键</td>
+<td>0x003e</td>
+<td>KEY_F4</td>
+<td>3.0</td>
+<td>0x0086</td>
+<td>KEYCODE_F4</td>
+<td></td>
+</tr>
+<tr>
+<td>""</td>
+<td>""</td>
+<td>""</td>
+<td>""</td>
+<td>1.6</td>
+<td>0x0006</td>
+<td>KEYCODE_ENDCALL</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x003e</td>
+<td>键盘 F5 键</td>
+<td>0x003f</td>
+<td>KEY_F5</td>
+<td>3.0</td>
+<td>0x0087</td>
+<td>KEYCODE_F5</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x003f</td>
+<td>键盘 F6 键</td>
+<td>0x0040</td>
+<td>KEY_F6</td>
+<td>3.0</td>
+<td>0x0088</td>
+<td>KEYCODE_F6</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x0040</td>
+<td>键盘 F7 键</td>
+<td>0x0041</td>
+<td>KEY_F7</td>
+<td>3.0</td>
+<td>0x0089</td>
+<td>KEYCODE_F7</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x0041</td>
+<td>键盘 F8 键</td>
+<td>0x0042</td>
+<td>KEY_F8</td>
+<td>3.0</td>
+<td>0x008a</td>
+<td>KEYCODE_F8</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x0042</td>
+<td>键盘 F9 键</td>
+<td>0x0043</td>
+<td>KEY_F9</td>
+<td>3.0</td>
+<td>0x008b</td>
+<td>KEYCODE_F9</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x0043</td>
+<td>键盘 F10 键</td>
+<td>0x0044</td>
+<td>KEY_F10</td>
+<td>3.0</td>
+<td>0x008c</td>
+<td>KEYCODE_F10</td>
+<td></td>
+</tr>
+<tr>
+<td>""</td>
+<td>""</td>
+<td>""</td>
+<td>""</td>
+<td>2.3</td>
+<td>0x0052</td>
+<td>KEYCODE_MENU</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x0044</td>
+<td>键盘 F11 键</td>
+<td>0x0057</td>
+<td>KEY_F11</td>
+<td>3.0</td>
+<td>0x008d</td>
+<td>KEYCODE_F11</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x0045</td>
+<td>键盘 F12 键</td>
+<td>0x0058</td>
+<td>KEY_F12</td>
+<td>3.0</td>
+<td>0x008e</td>
+<td>KEYCODE_F12</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x0046</td>
+<td>键盘 Print Screen 键</td>
+<td>0x0063</td>
+<td>KEY_SYSRQ</td>
+<td>3.0</td>
+<td>0x0078</td>
+<td>KEYCODE_SYSRQ</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x0047</td>
+<td>键盘 Scroll Lock 键</td>
+<td>0x0046</td>
+<td>KEY_SCROLLLOCK</td>
+<td>3.0</td>
+<td>0x0074</td>
+<td>KEYCODE_SCROLL_LOCK</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x0048</td>
+<td>键盘 Pause 键</td>
+<td>0x0077</td>
+<td>KEY_PAUSE</td>
+<td>3.0</td>
+<td>0x0079</td>
+<td>KEYCODE_BREAK</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x0049</td>
+<td>键盘 Insert 键</td>
+<td>0x006e</td>
+<td>KEY_INSERT</td>
+<td>3.0</td>
+<td>0x007c</td>
+<td>KEYCODE_INSERT</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x004a</td>
+<td>键盘 Home 键</td>
+<td>0x0066</td>
+<td>KEY_HOME</td>
+<td>3.0</td>
+<td>0x007a</td>
+<td>KEYCODE_MOVE_HOME</td>
+<td></td>
+</tr>
+<tr>
+<td>""</td>
+<td>""</td>
+<td>""</td>
+<td>""</td>
+<td>1.6</td>
+<td>0x0003</td>
+<td>KEYCODE_HOME</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x004b</td>
+<td>键盘 Page Up 键</td>
+<td>0x0068</td>
+<td>KEY_PAGEUP</td>
+<td>3.0</td>
+<td>0x005c</td>
+<td>KEYCODE_PAGE_UP </td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x004c</td>
+<td>键盘 Delete Forward 键</td>
+<td>0x006f</td>
+<td>KEY_DELETE</td>
+<td>3.0</td>
+<td>0x0070</td>
+<td>KEYCODE_FORWARD_DEL</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x004d</td>
+<td>键盘 End 键</td>
+<td>0x006b</td>
+<td>KEY_END</td>
+<td>3.0</td>
+<td>0x007b</td>
+<td>KEYCODE_MOVE_END</td>
+<td></td>
+</tr>
+<tr>
+<td>""</td>
+<td>""</td>
+<td>""</td>
+<td>""</td>
+<td>1.6</td>
+<td>0x0006</td>
+<td>KEYCODE_ENDCALL</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x004e</td>
+<td>键盘 Page Down 键</td>
+<td>0x006d</td>
+<td>KEY_PAGEDOWN</td>
+<td>3.0</td>
+<td>0x005d</td>
+<td>KEYCODE_PAGE_DOWN</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x004f </td>
+<td>键盘向右箭头键</td>
+<td>0x006a</td>
+<td>KEY_RIGHT</td>
+<td>1.6</td>
+<td>0x0016</td>
+<td>KEYCODE_DPAD_RIGHT</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x0050</td>
+<td>键盘向左箭头键</td>
+<td>0x0069</td>
+<td>KEY_LEFT</td>
+<td>1.6</td>
+<td>0x0015</td>
+<td>KEYCODE_DPAD_LEFT</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x0051</td>
+<td>键盘向下箭头键</td>
+<td>0x006c</td>
+<td>KEY_DOWN</td>
+<td>1.6</td>
+<td>0x0014</td>
+<td> KEYCODE_DPAD_DOWN</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x0052</td>
+<td>键盘向上箭头键</td>
+<td>0x0067</td>
+<td>KEY_UP</td>
+<td>1.6</td>
+<td>0x0013</td>
+<td>KEYCODE_DPAD_UP</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x0053</td>
+<td>键盘 Num Lock 和 Clear 键</td>
+<td>0x0045</td>
+<td>KEY_NUMLOCK</td>
+<td>3.0</td>
+<td>0x008f</td>
+<td>KEYCODE_NUM_LOCK</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x0054</td>
+<td>小键盘 / 键</td>
+<td>0x0062</td>
+<td>KEY_KPSLASH</td>
+<td>3.0</td>
+<td>0x009a</td>
+<td>KEYCODE_NUMPAD_DIVIDE </td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x0055</td>
+<td>小键盘 * 键</td>
+<td>0x0037</td>
+<td>KEY_KPASTERISK</td>
+<td>3.0</td>
+<td>0x009b</td>
+<td>KEYCODE_NUMPAD_MULTIPLY</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x0056</td>
+<td>小键盘 - 键</td>
+<td>0x004a</td>
+<td>KEY_KPMINUS</td>
+<td>3.0</td>
+<td>0x009c</td>
+<td>KEYCODE_NUMPAD_SUBTRACT</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x0057</td>
+<td>小键盘 + 键</td>
+<td>0x004e</td>
+<td>KEY_KPPLUS</td>
+<td>3.0</td>
+<td>0x009d</td>
+<td>KEYCODE_NUMPAD_ADD</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x0058</td>
+<td>小键盘 Enter 键</td>
+<td>0x0060</td>
+<td>KEY_KPENTER</td>
+<td>3.0</td>
+<td>0x00a0</td>
+<td>KEYCODE_NUMPAD_ENTER</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x0059</td>
+<td>小键盘 1 和 End 键</td>
+<td>0x004f</td>
+<td>KEY_KP1</td>
+<td>3.0</td>
+<td>0x0091</td>
+<td>KEYCODE_NUMPAD_1</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x005a</td>
+<td>小键盘 2 和向下箭头键</td>
+<td>0x0050</td>
+<td>KEY_KP2</td>
+<td>3.0</td>
+<td>0x0092</td>
+<td>KEYCODE_NUMPAD_2</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x005b</td>
+<td>小键盘 3 和 PageDn 键</td>
+<td>0x0051</td>
+<td>KEY_KP3</td>
+<td>3.0</td>
+<td>0x0093</td>
+<td>KEYCODE_NUMPAD_3</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x005c</td>
+<td>小键盘 4 和向左箭头键</td>
+<td>0x004b</td>
+<td>KEY_KP4</td>
+<td>3.0</td>
+<td>0x0094</td>
+<td>KEYCODE_NUMPAD_4</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x005d</td>
+<td>小键盘 5 键</td>
+<td>0x004c</td>
+<td>KEY_KP5</td>
+<td>3.0</td>
+<td>0x0095</td>
+<td>KEYCODE_NUMPAD_5</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x005e</td>
+<td>小键盘 6 和向右箭头键</td>
+<td>0x004d</td>
+<td>KEY_KP6</td>
+<td>3.0</td>
+<td>0x0096</td>
+<td>KEYCODE_NUMPAD_6</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x005f</td>
+<td>小键盘 7 和 Home 键</td>
+<td>0x0047 </td>
+<td>KEY_KP7</td>
+<td>3.0</td>
+<td>0x0097</td>
+<td>KEYCODE_NUMPAD_7</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x0060</td>
+<td>小键盘 8 和向上箭头键</td>
+<td>0x0048</td>
+<td>KEY_KP8</td>
+<td>3.0</td>
+<td>0x0098</td>
+<td>KEYCODE_NUMPAD_8</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x0061</td>
+<td>小键盘 9 和 Page Up 键</td>
+<td>0x0049</td>
+<td>KEY_KP9</td>
+<td>3.0</td>
+<td>0x0099</td>
+<td>KEYCODE_NUMPAD_9</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x0062</td>
+<td>小键盘 0 和 Insert 键</td>
+<td>0x0052</td>
+<td>KEY_KP0</td>
+<td>3.0</td>
+<td>0x0090</td>
+<td>KEYCODE_NUMPAD_0</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x0063</td>
+<td>小键盘 . 和删除键</td>
+<td>0x0053</td>
+<td>KEY_KPDOT</td>
+<td>3.0</td>
+<td>0x009e</td>
+<td>KEYCODE_NUMPAD_DOT</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x0064</td>
+<td>键盘 Non-US \ 和 | 键</td>
+<td>0x0056</td>
+<td>KEY_102ND</td>
+<td>4.0</td>
+<td>0x0049</td>
+<td>KEYCODE_BACKSLASH</td>
+<td>1</td>
+</tr>
+<tr>
+<td>0x07 0x0065</td>
+<td>键盘应用程序键</td>
+<td>0x007f</td>
+<td>KEY_COMPOSE</td>
+<td>3.0</td>
+<td>0x0052</td>
+<td>KEYCODE_MENU</td>
+<td></td>
+</tr>
+<tr>
+<td>""</td>
+<td>""</td>
+<td>""</td>
+<td>""</td>
+<td>1.6</td>
+<td>0x0054</td>
+<td>KEYCODE_SEARCH </td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x0066</td>
+<td>键盘 Power 键</td>
+<td>0x0074</td>
+<td>KEY_POWER</td>
+<td>1.6</td>
+<td>0x001a</td>
+<td>KEYCODE_POWER</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x0067</td>
+<td>小键盘 = 键</td>
+<td>0x0075</td>
+<td>KEY_KPEQUAL</td>
+<td>3.0</td>
+<td>0x00a1</td>
+<td>KEYCODE_NUMPAD_EQUALS</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x0068</td>
+<td>键盘 F13 键</td>
+<td>0x00b7</td>
+<td>KEY_F13</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x0069</td>
+<td>键盘 F14 键</td>
+<td>0x00b8</td>
+<td>KEY_F14</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x006a</td>
+<td>键盘 F15 键</td>
+<td>0x00b9</td>
+<td>KEY_F15</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x006b</td>
+<td>键盘 F16 键</td>
+<td>0x00ba</td>
+<td>KEY_F16</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x006c</td>
+<td>键盘 F17 键</td>
+<td>0x00bb</td>
+<td>KEY_F17</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x006d</td>
+<td>键盘 F18 键</td>
+<td>0x00bc</td>
+<td>KEY_F18</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x006e</td>
+<td>键盘 F19 键</td>
+<td>0x00bd</td>
+<td>KEY_F19</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x006f</td>
+<td>键盘 F20 键</td>
+<td>0x00be</td>
+<td>KEY_F20</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x0070</td>
+<td>键盘 F21 键</td>
+<td>0x00bf</td>
+<td>KEY_F21</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x0071</td>
+<td>键盘 F22 键</td>
+<td>0x00c0</td>
+<td>KEY_F22</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x0072</td>
+<td>键盘 F23 键</td>
+<td>0x00c1</td>
+<td>KEY_F23</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x0073</td>
+<td>键盘 F24 键</td>
+<td>0x00c2</td>
+<td>KEY_F24</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x0074</td>
+<td>键盘 Execute 键</td>
+<td>0x0086</td>
+<td>KEY_OPEN</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x0075</td>
+<td>键盘帮助键</td>
+<td>0x008a</td>
+<td>KEY_HELP</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x0076</td>
+<td>键盘菜单键</td>
+<td>0x0082</td>
+<td>KEY_PROPS</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x0077</td>
+<td>键盘 Select 键</td>
+<td>0x0084</td>
+<td>KEY_FRONT</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x0078</td>
+<td>键盘 Stop 键</td>
+<td>0x0080</td>
+<td>KEY_STOP</td>
+<td>3.0</td>
+<td>0x0056</td>
+<td>KEYCODE_MEDIA_STOP</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x0079</td>
+<td>键盘 Again 键</td>
+<td>0x0081</td>
+<td>KEY_AGAIN</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x007a</td>
+<td>键盘 Undo 键</td>
+<td>0x0083</td>
+<td>KEY_UNDO</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x007b</td>
+<td>键盘 Cut 键</td>
+<td>0x0089</td>
+<td>KEY_CUT</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x007c</td>
+<td>键盘 Copy 键</td>
+<td>0x0085</td>
+<td>KEY_COPY</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x007d</td>
+<td>键盘 Paste 键</td>
+<td>0x0087</td>
+<td>KEY_PASTE</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x007e</td>
+<td>键盘 Find 键</td>
+<td>0x0088</td>
+<td>KEY_FIND</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x007f</td>
+<td>键盘 Mute 键</td>
+<td>0x0071</td>
+<td>KEY_MUTE</td>
+<td>3.0</td>
+<td>0x00a4</td>
+<td>KEYCODE_VOLUME_MUTE</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x0080</td>
+<td>键盘音量调高键</td>
+<td>0x0073</td>
+<td>KEY_VOLUMEUP</td>
+<td>1.6</td>
+<td>0x0018</td>
+<td>KEYCODE_VOLUME_UP</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x0081</td>
+<td>键盘音量调低键</td>
+<td>0x0072</td>
+<td>KEY_VOLUMEDOWN</td>
+<td>1.6</td>
+<td>0x0019</td>
+<td>KEYCODE_VOLUME_DOWN</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x0082</td>
+<td>键盘锁定 Caps Lock 键</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x0083</td>
+<td>键盘锁定 Num Lock 键</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x0084</td>
+<td>键盘锁定 Scroll Lock 键</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x0085</td>
+<td>小键盘逗号键</td>
+<td>0x0079</td>
+<td>KEY_KPCOMMA</td>
+<td>3.0</td>
+<td>0x009f</td>
+<td>KEYCODE_NUMPAD_COMMA</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x0086</td>
+<td>小键盘等号键</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x0087</td>
+<td>键盘 International1</td>
+<td>0x0059</td>
+<td>KEY_RO</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x0088</td>
+<td>键盘 International2</td>
+<td>0x005d</td>
+<td>KEY_KATAKANAHIRAGANA</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x0089</td>
+<td>键盘 International3</td>
+<td>0x007c</td>
+<td>KEY_YEN</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x008a</td>
+<td>键盘 International4</td>
+<td>0x005c</td>
+<td>KEY_HENKAN</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x008b</td>
+<td>键盘 International5</td>
+<td>0x005e</td>
+<td>KEY_MUHENKAN</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x008c</td>
+<td>键盘 International6</td>
+<td>0x005f</td>
+<td>KEY_KPJPCOMMA</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x008d</td>
+<td>键盘 International7</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x008e</td>
+<td>键盘 International8</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x008f</td>
+<td>键盘 International9</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x0090</td>
+<td>键盘 LANG1</td>
+<td>0x007a</td>
+<td>KEY_HANGEUL</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x0091</td>
+<td>键盘 LANG2</td>
+<td>0x007b</td>
+<td>KEY_HANJA</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x0092</td>
+<td>键盘 LANG3</td>
+<td>0x005a</td>
+<td>KEY_KATAKANA</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x0093</td>
+<td>键盘 LANG4</td>
+<td>0x005b</td>
+<td>KEY_HIRAGANA</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x0094</td>
+<td>键盘 LANG5</td>
+<td>0x0055</td>
+<td>KEY_ZENKAKUHANKAKU</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x0095</td>
+<td>键盘 LANG6</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x0096</td>
+<td>键盘 LANG7</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x0097</td>
+<td>键盘 LANG8</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x0098</td>
+<td>键盘 LANG9</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x0099</td>
+<td>键盘 Alternate Erase 键</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x009a</td>
+<td>键盘 SysReq/Attention 键</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x009b</td>
+<td>键盘 Cancel 键</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x009c</td>
+<td>键盘 Clear 键</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x009d</td>
+<td>键盘 Prior 键</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x009e</td>
+<td>键盘 Return 键</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x009f</td>
+<td>键盘 Separator 键</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00a0</td>
+<td>键盘 Out 键</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00a1</td>
+<td>键盘 Oper 键</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00a2</td>
+<td>键盘 Clear/Again 键</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00a3</td>
+<td>键盘 CrSel/Props 键</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00a4</td>
+<td>键盘 ExSel 键</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00b0</td>
+<td>小键盘 00</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00b1</td>
+<td>小键盘 000</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00b2</td>
+<td>千位分隔符</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00b3</td>
+<td>十进制分隔符</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00b4</td>
+<td>货币单位</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00b5</td>
+<td>货币次单位</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00b6</td>
+<td>小键盘 ( 键</td>
+<td>0x00b3</td>
+<td>KEY_KPLEFTPAREN</td>
+<td>3.0</td>
+<td>0x00a2</td>
+<td>KEYCODE_NUMPAD_LEFT_PAREN</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00b7</td>
+<td>小键盘 ) 键</td>
+<td>0x00b4</td>
+<td>KEY_KPRIGHTPAREN</td>
+<td>3.0</td>
+<td>0x00a3</td>
+<td>KEYCODE_NUMPAD_RIGHT_PAREN</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00b8</td>
+<td>小键盘 { 键</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00b9</td>
+<td>小键盘 } 键</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00ba</td>
+<td>小键盘 Tab 键</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00bb</td>
+<td>小键盘 Backspace 键</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00bc</td>
+<td>小键盘 A 键</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00bd</td>
+<td>小键盘 B 键</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00be</td>
+<td>小键盘 C 键</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00bf</td>
+<td>小键盘 D 键</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00c0</td>
+<td>小键盘 E 键</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00c1</td>
+<td>小键盘 F 键</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00c2</td>
+<td>小键盘 XOR 键</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00c3</td>
+<td>小键盘 ^ 键</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00c4</td>
+<td>小键盘 % 键</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00c5</td>
+<td>小键盘 &lt; 键</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00c6</td>
+<td>小键盘 &gt; 键</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00c7</td>
+<td>小键盘 &amp; 键</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00c8</td>
+<td>小键盘 &amp;&amp; 键</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00c9</td>
+<td>小键盘 | 键</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00ca</td>
+<td>小键盘 || 键</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00cb</td>
+<td>小键盘 : 键</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00cc</td>
+<td>小键盘 # 键</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00cd</td>
+<td>小键盘空格键</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00ce</td>
+<td>小键盘 @ 键</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00cf</td>
+<td>小键盘 ! 键</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00d0</td>
+<td>小键盘 Memory Store 键</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00d1</td>
+<td>小键盘 Memory Recall 键</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00d2</td>
+<td>小键盘 Memory Clear 键</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00d3</td>
+<td>小键盘 Memory Add 键</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00d4</td>
+<td>小键盘 Memory Subtract 键</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00d5</td>
+<td>小键盘 Memory Multiply 键</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00d6</td>
+<td>小键盘 Memory Divide 键</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00d7</td>
+<td>小键盘 +/- 键</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00d8</td>
+<td>小键盘 Clear 键</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00d9</td>
+<td>小键盘 Clear Entry 键</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00da</td>
+<td>小键盘二进制数</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00db</td>
+<td>小键盘八进制数</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00dc</td>
+<td>小键盘十进制数</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00dd</td>
+<td>小键盘十六进制数</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00e0</td>
+<td>键盘左 Ctrl 键</td>
+<td>0x001d</td>
+<td>KEY_LEFTCTRL</td>
+<td>3.0</td>
+<td>0x0071</td>
+<td>KEYCODE_CTRL_LEFT</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00e1</td>
+<td>键盘左 Shift 键</td>
+<td>0x002a</td>
+<td>KEY_LEFTSHIFT</td>
+<td>1.6</td>
+<td>0x003b</td>
+<td>KEYCODE_SHIFT_LEFT</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00e2</td>
+<td>键盘左 Alt 键</td>
+<td>0x0038</td>
+<td>KEY_LEFTALT</td>
+<td>1.6</td>
+<td>0x0039</td>
+<td>KEYCODE_ALT_LEFT</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00e3</td>
+<td>键盘左 GUI 键</td>
+<td>0x007d</td>
+<td>KEY_LEFTMETA</td>
+<td>3.0</td>
+<td>0x0075</td>
+<td>KEYCODE_META_LEFT</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00e4</td>
+<td>键盘右 Ctrl 键</td>
+<td>0x0061</td>
+<td>KEY_RIGHTCTRL</td>
+<td>3.0</td>
+<td>0x0072</td>
+<td>KEYCODE_CTRL_RIGHT</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00e5</td>
+<td>键盘右 Shift 键</td>
+<td>0x0036</td>
+<td>KEY_RIGHTSHIFT</td>
+<td>1.6</td>
+<td>0x003c</td>
+<td>KEYCODE_SHIFT_RIGHT</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00e6</td>
+<td>键盘右 Alt 键</td>
+<td>0x0064</td>
+<td>KEY_RIGHTALT</td>
+<td>1.6</td>
+<td>0x003a</td>
+<td>KEYCODE_ALT_RIGHT</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00e7</td>
+<td>键盘右 GUI 键</td>
+<td>0x007e</td>
+<td>KEY_RIGHTMETA</td>
+<td>3.0</td>
+<td>0x0076</td>
+<td>KEYCODE_META_RIGHT</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00e8</td>
+<td></td>
+<td>0x00a4</td>
+<td>KEY_PLAYPAUSE</td>
+<td>3.0</td>
+<td>0x0055</td>
+<td>KEYCODE_MEDIA_PLAY_PAUSE</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00e9</td>
+<td></td>
+<td>0x00a6</td>
+<td>KEY_STOPCD</td>
+<td>3.0</td>
+<td>0x0056</td>
+<td>KEYCODE_MEDIA_STOP</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00ea</td>
+<td></td>
+<td>0x00a5</td>
+<td>KEY_PREVIOUSSONG </td>
+<td>3.0</td>
+<td>0x0058</td>
+<td>KEYCODE_MEDIA_PREVIOUS</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00eb</td>
+<td></td>
+<td>0x00a3</td>
+<td>KEY_NEXTSONG</td>
+<td>3.0</td>
+<td>0x0057</td>
+<td>KEYCODE_MEDIA_NEXT</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00ec</td>
+<td></td>
+<td>0x00a1</td>
+<td>KEY_EJECTCD</td>
+<td>3.0</td>
+<td>0x0081</td>
+<td>KEYCODE_MEDIA_EJECT</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00ed</td>
+<td></td>
+<td>0x0073</td>
+<td>KEY_VOLUMEUP</td>
+<td>1.6</td>
+<td>0x0018</td>
+<td>KEYCODE_VOLUME_UP</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00ee</td>
+<td></td>
+<td>0x0072</td>
+<td>KEY_VOLUMEDOWN</td>
+<td>1.6</td>
+<td>0x0019</td>
+<td>KEYCODE_VOLUME_DOWN</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00ef</td>
+<td></td>
+<td>0x0071</td>
+<td>KEY_MUTE</td>
+<td>3.0</td>
+<td>0x00a4</td>
+<td>KEYCODE_VOLUME_MUTE</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00f0</td>
+<td></td>
+<td>0x0096</td>
+<td>KEY_WWW </td>
+<td>1.6</td>
+<td>0x0040</td>
+<td>KEYCODE_EXPLORER</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00f1</td>
+<td></td>
+<td>0x009e</td>
+<td>KEY_BACK</td>
+<td>1.6</td>
+<td>0x0004</td>
+<td>KEYCODE_BACK</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00f2</td>
+<td></td>
+<td>0x009f</td>
+<td>KEY_FORWARD</td>
+<td>3.0</td>
+<td>0x007d</td>
+<td>KEYCODE_FORWARD</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00f3</td>
+<td></td>
+<td>0x0080</td>
+<td>KEY_STOP</td>
+<td>3.0</td>
+<td>0x0056</td>
+<td>KEYCODE_MEDIA_STOP</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00f4</td>
+<td></td>
+<td>0x0088</td>
+<td>KEY_FIND</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00f5</td>
+<td></td>
+<td>0x00b1</td>
+<td>KEY_SCROLLUP</td>
+<td>3.0</td>
+<td>0x005c</td>
+<td>KEYCODE_PAGE_UP </td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00f6</td>
+<td></td>
+<td>0x00b2 </td>
+<td>KEY_SCROLLDOWN</td>
+<td>3.0</td>
+<td>0x005d</td>
+<td>KEYCODE_PAGE_DOWN</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00f7</td>
+<td></td>
+<td>0x00b0</td>
+<td>KEY_EDIT</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00f8</td>
+<td></td>
+<td>0x008e</td>
+<td>KEY_SLEEP</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00f9</td>
+<td></td>
+<td>0x0098</td>
+<td>KEY_COFFEE</td>
+<td>4.0</td>
+<td>0x001a</td>
+<td>KEYCODE_POWER</td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00fa</td>
+<td></td>
+<td>0x00ad</td>
+<td>KEY_REFRESH</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x07 0x00fb</td>
+<td></td>
+<td>0x008c</td>
+<td>KEY_CALC</td>
+<td>4.0.3</td>
+<td>0x00d2</td>
+<td>KEYCODE_CALCULATOR</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h3 id="hid-generic-desktop-page-0x01">HID 普通桌面用途页 (0x01)</h3>
+<table>
+<thead>
+<tr>
+<th>HID 用途</th>
+<th>HID 用途名称</th>
+<th>LKC</th>
+<th>Linux 按键代码名称</th>
+<th>版本</th>
+<th>AKC</th>
+<th>Android 按键代码名称</th>
+<th>备注</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0x01 0x0081</td>
+<td>系统电源中断</td>
+<td>0x0074</td>
+<td>KEY_POWER</td>
+<td>1.6</td>
+<td>0x001a</td>
+<td>KEYCODE_POWER</td>
+<td></td>
+</tr>
+<tr>
+<td>0x01 0x0082</td>
+<td>系统休眠</td>
+<td>0x008e</td>
+<td>KEY_SLEEP</td>
+<td>4.0</td>
+<td>0x001a</td>
+<td>KEYCODE_POWER</td>
+<td></td>
+</tr>
+<tr>
+<td>0x01 0x0083</td>
+<td>系统唤醒</td>
+<td>0x008f</td>
+<td>KEY_WAKEUP</td>
+<td>4.0</td>
+<td>0x001a</td>
+<td>KEYCODE_POWER</td>
+<td></td>
+</tr>
+<tr>
+<td>0x01 0x0084</td>
+<td>系统上下文菜单</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x01 0x0085</td>
+<td>系统主要菜单</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x01 0x0086</td>
+<td>系统应用菜单</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x01 0x0087</td>
+<td>系统菜单帮助</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x01 0x0088</td>
+<td>系统菜单退出</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x01 0x0089</td>
+<td>系统菜单选择</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x01 0x008a</td>
+<td>系统菜单向右</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x01 0x008b</td>
+<td>系统菜单向左</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x01 0x008c</td>
+<td>系统菜单向上</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x01 0x008d</td>
+<td>系统菜单向下</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x01 0x008e</td>
+<td>系统冷重启</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x01 0x008f</td>
+<td>系统热重启</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x01 0x00a0</td>
+<td>系统停靠</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x01 0x00a1</td>
+<td>系统取消停靠</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x01 0x00a2 </td>
+<td>系统设置</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x01 0x00a3</td>
+<td>系统中断</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x01 0x00a4</td>
+<td>系统调试程序中断</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x01 0x00a5</td>
+<td>应用中断</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x01 0x00a6</td>
+<td>应用调试程序中断</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x01 0x00a7</td>
+<td>系统扬声器静音</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x01 0x00a8</td>
+<td>系统休眠</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x01 0x00b0</td>
+<td>系统反转显示</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x01 0x00b1</td>
+<td>系统内部显示</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x01 0x00b2</td>
+<td>系统外部显示</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x01 0x00b3</td>
+<td>系统内外部显示</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x01 0x00b4</td>
+<td>系统双向显示</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x01 0x00b5</td>
+<td>系统显示切换 Int/Ext</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x01 0x00b6</td>
+<td>系统显示交换 Prim./Sec.</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x01 0x00b7</td>
+<td>系统显示 LCD 自动调节</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h3 id="hid-consumer-page-0x0c">HID 消费方页面 (0x0c)</h3>
+<table>
+<thead>
+<tr>
+<th>HID 用途</th>
+<th>HID 用途名称</th>
+<th>LKC</th>
+<th>Linux 按键代码名称</th>
+<th>版本</th>
+<th>AKC</th>
+<th>Android 按键代码名称</th>
+<th>备注</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0x0c 0x0030</td>
+<td>电源</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0031</td>
+<td>重置</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0032</td>
+<td>休眠</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0033</td>
+<td>休眠倒计时</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0034</td>
+<td>休眠模式</td>
+<td>0x008e</td>
+<td>KEY_SLEEP</td>
+<td>4.0</td>
+<td>0x001a</td>
+<td>KEYCODE_POWER</td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0040</td>
+<td>菜单</td>
+<td>0x008b</td>
+<td>KEY_MENU</td>
+<td>1.6</td>
+<td>0x0052</td>
+<td>KEYCODE_MENU</td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0041</td>
+<td>菜单选取</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0042</td>
+<td>菜单向上</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0043</td>
+<td>菜单向下</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0044</td>
+<td>菜单向左</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0045</td>
+<td>菜单向右</td>
+<td>0x0181</td>
+<td>KEY_RADIO</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0046</td>
+<td>菜单取消</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0047</td>
+<td>菜单数值增加</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0048</td>
+<td>菜单数值减少</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0081</td>
+<td>指派选择</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0082</td>
+<td>模式步骤</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0083</td>
+<td>撤回上一个</td>
+<td>0x0195</td>
+<td>KEY_LAST</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0084</td>
+<td>输入频道</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0085</td>
+<td>订购影片</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0088</td>
+<td>媒体选择计算机</td>
+<td>0x0178</td>
+<td>KEY_PC</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0089</td>
+<td>媒体选择电视机</td>
+<td>0x0179</td>
+<td>KEY_TV</td>
+<td>3.0</td>
+<td>0x00aa</td>
+<td>KEYCODE_TV</td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x008a</td>
+<td>媒体选择 WWW</td>
+<td>0x0096</td>
+<td>KEY_WWW </td>
+<td>1.6</td>
+<td>0x0040</td>
+<td>KEYCODE_EXPLORER</td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x008b</td>
+<td>媒体选择 DVD</td>
+<td>0x0185</td>
+<td>KEY_DVD</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x008c</td>
+<td>媒体选择电话</td>
+<td>0x00a9</td>
+<td>KEY_PHONE</td>
+<td>3.0</td>
+<td>0×0005</td>
+<td>KEYCODE_CALL</td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x008d</td>
+<td>媒体选择节目预告</td>
+<td>0x016a</td>
+<td>KEY_PROGRAM</td>
+<td>3.0</td>
+<td>0x00ac</td>
+<td>KEYCODE_GUIDE</td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x008e</td>
+<td>媒体选择视频电话</td>
+<td>0x01a0</td>
+<td>KEY_VIDEOPHONE</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x008f</td>
+<td>媒体选择游戏</td>
+<td>0x01a1</td>
+<td>KEY_GAMES</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0090</td>
+<td>媒体选择消息</td>
+<td>0x018c</td>
+<td>KEY_MEMO</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0091</td>
+<td>媒体选择 CD</td>
+<td>0x017f</td>
+<td>KEY_CD</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0092</td>
+<td>媒体选择 VCR</td>
+<td>0x017b</td>
+<td>KEY_VCR</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0093</td>
+<td>媒体选择调谐器</td>
+<td>0x0182</td>
+<td>KEY_TUNER</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0094</td>
+<td>退出</td>
+<td>0x00ae</td>
+<td>KEY_EXIT</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0095</td>
+<td>帮助</td>
+<td>0x008a</td>
+<td>KEY_HELP</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0096</td>
+<td>媒体选择磁带</td>
+<td>0x0180</td>
+<td>KEY_TAPE</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0097</td>
+<td>媒体选择电缆</td>
+<td>0x017a</td>
+<td>KEY_TV2</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0098</td>
+<td>媒体选择卫星</td>
+<td>0x017d</td>
+<td>KEY_SAT</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0099</td>
+<td>媒体选择安全</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x009a</td>
+<td>媒体选择起点</td>
+<td>0x016e</td>
+<td>KEY_PVR</td>
+<td>3.0</td>
+<td>0x00ad</td>
+<td>KEYCODE_DVR</td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x009c</td>
+<td>频道增加</td>
+<td>0x0192</td>
+<td>KEY_CHANNELUP</td>
+<td>3.0</td>
+<td>0x00a6</td>
+<td>KEYCODE_CHANNEL_UP</td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x009d</td>
+<td>频道减少</td>
+<td>0x0193</td>
+<td>KEY_CHANNELDOWN</td>
+<td>3.0</td>
+<td>0x00a7</td>
+<td>KEYCODE_CHANNEL_DOWN</td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x009e</td>
+<td>媒体选择 SAP</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x00a0</td>
+<td>VCR +</td>
+<td>0x017c</td>
+<td>KEY_VCR2</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x00a1</td>
+<td>1 次</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x00a2</td>
+<td>每天</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x00a3</td>
+<td>每周</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x00a4</td>
+<td>每月</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x00b0</td>
+<td>播放</td>
+<td>0x00cf</td>
+<td>KEY_PLAY</td>
+<td>3.0</td>
+<td>0x007e</td>
+<td>KEYCODE_MEDIA_PLAY</td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x00b1</td>
+<td>暂停</td>
+<td>0x0077</td>
+<td>KEY_PAUSE</td>
+<td>3.0</td>
+<td>0x0079</td>
+<td>KEYCODE_BREAK</td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x00b2</td>
+<td>录制</td>
+<td>0x00a7</td>
+<td>KEY_RECORD</td>
+<td>3.0</td>
+<td>0x0082</td>
+<td>KEYCODE_MEDIA_RECORD</td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x00b3</td>
+<td>快进</td>
+<td>0x00d0</td>
+<td>KEY_FASTFORWARD</td>
+<td>3.0</td>
+<td>0x005a</td>
+<td>KEYCODE_MEDIA_FAST_FORWARD</td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x00b4</td>
+<td>快退</td>
+<td>0x00a8</td>
+<td>KEY_REWIND</td>
+<td>3.0</td>
+<td>0x0059</td>
+<td>KEYCODE_MEDIA_REWIND</td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x00b5</td>
+<td>扫描下一曲目</td>
+<td>0x00a3</td>
+<td>KEY_NEXTSONG</td>
+<td>3.0</td>
+<td>0x0057</td>
+<td>KEYCODE_MEDIA_NEXT</td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x00b6</td>
+<td>扫描上一曲目</td>
+<td>0x00a5</td>
+<td>KEY_PREVIOUSSONG </td>
+<td>3.0</td>
+<td>0x0058</td>
+<td>KEYCODE_MEDIA_PREVIOUS</td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x00b7</td>
+<td>停止</td>
+<td>0x00a6</td>
+<td>KEY_STOPCD</td>
+<td>3.0</td>
+<td>0x0056</td>
+<td>KEYCODE_MEDIA_STOP</td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x00b8</td>
+<td>弹出</td>
+<td>0x00a1</td>
+<td>KEY_EJECTCD</td>
+<td>3.0</td>
+<td>0x0081</td>
+<td>KEYCODE_MEDIA_EJECT</td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x00b9</td>
+<td>随机播放</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x00ba</td>
+<td>选择磁盘</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x00bb</td>
+<td>放入磁盘</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x00bc</td>
+<td>重复</td>
+<td>0x01b7</td>
+<td>KEY_MEDIA_REPEAT</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x00be</td>
+<td>一般跟踪</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x00c0</td>
+<td>画面向前</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x00c1</td>
+<td>画面向后</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x00c2</td>
+<td>标记</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x00c3</td>
+<td>清除标记</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x00c4</td>
+<td>从标记处重复</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x00c5</td>
+<td>返回标记处</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x00c6</td>
+<td>正向搜索标记</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x00c7</td>
+<td>反向搜索标记</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x00c8</td>
+<td>计数器重设</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x00c9</td>
+<td>显示计数器</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x00ca</td>
+<td>跟踪增加</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x00cb</td>
+<td>跟踪减少</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x00cc</td>
+<td>停止/弹出</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x00cd</td>
+<td>播放/暂停</td>
+<td>0x00a4</td>
+<td>KEY_PLAYPAUSE</td>
+<td>3.0</td>
+<td>0x0055</td>
+<td>KEYCODE_MEDIA_PLAY_PAUSE</td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x00ce</td>
+<td>播放/跳过</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x00e2</td>
+<td>静音</td>
+<td>0x0071</td>
+<td>KEY_MUTE</td>
+<td>3.0</td>
+<td>0x00a4</td>
+<td>KEYCODE_VOLUME_MUTE</td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x00e5</td>
+<td>低音增强</td>
+<td>0x00d1</td>
+<td>KEY_BASSBOOST</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x00e6</td>
+<td>环绕模式</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x00e7</td>
+<td>音量</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x00e8</td>
+<td>MPX</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x00e9</td>
+<td>音量增大</td>
+<td>0x0073</td>
+<td>KEY_VOLUMEUP</td>
+<td>1.6</td>
+<td>0x0018</td>
+<td>KEYCODE_VOLUME_UP</td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x00ea</td>
+<td>音量减小</td>
+<td>0x0072</td>
+<td>KEY_VOLUMEDOWN</td>
+<td>1.6</td>
+<td>0x0019</td>
+<td>KEYCODE_VOLUME_DOWN</td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0181</td>
+<td>AL 启动按钮配置工具</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0182</td>
+<td>AL 可编程按钮配置</td>
+<td>0x009c</td>
+<td>KEY_BOOKMARKS</td>
+<td>3.0</td>
+<td>0x00ae</td>
+<td>KEYCODE_BOOKMARK</td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0183</td>
+<td>AL 消费方控制配置</td>
+<td>0x00ab</td>
+<td>KEY_CONFIG</td>
+<td>4.0.3</td>
+<td>0x00d1</td>
+<td>KEYCODE_MUSIC </td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0184</td>
+<td>AL 文字处理器</td>
+<td>0x01a5</td>
+<td>KEY_WORDPROCESSOR</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0185</td>
+<td>AL 文本编辑器</td>
+<td>0x01a6</td>
+<td>KEY_EDITOR</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0186</td>
+<td>AL 电子表格</td>
+<td>0x01a7</td>
+<td>KEY_SPREADSHEET</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0187</td>
+<td>AL 图形编辑器</td>
+<td>0x01a8</td>
+<td>KEY_GRAPHICSEDITOR</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0188</td>
+<td>AL 演示应用</td>
+<td>0x01a9</td>
+<td>KEY_PRESENTATION</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0189</td>
+<td>AL 数据库应用</td>
+<td>0x01aa</td>
+<td>KEY_DATABASE</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x018a</td>
+<td>AL 电子邮件阅读器</td>
+<td>0x009b</td>
+<td>KEY_MAIL</td>
+<td>1.6</td>
+<td>0x0041</td>
+<td>KEYCODE_ENVELOPE</td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x018b</td>
+<td>AL 新闻阅读器</td>
+<td>0x01ab</td>
+<td>KEY_NEWS</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x018c</td>
+<td>AL 语音信箱</td>
+<td>0x01ac</td>
+<td>KEY_VOICEMAIL</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x018d</td>
+<td>AL 联系人/通讯录</td>
+<td>0x01ad</td>
+<td>KEY_ADDRESSBOOK</td>
+<td>4.0.3</td>
+<td>0x00cf</td>
+<td>KEYCODE_CONTACTS</td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x018e</td>
+<td>AL 日程表/时间表</td>
+<td>0x018d</td>
+<td>KEY_CALENDAR</td>
+<td>4.0.3</td>
+<td>0x00d0</td>
+<td>KEYCODE_CALENDAR</td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x018f</td>
+<td>AL 任务/项目管理器</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0190</td>
+<td>AL 日志/日记/工作时间记录卡</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0191</td>
+<td>AL 支票簿/财务</td>
+<td>0x00db</td>
+<td>KEY_FINANCE</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0192</td>
+<td>AL 计算器</td>
+<td>0x008c</td>
+<td>KEY_CALC</td>
+<td>4.0.3</td>
+<td>0x00d2</td>
+<td>KEYCODE_CALCULATOR</td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0193</td>
+<td>AL A/V 捕捉/播放</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0194</td>
+<td>AL 本地计算机浏览器</td>
+<td>0x0090</td>
+<td>KEY_FILE</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0195</td>
+<td>AL LAN/WAN 浏览器</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0196</td>
+<td>AL 互联网浏览器</td>
+<td>0x0096</td>
+<td>KEY_WWW </td>
+<td>1.6</td>
+<td>0x0040</td>
+<td>KEYCODE_EXPLORER</td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0197</td>
+<td>AL 远程网络/ISP 连接</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0198</td>
+<td>AL 网络会议</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0199</td>
+<td>AL 网络聊天</td>
+<td>0x00d8</td>
+<td>KEY_CHAT</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x019a</td>
+<td>AL 电话/拨号器</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x019b</td>
+<td>AL 登录</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x019c</td>
+<td>AL 注销</td>
+<td>0x01b1</td>
+<td>KEY_LOGOFF</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x019d</td>
+<td>AL 登录/注销</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x019e</td>
+<td>AL 终端锁定/屏幕保护程序</td>
+<td>0x0098</td>
+<td>KEY_COFFEE</td>
+<td>4.0</td>
+<td>0x001a</td>
+<td>KEYCODE_POWER</td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x019f</td>
+<td>AL 控制面板</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x01a0</td>
+<td>AL 命令行处理器/运行</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x01a1</td>
+<td>AL 进程/任务管理器</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x01a2</td>
+<td>AL 选择任务/应用</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x01a3</td>
+<td>AL 下一项任务/应用</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x01a4</td>
+<td>AL 上一项任务/应用</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x01a5</td>
+<td>AL 优先暂停任务/应用</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x01a6</td>
+<td>AL 集成帮助中心</td>
+<td>0x008a</td>
+<td>KEY_HELP</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x01a7</td>
+<td>AL 文档</td>
+<td>0x00eb</td>
+<td>KEY_DOCUMENTS</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x01a8</td>
+<td>AL 词典</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x01a9</td>
+<td>AL 字典</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x01aa</td>
+<td>AL 桌面</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x01ab</td>
+<td>AL 拼写检查</td>
+<td>0x01b0</td>
+<td>KEY_SPELLCHECK</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x01ac</td>
+<td>AL 语法检查</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x01ad</td>
+<td>AL 无线状态</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x01ae</td>
+<td>AL 键盘布局</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x01af</td>
+<td>AL 病毒防护</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x01b0</td>
+<td>AL 加密</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x01b1</td>
+<td>AL 屏保</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x01b2</td>
+<td>AL 闹钟</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x01b3</td>
+<td>AL 时钟</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x01b4</td>
+<td>AL 文件浏览器</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x01b5</td>
+<td>AL 电源状态</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x01b6</td>
+<td>AL 图片浏览器</td>
+<td>0x00e2</td>
+<td>KEY_MEDIA</td>
+<td>3.0</td>
+<td>0x004f</td>
+<td>KEYCODE_HEADSETHOOK</td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x01b7</td>
+<td>AL 音频浏览器</td>
+<td>0x00d5</td>
+<td>KEY_SOUND</td>
+<td>4.0.3</td>
+<td>0x00d1</td>
+<td>KEYCODE_MUSIC </td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x01b8</td>
+<td>AL 影片浏览器</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x01b9</td>
+<td>AL 数字版权管理器</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x01ba</td>
+<td>AL 数字钱包</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x01bc</td>
+<td>AL 即时消息传输</td>
+<td>0x01ae</td>
+<td>KEY_MESSENGER</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x01bd</td>
+<td>AL OEM 功能/提示管理器</td>
+<td>0x0166</td>
+<td>KEY_INFO</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x01be</td>
+<td>AL OEM 帮助</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x01bf</td>
+<td>AL 在线社区</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x01c0</td>
+<td>AL 娱乐内容浏览器</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x01c1</td>
+<td>AL 在线购物浏览器</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x01c2</td>
+<td>AL SmartCard 信息/帮助</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x01c3</td>
+<td>AL 市场/金融浏览器</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x01c4</td>
+<td>AL 自定义公司新闻浏览器</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x01c5</td>
+<td>AL 在线活动浏览器</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x01c6</td>
+<td>AL 研究/搜索浏览器</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x01c7</td>
+<td>AL 音频播放器</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0201</td>
+<td>AC 新建</td>
+<td>0x00b5</td>
+<td>KEY_NEW</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0202</td>
+<td>AC 打开</td>
+<td>0x0086</td>
+<td>KEY_OPEN</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0203</td>
+<td>AC 关闭</td>
+<td>0x00ce</td>
+<td>KEY_CLOSE</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0204</td>
+<td>AC 退出</td>
+<td>0x00ae</td>
+<td>KEY_EXIT</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0205</td>
+<td>AC 最大化</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0206</td>
+<td>AC 最小化</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0207</td>
+<td>AC 保存</td>
+<td>0x00ea</td>
+<td>KEY_SAVE</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0208</td>
+<td>AC 打印</td>
+<td>0x00d2</td>
+<td>KEY_PRINT</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0209</td>
+<td>AC 属性</td>
+<td>0x0082</td>
+<td>KEY_PROPS</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x021a</td>
+<td>AC 撤消</td>
+<td>0x0083</td>
+<td>KEY_UNDO</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x021b</td>
+<td>AC 复制</td>
+<td>0x0085</td>
+<td>KEY_COPY</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x021c</td>
+<td>AC 剪切</td>
+<td>0x0089</td>
+<td>KEY_CUT</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x021d</td>
+<td>AC 粘贴</td>
+<td>0x0087</td>
+<td>KEY_PASTE</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x021e</td>
+<td>AC 全选</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x021f</td>
+<td>AC 查找</td>
+<td>0x0088</td>
+<td>KEY_FIND</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0220</td>
+<td>AC 查找和替换</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0221</td>
+<td>AC 搜索</td>
+<td>0x00d9</td>
+<td>KEY_SEARCH</td>
+<td>1.6</td>
+<td>0x0054</td>
+<td>KEYCODE_SEARCH </td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0222</td>
+<td>AC 转到</td>
+<td>0x0162</td>
+<td>KEY_GOTO</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0223</td>
+<td>AC 起始</td>
+<td>0x00ac</td>
+<td>KEY_HOMEPAGE</td>
+<td>3.0</td>
+<td>0x0003</td>
+<td>KEYCODE_HOME</td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0224</td>
+<td>AC 后退</td>
+<td>0x009e</td>
+<td>KEY_BACK</td>
+<td>1.6</td>
+<td>0x0004</td>
+<td>KEYCODE_BACK</td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0225</td>
+<td>AC 前进</td>
+<td>0x009f</td>
+<td>KEY_FORWARD</td>
+<td>3.0</td>
+<td>0x007d</td>
+<td>KEYCODE_FORWARD</td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0226</td>
+<td>AC 停止</td>
+<td>0x0080</td>
+<td>KEY_STOP</td>
+<td>3.0</td>
+<td>0x0056</td>
+<td>KEYCODE_MEDIA_STOP</td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0227</td>
+<td>AC 刷新</td>
+<td>0x00ad</td>
+<td>KEY_REFRESH</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0228</td>
+<td>AC 上一个链接</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0229</td>
+<td>AC 下一个链接</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x022a</td>
+<td>AC 书签</td>
+<td>0x009c</td>
+<td>KEY_BOOKMARKS</td>
+<td>3.0</td>
+<td>0x00ae</td>
+<td>KEYCODE_BOOKMARK</td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x022b</td>
+<td>AC 历史记录</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x022c</td>
+<td>AC 订阅</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x022d</td>
+<td>AC 放大</td>
+<td>0x01a2</td>
+<td>KEY_ZOOMIN</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x022e</td>
+<td>AC 缩小</td>
+<td>0x01a3</td>
+<td>KEY_ZOOMOUT</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x022f</td>
+<td>AC 缩放</td>
+<td>0x01a4</td>
+<td>KEY_ZOOMRESET</td>
+<td></td>
+<td></td>
+<td></td>
+<td>(2)</td>
+</tr>
+<tr>
+<td>0x0c 0x0230</td>
+<td>AC 全屏视图</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0231</td>
+<td>AC 普通视图</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0232</td>
+<td>AC 视图切换</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0233</td>
+<td>AC 向上滚动</td>
+<td>0x00b1</td>
+<td>KEY_SCROLLUP</td>
+<td>3.0</td>
+<td>0x005c</td>
+<td>KEYCODE_PAGE_UP </td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0234 </td>
+<td>AC 向下滚动</td>
+<td>0x00b2 </td>
+<td>KEY_SCROLLDOWN</td>
+<td>3.0</td>
+<td>0x005d</td>
+<td>KEYCODE_PAGE_DOWN</td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0236</td>
+<td>AC 向左平移</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0237</td>
+<td>AC 向右平移</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0239</td>
+<td>AC 新窗口</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x023a</td>
+<td>AC 横向平铺</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x023b</td>
+<td>AC 纵向平铺</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x023c</td>
+<td>AC 格式</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x023d</td>
+<td>AC 编辑</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x023e</td>
+<td>AC 粗体</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x023f</td>
+<td>AC 斜体</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0240</td>
+<td>AC 下划线</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0241</td>
+<td>AC 删除线</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0242</td>
+<td>AC 下标</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0243</td>
+<td>AC 上标</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0244</td>
+<td>AC 全部大写</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0245</td>
+<td>AC 旋转</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0246</td>
+<td>AC 调整大小</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0247</td>
+<td>AC 水平翻转</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0248</td>
+<td>AC 垂直翻转</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0249</td>
+<td>AC 水平镜像</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x024a</td>
+<td>AC 垂直镜像</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x024b</td>
+<td>AC 字体选择</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x024c</td>
+<td>AC 字体颜色</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x024d</td>
+<td>AC 字体大小</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x024e</td>
+<td>AC 左对齐</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x024f</td>
+<td>AC 水平居中对齐</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0250</td>
+<td>AC 右对齐</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0251</td>
+<td>AC 水平块对齐</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0252</td>
+<td>AC 顶部对齐</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0253</td>
+<td>AC 垂直居中对齐</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0254</td>
+<td>AC 底部对齐</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0255</td>
+<td>AC 垂直块对齐</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0256</td>
+<td>AC 减少缩进</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0257</td>
+<td>AC 增加缩进</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0258</td>
+<td>AC 编号列表</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0259</td>
+<td>AC 重新开始编号</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x025a</td>
+<td>AC 项目符号列表</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x025b</td>
+<td>AC 升级</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x025c</td>
+<td>AC 降级</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x025d</td>
+<td>AC 是</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x025e</td>
+<td>AC 否</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x025f</td>
+<td>AC 取消</td>
+<td>0x00df</td>
+<td>KEY_CANCEL</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0260</td>
+<td>AC 目录</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0261</td>
+<td>AC 购买/结账</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0262</td>
+<td>AC 添加到购物车</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0263</td>
+<td>AC 展开</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0264</td>
+<td>AC 全部展开</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0265</td>
+<td>AC 收起</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0266</td>
+<td>AC 全部收起</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0267</td>
+<td>AC 打印预览</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0268</td>
+<td>AC 选择性粘贴</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0269</td>
+<td>AC 插入模式</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x026a</td>
+<td>AC 删除</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x026b</td>
+<td>AC 锁定</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x026c</td>
+<td>AC 解锁</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x026d</td>
+<td>AC 保护</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x026e</td>
+<td>AC 取消保护</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x026f</td>
+<td>AC 添加评论</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0270</td>
+<td>AC 删除评论</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0271</td>
+<td>AC 查看评论</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0272</td>
+<td>AC 选择字词</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0273</td>
+<td>AC 选择句子</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0274</td>
+<td>AC 选择段落</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0275</td>
+<td>AC 选择列</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0276</td>
+<td>AC 选择行</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0277</td>
+<td>AC 选择表格</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0278</td>
+<td>AC 选择对象</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0279</td>
+<td>AC 重做/重复</td>
+<td>0x00b6</td>
+<td>KEY_REDO</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x027a</td>
+<td>AC 排序</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x027b</td>
+<td>AC 升序排序</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x027c</td>
+<td>AC 降序排序</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x027d</td>
+<td>AC 过滤器</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x027e</td>
+<td>AC 设置时钟</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x027f</td>
+<td>AC 查看时钟</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0280</td>
+<td>AC 选择时区</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0281</td>
+<td>AC 编辑时区</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0282</td>
+<td>AC 设置闹钟</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0283</td>
+<td>AC 清除闹钟</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0284</td>
+<td>AC 延后闹钟</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0285</td>
+<td>AC 重置闹钟</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0286</td>
+<td>AC 同步</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0287</td>
+<td>AC 发送/接收</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0288 </td>
+<td>AC 发送至</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0289</td>
+<td>AC 回复</td>
+<td>0x00e8</td>
+<td>KEY_REPLY</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x028a</td>
+<td>AC 回复全部</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x028b</td>
+<td>AC 转发消息</td>
+<td>0x00e9</td>
+<td>KEY_FORWARDMAIL</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x028c</td>
+<td>AC 发送</td>
+<td>0x00e7</td>
+<td>KEY_SEND</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x028d</td>
+<td>AC 附加文件</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x028e</td>
+<td>AC 上传</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x028f</td>
+<td>AC 下载（目标文件另存为）</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0290</td>
+<td>AC 设置边框</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0291</td>
+<td>AC 插入行</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0292</td>
+<td>AC 插入列</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0293</td>
+<td>AC 插入文件</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0294</td>
+<td>AC 插入图片</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0295</td>
+<td>AC 插入对象</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0296</td>
+<td>AC 插入符号</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0297</td>
+<td>AC 保存并关闭</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0298</td>
+<td>AC 重命名</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x0299</td>
+<td>AC 合并</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x029a</td>
+<td>AC 分割</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x029b</td>
+<td>AC 水平分布</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>0x0c 0x029c</td>
+<td>AC 垂直分布</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h3 id="additional-non-hid-mappings">其他非 HID 映射</h3>
+<p>下列映射描述了未出现在 HID 中但存在 Linux 按键代码的函数。</p>
+<table>
+<thead>
+<tr>
+<th>LKC</th>
+<th>Linux 按键代码名称</th>
+<th>版本</th>
+<th>AKC</th>
+<th>Android 按键代码名称</th>
+<th>备注</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0x01d0</td>
+<td>KEY_FN</td>
+<td>3.0</td>
+<td>0x0077</td>
+<td>KEYCODE_FUNCTION</td>
+<td></td>
+</tr>
+<tr>
+<td>0x01d1</td>
+<td>KEY_FN_ESC</td>
+<td>3.0</td>
+<td>0x006f</td>
+<td>KEYCODE_ESCAPE </td>
+<td>3</td>
+</tr>
+<tr>
+<td>0x01d2</td>
+<td>KEY_FN_F1</td>
+<td>3.0</td>
+<td>0x0083</td>
+<td>KEYCODE_F1</td>
+<td>3</td>
+</tr>
+<tr>
+<td>0x01d3</td>
+<td>KEY_FN_F2</td>
+<td>3.0</td>
+<td>0x0084</td>
+<td>KEYCODE_F2</td>
+<td>3</td>
+</tr>
+<tr>
+<td>0x01d4</td>
+<td>KEY_FN_F3</td>
+<td>3.0</td>
+<td>0x0085</td>
+<td>KEYCODE_F3</td>
+<td>3</td>
+</tr>
+<tr>
+<td>0x01d5</td>
+<td>KEY_FN_F4</td>
+<td>3.0</td>
+<td>0x0086</td>
+<td>KEYCODE_F4</td>
+<td>3</td>
+</tr>
+<tr>
+<td>0x01d6</td>
+<td>KEY_FN_F5</td>
+<td>3.0</td>
+<td>0x0087</td>
+<td>KEYCODE_F5</td>
+<td>3</td>
+</tr>
+<tr>
+<td>0x01d7</td>
+<td>KEY_FN_F6</td>
+<td>3.0</td>
+<td>0x0088</td>
+<td>KEYCODE_F6</td>
+<td>3</td>
+</tr>
+<tr>
+<td>0x01d8</td>
+<td>KEY_FN_F7</td>
+<td>3.0</td>
+<td>0x0089</td>
+<td>KEYCODE_F7</td>
+<td>3</td>
+</tr>
+<tr>
+<td>0x01d9</td>
+<td>KEY_FN_F8</td>
+<td>3.0</td>
+<td>0x008a</td>
+<td>KEYCODE_F8</td>
+<td>3</td>
+</tr>
+<tr>
+<td>0x01da</td>
+<td>KEY_FN_F9</td>
+<td>3.0</td>
+<td>0x008b</td>
+<td>KEYCODE_F9</td>
+<td>3</td>
+</tr>
+<tr>
+<td>0x01db</td>
+<td>KEY_FN_F10</td>
+<td>3.0</td>
+<td>0x008c</td>
+<td>KEYCODE_F10</td>
+<td>3</td>
+</tr>
+<tr>
+<td>0x01dc</td>
+<td>KEY_FN_F11</td>
+<td>3.0</td>
+<td>0x008d</td>
+<td>KEYCODE_F11</td>
+<td>3</td>
+</tr>
+<tr>
+<td>0x01dd</td>
+<td>KEY_FN_F12</td>
+<td>3.0</td>
+<td>0x008e</td>
+<td>KEYCODE_F12</td>
+<td>3</td>
+</tr>
+<tr>
+<td>0x01de</td>
+<td>KEY_FN_1</td>
+<td>3.0</td>
+<td>0x0008</td>
+<td>KEYCODE_1</td>
+<td>3</td>
+</tr>
+<tr>
+<td>0x01df</td>
+<td>KEY_FN_2</td>
+<td>3.0</td>
+<td>0x0009</td>
+<td>KEYCODE_2</td>
+<td>3</td>
+</tr>
+<tr>
+<td>0x01e0</td>
+<td>KEY_FN_D</td>
+<td>3.0</td>
+<td>0x0020</td>
+<td>KEYCODE_D</td>
+<td>3</td>
+</tr>
+<tr>
+<td>0x01e1</td>
+<td>KEY_FN_E</td>
+<td>3.0</td>
+<td>0x0021</td>
+<td>KEYCODE_E</td>
+<td>3</td>
+</tr>
+<tr>
+<td>0x01e2</td>
+<td>KEY_FN_F</td>
+<td>3.0</td>
+<td>0x0022</td>
+<td>KEYCODE_F</td>
+<td>3</td>
+</tr>
+<tr>
+<td>0x01e3</td>
+<td>KEY_FN_S</td>
+<td>3.0</td>
+<td>0x002f</td>
+<td>KEYCODE_S</td>
+<td>3</td>
+</tr>
+<tr>
+<td>0x01e4</td>
+<td>KEY_FN_B</td>
+<td>3.0</td>
+<td>0x001e</td>
+<td>KEYCODE_B</td>
+<td>3</td>
+</tr>
+</tbody>
+</table>
+<h3 id="legacy-unsupported-keys">不受支持的旧版按键</h3>
+<p>以下这些映射出现在以往的 Android 版本中，但与 HID 不一致或采用了非标准 Linux 按键代码。这些映射已不再受支持。</p>
+<table>
+<thead>
+<tr>
+<th>LKC</th>
+<th>Linux 按键代码名称</th>
+<th>版本</th>
+<th>AKC</th>
+<th>Android 按键代码名称</th>
+<th>备注</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0x00db</td>
+<td>KEY_EMAIL</td>
+<td>1.6</td>
+<td>0x004d</td>
+<td>KEYCODE_AT</td>
+<td>4</td>
+</tr>
+<tr>
+<td>""</td>
+<td>""</td>
+<td>4.0</td>
+<td></td>
+<td></td>
+<td>4</td>
+</tr>
+<tr>
+<td>0x00e3</td>
+<td>KEY_STAR</td>
+<td>1.6</td>
+<td>0x0011</td>
+<td>KEYCODE_STAR</td>
+<td>4</td>
+</tr>
+<tr>
+<td>""</td>
+<td>""</td>
+<td>4.0</td>
+<td></td>
+<td></td>
+<td>4</td>
+</tr>
+<tr>
+<td>0x00e4</td>
+<td>KEY_SHARP</td>
+<td>1.6</td>
+<td>0x0012</td>
+<td>KEYCODE_POUND</td>
+<td>4</td>
+</tr>
+<tr>
+<td>""</td>
+<td>""</td>
+<td>4.0</td>
+<td></td>
+<td></td>
+<td>4</td>
+</tr>
+<tr>
+<td>0x00e5</td>
+<td>KEY_SOFT1</td>
+<td>1.6</td>
+<td>0x0052</td>
+<td>KEYCODE_MENU</td>
+<td>4</td>
+</tr>
+<tr>
+<td>""</td>
+<td>""</td>
+<td>4.0</td>
+<td></td>
+<td></td>
+<td>4</td>
+</tr>
+<tr>
+<td>0x00e6</td>
+<td>KEY_SOFT2</td>
+<td>1.6</td>
+<td>0x0002</td>
+<td>KEYCODE_SOFT_RIGHT</td>
+<td>4</td>
+</tr>
+<tr>
+<td>""</td>
+<td>""</td>
+<td>4.0</td>
+<td></td>
+<td></td>
+<td>4</td>
+</tr>
+<tr>
+<td>0x00e7</td>
+<td>KEY_SEND</td>
+<td>1.6</td>
+<td>0×0005</td>
+<td>KEYCODE_CALL</td>
+<td>4</td>
+</tr>
+<tr>
+<td>""</td>
+<td>""</td>
+<td>4.0</td>
+<td></td>
+<td></td>
+<td>4</td>
+</tr>
+<tr>
+<td>0x00e8</td>
+<td>KEY_CENTER</td>
+<td>1.6</td>
+<td>0x0017</td>
+<td>KEYCODE_DPAD_CENTER</td>
+<td>4</td>
+</tr>
+<tr>
+<td>""</td>
+<td>""</td>
+<td>4.0</td>
+<td></td>
+<td></td>
+<td>4</td>
+</tr>
+<tr>
+<td>0x00e9</td>
+<td>KEY_HEADSETHOOK</td>
+<td>1.6</td>
+<td>0x004f</td>
+<td>KEYCODE_HEADSETHOOK</td>
+<td>4</td>
+</tr>
+<tr>
+<td>""</td>
+<td>""</td>
+<td>4.0</td>
+<td></td>
+<td></td>
+<td>4</td>
+</tr>
+<tr>
+<td>0x00ea</td>
+<td>KEY_0_5</td>
+<td>1.6</td>
+<td></td>
+<td></td>
+<td>4</td>
+</tr>
+<tr>
+<td>0x00eb</td>
+<td>KEY_2_5</td>
+<td>1.6</td>
+<td></td>
+<td></td>
+<td>4</td>
+</tr>
+</tbody>
+</table>
+<h3 id="notes">备注</h3>
+<ol>
+<li>
+<p>与常用字母数字和符号按键相关联的 Android 按键代码可能会因键盘布局和语言而异。由于历史原因，与键盘上的按键相关联的物理扫描代码和 HID 用途通常是根据位置进行定义的，即使这些按键上所打印的标签可能存在语言差异。</p>
+<p>在美式英语 (QWERTY) 键盘上，左上角的字母按键会标记为 Q，而在法式 (AZERTY) 键盘上，位于相同位置的按键则会标记为 A。尽管标签不同，但位于两个键盘左上角的字母按键均表示使用 HID 用途 0x07 0x0014（已映射到 Linux 按键代码 KEY_Q）。</p>
+<p>当 Android 配置有美式英语键盘布局时，Linux 按键代码 KEY_Q 将被映射到 Android 按键代码 KEYCODE_Q，并将产生字符“Q”和“q”。然而，当 Android 配置有法式键盘布局时，Linux 按键代码 KEY_Q 将被映射到 Android 按键代码 KEYCODE_A，并将产生字符“A”和“a”。</p>
+<p>Android 按键代码通常反映按键特定于语言的解释，因此不同的 Android 按键代码可能会用于不同的语言。</p>
+</li>
+<li>
+<p><code>0x0c 0x022f AC Zoom</code> 在 HID 中定义为线性控件，但内核会将其映射为按键（这很可能是错误的）。</p>
+</li>
+<li>
+<p>Linux 功能键 <code>KEY_FN_*</code> 可被映射到更简单的按键代码，但也会被分配已设置为 True 的<code>META_FUNCTION</code> Meta 状态位。</p>
+</li>
+<li>
+<p>在 Android Ice Cream Sandwich 4.0 之前，默认的键盘布局包含一些未在主线 Linux 内核头文件中定义的其他按键代码的映射。这些映射此后已被移除，因为这些以前未定义的按键代码在较新版本的 Linux 内核中已被赋予了不同的含义。</p>
+</li>
+</ol>
+<h3 id="sources">来源</h3>
+<ol>
+<li><a href="http://www.usb.org/developers/hidpage/Hut1_12v2.pdf">USB HID 用途表 v1.12</a></li>
+<li>Linux 2.6.39 内核：include/linux/input.h、drivers/hid/hid-input.c</li>
+<li>Android ICS：qwerty.kl、Generic.kl、KeyEvent.java</li>
+</ol>
+
+</body></html>

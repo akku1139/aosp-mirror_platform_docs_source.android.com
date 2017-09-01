@@ -1,0 +1,138 @@
+<html devsite><head>
+    <title>移植测试框架</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>移植 deqp 需要三个步骤：调整基础可移植性库，实现测试框架平台集成接口以及移植执行服务。</p>
+
+<p>下表列出了可能发生移植更改的位置。在此范围之外的位置很可能是有异常情况。</p>
+
+<table>
+ <tbody><tr>
+   <th>位置</th>
+   <th>说明</th>
+ </tr>
+
+ <tr>
+    <td><code>
+framework/delibs/debase<br />
+framework/delibs/dethread<br />
+framework/delibs/deutil</code></td>
+<td><p>操作系统专用代码的任何必要实现。</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+framework/qphelper/qpCrashHandler.c</code></td>
+<td><p>可选：针对操作系统的实现。</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+framework/qphelper/qpWatchDog.c</code></td>
+<td><p>针对操作系统的实现。当前位置是以 <code>dethread</code> 和 C 语言的标准库为基础。</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+framework/platform</code></td>
+<td><p>新的平台端口和应用存根可按照<a href="#test_framework_platform_port">测试框架平台端口</a>中的说明来实现。</p>
+</td>
+ </tr>
+</tbody></table>
+
+<h2 id="base_portability_libraries">基础可移植性库</h2>
+
+<p>基础可移植性库已支持 Windows、大多数 Linux 变体、Mac OS、iOS 和 Android。若测试目标在其中一个操作系统上运行，很可能根本无需动用基础可移植性库。</p>
+
+<h2 id="test_framework_platform_port">测试框架平台端口</h2>
+
+<p>deqp 测试框架平台端口需要两个组件：应用入口点和平台接口实现。</p>
+
+<p>应用入口点负责创建平台对象、创建命令行 (<code>tcu::CommandLine</code>) 对象、打开测试日志 (<code>tcu::TestLog</code>) 以及迭代测试应用 (<code>tcu::App</code>)。若目标操作系统支持标准的 <code>main()</code> 入口点，<code>tcuMain.cpp</code> 可以用作入口点实现。</p>
+
+<p>以下文件详细说明了 deqp 平台 API。</p>
+
+<table>
+ <tbody><tr>
+   <th>文件</th>
+   <th>说明</th>
+ </tr>
+ <tr>
+    <td><code>
+framework/common/tcuPlatform.hpp</code></td>
+<td><p>所有平台端口的基类</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+framework/opengl/gluPlatform.hpp</code></td>
+<td><p>OpenGL 平台接口</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+framework/egl/egluPlatform.hpp</code></td>
+<td><p>EGL 平台接口</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+framework/platform/tcuMain.cpp</code></td>
+<td><p>标准应用入口点</p>
+</td>
+ </tr>
+</tbody></table>
+
+<p>所有平台端口的基类都为 <code>tcu::Platform</code>。平台端口可选择性支持 GL 和 EGL 特定接口。请参见下表，大体上了解一下运行测试需要实现的内容。</p>
+
+<table>
+ <tbody><tr>
+   <th>模块</th>
+   <th>接口</th>
+ </tr>
+ <tr>
+    <td><p>OpenGL (ES) 测试模块</p>
+</td>
+    <td><p>GL 平台接口</p>
+</td>
+ </tr>
+ <tr>
+    <td><p>EGL 测试模块</p>
+</td>
+    <td><p>EGL 平台接口</p>
+</td>
+ </tr>
+</tbody></table>
+
+<p>有关实现平台端口的详细说明，请参阅移植层标头。</p>
+
+<h2 id="test_execution_service">测试执行服务</h2>
+
+<p>要使用 deqp 测试执行基础架构或命令行执行程序，目标上必须提供测试执行服务。该服务的可移植 C++ 实现是在 <code>execserver</code> 目录中提供。独立的二进制文件是作为计算机目标的 deqp 测试模块版本的一部分进行构建。您可以修改 <code>execserver/CMakeLists.txt</code>，以便在其他目标中启用相应版本。</p>
+
+<p>C++ 版的测试执行服务接受两个命令行参数：</p>
+
+<ul>
+  <li> <code>--port=&lt;port&gt;</code> 会设置服务器侦听的 TCP 端口。默认端口号为 50016。
+  </li><li> <code>--single</code> 会在客户端断开连接时终止服务器进程。默认情况下，为了进一步处理测试执行请求，服务器进程将保持运行。
+</li></ul>
+
+</body></html>

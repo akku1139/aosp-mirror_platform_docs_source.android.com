@@ -21,31 +21,306 @@
       limitations under the License.
   -->
 
+<p>When adding file system objects and services to the build, such items
+frequently need separate unique IDs, known as Android IDs (AIDs). Currently,
+many resources such as files and services use core, Android-defined AIDs
+unnecessarily; in many cases you can use OEM-defined AIDs instead.</p>
 
-<p>Earlier versions of Android used a system configuration file that was
-not extensible, preventing device manufacturers from adding named binaries to
-specify Discretionary Access Controls (DAC) of ownership, access mode, or
-executable capabilities. This limitation occurred as a result of support for
-Linux kernels 3.14 and higher in which wake lock is enabled via the
-<code>CAP_SUSPEND_BLOCK</code> capability; partner-supplied GPS daemons were
-required to hold this wake lock (and thus have this capability set in the file
-system).</p>
+<p>In earlier versions of Android, extending the AIDs mechanism used a
+device-specific <code>android_filesystem_config.h</code> file to specify the
+filesystem capabilities and/or custom OEM AIDs. However, this system was
+unintuitive as it did not support using nice names for OEM AIDs, requiring you
+to specify the raw numeric for user and group fields without a way to associate
+a friendly name with the numeric AID.</p>
 
-<p>As of Android 6.0, <code>fs_config</code> and associated structure definitions
-(<code>system/core/include/private/android_filesystem_config.h</code>) are now
-located in <code>system/core/libcutils/fs_config.c</code> where they can be
-updated or overridden by binary files installed in
-<code>/system/etc/fs_config_dirs</code> and
-<code>/system/etc/fs_config_files</code>. For clarity, Android uses separate
-matching and parsing rules for directories and files (which can use additional
-glob expressions) and handles directories and files in two different tables.
-Structure definitions in <code>system/core/libcutils/fs_config.c</code> not only
-allow runtime reading of directories and files, but the host may use the same
-files during build time to construct filesystem images as
+<p>Android 8.0 and higher includes a new AIDs mechanism for extending filesystem
+capabilities. This new method has support for the following:</p>
+<ul>
+<li>Multiple source locations for configuration files (enables extensible build
+configurations).</li>
+<li>Build-time sanity checking of OEM AID values.</li>
+<li>Generation of a custom OEM AID header that can be used in source files as
+needed.</li>
+<li>Association of a friendly name with the actual OEM AID value. Supports
+non-numeric string arguments for user and group, i.e. "foo" instead of
+"2901".</li>
+</ul>
+
+<p>Additional improvements include the removal of the <code>android_ids[]</code>
+array from <code>system/core/include/private/android_filesystem_config.h</code>.
+This array now exists in Bionic as a fully private generated array, with
+accessors via <code>getpwnam()</code> and <code>getgrnam()</code>. (This has the
+side effect of producing stable binaries as core AIDs are modified.) For tooling
+and a README file with more details, refer to
+<code>build/make/tools/fs_config</code>.</p>
+
+<aside class="note"><strong>Note:</strong> While you can still use the
+<a href="#older">filesystem override method from previous Android releases</a>,
+you cannot use it simultaneously with the new AIDs mechanism. Using the new
+mechanism whenever possible is recommended.</aside>
+
+<h2 id="adding-android-ids-aids">Adding Android IDs (AIDs)</h2>
+<p>Android 8.0 removes the <code>android_ids[]</code> array from the Android
+Open Source Project (AOSP). All AID-friendly names are instead generated from
+the <code>system/core/include/private/android_filesystem_config.h</code> header
+file when generating the Bionic <code>android_ids[]</code> array. Any
+<code>define</code> matching <code>AID_*</code> is picked up by the tooling and
+<strong>*</strong> becomes the lowercase name.</p>
+
+<p>For example, in <code>private/android_filesystem_config.h</code>:</p>
+
+<pre class="prettyprint">#define AID_SYSTEM 1000</pre>
+
+<p>Becomes:</p>
+<ul>
+<li>Friendly name: system</li>
+<li>uid: 1000</li>
+<li>gid: 1000</li>
+</ul>
+
+<p>To add a new AOSP core AID, simply add the <code>#define</code> to the
+<code>android_filesystem_config.h</code> header file. The AID will be generated
+at build and made available to interfaces that use user and group arguments. The
+tooling validates the new AID is not within the APP or OEM ranges; it also
+respects changes to those ranges and should automatically reconfigure on changes
+or new OEM-reserved ranges.</p>
+
+<h2 id="configuring-aids">Configuring AIDs</h2>
+<p>
+To enable the new AIDs mechanism, set <code>TARGET_FS_CONFIG_GEN</code> in the
+<code>BoardConfig.mk</code> file. This variable holds a list of configuration
+files, enabling you to append files as needed.</p>
+
+<aside class="caution"><strong>Caution:</strong> Don't use
+<code>TARGET_FS_CONFIG_GEN</code> with the
+older <code>TARGET_ANDROID_FILESYSTEM_CONFIG_H</code> method from older Android
+releases! You will get an error.</aside>
+
+<p>By convention, configuration files use the name <code>config.fs</code>, but
+in practice you can use any name. <code>config.fs</code> files are in the
+<a href="https://docs.python.org/2/library/configparser.html" class="external">Python
+ConfigParser ini format</a> and include a caps section (for configuring file
+system capabilities) and an AIDs section (for configuring OEM-specific AIDs).
+</p>
+
+<h3 id="configuring-the-caps-section">Configuring the caps section</h3>
+<p>The caps section supports setting
+<a href="http://man7.org/linux/man-pages/man7/capabilities.7.html" class="external">file
+system capabilities</a> on filesystem objects within the build (the filesystem
+itself must also support this functionality).</p>
+
+<p>Because running a stable service as root in Android causes a
+<a href="/compatibility/cts/index.html">Compatibility Test Suite (CTS)</a>
+failure, previous requirements for retaining a capability while running a
+process or service involved setting up capabilities then using
+<code>setuid</code>/<code>setgid</code> to a proper AID to run. With caps, you
+can skip these requirements and have the kernel do it for you. When control is
+handed to <code>main()</code>, your process already has the capabilities it
+needs so your service can use a non-root user and group (this is the preferred
+way for starting privileged services).</p>
+
+<p>The caps section uses the following syntax:</p>
+<table>
+  <tr>
+   <th>Section</th>
+   <th>Value</th>
+   <th>Definition</th>
+  </tr>
+  <tr>
+   <td><code>[path]</code></td>
+   <td></td>
+   <td>The filesystem path to configure. A path ending in / is considered a dir,
+   else it's a file.
+   <br><br>It is an error to specify multiple sections with the same
+   <code>[path]</code> in different files. In Python versions <= 3.2, the same
+   file may contain sections that override the previous section; in Python 3.2,
+   it's set to strict mode.</td>
+  </tr>
+  <tr>
+   <td><code>mode</code></td>
+   <td>Octal file mode</td>
+   <td>A valid octal file mode of at least 3 digits. If 3 is specified, it is
+   prefixed with a 0, else mode is used as is.</td>
+  </tr>
+  <tr>
+  <td><code>user</code></td>
+   <td>AID_&lt;user&gt;</td>
+   <td>Either the C <code>define</code> for a valid AID or the friendly name
+   (e.g. both <code>AID_RADIO</code> and <code>radio</code> are acceptable). To
+   define a custom AID, see <a href="#configuring-the-aid-section">Configuring
+   the AID section</a>.</td>
+  </tr>
+  <tr>
+   <td><code>group</code></td>
+   <td>AID_&lt;group&gt;</td>
+   <td>Same as user.</td>
+  </tr>
+  <tr>
+  <td><code>caps</code></td>
+   <td>cap*</td>
+   <td>The name as declared in
+   <code>system/core/include/private/android_filesystem_capability.h</code>
+   without the leading <code>CAP_</code>. Mixed case allowed. Caps can also be
+   the raw:
+   <ul>
+   <li>binary (0b0101)</li>
+   <li>octal (0455)</li>
+   <li>int (42)</li>
+   <li>hex (0xFF)</li>
+  </ul>
+  Separate multiple caps using whitespaces.</td>
+  </tr>
+</table>
+
+<p>For a usage example, see <a href="#using-file-system-capabilities">Using file
+system capabilities</a>.</p>
+
+<h3 id="configuring-the-aid-section">Configuring the AID section</h3>
+<p>The AID section contains OEM-specific AIDs and uses the following syntax:</p>
+
+<table>
+  <tr>
+   <th>Section</th>
+   <th>Value</th>
+   <th>Definition</th>
+  </tr>
+  <tr>
+  <td><code>[AID_&lt;name&gt;]</code></td>
+   <td></td>
+   <td>The <code>&lt;name&gt;</code> can contain characters in the set
+   uppercase, numbers, and underscores. The lowercase version is used as the
+   friendly name. The generated header file for code inclusion uses the exact
+   <code>AID_&lt;name&gt;</code>.
+   <br><br>It is an error to specify multiple sections with the same
+   <code>AID_&lt;name&gt;</code> (case insensitive with the same constraints as
+   <code>[path]</code>).</td>
+  </tr>
+  <tr>
+  <td><code>value</code></td>
+  <td>&lt;number&gt;</td>
+  <td>A valid C style number string (hex, octal, binary and decimal).
+  <br><br>It is an error to specify multiple sections with the same value option
+  <strong>or</strong> to specify a value that is outside of the inclusive OEM
+  ranges (defined in
+  <code>system/core/include/private/android_filesystem_config.h</code>):
+  <ul>
+  <li>AID_OEM_RESERVED_START(2900) - AID_OEM_RESERVED_END(2999)</li>
+  <li>AID_OEM_RESERVED_2_START(5000) - AID_OEM_RESERVED_2_END(5999)</li>
+  </ul>
+  </td>
+  </tr>
+</table>
+
+<p>For usage examples, see <a href="#defining-an-oem-specific-aid">Defining an
+OEM-specific AID</a> and <a href="#using-an-oem-specific-aid">Using an
+OEM-specific AID</a>.</p>
+
+<h2 id="usage-examples">Usage examples</h2>
+<p>The following examples detail how to define and use an OEM-specific AID and
+how to enable filesystem capabilities.</p>
+
+<h3 id="defining-an-oem-specific-aid">Defining an OEM-specific AID</h3>
+<p>To define an OEM-specific AID, create a <code>config.fs</code> file and set
+the AID value. For example, in <code>device/x/y/config.fs</code>, set the
+following:</p>
+
+<pre class="prettyprint">
+[AID_FOO]
+value: 2900
+</pre>
+
+<p>After creating the file, set the <code>TARGET_FS_CONFIG_GEN</code> variable
+and point to it in <code>BoardConfig.mk</code>. For example, in
+<code>device/x/y/BoardConfig.mk</code>, set the following:</p>
+
+<pre class="prettyprint">TARGET_FS_CONFIG_GEN += device/x/y/config.fs</pre>
+
+<p>Your custom AID can now be consumed by the system at large on a new build.
+</p>
+
+<h3 id="using-an-oem-specific-aid">Using an OEM-specific AID</h3>
+<p>To access the <code>#define</code> value of your AID via C or C++ code, use
+the autogenerated header file by adding to your module's <code>Android.mk</code>
+and including the empty faux library. For example, in <code>Android.mk</code>,
+add the following:</p>
+
+<pre class="prettyprint"> LOCAL_STATIC_LIBRARIES := liboemaids</pre>
+<p>In your C code, <code>#include "generated_oem_aid.h"</code> and start using
+the declared identifiers. For example, in <code>my_file.c</code>, add the
+following: </p>
+
+<pre class="prettyprint">
+#include "generated_oem_aid.h"
+
+…
+
+If (ipc->uid == AID_FOO) {
+  // Do something
+...
+</pre>
+
+<p>In Android 8.0, you must continue to use <code>oem_####</code> with
+<code>getpwnam</code> and similar functions, as well in places that handle
+lookups via <code>getpwnam</code> (such as init scripts). For example, in
+<code>some/init.rc</code>, use the following:</p>
+
+<pre class="prettyprint">
+service foo /vendor/bin/foo_service
+    user: oem_2900
+    group: oem_2900
+</pre>
+
+<h3 id="using-file-system-capabilities">Using file system capabilities</h3>
+<p>To enable filesystem capabilities, create a caps section in the
+<code>config.fs</code> file. For example, in <code>device/x/y/config.fs</code>,
+add the following section:</p>
+
+<pre class="prettyprint">
+[system/bin/foo_service]
+mode: 0555
+user: AID_FOO
+group: AID_SYSTEM
+caps: SYS_ADMIN | SYS_NICE
+</pre>
+
+<aside class="note"><strong>Note:</strong> The nice names <code>foo</code> and
+<code>system</code> could be used here as well.</aside>
+
+<p>After creating the file, set the <code>TARGET_FS_CONFIG_GEN</code> to point
+to it in <code>BoardConfig.mk</code>. For example, in
+<code>device/x/y/BoardConfig.mk</code>, set the following:</p>
+
+<pre class="prettyprint">TARGET_FS_CONFIG_GEN += device/x/y/config.fs</pre>
+
+<p>When service <code>foo</code> is executed, it starts with capabilities
+<code>CAP_SYS_ADMIN</code> and <code>CAP_SYS_NICE</code> without
+<code>setuid</code> and <code>setgid</code> calls. In addition, the
+<code>foo</code> service's SELinux policy no longer needs <code>setuid</code>
+and <code>setgid</code>, so these capabilities can be removed from the SELinux
+policy for <code>foo</code>.</p>
+
+<h2 id="older">Configuring overrides (Android 6.x-7.x)</h2>
+
+<p>Android 6.0 relocated <code>fs_config</code> and associated structure
+definitions
+(<code>system/core/include/private/android_filesystem_config.h</code>) to
+<code>system/core/libcutils/fs_config.c</code> where they could be updated or
+overridden by binary files installed in <code>/system/etc/fs_config_dirs</code>
+and <code>/system/etc/fs_config_files</code>. Using separate matching and
+parsing rules for directories and files (which could use additional glob
+expressions) enabled Android to handle directories and files in two different
+tables. Structure definitions in <code>system/core/libcutils/fs_config.c</code>
+not only allowed runtime reading of directories and files, but the host could
+use the same files during build time to construct filesystem images as
 <code>${OUT}/system/etc/fs_config_dirs</code> and
 <code>${OUT}/system/etc/fs_config_files</code>.</p>
 
-<h2 id=gen-files>Generating override files</h2>
+<p>While the override method of extending the filesystem has been superseded by
+the modular config system introduced in Android 8.0, you can still use the old
+method if desired. The following sections detail how to generate and include
+override files and configure the filesystem.</p>
+
+<h3 id=older-generate>Generating override files</h3>
 
 <p>You can generate the aligned binary files
 <code>/system/etc/fs_config_dirs</code> and
@@ -69,27 +344,23 @@ following structure initializations for directory and file symbols:</p>
 <p>When not using <code>android_device_dirs[]</code> and
 <code>android_device_files[]</code>, you can define
 <code>NO_ANDROID_FILESYSTEM_CONFIG_DEVICE_DIRS</code> and <code>NO_ANDROID_FILESYSTEM_CONFIG_DEVICE_FILES</code> (see the
-<a href="#example">example</a> below).</p>
-
-<p>You can also specify the
-override file using <code>TARGET_ANDROID_FILESYSTEM_CONFIG_H</code> in the board
+<a href="#older-example">example</a> below). You can also specify the override file
+using <code>TARGET_ANDROID_FILESYSTEM_CONFIG_H</code> in the board
 configuration, with an enforced basename of
-<code>android_filesystem_config.h</code>.
+<code>android_filesystem_config.h</code>.</p>
 
-<h2 id=include-files>Including files</h2>
-
-<p><code>PRODUCT_PACKAGES</code> must include <code>fs_config_dirs</code>
-and/or <code>fs_config_files</code> to install them to
-<code>/system/etc/fs_config_dirs</code> and
-<code>/system/etc/fs_config_files</code>, respectively.</p>
-
-<p>The build system searches for custom <code>android_filesystem_config.h</code>
-in <code>$(TARGET_DEVICE_DIR)</code>, where <code>BoardConfig.mk</code> exists.
+<h3 id=older-include>Including override files</h3>
+<p>To include files, ensure that <code>PRODUCT_PACKAGES</code> includes
+<code>fs_config_dirs</code> and/or <code>fs_config_files</code> so it can
+install them to <code>/system/etc/fs_config_dirs</code> and
+<code>/system/etc/fs_config_files</code>, respectively. The build system
+searches for custom <code>android_filesystem_config.h</code> in
+<code>$(TARGET_DEVICE_DIR)</code>, where <code>BoardConfig.mk</code> exists.
 If this file exists elsewhere, set board config variable
 <code>TARGET_ANDROID_FILESYSTEM_CONFIG_H</code> to point to that location.</p>
 
-<h2 id=configuring>Configuring</h2>
-<p>To configure the file system in Android 6.0 and higher:</p>
+<h3 id=older-configure>Configuring the filesystem</h3>
+<p>To configure the filesystem in Android 6.0 and higher:</p>
 
 <ol>
 <li>Create the <code>$(TARGET_DEVICE_DIR)/android_filesystem_config.h</code>
@@ -99,28 +370,7 @@ file.</li>
 <code>$(TARGET_DEVICE_DIR)/device.mk</code>).</li>
 </ol>
 
-<h2 id=migration-concerns>Migration concerns</h2>
-<p>Migrating system configurations from Android 5.0 and earlier can be
-disruptive. When planning such a migration, keep in mind that Android 6.0:</p>
-<ul>
-<li>Removes some includes, structures, and inline definitions.</li>
-<li>Requires a reference to <code>libcutils</code> instead of running directly
-from <code>system/core/include/private/android_filesystem_config.h</code>.
-Device manufacturer private executables that depend on
-<code>system/code/include/private_filesystem_config.h</code> for the file or
-directory structures or <code>fs_config</code> must add <code>libcutils</code>
-library dependencies.</li>
-<li>Requires device manufacturer private branch copies of the
-<code>system/core/include/private/android_filesystem_config.h</code> with extra
-content on existing targets to move to
-<code>device/<em>vendor</em>/<em>device</em>/android_filesystem_config.h</code>.
-</li>
-<li>As Android reserves the right to apply SELinux Mandatory Access Controls (MAC)
-to configuration files on the target system, implementations that include
-custom target executables using <code>fs_config()</code> must ensure access.</li>
-</ul>
-
-<h2 id=example>Example</h2>
+<h3 id=older-example>Override example</h3>
 
 <p>This example shows a patch for overriding the <code>system/bin/glgps</code>
 daemon to add wake lock support in the
@@ -201,7 +451,27 @@ index 0c71d21..235c1a7 100644
  ifeq ($(USE_SVELTE_KERNEL), true)
 </pre>
 
-
+<h3 id=older-migration>Migrating filesystems from earlier releases</h3>
+<p>When migrating filesystems from Android 5.x and earlier, keep in mind that
+Android 6.x:</p>
+<ul>
+<li>Removes some includes, structures, and inline definitions.</li>
+<li>Requires a reference to <code>libcutils</code> instead of running directly
+from <code>system/core/include/private/android_filesystem_config.h</code>.
+Device manufacturer private executables that depend on
+<code>system/code/include/private_filesystem_config.h</code> for the file or
+directory structures or <code>fs_config</code> must add <code>libcutils</code>
+library dependencies.</li>
+<li>Requires device manufacturer private branch copies of the
+<code>system/core/include/private/android_filesystem_config.h</code> with extra
+content on existing targets to move to
+<code>device/<em>vendor</em>/<em>device</em>/android_filesystem_config.h</code>.
+</li>
+<li>As Android reserves the right to apply SELinux Mandatory Access Controls
+(MAC) to configuration files on the target system, implementations that include
+custom target executables using <code>fs_config()</code> must ensure access.
+</li>
+</ul>
 
 </body>
 </html>

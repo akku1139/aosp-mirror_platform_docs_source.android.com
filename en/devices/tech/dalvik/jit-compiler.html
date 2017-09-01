@@ -24,112 +24,97 @@
 
 
 <p>
-Android 7.0 adds a just-in-time (JIT) compiler with code profiling to Android
-runtime (ART) that constantly improves the performance of Android apps as they
-run. The JIT compiler complements ART's current ahead-of-time (AOT) compiler and
-improves runtime performance, saves storage space, and speeds app updates and
-system updates.
+Android runtime (ART) includes a just-in-time (JIT) compiler with code profiling
+that continually improves the performance of Android applications as they run.
+The JIT compiler complements ART's current ahead-of-time (AOT) compiler and
+improves runtime performance, saves storage space, and speeds application and
+system updates. It also improves upon the AOT compiler by avoiding system
+slowdown during automatic application updates or recompilation of applications
+during over-the-air (OTA) updates.
 </p>
 
 <p>
-The JIT compiler also improves upon the AOT compiler by avoiding system slowdown
-during automatic application updates or recompilation of applications during
-OTAs. This feature should require minimal device integration on the part of
-manufacturers.
+Although JIT and AOT use the same compiler with a similar set of optimizations,
+the generated code might not be identical. JIT makes use of runtime type
+information, can do better inlining, and makes on stack replacement (OSR)
+compilation possible, all of which generates slightly different code.
 </p>
 
-<p>
-JIT and AOT use the same compiler with an almost identical set of optimizations.
-The generated code might not be the same but it depends. JIT makes uses of
-runtime type information and can do better inlining. Also, with JIT we sometimes
-do OSR compilation (on stack replacement) which will again generate a bit
-different code.
-</p>
+<h2 id="architectural-overview">JIT architecture</h2>
 
-<h2 id="architectural-overview">Architectural Overview</h2>
+<img src="./images/jit-arch.png" alt="JIT architecture"/>
+<figcaption><strong>Figure 1.</strong> JIT architecture.</figcaption>
 
-<img src="/devices/tech/dalvik/images/jit-arch.png" alt="JIT architecture" width="633" id="JIT-architecture" />
-<p class="img-caption">
-  <strong>Figure 1.</strong> JIT architecture - how it works
-</p>
+<h2 id="flow">JIT compilation</h2>
 
-<h2 id="flow">Flow</h2>
-
-<p>
-JIT compilation works in this manner:
-</p>
+<p>JIT compilation involves the following activities:</p>
+<img src="./images/jit-profile-comp.png" alt="Profile-guided comp"/>
+<figcaption><strong>Figure 2.</strong> Profile-guided compilation.</figcaption>
 
 <ol>
-<li>The user runs the app, which then triggers ART to load the .dex file.
-<li>If the .oat file (the AOT binary for the .dex file) is available, ART uses
-them directly. Note that .oat files are generated regularly. However, that does
-not imply they contain compiled code (AOT binary).
-<li>If no .oat file is available, ART runs through either JIT or an interpreter
-to execute the .dex file. ART will always use the .oat files if available.
-Otherwise, it will use the APK and extract it in memory to get to the .dex
-incurring a big memory overhead (equal to the size of the dex files).
+<li>The user runs the app, which then triggers ART to load the <code>.dex</code>
+file.
+ <ul>
+ <li>If the <code>.oat</code> file (the AOT binary for the <code>.dex</code>
+ file) is available, ART uses it directly. Although <code>.oat</code> files are
+ generated regularly, they don't always contain compiled code (AOT binary).</li>
+ <li>If no <code>.oat</code> file is available, ART runs through JIT or an
+ interpreter to execute the <code>.dex</code> file.</li>
+ ART always uses the <code>.oat</code> files if available. Otherwise, it uses
+ the APK and extracts it in memory to get to the <code>.dex</code>; this incurs
+ a big memory overhead that is equal to the size of the dex files.</li>
+</ul>
+</li>
 <li>JIT is enabled for any application that is not compiled according to the
-"speed" compilation filter (which says, compile as much as you can from the
-app).
-<li>The JIT profile data is dumped to a file in a system directory. Only the
-application has access to the directory.
-<li>The AOT compilation (dex2oat) daemon parses that file to drive its
-compilation.</li>
+<code>speed</code> compilation filter (which says "compile as much as you can
+from the app").</li>
+<li>The JIT profile data is dumped to a file in a system directory that only
+the application can access.</li>
+<li>The AOT compilation (<code>dex2oat</code>) daemon parses that file to drive
+its compilation.
+<br>
+<br>
+<img src="./images/jit-daemon.png" alt="JIT daemon"/>
+<figcaption><strong>Figure 3.</strong> JIT daemon activities.</figcaption>
+</li>
 </ol>
 
-<img src="/devices/tech/dalvik/images/jit-profile-comp.png" alt="Profile-guided comp" width="452" id="JIT-profile-comp" />
-<p class="img-caption">
-  <strong>Figure 2.</strong> Profile-guided compilation
-</p>
-
-<img src="/devices/tech/dalvik/images/jit-daemon.png" alt="JIT daemon" width="718" id="JIT-daemon" />
-<p class="img-caption">
-  <strong>Figure 3.</strong> How the daemon works
-</p>
-
 <p>
-The Google Play service is an example used by other apps. These application tend
-to behave more like shared libraries.
+The Google Play service is an example used by other applications that behave
+similar to shared libraries.
 </p>
 
-<h2 id="jit-workflow">JIT Workflow</h2>
-<p>
-See the following high-level overview of how JIT works in the next diagram.
-</p>
+<h2 id="jit-workflow">JIT workflow</h2>
 
-<img src="/devices/tech/dalvik/images/jit-workflow.png" alt="JIT architecture" width="707" id="JIT-workflow" />
-<p class="img-caption">
-  <strong>Figure 4.</strong> JIT data flow
-</p>
-
-<p>
-This means:
-</p>
+<img src=./images/jit-workflow.png" alt="JIT architecture"/>
+<figcaption><strong>Figure 4.</strong> JIT data flow.</figcaption>
 
 <ul>
 <li>Profiling information is stored in the code cache and subjected to garbage
 collection under memory pressure.
-<li>As a result, there’s no guarantee the snapshot taken when the application is
-in the background will contain the complete data (i.e. everything that was
-JITed).
-<li>There is no attempt to make sure we record everything as that will impact
-runtime performance.
-<li>Methods can be in three different states: <ul>
- <li>interpreted (dex code)
- <li>JIT compiled
- <li>AOT compiled
-<li>If both, JIT and AOT code exists (e.g. due to repeated de-optimizations),
-the JITed code will be preferred.
-<li>The memory requirement to run JIT without impacting foreground app
-performance depends upon the app in question. Large apps will require more
-memory than small apps. In general, big apps stabilize around 4 MB.</li></ul>
+ <ul>
+ <li>There is no guarantee a snapshot taken when the application was in the
+ background will contain complete data (i.e., everything that was JITed).</li>
+ <li>There is no attempt to ensure everything is recorded (as this can impact
+ runtime performance).</li>
+ </ul>
 </li>
+<li>Methods can be in three different states:
+ <ul>
+ <li>interpreted (dex code)</li>
+ <li>JIT compiled</li>
+ <li>AOT compiled</li>
+ </ul>
+ If both JIT and AOT code exists (e.g. due to repeated de-optimizations),
+ the JITed code is preferred.
+</li>
+<li>The memory requirement to run JIT without impacting foreground app
+performance depends upon the app in question. Large apps require more memory
+than small apps. In general, large apps stabilize around 4 MB.</li>
 </ul>
 
-<h2 id="tuning">Useful tips</h2>
-
-<h3 id="turn-on-jit-logging">Turn on JIT logging</h3>
-
+<h2 id="turn-on-jit-logging">Turning on JIT logging</h2>
+<p>To turn on JIT logging, run the following commands:</p>
 <pre class="devsite-click-to-copy">
 <code class="devsite-terminal">adb root</code>
 <code class="devsite-terminal">adb shell stop</code>
@@ -137,8 +122,8 @@ memory than small apps. In general, big apps stabilize around 4 MB.</li></ul>
 <code class="devsite-terminal">adb shell start</code>
 </pre>
 
-<h3 id="disable-jit-and-run-applications-in-interpreter">Disable JIT</h3>
-
+<h2 id="disable-jit-and-run-applications-in-interpreter">Disabling JIT</h2>
+<p>To disable JIT, run the following commands:</p>
 <pre class="devsite-click-to-copy">
 <code class="devsite-terminal">adb root</code>
 <code class="devsite-terminal">adb shell stop</code>
@@ -146,13 +131,14 @@ memory than small apps. In general, big apps stabilize around 4 MB.</li></ul>
 <code class="devsite-terminal">adb shell start</code>
 </pre>
 
-<h3 id="force-compilation-of-a-specific-package">Force compilation of a specific
-package</h3>
+<h2 id="force-compilation-of-a-specific-package">Forcing compilation</h2>
 
-<p>
-Check <code>$ adb shell cmd package compile</code> for usage. A few common use cases:
-</p>
+<p>To force compilation, run the following:</p>
+<pre class="devsite-terminal devsite-click-to-copy">
+adb shell cmd package compile
+</pre>
 
+<p>Common use cases for force compiling a specific package:</p>
 <ul>
 <li>Profile-based:
 <pre class="devsite-terminal devsite-click-to-copy">
@@ -166,9 +152,7 @@ adb shell cmd package compile -m speed -f my-package
 </li>
 </ul>
 
-<h3 id="force-compilation-of-all-packages">Force compilation of all
-packages</h3>
-
+<p>Common use cases for force compiling all packages:</p>
 <ul>
 <li>Profile-based:
 <pre class="devsite-terminal devsite-click-to-copy">
@@ -182,16 +166,15 @@ adb shell cmd package compile -m speed -f -a
 </li>
 </ul>
 
-<h3 id="clear-profile-data-and-remove-compiled-code">Clear profile data and
-remove compiled code</h3>
-
+<h2 id="clear-profile-data-and-remove-compiled-code">Clearing profile data</h2>
+<p>To clear profile data and remove compiled code, run the following:</p>
 <ul>
-<li>One package:
+<li>For one package:
 <pre class="devsite-terminal devsite-click-to-copy">
 adb shell cmd package compile --reset my-package
 </pre>
 </li>
-<li>All packages
+<li>For all packages:
 <pre class="devsite-terminal devsite-click-to-copy">
 adb shell cmd package compile --reset -a
 </pre>
