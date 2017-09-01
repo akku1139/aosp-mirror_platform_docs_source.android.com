@@ -1,0 +1,137 @@
+<html devsite><head>
+    <title>Android 接口和架构</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>
+Android 可让您自由实现您自己的设备规格和驱动程序。硬件抽象层 (HAL) 提供了一种用于在 Android 平台堆叠和硬件之间创建软件钩的标准方法。Android 操作系统也是开放源代码系统，因此您可以贡献您自己的接口和增强功能。
+</p>
+
+<p>
+为确保设备能够保持较高的质量水平并提供一致的用户体验，每部设备都必须通过兼容性测试套件 (CTS) 中的测试。CTS 可验证设备是否符合一定的质量标准，此类标准可确保应用稳定运行并提供良好的用户体验。若想详细了解 CTS，请参阅<a href="/compatibility/index.html">兼容性</a>。
+</p>
+
+<p>
+在将 Android 移植到您的硬件之前，请花点时间从更高层面上了解 Android 系统架构。由于您的驱动程序和 HAL 会与 Android 进行交互，因此了解 Android 的工作原理可帮助您浏览 Android 开放源代码项目 (AOSP) 源代码树中的多个代码层。
+</p>
+
+<img src="images/ape_fwk_all.png"/>
+
+<p class="img-caption"><strong>图 1.</strong> Android 系统架构</p>
+
+<h2 id="Application-framework">应用框架</h2>
+<p>
+应用框架最常被应用开发者使用。作为硬件开发者，您应该非常了解开发者 API，因为很多此类 API 都可直接映射到底层 HAL 接口，并可提供与实现驱动程序相关的实用信息。
+</p>
+
+<h2 id="Binder-IPC">Binder IPC</h2>
+<p>
+Binder 进程间通信 (IPC) 机制允许应用框架跨越进程边界并调用 Android 系统服务代码，从而使得高级框架 API 能与 Android 系统服务进行交互。在应用框架级别，开发者无法看到此类通信的过程，但一切似乎都在“按部就班地运行”。
+</p>
+
+<h2 id="System-services">系统服务</h2>
+<p>
+应用框架 API 所提供的功能可与系统服务通信，以访问底层硬件。服务是集中的模块化组件，例如窗口管理器、搜索服务或通知管理器。Android 包含两组服务：“系统”（诸如窗口管理器和通知管理器之类的服务）和“媒体”（与播放和录制媒体相关的服务）。<em></em><em></em>
+</p>
+
+<h2 id="Hardware-Abstraction-Layer">硬件抽象层 (HAL)</h2>
+<p>
+硬件抽象层 (HAL) 会定义一个标准接口以供硬件供应商实现，并允许 Android 忽略较低级别的驱动程序实现。借助 HAL，您可以顺利实现相关功能，而不会影响或无需更改更高级别的系统。HAL 实现会被封装成模块 (<code>.so</code>) 文件，并会由 Android 系统适时地加载。
+</p>
+
+<img src="images/ape_fwk_hal.png"/>
+
+<p class="img-caption"><strong>图 2.</strong> 硬件抽象层 (HAL) 组件</p>
+
+<p>
+您必须为您的产品所提供的特定硬件实现相应的 HAL（和驱动程序）。HAL 实现通常会内置在共享库模块（<code>.so</code> 文件）中。Android 并不要求您的 HAL 实现与设备驱动程序之间进行标准交互，因此您可以自由地根据您的具体情况执行适当的操作。不过，要使 Android 系统能够与您的硬件正确互动，您<strong>必须</strong>遵守各个针对特定硬件的 HAL 接口中定义的合同。
+</p>
+
+<h3 id="structure">标准 HAL 结构</h3>
+<p>
+  每个针对特定硬件的 HAL 接口均具有 <code>hardware/libhardware/include/hardware/hardware.h</code> 中定义的属性，这些属性可保证 HAL 具有可预测的结构。此类接口允许 Android 系统以一致的方式加载 HAL 模块的正确版本。HAL 接口包含两个通用组件：一个模块和一个设备。
+</p>
+<p>
+  模块表示被封装且存储为共享库 (<code>.so file</code>) 的 HAL 实现。它会包含模块的版本、名称和作者等元数据，这些元数据有助于 Android 找到并正确加载该模块。<code>hardware/libhardware/include/hardware/hardware.h</code> 标头文件会定义一个表示模块的结构体 (<code>hw_module_t</code>)，其中会包含模块的版本、作者和名称等信息。</p>
+
+  <p>另外，<code>hw_module_t</code> 结构体还会包含一个指向另一结构体 <code>hw_module_methods_t</code> 的指针，后面这个结构体则会包含一个指向相应模块的“open”函数的指针。该“open”函数用于与相关硬件（此 HAL 是其抽象形式）建立通信。每个针对特定硬件的 HAL 通常都会使用附加信息为该特定硬件扩展通用的 <code>hw_module_t</code> 结构体。例如，在相机 HAL 中，<code>camera_module_t</code> 结构体会包含一个 <code>hw_module_t</code> 结构体以及其他针对相机的函数指针：
+</p>
+
+<pre class="devsite-click-to-copy">
+typedef struct camera_module {
+    hw_module_t common;
+    int (*get_number_of_cameras)(void);
+    int (*get_camera_info)(int camera_id, struct camera_info *info);
+} camera_module_t;
+</pre>
+
+<p>当您实现 HAL 并创建模块结构体时，必须将其命名为 <code>HAL_MODULE_INFO_SYM</code>。例如，以下是 Nexus 9 音频 HAL 的示例：</p>
+
+<pre class="devsite-click-to-copy">
+struct audio_module HAL_MODULE_INFO_SYM = {
+    .common = {
+        .tag = HARDWARE_MODULE_TAG,
+        .module_api_version = AUDIO_MODULE_API_VERSION_0_1,
+        .hal_api_version = HARDWARE_HAL_API_VERSION,
+        .id = AUDIO_HARDWARE_MODULE_ID,
+        .name = "NVIDIA Tegra Audio HAL",
+        .author = "The Android Open Source Project",
+        .methods = &amp;hal_module_methods,
+    },
+};
+</pre>
+<p>
+  设备会提取产品的实际硬件。例如，音频模块可能会包含主音频设备、USB 音频设备或蓝牙 A2DP 音频设备。设备由 <code>hw_device_t</code> 结构体表示。与模块类似，每类设备都会为通用的 <code>hw_device_t</code> 定义一个更详细的版本，其中会包含指向硬件特定功能的函数指针。例如，<code>audio_hw_device_t</code> 结构体类型会包含指向音频设备操作的函数指针：
+</p>
+
+<pre class="devsite-click-to-copy">
+struct audio_hw_device {
+    struct hw_device_t common;
+
+    /**
+     * used by audio flinger to enumerate what devices are supported by
+     * each audio_hw_device implementation.
+     *
+     * Return value is a bitmask of 1 or more values of audio_devices_t
+     */
+    uint32_t (*get_supported_devices)(const struct audio_hw_device *dev);
+  ...
+};
+typedef struct audio_hw_device audio_hw_device_t;
+</pre>
+
+<p>
+  除了这些标准属性之外，每个针对特定硬件的 HAL 接口都可以定义更多的自有特性和要求。若想详细了解如何实现某个特定接口，请参阅 <a href="/reference/hal/">HAL 参考文档</a>以及各 HAL 的单独说明。
+</p>
+
+<h3 id="modules">HAL 模块</h3>
+<p>HAL 实现会内置在模块 (<code>.so</code>) 文件中，并会由 Android 适时地动态关联。您可通过为每个 HAL 实现创建 <code>Android.mk</code> 文件并指向源文件来构建模块。一般来说，您的共享库必须以某种格式命名，以便被找到并正确加载。各模块的命名方案略有不同，但它们都遵循以下通用模式：<code>&lt;module_type&gt;.&lt;device_name&gt;</code>。</p>
+
+  <p>若想详细了解如何为每个 HAL 设置模块构建，请参阅各 HAL 对应的文档。</p>
+
+<h2 id="Linux-kernel">Linux 内核</h2>
+<p>
+开发设备驱动程序与开发典型的 Linux 设备驱动程序类似。Android 使用的 Linux 内核版本包含一些特殊的补充功能，例如：唤醒锁（这是一种内存管理系统，可更主动地保护内存）、Binder IPC 驱动程序以及对移动嵌入式平台非常重要的其他功能。这些补充功能主要用于增强系统功能，不会影响驱动程序开发。
+
+</p><p>
+您可以使用任一版本的内核，只要它支持所需功能（如 Binder 驱动程序）。不过，我们建议您使用 Android 内核的最新版本。若想详细了解 Android 内核的最新版本，请参阅<a href="/source/building-kernels.html">构建内核</a>。
+</p>
+
+</body></html>

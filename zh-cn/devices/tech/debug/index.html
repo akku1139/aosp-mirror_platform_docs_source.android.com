@@ -20,9 +20,11 @@
       limitations under the License.
   -->
 
-<p>本部分总结了开发平台级功能时，可用于调试、跟踪和分析原生 Android 平台代码的实用工具和相关命令。本页面介绍了 <code>debuggerd</code> 和 GNU 项目调试程序 (GDB) 的用法。debuggerd 是一种用于在应用崩溃后收集错误信息的守护进程。</p>
+<p>本部分总结了开发平台级功能时，可用于调试、跟踪和分析原生 Android 平台代码的实用工具和相关命令。</p>
 
-<p>本部分的其他页面介绍了如何通过 <a href="/devices/tech/debug/dumpsys.html">Dumpsys</a> 和多种其他调适工具了解系统服务状况，其中包括查看<a href="/devices/tech/debug/native-memory.html">本地内存</a>、<a href="/devices/tech/debug/netstats.html">网络</a>和 <a href="/devices/tech/debug/procstats.html">RAM</a> 使用情况、使用 <a href="/devices/tech/debug/asan.html">AddressSanitizer</a> 检测原生代码中的内存错误、评估<a href="/devices/tech/debug/eval_perf.html">性能问题</a>（包括 <a href="/devices/tech/debug/systrace">systrace</a>）。</p>
+<p class="note"><strong>注意</strong>：本节和本网站其他部分的页面建议您使用 <code>adb</code> 与 <code>setprop</code> 参数一起调试 Android 的某些方面。请注意，在 Android 操作系统的 O 版本之前，属性名称的长度上限为 32 个字符。也就是说，要创建一个包含应用名称的 wrap 属性，您需要截断该名称以使其符合字符数限制。在 Android O 及更高版本中，此字符数上限值要大得多，应该不需要截断。</p>
+
+<p>本页面介绍了 <code>debuggerd</code> 的用法，debuggerd 是一种用于在应用崩溃后收集错误信息的守护进程。本部分的其他页面介绍了如何通过 <a href="https://developer.android.com/studio/command-line/dumpsys.html">Dumpsys</a> 了解系统服务状况，其中包括查看<a href="/devices/tech/debug/native-memory.html">本地内存</a>、<a href="https://developer.android.com/studio/command-line/dumpsys.html#network">网络</a>和 <a href="https://developer.android.com/studio/command-line/dumpsys.html#procstats">RAM</a> 使用情况、使用 <a href="/devices/tech/debug/asan.html">AddressSanitizer</a> 检测原生代码中的内存错误、评估<a href="/devices/tech/debug/eval_perf.html">性能问题</a>（包括 <a href="/devices/tech/debug/systrace">systrace</a>），以及使用 <a href="/devices/tech/debug/gdb.html">GNU 项目调试程序 (GDB)</a> 和其他调试工具。</p>
 
 <h2 id="debuggerd">使用 debuggerd</h2>
 
@@ -32,7 +34,7 @@
 
 <p><code>debuggerd</code> 输出示例（已去除时间戳和无关信息）：</p>
 
-<pre class="no-pretty-print">
+<pre class="devsite-click-to-copy">
 *** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***
 Build fingerprint: 'Android/aosp_angler/angler:7.1.1/NYC/enh12211018:eng/test-keys'
 Revision: '0'
@@ -55,14 +57,18 @@ backtrace:
 Tombstone written to: /data/tombstones/tombstone_06
 </pre>
 
-<p><code>debuggerd</code> 输出的最后一行会向日志转储一个摘要，并向磁盘写入完整的 tombstone<em></em>。tombstone 仅仅是一个包含与崩溃进程相关的额外数据的文件；文件中的信息在调试崩溃时会非常有用，尤其是对崩溃进程中的所有线程（而不只是捕捉到信号的线程）和完整内存映射进行堆栈跟踪时。</p>
+<p><code>debuggerd</code> 输出的最后一行会向日志转储一个摘要，并向磁盘写入完整的 tombstone。<em></em>tombstone 仅仅是一个包含与崩溃进程相关的额外数据的文件；文件中的信息在调试崩溃时会非常有用，尤其是对崩溃进程中的所有线程（而不只是捕捉到信号的线程）和完整内存映射进行堆栈跟踪时。</p>
 
 <p>假设可以找到未剥离的二进制文件，您可以将上述示例粘贴到 <code>development/scripts/stack</code>，从而获取更详细的展开信息（包含行数信息）：</p>
 
 <p class="key-point"><strong>提示</strong>：为方便起见，如果您已启动 <code>stack</code>，它将在您的 $PATH 上显示，因此您无需提供完整路径。</p>
 
-<pre>
-$ development/tools/stack
+<pre class="devsite-terminal devsite-click-to-copy">
+development/tools/stack
+</pre>
+
+<p>输出示例：</p>
+<pre class="devsite-click-to-copy">
 Reading native crash info from stdin
 03-02 23:53:49.477 17951 17951 F DEBUG   : *** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***
 03-02 23:53:49.477 17951 17951 F DEBUG   : Build fingerprint: 'Android/aosp_angler/angler:7.1.1/NYC/enh12211018:eng/test-keys'
@@ -106,75 +112,17 @@ Stack Trace:
   0001a7e5  __start_thread+34          bionic/libc/bionic/clone.cpp:46 (discriminator 1)
 </pre>
 
-<p class="note"><strong>注意</strong>：某些系统库使用 <code>LOCAL_STRIP_MODULE := keep_symbols</code> 构建，可直接从 <code>debuggerd</code> 提供可用的回溯，而不会像未剥离版本那样占用较大的空间。</p>
+<p class="note"><strong>注意</strong>：某些系统库是使用 <code>LOCAL_STRIP_MODULE := keep_symbols</code> 编译的，可直接从 <code>debuggerd</code> 提供可用的回溯，而不会像未剥离版本那样占用较大的空间。</p>
 
 <p>您也可以 <code>stack</code> 整个 tombstone。示例：</p>
-<pre>
-$ stack &lt; FS/data/tombstones/tombstone_05
+<pre class="devsite-terminal devsite-click-to-copy">
+stack &lt; FS/data/tombstones/tombstone_05
 </pre>
 <p>如果您刚刚在当前目录中解压过错误报告，这将非常有用。要详细了解如何诊断原生代码崩溃和 tombstone，请参阅<a href="/devices/tech/debug/native-crash.html">诊断原生代码崩溃</a>。
 </p>
 
-<h3>从正在运行的进程获取堆栈跟踪/tombstone</h3>
+<h2 id="tombstone">从正在运行的进程获取堆栈跟踪/tombstone</h2>
 
-<p>您也可以对正在运行的进程使用 <code>debuggerd</code>。在命令行中，使用进程 ID (PID) 调用 <code>debuggerd</code>，以将完整的 tombstone 转储至 <code>stdout</code>。要确切获取进程中每个线程的堆栈，请添加 <code>-b</code> 或 <code>--backtrace</code> 标记。
-
-</p><h2 id="native">使用 GDB</h2>
-
-<p>GNU 项目调试程序 (GDB) 是常用的 Unix 调试程序。</p>
-
-<h3 id="running">调试正在运行的应用</h3>
-
-<p>要连接到已在运行的应用或本机守护进程，请配合使用 <code>gdbclient</code> 和 PID。例如，要调试 PID 为 1234 的进程，请运行：</p>
-
-<pre class="no-pretty-print">
-$ gdbclient 1234
-</pre>
-
-<p>此脚本会设置端口转发，在设备上启动相应的 <code>gdbserver</code>，在主机上启动相应的 <code>gdb</code>，配置 <code>gdb</code> 以找出符号，然后将 <code>gdb</code> 连接到远程 <code>gdbserver</code>。</p>
-
-<h3 id="starts">在本机进程启动时对其进行调试</h3>
-
-<p>要在进程启动时对其进行调试，请使用 <code>gdbserver</code> 或 <code>gdbserver64</code>（适用于 64 位进程）。例如：</p>
-
-<pre class="no-pretty-print">
-$ adb shell gdbserver :5039 /system/bin/<em>my_test_app</em>
-Process my_test_app created; pid = 3460
-Listening on port 5039
-</pre>
-
-<p>接着，从 <code>gdbserver</code> 输出结果中找出应用 PID，并将其用于其他终端窗口：</p>
-
-<pre class="no-pretty-print">
-$ gdbclient <em>&lt;app pid&gt;</em>
-</pre>
-
-<p>最后，在 <code>gdb</code> 提示处输入 <strong>continue</strong>。</p>
-
-<p class="note"><strong>注意</strong>：如果您使用的是错误的 <code>gdbserver</code>，则会收到没用的错误消息（如“<code>Reply contains invalid hex digit 59</code>”）。</p>
-
-<h3 id="crash">调试崩溃的进程</h3>
-
-<p>如果您希望 <code>debuggerd</code> 暂停崩溃的进程，以便您可以附加 <code>gdb</code>，请设置相应的属性：</p>
-
-<pre class="no-pretty-print">
-# Android 7.0 Nougat and later.
-$ adb shell setprop debug.debuggerd.wait_for_gdb true
-
-# Android 6.0 Marshmallow and earlier.
-$ adb shell setprop debug.db.uid 999999
-</pre>
-
-<p>在寻常崩溃输出的结尾处，<code>debuggerd</code> 会提供有关如何使用以下命令来连接 <code>gdb</code> 的说明：</p><pre class="no-pretty-print">
-$ gdbclient &lt;pid&gt;
-</pre>
-
-<h3 id="symbols">无符号调试</h3>
-
-<p>对于 32 位 ARM，如果您的指令中没有符号，<code>gdb</code> 就不清楚自己正在反汇编哪个指令集（ARM 或 Thumb）。要指定缺少符号信息时选为默认指令集的指令集，请设置以下属性：</p>
-
-<pre class="no-pretty-print">
-$ set arm fallback-mode arm   # or thumb
-</pre>
+<p>您也可以对正在运行的进程使用 <code>debuggerd</code>。在命令行中，使用进程 ID (PID) 调用 <code>debuggerd</code>，以将完整的 tombstone 转储至 <code>stdout</code>。要确切获取进程中每个线程的堆栈，请添加 <code>-b</code> 或 <code>--backtrace</code> 标记。</p>
 
 </body></html>
