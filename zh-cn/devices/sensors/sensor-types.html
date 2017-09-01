@@ -1,0 +1,492 @@
+<html devsite><head>
+    <title>传感器类型</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>本部分介绍了传感器坐标轴、基础传感器和复合传感器（动作传感器、姿势传感器、未校准传感器和互动传感器）。</p>
+
+<h2 id="sensor_axis_definition">传感器坐标轴</h2>
+<p>许多传感器的传感器事件值在相对于设备静止的特定坐标系中表示。
+
+</p><h3 id="phone_axes">移动设备坐标轴</h3>
+<p>Sensor API 仅与屏幕的自然方向相关（当设备的屏幕方向更改时，坐标轴不会发生交换）。</p>
+
+<img src="https://developer.android.com/images/axis_device.png" alt="移动设备的 Sensor API 坐标系"/>
+<p class="img-caption"><strong>图 1.</strong> Sensor API 使用的坐标系（相对于移动设备）。</p>
+
+<h3 id="auto_axes">汽车坐标轴</h3>
+<p>在 Android Automotive 实现中，坐标轴相对于车身坐标系进行定义：</p>
+
+<img src="images/axis_auto.png" alt="汽车设备的 Sensor API 坐标系"/>
+<p class="img-caption"><strong>图 2.</strong> Sensor API 使用的坐标系（相对于汽车设备）。</p>
+
+<ul>
+<li>X 轴沿车辆右侧延伸</li>
+<li>Y 轴沿车架前方延伸</li>
+<li>Z 轴沿车架顶部延伸</li>
+</ul>
+
+<p>从坐标轴的正方向观察时，正旋转方向为逆时针方向。因此，当车辆向左转时，z 轴的陀螺仪转速应该为正值。</p>
+
+<h2 id="base_sensors">基础传感器</h2>
+<p>基础传感器类型以其代表的物理传感器命名。这些传感器会转发来自单个物理传感器的数据（与通过其他传感器生成数据的复合传感器相反）。基础传感器类型的示例包括：</p>
+<ul>
+  <li><code>SENSOR_TYPE_ACCELEROMETER</code></li>
+  <li><code>SENSOR_TYPE_GYROSCOPE</code></li>
+  <li><code>SENSOR_TYPE_MAGNETOMETER</code></li>
+</ul>
+
+<p class="note"><strong>注意</strong>：有关 Android 传感器类型的详细信息，请查看以下部分。</p>
+
+<p>但是，基础传感器不等同于其底层物理传感器，也不得与其相混淆。来自基础传感器的数据<strong>不是</strong>物理传感器的原始输出信息，因为数据已进行了校正（如偏差补偿和温度补偿）。</p>
+
+<p>例如，在以下使用情况下，基础传感器的特性可能与其底层物理传感器的特性有所不同：</p>
+<ul>
+<li>额定偏差范围为 1 度/秒的陀螺仪芯片。
+  <ul>
+    <li>在出厂校准后，通过应用温度补偿和偏差补偿，使 Android 传感器的实际偏差得到降低，最终偏差可能低于 0.01 度/秒。</li>
+    <li>在此情况下，即使底层传感器的数据表显示偏差为 1 度/秒，我们仍认为 Android 传感器的偏差低于 0.01 度/秒。</li>
+  </ul>
+</li>
+<li>功耗为 100 uW 的气压计。<ul>
+    <li>由于生成的数据需要从芯片传输到 SoC，因此从气压计 Android 传感器收集数据的实际功耗可能会高得多，例如 1000 uW。</li>
+    <li>在此情况下，即使在气压计芯片引线上测得的功耗为 100 uW，我们仍认为 Android 传感器的功耗为 1000 uW。</li>
+  </ul>
+</li>
+<li>校准后功耗为 100 uW 的磁力计（但校准时会消耗更多功率）。
+  <ul>
+    <li>其校准程序可能需要激活陀螺仪（消耗 5000 uW），并运行一些算法（额外消耗 900 uW）。</li>
+    <li>在此情况下，我们认为（磁力计）Android 传感器的最大功耗为 6000 uW。</li>
+    <li>在此情况下，平均功耗是更为实用的测量指标，系统会通过 HAL 在传感器静态特性中报告平均功耗。</li>
+  </ul>
+</li>
+</ul>
+<h3 id="accelerometer">加速度计</h3>
+<p>报告模式：<em><a href="report-modes.html#continuous">连续模式</a></em></p>
+<p><code>getDefaultSensor(SENSOR_TYPE_ACCELEROMETER)</code> 返回一个非唤醒传感器<em></em></p>
+<p>加速度计传感器可报告设备沿 3 个传感器坐标轴的加速度。测量的加速度包括物理加速度（速度变化）和重力加速度。测量结果在 sensor_event_t.acceleration 的 x、y 和 z 字段中报告。</p>
+<p>所有值均采用国际单位制单位 (m/s^2)，测量结果为设备加速度减去沿 3 个传感器坐标轴的重力加速度。</p>
+<p>示例如下：</p>
+<ul>
+  <li>自由落体时，(x, y, z) 的范数应接近于 0。</li>
+  <li>当设备平放在桌子上并从其左侧向右推动时，x 轴加速度值为正。</li>
+  <li>当设备平放在桌子上时，z 轴上的加速度值为 +9.81，相当于设备的加速度 (0 m/s^2) 减去重力加速度 (-9.81 m/s^2)。</li>
+  <li>当设备平放在桌子上并向上抬起时，加速度值大于 +9.81，相当于设备的加速度 (+A m/s^2) 减去重力加速度 (-9.81 m/s^2)。</li>
+</ul>
+<p>读数根据以下参数进行校准：</p>
+<ul>
+  <li>温度补偿</li>
+  <li>在线偏差校准</li>
+  <li>在线尺度校准</li>
+</ul>
+<p>仅当传感器已禁用时，才可更新偏差校准和尺度校准，以避免流式传输时出现值激增。</p>
+<p>加速度计还通过 <code>sensors_event_t.acceleration.status</code> 报告其预测的读数精度。要详细了解此字段的可能值，请参阅 <a href="https://developer.android.com/reference/android/hardware/SensorManager.html">SensorManager</a> 的 <a href="https://developer.android.com/reference/android/hardware/SensorManager.html#SENSOR_STATUS_ACCURACY_HIGH"><code>SENSOR_STATUS_*  </code></a>常量。</p>
+<h3 id="ambient_temperature">环境温度传感器</h3>
+<p>报告模式：<em><a href="report-modes.html#on-change">变化模式</a></em></p>
+<p><code>getDefaultSensor(SENSOR_TYPE_AMBIENT_TEMPERATURE)</code> 返回一个非唤醒传感器<em></em></p>
+<p>该传感器可提供环境（室内）温度，单位是摄氏度。</p>
+<h3 id="magnetic_field_sensor">磁场传感器</h3>
+<p>报告模式：<em><a href="report-modes.html#continuous">连续模式</a></em></p>
+<p><code>getDefaultSensor(SENSOR_TYPE_MAGNETIC_FIELD)</code> 返回一个非唤醒传感器<em></em></p>
+<p><code>SENSOR_TYPE_GEOMAGNETIC_FIELD == SENSOR_TYPE_MAGNETIC_FIELD</code></p>
+<p>磁场传感器（也称为磁力计）可报告沿 3 个传感器坐标轴测量的环境磁场。</p>
+<p>测量结果在 <code>sensors_event_t.magnetic</code> 的 x、y 和 z 字段中报告，且所有值单位均是微特斯拉 (uT)。</p>
+<p>磁力计还通过 <code>sensors_event_t.magnetic.status</code> 报告其预测的读数精度。要详细了解此字段的可能值，请参阅 <a href="https://developer.android.com/reference/android/hardware/SensorManager.html">SensorManager</a> 的 <a href="https://developer.android.com/reference/android/hardware/SensorManager.html#SENSOR_STATUS_ACCURACY_HIGH"><code>SENSOR_STATUS_*</code></a> 常量。</p>
+<p>读数根据以下参数进行校准：</p>
+<ul>
+  <li>温度补偿</li>
+  <li>出厂（或在线）软铁校准</li>
+  <li>在线硬铁校准</li>
+</ul>
+<h3 id="gyroscope">陀螺仪</h3>
+<p>报告模式：<em><a href="report-modes.html#continuous">连续模式</a></em></p>
+<p><code>getDefaultSensor(SENSOR_TYPE_GYROSCOPE)</code> 返回一个非唤醒传感器<em></em></p>
+<p>陀螺传感器可报告设备围绕 3 个传感器坐标轴的旋转速率。</p>
+<p>逆时针方向为正转方向（右手规则）。即，如果位于原点的设备逆时针旋转，观察者从设备 x、y 或 z 轴某个正位置看过去，将报告正向旋转。请注意，这是正向旋转的标准数学定义，与航空航天领域对转动的定义并不一致。</p>
+<p>测量结果在 <code>sensors_event_t.gyro</code> 的 x、y 和 z 字段中报告，且所有值的单位均为每秒转数 (rad/s)。</p>
+<p>读数根据以下参数进行校准：</p>
+<ul>
+  <li>温度补偿</li>
+  <li>出厂（或在线）尺度补偿</li>
+  <li>在线偏差校准（以去除漂移）</li>
+</ul>
+<p>陀螺仪还通过 <code>sensors_event_t.gyro.status</code> 报告其预测的读数精度。要详细了解此字段的可能值，请参阅 <a href="https://developer.android.com/reference/android/hardware/SensorManager.html">SensorManager</a> 的 <a href="https://developer.android.com/reference/android/hardware/SensorManager.html#SENSOR_STATUS_ACCURACY_HIGH"><code>SENSOR_STATUS_*</code></a> 常量。</p>
+<p>陀螺仪不能基于磁力计和加速度计进行模拟，因为这样将导致局部一致性和响应速度降低。它必须基于常见的陀螺仪芯片。</p>
+<h3 id="heart_rate">心率传感器</h3>
+<p>报告模式：<em><a href="report-modes.html#on-change">变化模式</a></em></p>
+<p><code>getDefaultSensor(SENSOR_TYPE_HEART_RATE)</code> 返回一个非唤醒传感器<em></em></p>
+<p>心率传感器可报告触摸设备的人员当前的心率。</p>
+<p>以每分钟心跳次数 (BPM) 表示的当前心率在 <code>sensors_event_t.heart_rate.bpm</code> 中报告，而传感器的状态在 <code>sensors_event_t.heart_rate.status</code> 中报告。要详细了解此字段的可能值，请参阅 <a href="https://developer.android.com/reference/android/hardware/SensorManager.html">SensorManager</a> 的 <a href="https://developer.android.com/reference/android/hardware/SensorManager.html#SENSOR_STATUS_ACCURACY_HIGH"><code>SENSOR_STATUS_*</code></a> 常量。特别是在第一次激活时，除非系统已知设备未随身携带，否则首次事件的状态字段必须设置为 <code>SENSOR_STATUS_UNRELIABLE</code>。因为传感器采用变化模式，当且仅当 <code>heart_rate.bpm</code> 或 <code>heart_rate.status</code> 自上次事件后已发生变化时才会触发事件。事件生成速度不会大于每隔 <code>sampling_period</code> 一次。</p>
+<p><code>sensor_t.requiredPermission</code> 始终是 <code>SENSOR_PERMISSION_BODY_SENSORS</code>。</p>
+<h3 id="light">光线传感器</h3>
+<p>报告模式：<em><a href="report-modes.html#on-change">变化模式</a></em></p>
+<p><code>getDefaultSensor(SENSOR_TYPE_LIGHT)</code> 返回一个非唤醒传感器<em></em></p>
+<p>光线传感器可报告当前照明度，采用国际单位勒克斯 (lux)。</p>
+<p>测量结果在 <code>sensors_event_t.light</code> 中报告。</p>
+<h3 id="proximity">近程传感器</h3>
+<p>报告模式：<em><a href="report-modes.html#on-change">变化模式</a></em></p>
+<p>通常定义为唤醒传感器</p>
+<p><code>getDefaultSensor(SENSOR_TYPE_PROXIMITY)</code> 返回唤醒传感器<em></em></p>
+<p>近程传感器可报告从传感器到最近的可见表面的距离。</p>
+<p>在 Android KitKat 版本或更早版本中，近程传感器一直是唤醒传感器，也就是说，此类传感器在检测到近程距离发生变化时会唤醒 SoC。对于 Android KitKat 之后的版本，我们建议您首先实现该传感器的唤醒版本，因为该版本在打电话时用于开启和关闭屏幕。</p>
+<p>测量结果在 <code>sensors_event_t.distance</code> 中报告（以厘米为单位）。请注意，一些近程传感器仅支持二元“近”或“远”测量结果。在此情况下，传感器检测到“远”状态时报告值 <code>sensor_t.maxRange</code>，检测到“近”状态时报告一个小于 <code>sensor_t.maxRange</code> 的值。</p>
+<h3 id="pressure">压力传感器</h3>
+<p>报告模式：<em><a href="report-modes.html#continuous">连续模式</a></em></p>
+<p><code>getDefaultSensor(SENSOR_TYPE_PRESSURE)</code> 返回一个非唤醒传感器<em></em></p>
+<p>压力传感器（也称为气压计）可报告大气压力，以百帕斯卡 (hPa) 为单位。</p>
+<p>使用以下参数校准读数：</p>
+<ul>
+  <li>温度补偿</li>
+  <li>出厂偏差校准</li>
+  <li>出厂尺度校准</li>
+</ul>
+<p>气压计通常用于估算高度变化。要估算绝对高度，必须将海平面压力（随天气变化）作为参照点。</p>
+<h3 id="relative_humidity">相对湿度传感器</h3>
+<p>报告模式：<em><a href="report-modes.html#on-change">变化模式</a></em></p>
+<p><code>getDefaultSensor(SENSOR_TYPE_RELATIVE_HUMIDITY)</code> 返回一个非唤醒传感器<em></em></p>
+<p>相对湿度传感器用于测量环境空气相对湿度，并返回百分比值。</p>
+
+<h2 id="composite_sensor_types">复合传感器类型</h2>
+<p>复合传感器通过处理和/或融合来自一个或多个物理传感器的数据来生成数据。（任何非基础传感器的传感器均称为复合传感器。）复合传感器的示例包括：</p>
+<ul>
+<li><a href="#step_detector">步测器</a>和<a href="#significant_motion">大幅度动作传感器</a>，通常基于加速度计，但是也可基于其他传感器（如果功耗和精度可接受）。</li>
+<li><a href="#game_rotation_vector">游戏旋转矢量传感器</a>，基于加速度计和陀螺仪。</li>
+<li><a href="#gyroscope_uncalibrated">未校准陀螺仪</a>，类似于陀螺仪基础传感器，但是单独报告偏差校准（而非在测量结果中校正）。</li>
+</ul>
+<p>与基础传感器一样，复合传感器的特性来自于其最终数据的特性。例如，游戏旋转矢量传感器的功耗可能等于加速度计芯片、陀螺仪芯片、数据处理芯片和传输数据的总线的功耗之和。另外，游戏旋转矢量传感器的漂移既取决于校准算法的质量，也取决于物理传感器的特性。</p>
+
+<p>下表列出了可用的复合传感器类型。每种复合传感器都依赖于来自一个或多个物理传感器的数据。请避免选择使用其他底层物理传感器来估算结果，因为这样带来的用户体验较差。</p>
+<p class="note"><strong>注意</strong>：当且仅当设备没有配备陀螺仪时，您才可以在不使用陀螺仪的情况下，实现旋转矢量传感器、线性加速度传感器和重力传感器。</p>
+
+<table>
+  <tbody><tr>
+    <th width="34%">传感器类型</th>
+    <th width="10%">类别</th>
+    <th width="34%">底层物理传感器</th>
+    <th width="19%">报告模式</th>
+  </tr>
+  <tr>
+    <td><p><a href="#game_rotation_vector">游戏旋转矢量传感器</a></p></td>
+    <td><p>姿势类</p></td>
+    <td><p>加速度计、陀螺仪，不得使用磁力计</p></td>
+    <td><p>连续模式</p></td>
+  </tr>
+  <tr>
+    <td><p><a href="#geomagnetic_rotation_vector">地磁旋转矢量传感器</a> <img src="images/battery_icon.png" width="20" height="20" alt="低功耗传感器"/></p></td>
+    <td><p>姿势类</p></td>
+    <td><p>加速度计、磁力计，不得使用陀螺仪</p></td>
+    <td><p>连续模式</p></td>
+  </tr>
+  <tr>
+    <td><a href="#glance_gesture">快览传感器</a> <img src="images/battery_icon.png" width="20" height="20" alt="低功耗传感器"/><p></p></td>
+    <td><p>互动类</p></td>
+    <td><p>未定义</p></td>
+    <td><p>单次模式</p></td>
+  </tr>
+  <tr>
+    <td><p><a href="#gravity">重力传感器</a></p></td>
+    <td><p>姿势类</p></td>
+    <td><p>加速度计、陀螺仪</p></td>
+    <td><p>连续模式</p></td>
+  </tr>
+  <tr>
+    <td><p><a href="#gyroscope_uncalibrated">未校准陀螺仪传感器</a></p></td>
+    <td><p>未校准类</p></td>
+    <td><p>陀螺仪</p></td>
+    <td><p>连续模式</p></td>
+  </tr>
+  <tr>
+    <td><p><a href="#linear_acceleration">线性加速度传感器</a></p></td>
+    <td><p>动作类</p></td>
+    <td><p>加速度计、陀螺仪（如有）或磁力计（如果没有陀螺仪）</p></td>
+    <td><p>连续模式</p></td>
+  </tr>
+  <tr>
+    <td><p><a href="#magnetic_field_uncalibrated">未校准磁场传感器</a></p></td>
+    <td><p>未校准类</p></td>
+    <td><p>磁力计</p></td>
+    <td><p>连续模式</p></td>
+  </tr>
+  <tr>
+    <td><p><a href="#orientation_deprecated">方向传感器</a>（已弃用）</p></td>
+    <td><p>姿势类</p></td>
+    <td><p>加速度计、磁力计，优先使用陀螺仪</p></td>
+    <td><p>连续模式</p></td>
+  </tr>
+  <tr>
+    <td><p><a href="#pick_up_gesture">拿起手势传感器</a> <img src="images/battery_icon.png" width="20" height="20" alt="低功耗传感器"/></p></td>
+    <td><p>互动类</p></td>
+    <td><p>未定义</p></td>
+    <td><p>单次模式</p></td>
+  </tr>
+  <tr>
+    <td><p><a href="#rotation_vector">旋转矢量传感器</a></p></td>
+    <td><p>姿势类</p></td>
+    <td><p>加速度计、磁力计和陀螺仪（如有）<em></em></p></td>
+    <td><p>连续模式</p></td>
+  </tr>
+  <tr>
+    <td><p><a href="#significant_motion">大幅度动作传感器</a> <img src="images/battery_icon.png" width="20" height="20" alt="低功耗传感器"/></p></td>
+    <td><p>动作类</p></td>
+    <td><p>加速度计（或其他功耗极低的传感器）</p></td>
+    <td><p>单次模式</p></td>
+  </tr>
+  <tr>
+    <td><p><a href="#step_counter">计步器</a> <img src="images/battery_icon.png" width="20" height="20" alt="低功耗传感器"/></p></td>
+    <td><p>动作类</p></td>
+    <td><p>加速度计</p></td>
+    <td><p>变化模式</p></td>
+  </tr>
+  <tr>
+    <td><p><a href="#step_detector">步测器</a> <img src="images/battery_icon.png" width="20" height="20" alt="低功耗传感器"/></p></td> <td><p>动作类</p></td>
+    <td><p>加速度计</p></td>
+    <td><p>特殊模式</p></td>
+  </tr>
+  <tr>
+    <td><p><a href="#tilt_detector">倾斜检测器</a> <img src="images/battery_icon.png" width="20" height="20" alt="低功耗传感器"/></p></td>
+    <td><p>动作类</p></td>
+    <td><p>加速度计</p></td>
+    <td><p>特殊模式</p></td>
+  </tr>
+  <tr>
+    <td><p><a href="#wake_up_gesture">唤醒手势传感器</a> <img src="images/battery_icon.png" width="20" height="20" alt="低功耗传感器"/></p></td>
+    <td><p>互动类</p></td>
+    <td><p>未定义</p></td>
+    <td><p>单次模式</p></td>
+  </tr>
+</tbody></table>
+<p><img src="images/battery_icon.png" width="20" height="20" alt="低功耗传感器"/> 表示低功耗传感器</p>
+<h2 id="activity_composite_sensors">动作复合传感器</h2>
+<h3 id="linear_acceleration">线性加速度传感器</h3>
+<p>底层物理传感器：加速度计和（如有）陀螺仪（或如果没有陀螺仪，则使用磁力计）</p>
+<p>报告模式：<em><a href="report-modes.html#continuous">连续模式</a></em></p>
+<p><code>getDefaultSensor(SENSOR_TYPE_LINEAR_ACCELERATION)</code> 返回一个非唤醒传感器<em></em></p>
+<p>线性加速度传感器可报告传感器框架内设备的线性加速度（不包括重力加速度）。</p>
+<p>从概念上看，输出结果为：<a href="#accelerometer">加速度计</a>的输出结果减去<a href="#gravity">重力传感器</a>的输出结果。结果在 <code>sensors_event_t.acceleration</code> 的 x、y 和 z 字段中报告（单位为 m/s^2）。</p>
+<p>当设备不动时，所有轴上的读数应接近 0。</p>
+<p>如果设备配备陀螺仪，则线性加速度传感器必须将陀螺仪和加速度计作为输入源。</p>
+<p>如果设备未配备陀螺仪，则线性加速度传感器必须将加速度计和磁力计作为输入源。</p>
+<h3 id="significant_motion">大幅度动作传感器</h3>
+<p>底层物理传感器：加速度计（或其他低功耗的传感器）</p>
+<p>报告模式：<em><a href="report-modes.html#one-shot">单次模式</a></em></p>
+<p>低功耗</p>
+<p>仅实现该传感器的唤醒版本。</p>
+<p><code>getDefaultSensor(SENSOR_TYPE_SIGNIFICANT_MOTION)</code> 返回唤醒传感器<em></em></p>
+<p>当检测到“大幅度动作”时，会触发大幅度动作传感器；大幅度动作是指可能导致用户位置发生变化的动作。</p>
+<p>此类大幅度动作示例如下：</p>
+<ul>
+  <li>步行或骑自行车</li>
+  <li>乘坐在正在行驶的汽车、巴士或火车内</li>
+</ul>
+<p>不会触发大幅度动作的情况示例：</p>
+<ul>
+  <li>手机放在口袋里并且人不动</li>
+  <li>手机放在桌子上，而桌子由于附近的交通或洗衣机而轻微摇晃</li>
+</ul>
+<p>从更高层面来看，大幅度动作传感器可用于降低位置测定的功耗。当定位算法检测到设备静止时，可将设备切换到低功耗模式，在该模式下，这些算法依赖用户改变位置时发生的大幅度动作来唤醒设备。</p>
+<p>该传感器必须具备低功耗特性。这样可以节省功耗，但可能会导致少量漏报情况。这样做是出于以下几个原因：</p>
+<ul>
+  <li>该传感器的目标是节省电量。</li>
+  <li>用户不动时触发事件（误报）会消耗大量电量，因此应尽量加以避免。</li>
+  <li>只要用户移动时不触发事件（漏报）的情况没有频繁发生，则此类错误是可接受的。如果用户已经行走了 10 秒钟，则在这 10 秒内不触发事件是不可接受的。</li>
+</ul>
+<p>每个传感器事件在 <code>sensors_event_t.data[0]</code> 中报告 1</p>
+<h3 id="step_detector">步测器</h3>
+<p>底层物理传感器：加速度计（可能还有其他低功耗计量器）</p>
+<p>报告模式：<em>特殊模式<a href="report-modes.html#special"></a>（一步触发一个事件）</em></p>
+<p>低功耗</p>
+<p><code>getDefaultSensor(SENSOR_TYPE_STEP_DETECTOR)</code> 返回一个非唤醒传感器<em></em></p>
+<p>用户每走一步，步测器就触发一个事件。</p>
+<p>事件 <code>sensors_event_t.timestamp</code> 的时间戳对应脚部触地的时刻，此时会产生较大的加速度变化。</p>
+<p>与计步器相比，步测器的延迟较低（小于 2 秒）。步测器和计步器都可以在用户步行、跑步和走楼梯时进行感测。当用户骑自行车、驾驶或乘坐其他交通工具时，不应触发检测。</p>
+<p>该传感器必须具备低功耗特性。也就是说，如果硬件中无法完成步数检测，则不应对该传感器进行定义。尤其是，当启用步测器但未启用加速度计时，只有步数（而非所有加速度计读数）会触发中断。</p>
+<p><code>sampling_period_ns</code> 对步测器没有影响。</p>
+<p>每个传感器事件在 <code>sensors_event_t.data[0]</code> 中报告 1</p>
+<h3 id="step_counter">计步器</h3>
+<p>底层物理传感器：加速度计（可能还有其他低功耗计量器）</p>
+<p>报告模式：<em><a href="report-modes.html#on-change">变化模式</a></em></p>
+<p>低功耗</p>
+<p><code>getDefaultSensor(SENSOR_TYPE_STEP_COUNTER)</code> 返回一个非唤醒传感器<em></em></p>
+<p>计步器报告自激活后上一次重新启动以来用户行走的步数。</p>
+<p>测量结果在 <code>sensors_event_t.step_counter</code> 中报告为 <code>uint64_t</code>，并仅在系统重新启动时重置为零。</p>
+<p>事件的时间戳设置为该事件最后一步的采集时间。</p>
+<p>请参阅<a href="#step_detector">步测器</a>传感器类型，了解一步所对应的时间的意义。</p>
+<p>与步测器相比，计步器可能具有更高的延迟（最多 10 秒）。也正因这种延迟，该传感器具备较高的准确性；完成一整天的测量后，步数应在实际步数的 10% 偏差范围内。步测器和计步器都可以在用户行走、跑步和走楼梯时进行检测。当用户骑自行车、驾驶或乘坐其他交通工具时，不应触发检测。</p>
+<p>硬件必须确保内部步数始终不会溢出。硬件内部计数器的大小下限应为 16 位。在即将发生溢出时（最多约每 2^16 步一次），可以唤醒 SoC，以便驱动程序可进行计数器维护。</p>
+<p>正如在<a href="interaction.html">互动传感器</a>中所述，当该传感器工作时，不得干扰任何其他传感器，特别是很可能正在使用中的加速度计。</p>
+<p>如果特定设备不支持此类操作模式，则此类传感器类型不能由 HAL 进行报告，即不应在 HAL 中“模拟”该传感器。</p>
+<p>该传感器必须具备低功耗特性。也就是说，如果硬件中无法完成步数检测，则不应对该传感器进行定义。尤其是，当启用步测器但未启用加速度计时，只有步数（而非加速度计数据）会触发中断。</p>
+<h3 id="tilt_detector">倾斜检测器</h3>
+<p>底层物理传感器：加速度计（可能还有其他低功耗计量器）</p>
+<p>报告模式：<em><a href="report-modes.html#special">特殊模式</a></em></p>
+<p>低功耗</p>
+<p>仅实现该传感器的唤醒版本。</p>
+<p><code>getDefaultSensor(SENSOR_TYPE_TILT_DETECTOR)</code> 返回唤醒传感器<em></em></p>
+<p>每次检测到倾斜事件时，倾斜检测器会生成一个事件。</p>
+<p>倾斜事件定义如下：自激活或自传感器生成的最后一次事件起，2 秒时隙内平均重力加速度方向变化至少 35 度。算法如下：</p>
+<ul>
+  <li> <code>reference_estimated_gravity</code> = 激活后的第一秒内加速度计的平均测量值或生成最后一次倾斜事件时的估算重力。</li>
+  <li> <code>current_estimated_gravity</code> = 过去 2 秒内加速度计的平均测量值。</li>
+  <li>当 <code>angle(reference_estimated_gravity, current_estimated_gravity) &gt; 35
+    degrees</code> 时触发。 </li>
+</ul>
+<p>当加速度较大而手机方向未发生改变时，不应触发倾斜事件。例如，驾驶汽车时急转弯或猛烈加速不应触发倾斜事件，即使平均加速度的角度变化可能超过 35 度亦如此。通常情况下，只需借助加速度计就能实现该传感器。也可以使用其他传感器（如果功耗增加不明显的话）。这是一个低功耗传感器，应允许 SoC 进入挂起模式。请勿在 HAL 中模拟该传感器。每个传感器事件在 <code>sensors_event_t.data[0]</code> 中报告 1。</p>
+<h2 id="attitude_composite_sensors">姿势复合传感器</h2>
+<h3 id="rotation_vector">旋转矢量传感器</h3>
+<p>底层物理传感器：加速度计、磁力计和陀螺仪</p>
+<p>报告模式：<em><a href="report-modes.html#continuous">连续模式</a></em></p>
+<p><code>getDefaultSensor(SENSOR_TYPE_ROTATION_VECTOR)</code> 返回一个非唤醒传感器<em></em></p>
+<p>旋转矢量传感器可报告设备相对于东北天坐标系的方向。通常情况下，该数据通过整合加速度计、陀螺仪和磁力计的读数获得。东北天坐标系是指完全正交基，其中：</p>
+<ul>
+  <li>X 轴指向东，与地面相切。</li>
+  <li>Y 轴指向北，与地面相切。</li>
+  <li>Z 轴指向上，与地面垂直。</li>
+</ul>
+<p>手机方向表示为东北天坐标系与手机坐标系对齐所需的旋转幅度。也就是说，对世界坐标系 (X,Y,Z) 应用这一幅度的旋转将使该坐标系与手机坐标系 (x,y,z) 对齐。</p>
+<p>该旋转可看作围绕轴 rot_axis 将手机旋转 θ 角度，从参照（与东北天对齐）设备方向转到当前设备方向。该旋转被编码为一个单位四元数的四个无量纲 x、y、z、w 分量：</p>
+<ul>
+  <li> <code>sensors_event_t.data[0] = rot_axis.x*sin(theta/2)</code> </li>
+  <li> <code>sensors_event_t.data[1] = rot_axis.y*sin(theta/2)</code> </li>
+  <li> <code>sensors_event_t.data[2] = rot_axis.z*sin(theta/2)</code> </li>
+  <li> <code>sensors_event_t.data[3] = cos(theta/2)</code> </li>
+</ul>
+<p>其中：</p>
+<ul>
+  <li><code>rot_axis</code> 的 x、y 和 z 字段是表示旋转轴的单位长度向量的东北天坐标</li>
+  <li> <code>theta</code> 是旋转角度</li>
+</ul>
+<p>四元数是一个单位四元数：其范数必须为 1。不满足此要求将导致客户端行为不稳定。</p>
+<p>此外，该传感器会报告估算的首向精度：</p>
+<p><code>sensors_event_t.data[4] = estimated_accuracy</code>（以弧度为单位）</p>
+<p>在 95％ 的时间里，首向误差必须小于 <code>estimated_accuracy</code>。该传感器必须使用陀螺仪作为主要方向变化输入源。</p>
+<p>该传感器还使用加速度计和磁力计输入源来弥补陀螺仪漂移，但不能仅使用加速度计和磁力计来实现该传感器。</p>
+<h3 id="game_rotation_vector">游戏旋转矢量传感器</h3>
+<p>底层物理传感器：加速度计和陀螺仪（无磁力计）</p>
+<p>报告模式：<em><a href="report-modes.html#continuous">连续模式</a></em></p>
+<p><code>getDefaultSensor(SENSOR_TYPE_GAME_ROTATION_VECTOR)</code> 返回一个非唤醒传感器<em></em></p>
+<p>游戏旋转矢量传感器类似于旋转矢量传感器，但不使用地磁场。因此，Y 轴不指向北，而是指向其他参照坐标。该参考坐标可以漂移与陀螺仪沿 Z 轴漂移时的幅度相同数量级的幅度。</p>
+<p>请参阅<a href="#rotation_vector">旋转矢量</a>传感器，详细了解如何设置 <code>sensors_event_t.data[0-3]</code>。该传感器不报告估算的首向精度：保留 <code>sensors_event_t.data[4]</code>，并应将其设置为 0。</p>
+<p>理想情况下，经过旋转并返回到与现实世界方向同向的手机应该报告相同的游戏旋转矢量。</p>
+<p>该传感器必须基于陀螺仪和加速度计。不能使用磁力计作为输入源，也不可通过估算陀螺仪偏差间接作为输入源。</p>
+<h3 id="gravity">重力传感器</h3>
+<p>底层物理传感器：加速度计和（如有）陀螺仪（或如果陀螺仪不存在，则使用磁力计）</p>
+<p>报告模式：<em><a href="report-modes.html#continuous">连续模式</a></em></p>
+<p><code>getDefaultSensor(SENSOR_TYPE_GRAVITY)</code> 返回一个非唤醒传感器<em></em></p>
+<p>重力传感器可报告设备坐标系中重力的方向和大小。</p>
+<p>重力矢量分量在 <code>sensors_event_t.acceleration</code> 的 x、y 和 z 字段中以 m/s^2 表示。</p>
+<p>当设备静止时，重力传感器的输出结果应与加速度计的输出结果相同。在地球上，重力加速度约为 9.8 m/s^2。</p>
+<p>如果设备具有陀螺仪，则重力传感器必须使用陀螺仪和加速度计作为输入源。</p>
+<p>如果设备不具有陀螺仪，则重力传感器必须使用加速度计和磁力计作为输入源。</p>
+<h3 id="geomagnetic_rotation_vector">地磁旋转矢量传感器</h3>
+<p>底层物理传感器：加速度计和磁力计（无陀螺仪）</p>
+<p>报告模式：<em><a href="report-modes.html#continuous">连续模式</a></em></p>
+<p>低功耗</p>
+<p><code>getDefaultSensor(SENSOR_TYPE_GEOMAGNETIC_ROTATION_VECTOR)</code> 返回一个非唤醒传感器<em></em></p>
+<p>地磁旋转矢量传感器与旋转矢量传感器类似，但它使用磁力计而不是陀螺仪。</p>
+<p>该传感器必须基于磁力计。该传感器不能使用陀螺仪来实现，并且不能使用陀螺仪输入源。</p>
+<p>请参阅<a href="#rotation_vector">旋转矢量</a>传感器，详细了解如何设置 <code>sensors_event_t.data[0-4]</code>。</p>
+<p>与旋转矢量传感器类似，在 95％ 的时间里，首向误差必须小于估算精度 (<code>sensors_event_t.data[4]</code>)。</p>
+<p>该传感器必须具备低功耗特性，因此必须在硬件中实现。</p>
+<h3 id="orientation_deprecated">方向传感器（已弃用）</h3>
+<p>底层物理传感器：加速度计、磁力计和（如有）陀螺仪</p>
+<p>报告模式：<em><a href="report-modes.html#continuous">连续模式</a></em></p>
+<p><code>getDefaultSensor(SENSOR_TYPE_ORIENTATION)</code> 返回一个非唤醒传感器<em></em></p>
+<p class="note"><strong>注意</strong>：这是已在 Android SDK 中弃用的旧版传感器类型。它已由定义更为清晰的旋转矢量传感器取代。尽可能使用旋转矢量传感器来替代方向传感器。</p>
+<p>方向传感器可报告设备的姿势。测量结果在 <code>sensors_event_t.orientation</code> 的 x、y 和 z 字段中报告（以度为单位）。</p>
+<ul>
+  <li> <code>sensors_event_t.orientation.x</code>：方位角，磁北方向与 Y 轴之间的夹角，绕 Z 轴转动 (<code>0&lt;=azimuth&lt;360</code>)。0 = 北，90 = 东，180 = 南，270 = 西</li>
+  <li> <code>sensors_event_t.orientation.y</code>：俯仰，绕 X 轴旋转 (<code>-180&lt;=pitch&lt;=180</code>)，当 z 轴向 y 轴移动时为正值。</li>
+  <li> <code>sensors_event_t.orientation.z</code>：滚动，绕 Y 轴旋转 (<code>-90&lt;=roll&lt;=90</code>)，当 x 轴向 z 轴移动时为正值。</li>
+</ul>
+<p>请注意，因历史原因，滚动角度在顺时针方向为正。（从数学上讲，逆时针方向应为正）：</p>
+<div class="attempt-right" style="width:264px">
+  <img src="images/axis_positive_roll.png" alt="相对于设备的方向描述" height="253"/>
+  <p class="img-caption">
+    <strong>图 3.</strong> 相对于设备的方向。
+  </p>
+</div>
+<p>该定义与航空中使用的偏航、俯仰和滚动不同，其中 X 轴沿飞机长边（机尾到机头）延伸。</p>
+<p>方向传感器还通过 sensors_event_t.orientation.status 报告其预测的度数精度。要详细了解该字段的可能值，请参阅 <a href="https://developer.android.com/reference/android/hardware/SensorManager.html">SensorManager</a> 的 <a href="https://developer.android.com/reference/android/hardware/SensorManager.html#SENSOR_STATUS_ACCURACY_HIGH">SENSOR_STATUS_</a>* 常量。</p>
+<h2 id="uncalibrated_sensors">未校准传感器</h2>
+<p>未校准传感器可提供更多的原始结果，可能包括一些偏差，还包含校准后更正结果中的少数“激增”值。一些应用可能更倾向于使用这些未校准结果，因为此类结果更流畅、可靠。例如，如果应用试图自己进行传感器融合，则引入校准可能会使结果失真。</p>
+<h3 id="gyroscope_uncalibrated">未校准陀螺仪传感器</h3>
+<p>底层物理传感器：陀螺仪</p>
+<p>报告模式：<em><a href="report-modes.html#continuous">连续模式</a></em></p>
+<p><code>getDefaultSensor(SENSOR_TYPE_GYROSCOPE_UNCALIBRATED)</code> 返回一个非唤醒传感器<em></em></p>
+<p>未校准陀螺仪可报告围绕传感器坐标轴的旋转速率（未应用偏差补偿）以及偏差估值。所有值均以弧度/秒为单位，并在 <code>sensors_event_t.uncalibrated_gyro</code> 的字段中报告：</p>
+<ul>
+  <li> <code>x_uncalib</code>：围绕 X 轴的角速度（无漂移补偿）</li>
+  <li> <code>y_uncalib</code>：围绕 Y 轴的角速度（无漂移补偿）</li>
+  <li> <code>z_uncalib</code>：围绕 Z 轴的角速度（无漂移补偿）</li>
+  <li> <code>x_bias</code>：围绕 X 轴的漂移估值</li>
+  <li> <code>y_bias</code>：围绕 Y 轴的漂移估值</li>
+  <li> <code>z_bias</code>：围绕 Z 轴的漂移估值</li>
+</ul>
+<p>在概念上看，未校准的测量结果是校准测量结果和偏差估值之和：<code>_uncalibrated = _calibrated + _bias</code>。</p>
+<p>一旦偏差估值发生变化，<code>x/y/z_bias</code> 值就会激增，而在其余时间则应保持不变。</p>
+<p>有关所用坐标系的详细信息，请参阅<a href="#gyroscope">陀螺仪</a>传感器的定义。</p>
+<p>必须将出厂校准和温度补偿应用于测量结果。此外，必须实现陀螺仪漂移估算，以便在 <code>x_bias</code>、<code>y_bias</code> 和 <code>z_bias</code> 中报告合理的估值。如果该实现不能估算漂移，则不得实现该传感器。</p>
+<p>如果存在此传感器，则相应的陀螺仪传感器也必须存在，并且这两个传感器必须共用相同的 <code>sensor_t.name</code> 和 <code>sensor_t.vendor</code> 值。</p>
+<h3 id="magnetic_field_uncalibrated">未校准磁场传感器</h3>
+<p>底层物理传感器：磁力计</p>
+<p>报告模式：<em><a href="report-modes.html#continuous">连续模式</a></em></p>
+<p><code>getDefaultSensor(SENSOR_TYPE_MAGNETIC_FIELD_UNCALIBRATED)</code> 返回一个非唤醒传感器<em></em></p>
+<p>未校准磁场传感器可报告环境磁场以及硬铁校准估值。所有值均以微特斯拉 (uT) 为单位，并在 <code>sensors_event_t.uncalibrated_magnetic</code> 的字段中报告：</p>
+<ul>
+  <li> <code>x_uncalib</code>：沿 X 轴的磁场（无硬铁补偿）</li>
+  <li> <code>y_uncalib</code>：沿 Y 轴的磁场（无硬铁补偿）</li>
+  <li> <code>z_uncalib</code>：沿 Z 轴的磁场（无硬铁补偿）</li>
+  <li> <code>x_bias</code>：沿 X 轴的估算硬铁偏差</li>
+  <li> <code>y_bias</code>：沿 Y 轴的估算硬铁偏差</li>
+  <li> <code>z_bias</code>：沿 Z 轴的估算硬铁偏差</li>
+</ul>
+<p>在概念上看，未校准的测量结果是校准测量结果和偏差估值之和：<code>_uncalibrated = _calibrated + _bias</code>。</p>
+<p>对于未校准的磁力计，可使用更高级别的算法来处理不良的硬铁估算。一旦硬铁估值发生变化，<code>x/y/z_bias</code> 值就会激增，而在其余时间则应保持不变。</p>
+<p>必须将软铁校准和温度补偿应用于测量结果。此外，必须实现硬铁估算，以便在 <code>x_bias</code>、<code>y_bias</code> 和 <code>z_bias</code> 中报告合理的估值。如果该实现不能估算漂移，则不得实现该传感器。</p>
+<p>如果存在此传感器，则必须存在相应的磁场传感器，并且这两个传感器必须共用相同的 <code>sensor_t.name</code> 和 <code>sensor_t.vendor</code> 值。</p>
+<h2 id="interaction_composite_sensors">互动复合传感器</h2>
+<p>一些传感器主要用于检测与用户的互动。我们没有定义这些传感器的实现方式，但它们必须具备低功耗特性，并且设备制造商有责任验证它们在用户体验方面的质量。</p>
+<h3 id="wake_up_gesture">唤醒手势传感器</h3>
+<p>底层物理传感器：未定义（任何低功耗传感器）</p>
+<p>报告模式：<em><a href="report-modes.html#one-shot">单次模式</a></em></p>
+<p>低功耗</p>
+<p>仅实现该传感器的唤醒版本。</p>
+<p><code>getDefaultSensor(SENSOR_TYPE_WAKE_GESTURE)</code> 返回唤醒传感器<em></em></p>
+<p>唤醒手势传感器可以使用特定设备动作来唤醒设备。当该传感器被触发时，设备会开启屏幕，就如同按下电源按钮一样。用户可在设备设置中禁用这种设备行为（当该传感器被触发时开启屏幕）。更改设置不会影响传感器的行为：仅改变当该传感器被触发时，Android 框架是否开启屏幕。未指定待检测的实际手势，可由设备制造商进行选择。</p>
+<p>该传感器必须具备低功耗特性，因为它可能全天候开启。</p>
+<p>每个传感器事件在 <code>sensors_event_t.data[0]</code> 中报告 1。</p>
+<h3 id="pick_up_gesture">拿起手势传感器</h3>
+<p>底层物理传感器：未定义（任何低功耗传感器）</p>
+<p>报告模式：<em><a href="report-modes.html#one-shot">单次模式</a></em></p>
+<p>低功耗</p>
+<p>仅实现该传感器的唤醒版本。</p>
+<p><code>getDefaultSensor(SENSOR_TYPE_PICK_UP_GESTURE)</code> 返回唤醒传感器<em></em></p>
+<p>拿起手势传感器仅在拿起设备时被触发，并且不考虑设备在拿起前的所在位置（桌面、口袋里或袋子里）。</p>
+<p>每个传感器事件在 <code>sensors_event_t.data[0]</code> 中报告 1。</p>
+<h3 id="glance_gesture">快览手势传感器</h3>
+<p>底层物理传感器：未定义（任何低功耗传感器）</p>
+<p>报告模式：<em><a href="report-modes.html#one-shot">单次模式</a></em></p>
+<p>低功耗</p>
+<p>仅实现该传感器的唤醒版本。</p>
+<p><code>getDefaultSensor(SENSOR_TYPE_GLANCE_GESTURE)</code> 返回唤醒传感器<em></em></p>
+<p>快览手势传感器可短暂开启屏幕，方便用户使用特定动作浏览屏幕内容。当该传感器被触发时，设备将短暂开启屏幕，让用户可以在设备处于锁定且非互动状态（低电耗模式）时浏览通知或其他内容，然后屏幕将再次关闭。用户可在设备设置中禁用这种行为（当该传感器被触发时，短暂开启屏幕）。更改设置不会影响传感器的行为：仅改变当该传感器被触发时，Android 框架是否短暂开启屏幕。未指定待检测的实际手势，可由设备制造商进行选择。</p>
+<p>该传感器必须具备低功耗特性，因为它可能全天候开启。每个传感器事件在 <code>sensors_event_t.data[0]</code> 中报告 1。</p>
+
+</body></html>

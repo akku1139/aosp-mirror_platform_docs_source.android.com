@@ -1,0 +1,51 @@
+<html devsite><head>
+    <title>实现虚拟显示屏</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>Android 在 Hardware Composer v1.3 中添加了对虚拟显示屏的平台支持（该支持功能可由 Miracast 使用）。虚拟显示屏合成与物理显示屏类似：在 <code>prepare()</code> 中描述输入层，由 SurfaceFlinger 执行 GPU 合成，然后将图层和 GPU 帧缓冲区提供给 <code>set()</code> 中的 Hardware Composer。</p>
+
+<p>输出不会出现在屏幕上，而是被发送至 gralloc 缓冲区。Hardware Composer 将输出写入缓冲区并提供已完成的栅栏信号。缓冲区会被发送给某一使用方：视频编码器、GPU 和 CPU 等。如果显示通道可以写入内存，虚拟显示屏便可使用 2D/位块传送器或叠加层。</p>
+
+<h2 id="modes">模式</h2>
+
+<p><code>prepare()</code> 之后，每个帧处于以下三种模式之一：</p>
+
+<ul>
+<li>GLES：由 GPU 合成所有图层，GPU 会直接写入输出缓冲区，而 Hardware Composer 将不做任何操作。<em></em>这相当于使用 v1.3 版之前的 Hardware Composer 执行虚拟显示屏合成。</li>
+<li>MIXED：GPU 将一些图层合成到帧缓冲区，由 Hardware Composer 合成帧缓冲区和剩余的图层。<em></em>GPU 写入暂存缓冲区（帧缓冲区）；Hardware Composer 读取暂存缓冲区并写入输出缓冲区。缓冲区可能包含不同的格式，例如 RGBA 和 YCbCr。</li>
+<li>HWC：由 Hardware Compose 合成所有图层，Hardware Compose 会直接写入输出缓冲区。<em></em></li>
+</ul>
+
+<h2 id="output_format">输出格式</h2>
+<p>输出格式取决于模式：</p>
+
+<ul>
+<li>MIXED 和 HWC 模式：<em></em>若使用方需要 CPU 访问权限，则由使用方选择格式。否则格式将为 IMPLEMENTATION_DEFINED。Gralloc 可以根据使用标记选择最佳的格式。例如，如果使用方是视频编码器，则选择 YCbCr 格式，而 Hardware Composer 可以高效地写入该格式。</li>
+<li>GLES 模式：<em></em>EGL 驱动程序在 <code>dequeueBuffer()</code> 中选择输出缓冲区格式，通常为 RGBA8888。使用方必须能够接受该格式。</li>
+</ul>
+
+<h2 id="egl_requirement">EGL 要求</h2>
+
+<p>Hardware Composer v1.3 虚拟显示屏要求 <code>eglSwapBuffers()</code> 不会立即使下一个缓冲区出列，而是推迟到渲染开始时才让该缓冲区出列。否则，EGL 将始终占有下一个输出缓冲区。SurfaceFlinger 无法在 MIXED/HWC 模式下为 Hardware Composer 获取输出缓冲区。</p>
+
+<p>若 Hardware Composer 总是将所有虚拟显示屏图层都发送至 GPU，则所有帧都会处于 GLES 模式。我们不推荐使用此方法，但您若出于某些原因需要支持 Hardware Composer v1.3，而又无法进行虚拟显示屏合成，便可使用此方法。</p>
+
+</body></html>

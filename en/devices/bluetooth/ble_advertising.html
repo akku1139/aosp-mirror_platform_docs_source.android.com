@@ -1,0 +1,258 @@
+<html devsite>
+  <head>
+    <title>Bluetooth Low Energy Advertising</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+    <p>
+      Bluetooth Low Energy (BLE) conserves power by remaining in sleep mode
+      most of the time. It wakes up only to make advertisements and short
+      connections, so advertisements affect both power consumption and
+      data transfer bandwidth.
+    </p>
+
+    <h2 id="bluetooth-5-advertising-extension">Bluetooth 5 advertising extension</h2>
+
+    <p>
+      Android 8.0 supports Bluetooth 5, which provides broadcasting
+      improvements and flexible data advertisement for BLE. Bluetooth 5 supports BLE Physical Layers (PHYs) that retain the
+      reduced power consumption of Bluetooth 4.2 and let users choose
+      increased bandwidth or range. More information can be found in the
+      <a href="https://www.bluetooth.com/specifications/adopted-specifications">
+        Bluetooth 5 Core Specifications</a>.
+    </p>
+
+      <h3 id="implementation">Implementation</h3>
+
+        <p>
+          New Bluetooth 5 features are automatically available for devices
+          running Android 8.0 with compatible Bluetooth controllers. Use these
+          <code><a href="https://developer.android.com/reference/android/bluetooth/BluetoothAdapter.html">
+            BluetoothAdapter</a></code>
+          methods to check if a device supports Bluetooth 5 features:
+        </p>
+
+        <ul>
+          <li><code>isLe2MPhySupported()</code></li>
+          <li><code>isLeCodedPhySupported()</code></li>
+          <li><code>isLeExtendedAdvertisingSupported()</code></li>
+          <li><code>isLePeriodicAdvertisingSupported()</code></li>
+        </ul>
+
+        <p>
+          To disable the advertising features, work with the Bluetooth chip
+          vendor to disable chip-set support.
+        </p>
+
+        <p>
+          The Bluetooth PHYs are exclusive of one another, and the behavior of
+          each PHY is predefined by the Bluetooth SIG. By default, Android 8.0
+          uses Bluetooth LE 1M PHY, from Bluetooth 4.2. The
+          <code><a href="https://developer.android.com/reference/android/bluetooth/le/package-summary.html">
+            android.bluetooth.le</a></code>
+          package exposes the Bluetooth 5 advertising features through these
+          APIs:
+        </p>
+
+        <ul>
+          <li><code>AdvertisingSet</code></li>
+          <li><code>AdvertisingSetCallback</code></li>
+          <li><code>AdvertisingSetParameters</code></li>
+          <li><code>PeriodicAdvertisingParameters</code></li>
+        </ul>
+
+        <p>
+          Create an <code><a href="https://developer.android.com/reference/android/bluetooth/le/AdvertisingSet.html">
+          AdvertisingSet</a></code>
+          to modify Bluetooth advertisement settings by using the <code><a
+          href="https://developer.android.com/reference/android/bluetooth/le/BluetoothLeAdvertiser.html#startAdvertisingSet(android.bluetooth.le.AdvertisingSetParameters,
+          android.bluetooth.le.AdvertiseData, android.bluetooth.le.AdvertiseData,
+          android.bluetooth.le.PeriodicAdvertisingParameters,
+          android.bluetooth.le.AdvertiseData,
+          android.bluetooth.le.AdvertisingSetCallback)">
+          startAdvertisingSet()</a></code> method in <code><a
+          href="https://developer.android.com/reference/android/bluetooth/le/BluetoothLeAdvertiser.html">
+          android.bluetooth.le.BluetoothLeAdvertiser</a></code>. Even if
+          support for Bluetooth 5 or its advertising features is disabled, the
+          API features can also apply to LE 1M PHY.
+        </p>
+
+        <h4 id="examples">Examples</h4>
+
+          <p>
+            This example app uses Bluetooth LE 1M PHY for advertising:
+          </p>
+
+<pre class="prettyprint">
+  // Start legacy advertising. Works for devices with 5.x controllers,
+  and devices that support multi-advertising.
+
+  void example1() {
+   BluetoothLeAdvertiser advertiser =
+      BluetoothAdapter.getDefaultAdapter().getBluetoothLeAdvertiser();
+
+   AdvertisingSetParameters parameters = (new AdvertisingSetParameters.Builder())
+           .setLegacyMode(true) // True by default, but set here as a reminder.
+           .setConnectable(true)
+           .setInterval(AdvertisingSetParameters.INTERVAL_HIGH)
+           .setTxPowerLevel(AdvertisingSetParameters.TX_POWER_MEDIUM)
+           .build();
+
+   AdvertiseData data = (new AdvertiseData.Builder()).setIncludeDeviceName(true).build();
+
+   AdvertisingSetCallback callback = new AdvertisingSetCallback() {
+       &#64;Override
+       public void onAdvertisingSetStarted(AdvertisingSet advertisingSet, int txPower, int status) {
+           Log.i(LOG_TAG, "onAdvertisingSetStarted(): txPower:" + txPower + " , status: "
+             + status);
+           currentAdvertisingSet = advertisingSet;
+       }
+
+       &#64;Override
+       public void onAdvertisingDataSet(AdvertisingSet advertisingSet, int status) {
+           Log.i(LOG_TAG, "onAdvertisingDataSet() :status:" + status);
+       }
+
+       &#64;Override
+       public void onScanResponseDataSet(AdvertisingSet advertisingSet, int status) {
+           Log.i(LOG_TAG, "onScanResponseDataSet(): status:" + status);
+       }
+
+       &#64;Override
+       public void onAdvertisingSetStopped(AdvertisingSet advertisingSet) {
+           Log.i(LOG_TAG, "onAdvertisingSetStopped():");
+       }
+   };
+
+   advertiser.startAdvertisingSet(parameters, data, null, null, null, callback);
+
+   // After onAdvertisingSetStarted callback is called, you can modify the
+   // advertising data and scan response data:
+   currentAdvertisingSet.setAdvertisingData(new AdvertiseData.Builder().
+     setIncludeDeviceName(true).setIncludeTxPowerLevel(true).build());
+   // Wait for onAdvertisingDataSet callback...
+   currentAdvertisingSet.setScanResponseData(new
+     AdvertiseData.Builder().addServiceUuid(new ParcelUuid(UUID.randomUUID())).build());
+   // Wait for onScanResponseDataSet callback...
+
+   // When done with the advertising:
+   advertiser.stopAdvertisingSet(callback);
+}</pre>
+
+        <p>
+          This example app uses the BLE 2M PHY for advertising. The app first
+          checks that the device supports the features being used. If the
+          advertising features are supported, then the app configures BLE 2M
+          PHY as the primary PHY. While 2M PHY is active, advertisement does
+          not support Bluetooth 4.x controllers, so <code>setLegacyMode</code>
+          is set to <code>false</code>. This example modifies parameters while
+          advertising and also pauses the advertisement.
+        </p>
+
+<pre class="prettyprint">void example2() {
+   BluetoothAdapter adapter = BluetoothAdapter.getDefaultAdapter();
+   BluetoothLeAdvertiser advertiser =
+     BluetoothAdapter.getDefaultAdapter().getBluetoothLeAdvertiser();
+
+   // Check if all features are supported
+   if (!adapter.isLe2MPhySupported()) {
+       Log.e(LOG_TAG, "2M PHY not supported!");
+       return;
+   }
+   if (!adapter.isLeExtendedAdvertisingSupported()) {
+       Log.e(LOG_TAG, "LE Extended Advertising not supported!");
+       return;
+   }
+
+   int maxDataLength = adapter.getLeMaximumAdvertisingDataLength();
+
+   AdvertisingSetParameters.Builder parameters = (new AdvertisingSetParameters.Builder())
+           .setLegacyMode(false)
+           .setInterval(AdvertisingSetParameters.INTERVAL_HIGH)
+           .setTxPowerLevel(AdvertisingSetParameters.TX_POWER_MEDIUM)
+           .setPrimaryPhy(BluetoothDevice.PHY_LE_2M)
+           .setSecondaryPhy(BluetoothDevice.PHY_LE_2M);
+
+   AdvertiseData data = (new AdvertiseData.Builder()).addServiceData(new
+     ParcelUuid(UUID.randomUUID()),
+           "You should be able to fit large amounts of data up to maxDataLength. This goes
+           up to 1650 bytes. For legacy advertising this would not
+           work".getBytes()).build();
+
+   AdvertisingSetCallback callback = new AdvertisingSetCallback() {
+       &#64;Override
+       public void onAdvertisingSetStarted(AdvertisingSet advertisingSet, int txPower, int status) {
+           Log.i(LOG_TAG, "onAdvertisingSetStarted(): txPower:" + txPower + " , status: "
+            + status);
+           currentAdvertisingSet = advertisingSet;
+       }
+
+       &#64;Override
+       public void onAdvertisingSetStopped(AdvertisingSet advertisingSet) {
+           Log.i(LOG_TAG, "onAdvertisingSetStopped():");
+       }
+   };
+
+   advertiser.startAdvertisingSet(parameters.build(), data, null, null, null, callback);
+
+   // After the set starts, you can modify the data and parameters of currentAdvertisingSet.
+   currentAdvertisingSet.setAdvertisingData((new
+     AdvertiseData.Builder()).addServiceData(new ParcelUuid(UUID.randomUUID()),
+           "Without disabling the advertiser first, you can set the data, if new data is
+            less than 251 bytes long.".getBytes()).build());
+
+   // Wait for onAdvertisingDataSet callback...
+
+   // Can also stop and restart the advertising
+   currentAdvertisingSet.enableAdvertising(false, 0, 0);
+   // Wait for onAdvertisingEnabled callback...
+   currentAdvertisingSet.enableAdvertising(true, 0, 0);
+   // Wait for onAdvertisingEnabled callback...
+
+   // Or modify the parameters - i.e. lower the tx power
+   currentAdvertisingSet.enableAdvertising(false, 0, 0);
+   // Wait for onAdvertisingEnabled callback...
+   currentAdvertisingSet.setAdvertisingParameters(parameters.setTxPowerLevel
+     (AdvertisingSetParameters.TX_POWER_LOW).build());
+   // Wait for onAdvertisingParametersUpdated callback...
+   currentAdvertisingSet.enableAdvertising(true, 0, 0);
+   // Wait for onAdvertisingEnabled callback...
+
+   // When done with the advertising:
+   advertiser.stopAdvertisingSet(callback);
+}</pre>
+
+      <h3 id="verification">Verification</h3>
+
+        <p> Run applicable <a
+          href="https://www.bluetooth.com/develop-with-bluetooth/test-tools">
+          Bluetooth product tests</a> to verify device compatibility with
+          Bluetooth 5.
+        </p>
+
+        <p>
+          AOSP contains the Android Comms Test Suite (ACTS), which includes
+          tests for Bluetooth 5. The ACTS tests for Bluetooth 5 can be found
+          in <code><a
+          href="https://android.googlesource.com/platform/tools/test/connectivity/+/master/acts/tests/google/ble/bt5/">
+          tools/test/connectivity/acts/tests/google/ble/bt5</a></code>.
+        </p>
+  </body>
+</html>
