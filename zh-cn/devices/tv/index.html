@@ -1,0 +1,425 @@
+<html devsite><head>
+    <title>TV Input Framework</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<img style="float: right; margin: 0px 15px 15px 15px;" src="images/ape_fwk_hal_tv.png" alt="Android TV HAL 图标"/>
+
+<p>Android TV Input Framework (TIF) 简化了向 Android TV 传送直播内容的过程。Android TIF 为制造商提供了一个标准 API，用于创建能够控制 Android TV 的输入模块，并让他们可以通过 TV Input 发布的元数据来搜索和推荐直播电视内容。</p>
+<p>此框架的目的并不在于实施电视标准或区域性要求，而是在于让设备制造商不必重新实现就能够更轻松地满足区域性数字电视广播标准。对于想要创建自定义 TV Input 的第三方应用开发者来说，本部分文档可能也非常实用。</p>
+
+<h2 id="components">组件</h2>
+
+<p>Android TIF 的实现包括 TV Input Manager。TIF 可与 TV 应用（一款第三方应用无法替代的系统应用）搭配使用来访问内置频道和 IP 调谐器频道。此 TV 应用通过 TV Input Manager 与设备制造商或其他方提供的 TV Input 模块进行通信。</p>
+
+<p>TIF 由以下几个部分组成：</p>
+
+<ul>
+  <li>TV Provider (<code>com.android.providers.tv.TvProvider</code>)：具有频道、节目和相关权限的数据库
+  </li><li>TV 应用 (<code>com.android.tv.TvActivity</code>)：处理用户互动操作的应用
+  </li><li>TV Input Manager (<code>android.media.tv.TvInputManager</code>)：使 TV Input 可与 TV 应用进行通信
+  </li><li>TV Input：代表物理或虚拟调谐器和输入端口的应用
+  </li><li>TV Input HAL（<code>tv_input</code> 模块）：一种硬件定义，实现后可让系统 TV Input 访问电视专用硬件
+  </li><li>家长控制：用于屏蔽频道和节目的技术
+  </li><li>HDMI-CEC：使用户可通过 HDMI 远程控制各种设备的技术
+</li></ul>
+
+<p>下面将详细介绍这些组件。有关 Android TIF 架构的详细视图，请参见下图。</p>
+
+<img src="images/TIF_Overview.png" alt="Android TIF 架构概述"/>
+<p class="img-caption"><strong>图 1.</strong> Android TV Input Framework (TIF) 架构</p>
+
+<h2 id="flow">流程</h2>
+
+<p>下面列出了此架构的运作流程：</p>
+
+<ol>
+  <li>用户看到 TV 应用（一款第三方应用无法替代的系统应用）并与该应用进行互动。
+  </li><li>TV 应用显示来自 TV Input 的 AV 内容。
+  </li><li>TV 应用无法直接与 TV Input 通信。TV Input Manager 可为 TV 应用识别 TV Input 的状态。有关使用限制的更多详情，请参阅下文的“TV Input Manager”部分。<em></em>
+</li></ol>
+
+<h2 id="permissions">权限</h2>
+
+<ul>
+  <li>只有 <code><a href="http://developer.android.com/guide/topics/manifest/permission-element.html#plevel">signatureOrSystem</a></code> TV Input 和 TV 应用拥有对 TV Provider 数据库的完全访问权限，并且能够接收 KeyEvent。
+  </li><li>只有系统 TV Input 可以通过 TV Input Manager Service 访问 TV Input HAL。系统通过 TV Input Manager 会话对 TV Input 进行一对一访问。
+  </li><li>第三方 TV Input 拥有对 TV Provider 数据库的访问权限（软件包已锁定），只能对匹配的软件包行进行读写。
+  </li><li>第三方 TV Input 可以显示自己的内容，也可显示来自设备制造商提供的直通 TV Input（如 HDMI1）上的内容。它们不能显示来自非直通 TV Input（如内置调谐器或 IPTV 调谐器）的内容。
+  </li><li>硬件 TV Input 应用的 <code>TV_INPUT_HARDWARE</code> 权限，向 TV Input Manager Service 发送信号，以通知 TV Input Service 在启动时调用 TV Input Manager Service 并添加其 TV Input。借助此权限，硬件 TV Input 应用可通过一个 TV Input Service 支持多个 TV Input，并能够动态地添加和移除支持的 TV Input。
+</li></ul>
+
+<h2 id="tv_provider">TV Provider</h2>
+
+<p>TV Provider 数据库会存储来自 TV Input 的频道和节目。TV Provider 还发布和管理相关权限，以使 TV Input 只能查看自身的记录。例如，特定的 TV Input 只能查看它自己提供的频道和节目，并被禁止访问任何其他 TV Input 的频道和节目。</p>
+
+<p>TV Provider 在内部将“广播类型”映射到“规范类型”。TV Input 负责使用基本广播标准中的值填充“广播类型”，而“规范类型”字段将使用来自 <code>android.provider.TvContract.Genres</code> 的正确相关类型自动填充。例如，对于广播标准 ATSC A/65 和类型为 0x25（意为“体育”）的节目，TV Input 将使用字符串“Sports”填充“广播类型”，并且 TV Provider 将使用映射的值 <code>android.provider.TvContract.Genres.SPORTS</code> 填充“规范类型”字段。</p>
+
+<p>有关 TV Provider 的详细视图，请参见下图。</p>
+
+<img src="images/TIF_TV_Provider.png" alt="Android TV Provider"/>
+<p class="img-caption"><strong>图 2.</strong> Android TV Provider</p>
+
+<p><em>只有在经授权的系统分区中的应用才能读取整个 TV Provider 数据库。</em></p>
+
+<p>直通 TV Input 不存储频道和节目。</p>
+
+<p>除了频道和节目的标准字段以外，TV Provider 数据库还在 TV Input 可能用来存储任意数据的每个表格中提供 BLOB 类型字段 (<code>COLUMN_INTERNAL_PROVIDER_DATA</code>)。该 BLOB 数据可能包括自定义信息（如相关调谐器的频率），并可通过协议缓冲区或其他形式提供。还提供“可搜索”字段，用于确保搜索结果中不显示某些频道（例如，为了满足某些国家/地区对于内容保护的特定要求）。</p>
+
+<h3 id="tv_provider_database_field_examples">数据库字段示例</h3>
+
+<p>TV Provider 支持频道 (<code>android.provider.TvContract.Channels</code>) 和节目 (<code>android.provider.TvContract.Programs</code>) 表格中的结构化数据。这些表格由 TV Input 和系统应用（如 TV 应用）进行填充和访问。这些表格具有四种类型的字段：</p>
+
+<ul>
+  <li><strong>显示</strong>：显示字段包含应用可能希望向用户显示的信息，如频道名称 (<code>COLUMN_DISPLAY_NAME</code>) 或数字 (<code>COLUMN_DISPLAY_NUMBER</code>) 或正在观看的节目的标题。
+  </li><li><strong>元数据</strong>：根据相关标准，有三个字段可用于识别内容，如频道的传输流 ID (<code>COLUMN_TRANSPORT_STREAM_ID</code>)、原始网络 ID (<code>COLUMN_ORIGINAL_NETWORK_ID</code>) 和服务 ID (<code>COLUMN_SERVICE_ID</code>)。
+  </li><li><strong>内部数据</strong>：用于自定义 TV Input 用途的字段。<br />某些字段（如 <code>COLUMN_INTERNAL_PROVIDER_DATA</code>）是可自定义的 BLOB 字段，TV Input 可以在这些字段中存储有关其频道或节目的任意元数据。
+  </li><li><strong>标记</strong>：标记字段表示是否应禁止搜索、浏览或查看某个频道。只能在频道级别进行此设置。所有节目均应遵循此项频道设置。
+  <ul>
+    <li><code>COLUMN_SEARCHABLE</code>：在某些地区可能要求禁止搜索某些频道。<code>COLUMN_SEARCHABLE = 0</code> 表示不应在搜索结果中显示此频道。
+    </li><li><code>COLUMN_BROWSABLE</code>：仅对系统应用可见。禁止应用浏览频道。<code>COLUMN_BROWSABLE = 0</code> 表示频道列表中不应包含此频道。
+    </li><li><code>COLUMN_LOCKED</code>：仅对系统应用可见。禁止未输入 PIN 码的无效帐号观看频道。<code>COLUMN_LOCKED = 1</code> 表示此频道应受家长控制保护。
+  </li></ul>
+</li></ul>
+
+<p>有关这些字段的更为详尽的列表，请参阅 <code>android/frameworks/base/media/java/android/media/tv/TvContract.java</code></p>
+
+<h3 id="permissions_and_access_control">权限和访问控制</h3>
+
+<p>有权访问相应行的任何人都可以查看所有字段。用户无法直接访问任何字段；他们仅可看到 TV 应用、系统应用或 TV Input 显示的内容。</p>
+
+<ul>
+  <li>每一行都具有 <code>PACKAGE_NAME</code>，即拥有该行的软件包（应用），可通过 TvProvider.java 在“查询”、“插入”、“更新”语句中获得该名称。TV Input 仅可以访问它自己写入的信息，无法访问其他 TV Input 提供的信息。
+  </li><li>通过 AndroidManifest.xml 读取、写入权限（需用户同意）来确定可用的频道。
+  </li><li>只有 <code>signatureOrSystem</code> 应用才可以获取访问整个数据库的 <code>ACCESS_ALL_EPG_DATA</code> 权限。
+</li></ul>
+
+<h2 id="tv_input_manager">TV Input Manager</h2>
+
+<p>TV Input Manager 为整个 Android TIF 提供了一个中央系统 API。它对应用与 TV Input 之间的交互进行控制，并提供家长控制功能。TV Input Manager 必须与 TV Input 创建一对一的会话。TV Input Manager 允许应用访问安装的 TV Input，以便应用可以：</p>
+
+<ul>
+  <li>列出 TV Input 并查看其状态</li><li>创建会话并管理监听器</li></ul>
+
+<p>对于会话，TV Input（除了可使用 <code>TvContract.buildChannelUriForPassthroughInput()</code> 调谐的直通 TV Input）只能由 TV 应用调谐至已被 TV 应用添加到 TV Provider 数据库中的 URI。TV Input 也可以自己设置音量。由设备制造商（签名应用）或安装于系统分区中的其他应用提供和签名的 TV Input 具有对整个 TV Provider 数据库的访问权限。此访问权限可用于构建应用，以浏览和搜索所有可用的电视频道和节目。</p>
+
+<p>应用可以通过 <code>android.media.tv.TvInputManager</code> 创建和注册一个 <code>TvInputCallback</code>，并在 TV Input 的状态发生改变或添加/移除 TV Input 时进行该回调。例如，TV 应用可以在 TV Input 断开连接时做出以下响应：显示该 TV Input 已断开连接并阻止它被选中。</p>
+
+<p>TV Input Manager 使 TV 应用和 TV Input 之间的通信变得抽象化。TV Input Manager 和 TV Input 标准界面使多个设备制造商可以创建自己的 TV 应用，同时让所有第三方 TV Input 适用于所有 TV 应用。</p>
+
+<h2 id="tv_inputs">TV Input</h2>
+
+<p>TV Input 具有 AndroidManifest.xml 并且会预安装或通过 Play 商店、旁加载进行安装，因此是 Android 应用。Android TV 支持预安装的系统应用、由设备制造商签名的应用和第三方 TV Input。</p>
+
+<p>某些输入源（如 HDMI 或内置调谐器输入源）只能由制造商提供，因为它们与底层硬件直接通信。其他输入源（如 IPTV、易地播放和外接机顶盒）可由第三方将其作为 APK 在 Google Play 商店中进行提供。一旦被下载并安装，便可以在 TV 应用中选择这一新的输入源。</p>
+
+<h3 id="passthrough_input_example">直通输入源示例</h3>
+
+<img src="images/TIF_HDMI_TV_Input.png" alt="Android TV 系统输入源"/>
+<p class="img-caption"><strong>图 3.</strong> Android TV 系统输入源</p>
+
+<p>在上述示例中，由设备制造商提供的 TV Input 是可信输入源，并拥有对 TV Provider 的完全访问权限。作为直通 TV Input，它不会向 TV Provider 注册任何频道或节目。要获取用于引用直通输入源的 URI，请使用 <code>android.media.tv.TvContract</code> 实用程序方法 <code>buildChannelUriForPassthroughInput(String inputId)</code>。TV 应用与 TV Input Manager 进行通信，从而访问 HDMI TV Input。</p>
+
+<h3 id="built-in_tuner_example">内置调谐器示例</h3>
+
+<img src="images/Built-in_Tuner_TV_Input.png" alt="Android TV 内置调谐器输入源"/>
+<p class="img-caption"><strong>图 4.</strong> Android TV 内置调谐器输入源</p>
+
+<p>在上述示例中，由设备制造商提供的内置调谐器 TV Input 是可信输入源，具有对 TV Provider 的完全访问权限。</p>
+
+<h3 id="third-party_input_example">第三方输入源示例</h3>
+
+<img src="images/Third-party_Input_HDMI.png" alt="Android TV 第三方输入源"/>
+<p class="img-caption"><strong>图 5.</strong> Android TV 第三方输入源</p>
+
+<p>在上述示例中，外接机顶盒 TV Input 由第三方提供。由于此 TV Input 无法直接访问传入的 HDMI 视频 Feed，所以必须借助 TV Input Manager 并使用设备制造商提供的 HDMI TV Input。</p>
+
+<p>通过 TV Input Manager，外接机顶盒 TV Input 可以与 HDMI TV Input 进行通信，并请求它在 HDMI1 上显示视频。因此，机顶盒 TV Input 可以控制电视，而制造商提供的 HDMI TV Input 则可呈现视频。</p>
+
+<h3 id="picture_in_picture_pip_example">画中画 (PIP) 示例</h3>
+
+<img src="images/TIF_PIP-PAP.png" alt="Android TV KeyEvent"/>
+<p class="img-caption"><strong>图 6.</strong> Android TV KeyEvent</p>
+
+<p>上图显示了遥控器上的按钮事件如何传递到特定的 TV Input，从而实现画中画 (PIP) 显示。按下按钮的操作由设备制造商提供的硬件驱动程序进行解析，从而将硬件扫描码转换为 Android 键码，并将它们作为 <a href="http://developer.android.com/reference/android/view/KeyEvent.html">KeyEvent</a> 传递到标准的 Android <a href="/devices/input/overview.html">输入通道</a> <code>InputReader</code> 和 <code>InputDispatcher</code> 函数。当 TV 应用获得焦点时，它们就会在 TV 应用上触发事件。</p>
+
+<p>只有系统 TV Input 才有资格接收 <code>InputEvents</code>（前提是这些系统 TV Input 具有 <code>RECEIVE_INPUT_EVENT</code> 系统权限）。TV Input 负责确定要消费哪些 InputEvent，并允许 TV 应用处理它不需要消费的按键。</p>
+
+<p>TV 应用负责确定哪些系统 TV Input 处于有效状态（即用户已选择）、区分传入的 <code>KeyEvents</code> 并将它们路由到正确的 TV Input Manager 会话，以及调用 <code>dispatchInputEvent()</code> 以将事件传递到相关联的 TV Input。</p>
+
+<h3 id="mheg-5_input_example">MHEG-5 输入源示例</h3>
+
+<p>下图详细说明了 <code>KeyEvents</code> 如何通过 Android TIF 进行路由。</p>
+
+<img src="images/TIF_MHEG5_app.png" alt="Android TV 红色按钮示例"/>
+<p class="img-caption"><strong>图 7.</strong> Android TV 红色按钮示例</p>
+
+<p>上图描绘了红色按钮应用的流程，该按钮在欧洲较为常用，使用户能够访问电视机上的交互式应用。应用可以通过此传输流程进行传送。用户点击此按钮后，便可以与这些广播应用进行交互。例如，您可以使用这些广播应用来访问相关网页或体育赛事比分。</p>
+
+<p><em></em>请参阅“广播应用”部分，了解广播应用如何与 TV 应用进行互动。</p>
+
+<p>在此示例中：</p>
+
+<ol>
+  <li>TV 应用获得焦点并接收所有按键事件。
+  </li><li><code>KeyEvents</code>（例如：红色按钮）作为 <code>InputEvents.</code> 被传递到处于有效状态的 TV Input。
+  </li><li>系统 TV Input 与 MHEG-5 堆栈进行集成，并拥有 <code>RECEIVE_INPUT_EVENT</code> 系统权限。
+  </li><li>TV Input 在接收到激活键码（例如：红色按钮）后激活广播应用。
+  </li><li>TV Input 将 <code>KeyEvents</code> 当做 <code>InputEvents</code> 进行消费，然后广播应用获得焦点并处理 <code>InputEvents</code> 直到应用被关闭。
+</li></ol>
+
+<p class="note"><strong>注意</strong>：第三方 TV Input 从不接收按键事件。</p>
+
+<h2 id="tv_input_hal">TV Input HAL</h2>
+
+<p>在开发 TV Input 以访问电视专用硬件的过程中，TV Input HAL 起到了辅助作用。与其他 Android HAL 一样，TV Input HAL (<code>tv_input</code>) 可在 AOSP 源码树中获取，由供应商制定其实现方法。</p>
+
+<h2 id="tv_app">TV 应用</h2>
+
+<p>系统 TV 应用向用户呈现直播电视内容。Android 平台提供了一个参考 TV 应用 (Live TV)，设备制造商可以直接按原样使用该应用、对其进行定制、扩展或将其替换掉。Android 开放源代码项目中提供了<a href="https://android.googlesource.com/platform/packages/apps/TV/">源代码</a>，您可以按照<a href="/devices/tv/reference-tv-app.html">参考 TV 应用</a>一文中的说明开始构建 TV 应用。</p>
+
+<p>设备制造商可以扩展他们的 TV 应用来实现适用于特定设备制造商或国家/地区的功能，但这不属于 TIF 或参考 TV 应用的职责范畴。</p>
+
+<p>系统 TV 应用至少需处理以下任务：</p>
+
+<h3 id="setup_and_configuration">设置和配置</h3>
+
+<ul>
+  <li>自动检测 TV Input
+  </li><li>让 TV Input 启动频道设置
+  </li><li>控制家长设置
+  </li><li>修改频道
+</li></ul>
+
+<h3 id="viewing">查看</h3>
+
+<ul>
+  <li>访问和浏览所有电视频道
+  </li><li>访问电视节目信息栏
+  </li><li>显示电子收视指南 (EPG) 数据
+  </li><li>支持多个音频和字幕轨道
+  </li><li>提供家长控制 PIN 码输入口令
+  </li><li>允许 TV Input 界面叠加层以执行：
+  <ul>
+    <li>电视标准（HbbTV 等）
+  </li></ul>
+  </li><li>填充电视频道和节目的搜索结果
+  </li><li>显示应用链接卡片
+  </li><li>支持时移 API
+  </li><li>处理 DVR 功能并支持电视录制 API
+</li></ul>
+
+<p>随着新 Android 版本的发布，平台 TIF API 得到扩展，此功能集将有所增加。CTS 验证程序涵盖了相关的兼容性测试。</p>
+
+<h3 id="support_for_third-party_tv_inputs">支持第三方 TV Input</h3>
+
+<p>Android TV 提供面向第三方 TV Input 的开发者 API，使安装的应用能够将软件频道与直播电视体验相融合。为确保 Android 设备实现保持兼容性，系统 TV 应用有责任向用户显示第三方 TV Input 和频道。参考 Live TV 应用提供了兼容的实现方法；如果要替换系统 TV 应用，则设备制造商必须确保自己的应用提供类似的兼容性，以满足开发者对所有 Android TV 设备的期望。</p>
+
+<p>系统 TV 应用必须在设备的默认直播电视服务旁边显示第三方输入源。开发者 API 的承诺是，用户能够在其标准电视体验中找到频道（安装后）。</p>
+
+<p>根据 Android CDD 的“TV 应用”部分的定义，内置频道和第三方频道之间可存在外观差异。</p>
+
+<p>以下部分说明了 Live TV 应用如何满足 CDD 要求。</p>
+
+<h4 id="new_channel_setup">新频道设置</h4>
+
+<p>用户可首先通过从应用商店（如 Google Play）中查找和安装 TV Input，开始添加新的第三方输入源/频道。</p>
+
+<p>某些第三方 TV Input 可自动将频道添加到 TvProvider 数据库中。然而，大多数 TV Input 将提供“设置”操作组件，使用户能够设置他们的频道、提供登录详细信息及执行其他操作。系统 TV 应用需要确保用户可以启用此“设置”操作组件，因此 CDD 要求在主 TV 应用中只需极少的导航操作便可进入第三方输入源。</p>
+
+<p>参考 Live TV 应用提供了“频道来源”菜单，以供用户访问输入源。</p>
+
+<img src="images/LiveChannels_settings.png" alt="转至“设置”"/>
+<p class="img-caption"><strong>图 8.</strong> 转到<strong>设置</strong>。</p>
+
+<img src="images/LiveChannels_channel_sources.png" alt="转至“设置”中的频道来源"/>
+<p class="img-caption"><strong>图 9.</strong> 转到“设置”中的<strong>频道来源</strong>。</p>
+
+<img src="images/LiveChannels_sources.png" alt="从列表中选择您的频道来源。"/>
+<p class="img-caption"><strong>图 10.</strong> 从列表中选择您的频道来源。</p>
+
+<img src="images/LiveChannels_Add_channel.png" alt="从您的频道来源中添加频道"/>
+<p class="img-caption"><strong>图 11.</strong> 从您的频道来源中添加频道</p>
+
+<p>此外，在安装新的 TvInput 之后，TV 应用菜单的顶部会出现一张通知卡片，让用户直接转到“设置”页面：</p>
+
+<img src="images/LiveChannels_set_up_sources.png" alt="表示有可用新频道来源的通知。"/>
+<p class="img-caption"><strong>图 12.</strong> 表示有可用新频道来源的通知。</p>
+
+<p>如果用户通过通知进行操作，他们可以选择设置频道来源，如图 10 所示。</p>
+<p>请参阅<a href="http://developer.android.com/training/tv/tif/tvinput.html#setup">定义您的 TV Input Service</a>，了解开发者对此领域的期望。</p>
+
+<h4 id="customize_the_channel_list">自定义频道列表</h4>
+
+<p>设备制造商可以提供一个界面来隐藏某些频道，并让用户能够管理自己的 EPG。Live TV 包括此项功能。</p>
+
+<img src="images/LiveChannels_channel_list.png" alt="在“设置”中打开频道列表。"/>
+<p class="img-caption"><strong>图 13.</strong> 在<strong>设置</strong>中打开频道列表。</p>
+
+<img src="images/LiveChannels_customize_channel-list.png" alt="自定义您的频道列表。"/>
+<p class="img-caption"><strong>图 14.</strong> 自定义您的频道列表。</p>
+
+<h4 id="epg">EPG</h4>
+
+<p>第三方输入源开发者需要确信，用户可以在常规使用过程中在所有兼容的 Android TV 设备上轻松转到他们的频道。</p>
+
+<p>来自第三方输入源的频道必须作为设备的标准直播电视体验 EPG 的一部分展示出来。可以对第三方频道在外观上加以区别或将其归入单独的类别（请参阅 Android CDD 的“TV 应用”部分），而最重要的是让用户能够找到所安装的频道。</p>
+
+<h4 id="search">搜索</h4>
+
+<p>为确保最佳用户体验，制造商必须实现以下 TV 应用功能：纳入能够满足全局搜索请求的搜索结果。Live TV 提供了一种实现方法（请参阅 <a href="https://android.googlesource.com/platform/packages/apps/TV/+/android-live-tv/src/com/android/tv/search/TvProviderSearch.java">com.android.tv.search.TvProviderSearch</a>），它可提供来自第三方输入源（对于平台兼容性而言是必要的）以及内置输入源的结果。</p>
+
+<h4 id="time-shifting">时移</h4>
+<p>对于运行 Android 6.0 及更高版本的设备，TV 应用必须支持 Android 框架<a href="https://developer.android.com/reference/android/media/tv/TvView.html">时移 API</a>。此外，制造商必须在 TV 应用中实现播放控件，让用户可以对播放内容执行暂停、继续、快退和快进播放等操作。
+</p>
+<p>对于支持时移的 TV Input，TV 应用需显示播放控件。
+</p>
+
+<p>
+<img src="images/TIF_timeshift.png" alt="播放控件"/>
+</p>
+<p class="img-caption"><strong>图 15.</strong> 播放控件</p>
+
+<h4 id="dvr">DVR</h4>
+<p>对于运行 Android 7.0 及更高版本的设备，TV 应用必须支持 Android 框架<a href="https://developer.android.com/reference/android/media/tv/TvRecordingClient.html">电视录制 API</a>，从而支持、列出和播放录制的节目。
+</p>
+<p>这样，设备制造商就可以将其 DVR 子系统插入 TIF，并显著减少在电视设备上启用或集成 DVR 功能所需的集成工作量。它还使第三方能够提供可插入 Android TV 设备的售后市场 DVR 系统。
+</p>
+<p>除了录制直播内容外，TV 应用还可以处理资源冲突。例如，如果设备配备了两个调谐器，它便可以同时录制两档节目。如果用户要求录制三档节目，则 TV 应用必须处理这种冲突，并且应该显示通知或要求用户为这些请求安排优先级。
+</p>
+<p>TV 应用还可以实现更复杂的逻辑安排，例如，在用户请求录制一集剧集时询问用户是否希望录制所有后续剧集。
+</p>
+<p>请参阅以下图表，了解可以在 Android TV 中完成的 DVR 实现。</p>
+<p>
+<img src="images/TV_Input_DVR.png" alt="Android TV 中的数字录像功能"/>
+</p>
+<p class="img-caption"><strong>图 16.</strong> Android TV 中的数字录像功能</p>
+
+<ol>
+<li>TV Input Service 通知 TV 应用可用的调谐器数量，以便 TV 应用可以处理潜在的资源冲突。
+</li><li>TV 应用接收用户发起的电视节目录制请求。
+</li><li>TV 应用将录制时间表存储于内部数据库中。
+</li><li>当到了录制时刻，TV 应用会传递相应请求，以将频道调谐到与录制请求相关的频道。
+</li><li>TV Input Service 接收该请求，回应是否有合适的资源，并调谐到该频道。
+</li><li>然后 TV 应用将开始录制的请求传递给 TV Input Manger。
+</li><li>TV Input Service 接收该请求并开始录制。
+</li><li>TV Input Service 将实际视频数据存储在存储空间中（可能是外部存储空间或云端存储空间）。
+</li><li>当完成录制时，TV 应用将停止录制的请求传递给 TV Input Manager。
+</li><li>一旦 TV Input Service 接收到该请求，它将停止录制并将其相关联的元数据添加到 TV Provider，以便 TV 应用可以在收到请求时向用户显示录制内容。</li>
+</ol>
+
+<p>要详细了解如何在 TV Input Service 中实现录制功能，请参阅<a href="https://developer.android.com/preview/features/tv-recording-api.html">电视录制</a>一文。
+</p>
+
+<h3 id="useful_resources">实用资源</h3>
+
+<ul>
+  <li><a href="/compatibility/android-cdd.pdf">Android CDD</a> 和开发者 API 文档是最具权威性的参考资料。
+  </li><li>CTS 验证程序会在兼容性测试计划过程中执行 API。对照 Live TV 运行 CTS 验证程序可能是一种在第三方输入源环境中查看 EPG、搜索、家长控制和其他要求的实用方法。
+  </li><li>请参阅<a href="http://developer.android.com/training/tv/tif/tvinput.html#setup">定义您的 TV Input Service</a>，了解开发者对此领域的期望。
+</li></ul>
+
+<h2 id="parental_control">家长控制</h2>
+
+<p>家长控制使用户能够屏蔽不希望播放的频道和节目，但通过输入 PIN 码便可绕过该屏蔽。</p>
+
+<p>TV 应用、TV Input Manager Service、TV Provider 和 TV Input 共同承担实现家长控制功能的责任。</p>
+
+<p>家长控制是强制性的，且在 CTS 验证程序的涵盖范围之内。</p>
+
+<p>许多国家/地区已定义了 TV Input 可以通过 <a href="https://developer.android.com/reference/android/media/tv/TvContentRating.html">TVContentRating API</a> 使用的分级制度。此外，TV Input 可以按照 CTS 验证程序测试（引入了“假”分级制度）所演示的步骤注册自己的自定义分级制度。在存在标准分级制度的国家/地区，我们鼓励设备制造商将 TIF 家长控制与他们可能包含的任何其他机制结合到一起。</p>
+
+<h3 id="tv_provider">TV Provider</h3>
+
+<p>现在，每个频道行都有一个 <code>COLUMN_LOCKED</code> 字段，用于锁定特定频道，使用户在未输入 PIN 码的情况下无法观看这些频道。节目字段 <code>COLUMN_CONTENT_RATING</code> 仅针对显示操作，而不用于落实家长控制。</p>
+
+<h3 id="tv_input_manager">TV Input Manager</h3>
+
+<p>TV Input Manager 会存储所有已屏蔽的 <code>TvContentRating</code>，并对 <code>isRatingBlocked()</code> 作出响应，从而建议是否应该屏蔽具有给定评级的内容。</p>
+
+<h3 id="tv_input">TV Input</h3>
+
+<p>当所显示内容的评级发生变化（因节目或频道发生变化）或家长控制设置发生变化（在 <code>ACTION_BLOCKED_RATINGS_CHANGED</code> 和 <code>ACTION_PARENTAL_CONTROLS_ENABLED_CHANGED</code> 上）时，TV Input 可通过对 TV Input Manager 调用 <code>isRatingBlocked()</code> 来检查是否应该屏蔽当前内容。如果应屏蔽此内容，TV Input 会停用相关音频和视频，并通过调用 <code>notifyContentBlocked(TvContentRating)</code> 通知 TV 应用当前内容已被屏蔽。如果不应屏蔽此内容，TV Input 将启用音频和视频，并通过调用 <code>notifyContentAllowed()</code> 通知 TV 应用当前内容可播放。</p>
+
+<h3 id="tv_app">TV 应用</h3>
+
+<p>要满足家长控制 API 的要求并创建一个兼容的平台，系统 TV 应用需要为用户提供一种管理家长控制的方式，包括使具体应用能够注册任何自定义评级制度。</p>
+
+<p>当 TV Input 通知 TV 应用当前内容已被屏蔽或当用户尝试查看已屏蔽的频道时，TV 应用将显示 PIN 码界面。</p>
+
+<p>TV 应用不直接存储家长控制设置。当用户更改家长控制设置时，TV Input Manager 会存储所有已屏蔽的 <code>TvContentRating</code>，TV Provider 则存储已屏蔽的频道。</p>
+
+<p>TV 应用需要声明 <code>android.permission.MODIFY_PARENTAL_CONTROLS</code> 权限，才能更改家长控制设置。</p>
+
+<p>我们鼓励设备制造商进行如下操作：</p>
+<ul>
+  <li>对照作为参考的 Live TV 应用进行 CTS 验证程序家长控制测试，以对兼容性要求进行验证。</li>
+  <li>使用 Live TV 应用作为自己的 TV 应用的参考：请重点参阅 <a href="https://android.googlesource.com/platform/packages/apps/TV/+/android-live-tv/src/com/android/tv/parental/ContentRatingsManager.java">ContentRatingsManager</a> 和 <a href="https://android.googlesource.com/platform/packages/apps/TV/+/android-live-tv-l-mr1/src/com/android/tv/ui/sidepanel/parentalcontrols/RatingSystemsFragment.java">RatingSystemsFragment</a> 源代码，了解二者处理自定义评级的方式。</li>
+</ul>
+
+<h2 id="hdmi-cec">HDMI-CEC</h2>
+
+<p>借助 HDMI-CEC，一台设备可以控制另一台设备，从而让用户通过单个遥控器控制家庭影院中的多台设备。Android TV 使用 HDMI-CEC 来加快设置过程，并允许通过中央 TV 应用远程控制多个 TV Input。例如，它可以切换输入源、开启或关闭设备等。</p>
+
+<p>Android TIF 可将 HDMI-CEC 作为 HDMI 控制服务进行实现，以便设备制造商可以跳过更加复杂的商业逻辑，只需开发与轻量级 Android TV HAL 进行交互的低级驱动程序。Android 提供标准实现的目的是，通过减少分散的实现和选择性功能支持来消除兼容性问题。HDMI 控制服务会使用现有的 Android 服务（包括输入和电源）。</p>
+
+<p>这意味着现有 HDMI-CEC 实现将需要重新设计，才能与 Android TIF 进行互操作。我们建议硬件平台纳入微处理器，以接收 CEC 开机命令和其他命令。</p>
+
+<img src="images/TV_App_CEC_integration.png" alt="Android TV 上的 CEC 集成"/>
+<p class="img-caption"><strong>图 17.</strong> Android TV 上的 CEC 集成</p>
+
+<ol>
+  <li>CEC 总线从当前活动来源接收切换到不同来源的命令。
+  </li><li>驱动程序将命令传递给 HDMI-CEC HAL。</li><li>HAL 通知所有 <code>ActiveSourceChangeListeners</code>。
+  </li><li>HDMI 控制服务通过 <code>ActiveSourceChangeListener</code> 获取来源更改通知。
+  </li><li>TV Input Manager Service 为 TV 应用生成切换来源的 Intent。
+  </li><li>TV 应用随后为充当切换目标的 TV Input 创建 TV Input Manager 会话，并对该会话调用 <code>setMain</code>。
+  </li><li>TV Input Manager 会话将此信息传递给 HDMI TV Input。
+  </li><li>HDMI TV Input 请求设置 sideband Surface。
+  </li><li>对 Surface 进行设置后，TV Input Manager Service 生成相应的路由控制命令并将其返回到 HDMI 控制服务。
+</li></ol>
+
+<h2 id="tv_integration_guidelines">电视集成指南</h2>
+
+<h3 id="broadcast_app">广播应用</h3>
+
+<p>由于每个国家/地区都具有针对广播的特定要求（MHEG、电视文字广播、HbbTV 等），制造商需要为广播应用提供他们自己的解决方案，例如：</p>
+
+<ul>
+  <li>MHEG：原生堆栈
+  </li><li>电视文字广播：原生堆栈
+  </li><li>HbbTV：由 Opera 浏览器修改过的 webkit
+</li></ul>
+
+<p>在 Android L 版本中，Android TV 希望设备制造商针对区域性电视堆栈使用系统集成器或 Android 解决方案，将 Surface 传递到电视软件堆栈，或传递与传统堆栈进行交互所需的按键代码。</p>
+
+<p>广播应用和 TV 应用的交互方式如下：</p>
+
+<ol>
+  <li>TV 应用获得焦点，接收所有按键事件。
+  </li><li>TV 应用将按键（如红色按钮）事件传递到 TV Input 设备。
+  </li><li>TV Input 设备在内部与传统电视堆栈进行集成。
+  </li><li>在接收到激活键码（如红色按钮）时，TV Input 设备将激活广播应用。
+  </li><li>广播应用获得 TV 应用中的焦点，并处理用户操作。
+</li></ol>
+
+<p>对于语音搜索/推荐功能，广播应用可能支持以语音搜索的方式进行应用内搜索。</p>
+
+</body></html>

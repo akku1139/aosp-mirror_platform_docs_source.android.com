@@ -1,0 +1,219 @@
+<html devsite><head>
+    <title>Android 开放配件协议 2.0</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>本文介绍了 Android 开放配件 (AOA) 协议自初始版本以来的变化，并对 <a href="aoa.html">AOA 1.0 文档</a>进行补充。AOAv2 增加了以下功能：</p>
+
+<ul>
+<li>音频输出（从 Android 设备到配件）。</li>
+<li>支持配件充当 Android 设备的一个或多个人机接口设备 (HID)。</li>
+</ul>
+
+<p>提供给 Android 应用开发者的 Android SDK API 保持不变。
+</p>
+
+<h2 id="detecting-android-open-accessory-20-support">检测 AOAv2 支持</h2>
+
+<p>要确定连接的 Android 设备是否支持配件和支持的协议版本，该配件必须发送 <code>getProtocol()</code> 命令并检查结果。仅支持 AOAv1 功能的 Android 设备必须返回 <code>1</code> 作为协议版本；支持 AOAv2 的额外功能的设备必须返回 <code>2</code> 作为协议版本。AOAv2 向后兼容 AOAv1，因此基于原始配件协议设计的配件将可以兼容更高版本的 Android 设备。</p>
+
+<p>以下示例来自配件开发工具包 2011 <a href="http://developer.android.com/tools/adk/adk2.html#src-download">源代码</a> (<code>&lt;adk-src&gt;/adk1/board/AndroidAccessory/AndroidAccessory.cpp</code>) 库，该示例演示了此协议的检查过程：</p>
+
+<pre class="devsite-click-to-copy">
+bool AndroidAccessory::switchDevice(byte addr)
+{
+    int protocol = getProtocol(addr);
+    if (protocol &gt;= 1) {
+        Serial.print("device supports protocol 1 or higher\n");
+    } else {
+        Serial.print("could not read device protocol version\n");
+        return false;
+    }
+
+    sendString(addr, ACCESSORY_STRING_MANUFACTURER, manufacturer);
+    sendString(addr, ACCESSORY_STRING_MODEL, model);
+    sendString(addr, ACCESSORY_STRING_DESCRIPTION, description);
+    sendString(addr, ACCESSORY_STRING_VERSION, version);
+    sendString(addr, ACCESSORY_STRING_URI, uri);
+    sendString(addr, ACCESSORY_STRING_SERIAL, serial);
+
+    usb.ctrlReq(addr, 0, USB_SETUP_HOST_TO_DEVICE | USB_SETUP_TYPE_VENDOR |
+                USB_SETUP_RECIPIENT_DEVICE, ACCESSORY_START, 0, 0, 0, 0, NULL);
+    return true;
+}
+</pre>
+
+<p>AOAv2 包含了新的 USB 产品 ID，以用于配件模式下每种可能的 USB 接口组合。</p>
+
+<table id="AOA-version-comparison">
+<tbody>
+
+<tr>
+<th>版本</th>
+<th>产品 ID</th>
+<th>通信</th>
+<th>说明</th>
+</tr>
+
+<tr>
+<td rowspan="2">AOAv1</td>
+<td><code>0x2D00</code></td>
+<td>配件</td>
+<td>提供两个批量端点，用于与 Android 应用通信。</td>
+</tr>
+
+<tr>
+<td><code>0x2D01</code></td>
+<td>配件 + adb</td>
+<td>在配件开发过程中用于调试。仅当用户在 Android 设备设置中启用了“USB 调试”<em></em>时才可用。</td>
+</tr>
+
+<tr>
+<td rowspan="4">AOAv2</td>
+<td><code>0x2D02</code></td>
+<td>音频</td>
+<td>将音频从 Android 设备流式传输至配件。</td>
+</tr>
+
+<tr>
+<td><code>0x2D03</code></td>
+<td>音频 + adb</td>
+<td></td>
+</tr>
+
+<tr>
+<td><code>0x2D04</code></td>
+<td>配件 + 音频</td>
+<td></td>
+</tr>
+
+<tr>
+<td><code>0x2D05</code></td>
+<td>配件 + 音频 + adb</td>
+<td></td>
+</tr>
+
+</tbody>
+</table>
+
+<p>AOAv1 中使用的产品 ID（<code>0x2D00</code> 和 <code>0x2D01</code>）在 AOAv2 中仍然受支持。</p>
+
+<h2 id="audio-support">音频支持</h2>
+
+<p>AOAv2 支持通过标准的 USB 音频类接口，将音频从 Android 设备输出到配件。该音频类接口支持比特率为 44100 Khz 的 2 声道 16 位 PCM 音频（未来可能会添加其他音频模式）。</p>
+
+<p>如需启用音频支持，配件必须发送新的 USB 控制请求：
+</p>
+
+<pre class="devsite-click-to-copy">
+**SET_AUDIO_MODE**
+requestType:    USB_DIR_OUT | USB_TYPE_VENDOR
+request:        58
+value:          0 for no audio (default),
+                1 for 2 channel, 16-bit PCM at 44100 KHz
+index:          0
+data            none
+</pre>
+
+<p>此命令必须在发送用于进入配件模式的 <code>ACCESSORY_START</code> 命令之前发送。<em></em></p>
+
+<h2 id="hid-support">HID 支持功能</h2>
+
+<p>AOAv2 允许配件在 Android 设备上注册一个或多个 USB HID 设备。这种方式反转了典型 USB HID 设备（如 USB 鼠标和键盘）的通信方向。通常情况下，HID 设备是连接到 USB 主机（即个人计算机）的外围设备，但在 AOA 中，USB 主机可以充当 USB 外围设备的一个或多个输入设备。</p>
+
+<p>HID 支持功能是标准 HID 事件的代理；该实现不会对事件内容或类型做出假设，而是直接将其传递给输入系统，从而使 AOAv2 配件能够充当任何 HID 设备（如鼠标、键盘、游戏控制器等）。您可以利用 HID 支持功能来提供基本功能（如媒体扩充基座上的播放/暂停按钮），也可提供高级功能（如带有鼠标和完整 QWERTY 键盘的扩展坞）。</p>
+
+<p>AOAv2 增加了新的 USB 控制请求，允许配件充当 Android 设备的一个或多个 HID 输入设备。HID 支持功能完全由端点 0 上的控制请求处理，因而不需要新的 USB 接口。这四个新控制请求为：</p>
+
+<ul>
+<li><strong>ACCESSORY_REGISTER_HID</strong> 向 Android 设备注册新的 HID 设备。配件提供 ID，以供其他三个调用用来识别该 HID 设备。在 USB 断开连接或配件发送 <code>ACCESSORY_UNREGISTER_HID</code> 以取消注册 HID 设备前，此 ID 将一直有效。</li>
+<li><strong>ACCESSORY_UNREGISTER_HID</strong> 取消注册之前通过 <code>ACCESSORY_REGISTER_HID</code> 注册的 HID 设备。</li>
+<li><strong>ACCESSORY_SET_HID_REPORT_DESC</strong> 将 HID 设备的报告描述符发送至 Android 设备。该请求用于描述 HID 设备的功能，且必须在向 Android 设备报告任何 HID 事件之前发送。如果报告描述符大于端点 0 的最大数据包大小，则会发送多个 <code>ACCESSORY_SET_HID_REPORT_DESC</code> 命令来传输整个描述符。</li>
+<li><strong>ACCESSORY_SEND_HID_EVENT</strong> 将配件中的输入事件发送至 Android 设备。</li>
+</ul>
+
+<p>新控制请求的代码定义如下：</p>
+
+<pre class="devsite-click-to-copy">
+/* Control request for registering a HID device.
+ * Upon registering, a unique ID is sent by the accessory in the
+ * value parameter. This ID will be used for future commands for
+ * the device
+ *
+ *  requestType:    USB_DIR_OUT | USB_TYPE_VENDOR
+ *  request:        ACCESSORY_REGISTER_HID_DEVICE
+ *  value:          Accessory assigned ID for the HID device
+ *  index:          total length of the HID report descriptor
+ *  data            none
+ */
+#define ACCESSORY_REGISTER_HID         54
+
+/* Control request for unregistering a HID device.
+ *
+ *  requestType:    USB_DIR_OUT | USB_TYPE_VENDOR
+ *  request:        ACCESSORY_REGISTER_HID
+ *  value:          Accessory assigned ID for the HID device
+ *  index:          0
+ *  data            none
+ */
+#define ACCESSORY_UNREGISTER_HID         55
+
+/* Control request for sending the HID report descriptor.
+ * If the HID descriptor is longer than the endpoint zero max packet size,
+ * the descriptor will be sent in multiple ACCESSORY_SET_HID_REPORT_DESC
+ * commands. The data for the descriptor must be sent sequentially
+ * if multiple packets are needed.
+ *
+ *  requestType:    USB_DIR_OUT | USB_TYPE_VENDOR
+ *  request:        ACCESSORY_SET_HID_REPORT_DESC
+ *  value:          Accessory assigned ID for the HID device
+ *  index:          offset of data in descriptor
+ *                      (needed when HID descriptor is too big for one packet)
+ *  data            the HID report descriptor
+ */
+#define ACCESSORY_SET_HID_REPORT_DESC         56
+
+/* Control request for sending HID events.
+ *
+ *  requestType:    USB_DIR_OUT | USB_TYPE_VENDOR
+ *  request:        ACCESSORY_SEND_HID_EVENT
+ *  value:          Accessory assigned ID for the HID device
+ *  index:          0
+ *  data            the HID report for the event
+ */
+#define ACCESSORY_SEND_HID_EVENT         57
+</pre>
+
+<h2 id="interoperability-with-aoa-10-features">与 AOAv1 的互操作性</h2>
+
+<p>原始协议 (<a href="aoa.html">AOAv1</a>) 支持 Android 应用通过 USB 直接与 USB 主机（配件）通信。AOAv2 在提供此支持的基础上增加了新的功能，使配件本身就能与 Android 操作系统（特别是音频和输入系统）通信。除了原有的功能集外，AOAv2 还可以构建使用新的音频和 HID 支持功能的配件。在保留已有功能的同时，让您畅享新功能。</p>
+
+<h2 id="connecting-aoa-20-without-an-android-app">在不使用 Android 应用的情况下连接 AOAv2</h2>
+
+<p>您可以设计这样一种配件，它可以使用音频和 HID 支持功能，但不与 Android 设备上的应用通信，例如音频基座。对于这些配件，用户无需接收对话框提示（告知他们发现了新连接的配件并请他们将配件与可与之通信的 Android 应用关联）。</p>
+
+<p>如需在配件连接后阻止系统显示此类对话框，配件可选择不将制造商和型号名称发送至 Android 设备。当这些字符串未提供给 Android 设备时：</p>
+
+<ul>
+<li>系统不会尝试查找可与配件通信的应用。</li>
+<li>当设备进入配件模式后，配件 USB 接口不会出现在 Android 设备的 USB 配置中。</li>
+</ul>
+
+</body></html>
