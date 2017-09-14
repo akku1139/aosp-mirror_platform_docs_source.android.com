@@ -1,0 +1,75 @@
+<html devsite><head>
+    <title>配置共享库</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>创建<a href="/devices/audio/implement-policy.html">音频政策配置后</a>，您必须将 HAL 实现打包到共享库中，并将其复制到相应位置：</p>
+
+<ol>
+<li>创建一个 <code>device/&lt;company&gt;/&lt;device&gt;/audio</code> 目录以包含您的库的源文件。</li>
+<li>创建一个 <code>Android.mk</code> 文件来编译共享库。确保 Makefile 包含以下行：<br />
+<pre class="devsite-click-to-copy">
+LOCAL_MODULE := audio.primary.&lt;device&gt;
+</pre>
+<br />
+<p>您的库必须命名为 <code>audio.primary.&lt;device&gt;.so</code>，以便 Android 可以正确加载库。此文件名的 <code>primary</code> 部分表示此共享库用于设备上的主要音频硬件。模块名称 <code>audio.a2dp.&lt;device&gt;</code> 和 <code>audio.usb.&lt;device&gt;</code> 也可用于蓝牙和 USB 音频接口。以下是 Galaxy Nexus 音频硬件的 <code>Android.mk</code> 示例：</p>
+
+<pre class="devsite-click-to-copy">
+LOCAL_PATH := $(call my-dir)
+
+include $(CLEAR_VARS)
+
+LOCAL_MODULE := audio.primary.tuna
+LOCAL_MODULE_RELATIVE_PATH := hw
+LOCAL_SRC_FILES := audio_hw.c ril_interface.c
+LOCAL_C_INCLUDES += \
+        external/tinyalsa/include \
+        $(call include-path-for, audio-utils) \
+        $(call include-path-for, audio-effects)
+LOCAL_SHARED_LIBRARIES := liblog libcutils libtinyalsa libaudioutils libdl
+LOCAL_MODULE_TAGS := optional
+
+include $(BUILD_SHARED_LIBRARY)
+</pre>
+</li>
+<br />
+<li>如果您的产品支持 Android CDD 指定的低延迟音频，请将相应的 XML 功能文件复制到您的产品中。例如，在您产品的 <code>device/&lt;company&gt;/&lt;device&gt;/device.mk</code> Makefile 中：<pre class="devsite-click-to-copy">
+PRODUCT_COPY_FILES := ...
+
+PRODUCT_COPY_FILES += \
+frameworks/native/data/etc/android.hardware.audio.low_latency.xml:system/etc/permissions/android.hardware.audio.low_latency.xml \
+</pre>
+</li>
+<br />
+<li>将您之前创建的音频政策配置文件复制到您产品的 <code>device/&lt;company&gt;/&lt;device&gt;/device.mk</code> Makefile 的 <code>system/etc/</code> 目录下。例如：<pre class="devsite-click-to-copy">
+PRODUCT_COPY_FILES += \
+        device/samsung/tuna/audio/audio_policy.conf:system/etc/audio_policy.conf
+</pre>
+</li>
+<br />
+<li>在您产品的 <code>device/&lt;company&gt;/&lt;device&gt;/device.mk</code> Makefile 中声明您的产品所需的音频 HAL 的共享模块。例如，Galaxy Nexus 需要主要音频 HAL 模块和蓝牙音频 HAL 模块：<pre class="devsite-click-to-copy">
+PRODUCT_PACKAGES += \
+        audio.primary.tuna \
+        audio.a2dp.default
+</pre>
+</li>
+</ol>
+
+</body></html>

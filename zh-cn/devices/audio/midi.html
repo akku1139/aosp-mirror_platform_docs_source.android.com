@@ -1,0 +1,106 @@
+<html devsite><head>
+    <title>MIDI</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>
+<a href="http://en.wikipedia.org/wiki/MIDI">MIDI</a>（乐器数字接口）是用于将计算机与乐器、舞台灯光和其他时间型媒体相互连接的标准协议。
+</p>
+
+<p>严格来说，MIDI 与音频无关。但是，由于 MIDI 通常用于音乐处理，因此将本文安排在了音频部分。
+</p>
+
+<h2 id="transports">传输</h2>
+
+<p>首版 MIDI 1.0 中指定的物理<a href="http://en.wikipedia.org/wiki/Transport_layer">传输层</a>是一个具有 <a href="http://en.wikipedia.org/wiki/DIN_connector">5 针 DIN</a> 连接器的电流回路。
+</p>
+
+<p>自 MIDI 1.0 推出以来，还定义了其他传输协议，包括通过 USB 传输 MIDI 以及通过<a href="http://en.wikipedia.org/wiki/Bluetooth_low_energy">蓝牙低功耗</a> (BLE) 传输 MIDI 的提议草案。
+</p>
+
+<h2 id="for-android">在 Android 上使用 MIDI</h2>
+
+<p>Android 3.1 及更高版本支持 <a href="http://en.wikipedia.org/wiki/USB_On-The-Go">USB On-The-Go</a>，允许 Android 设备充当 USB 主机来驱动 USB 外设。在 Android 3.1 中引入的 USB 主机模式 API 允许开发者在应用级别通过 USB 实现 MIDI，但直到最近才推出了针对 MIDI 的内置平台 API。</p>
+
+<p>从 Android 6.0 (Marshmallow) 版本开始，设备制造商可以在平台中启用可选的 MIDI 支持。Android 直接支持 USB、BLE 草案和虚拟（应用间）传输。Android 通过外部适配器间接支持 MIDI 1.0。
+</p>
+
+<p>有关使用新 MIDI API 进行应用编程的详细信息，请参阅 <a href="https://developer.android.com/reference/android/media/midi/package-summary.html"><code>android.media.midi</code></a> 软件包。
+</p>
+
+<p>本文的其余部分讨论了 Android 设备制造商如何在平台中启用 MIDI 支持。
+</p>
+
+<h2 id="transport">启用传输</h2>
+
+<p>该实现以 ALSA 为基础来实现 USB 主机模式和 USB 外设模式传输。ALSA 不用于 BLE 和虚拟传输。
+</p>
+
+<h3 id="usb-host">USB 主机模式</h3>
+
+<p>要为 USB 主机模式启用 MIDI，请首先在总体上支持 USB 主机模式，然后在内核配置中启用 <code>CONFIG_SND_RAWMIDI</code> 和 <code>CONFIG_SND_USB_MIDI</code>。请参阅 <a href="/devices/tech/config/kernel.html">Android 内核配置</a>。
+</p>
+
+<p>通过 USB 传输 MIDI 由 <a href="http://www.usb.org/">USB Implementers Forum, Inc</a> 发布的<a href="http://www.usb.org/developers/docs/devclass_docs/midi10.pdf">关于 MIDI 设备的通用串行总线设备类定义 1.0 版（1999 年 11 月 1 日）</a>标准正式给出定义。</p>
+
+<h3 id="usb-peripheral">USB 外设模式</h3>
+
+<p>要为 USB 外设模式启用 MIDI，您可能需要将补丁程序应用到 Linux 内核，才能将 <code>drivers/usb/gadget/f_midi.c</code> 集成到 USB 小工具驱动程序中。在撰写本文时，这些补丁程序可用于 Linux 内核版本 3.10。这些补丁程序尚未针对 <a href="http://en.wikipedia.org/wiki/Configfs">ConfigFs</a>（适用于 USB 小工具驱动程序的新架构）进行更新，也未合并到上游 <a href="http://kernel.org">kernel.org</a>。
+</p>
+
+<p>补丁程序按位于项目 <code>kernel/common</code> 分支 <code>android-3.10</code> 的内核树的提交顺序显示：</p>
+<ol>
+<li><a href="https://android-review.googlesource.com/#/c/127450/">https://android-review.googlesource.com/#/c/127450/</a></li>
+<li><a href="https://android-review.googlesource.com/#/c/127452/">https://android-review.googlesource.com/#/c/127452/</a></li>
+<li><a href="https://android-review.googlesource.com/#/c/143714/">https://android-review.googlesource.com/#/c/143714/</a></li>
+</ol>
+
+<p><em></em>此外，最终用户还必须在“设置”/“开发者选项”/“网络”/“选择 USB 配置”对话框中勾选 MIDI 框，或者在连接到 USB 主机时从屏幕顶部向下拉，选择条目“USB 的用途…”，然后选择 <strong>MIDI</strong>。</p>
+
+<h3 id="ble">BLE</h3>
+
+<p>只要设备支持 BLE，通过 BLE 传输 MIDI 的功能就始终处于启用状态。由于此传输协议还处于草案阶段，因此可能会发生变化。
+</p>
+
+<h3 id="virtual">虚拟（应用间）</h3>
+
+<p>虚拟（应用间）传输始终处于启用状态。
+</p>
+
+<h2 id="claim-feature">声明功能</h2>
+
+<p>应用可以使用 <code>android.software.midi</code> 功能来检查设备是否支持 MIDI。
+</p>
+
+<p>要声明 MIDI 支持，请将以下行添加到您的 <code>device.mk</code>：</p>
+<pre class="devsite-click-to-copy">
+PRODUCT_COPY_FILES += \
+frameworks/native/data/etc/android.software.midi.xml:system/etc/permissions/android.software.midi.xml
+</pre>
+
+<p>要了解声明相关功能的要求，请参阅 <a href="/compatibility/android-cdd.pdf">Android 兼容性定义文档 (CDD)</a>。
+</p>
+
+<h2 id="hostDebugging">在主机模式下进行调试</h2>
+
+<p>在 USB 主机模式下，无法通过 USB 进行 Android 调试桥 (adb) 调试。请参阅 <a href="http://developer.android.com/tools/help/adb.html">Android 调试桥</a>的<a href="http://developer.android.com/tools/help/adb.html#wireless">无线用法</a>部分，了解备选方案。
+</p>
+
+</body></html>

@@ -1,0 +1,278 @@
+<html devsite><head>
+    <title>HAL 子系统</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<h2 id="requests">请求</h2>
+<p>应用框架针对捕获的结果向相机子系统发出请求。一个请求对应一组结果。请求包含有关捕获和处理这些结果的所有配置信息。其中包括分辨率和像素格式；手动传感器、镜头和闪光灯控件；3A 操作模式；RAW 到 YUV 处理控件；以及统计信息的生成。这样一来，便可更好地控制结果的输出和处理。一次可发起多个请求，而且提交的请求不会出现阻塞的情况。请求始终按照接收的顺序进行处理。<br />
+  <img src="images/camera_model.png" alt="相机请求模型" id="figure1"/>
+  </p><p class="img-caption">
+  <strong>图 1.</strong>  相机模型</p>
+<h2 id="hal-subsystem">HAL 和相机子系统</h2>
+<p>相机子系统包括相机管道中组件的实现，例如 3A 算法和处理控件。相机 HAL 为您提供了实现您版本的这些组件所需的接口。为了保持多个设备制造商和图像信号处理器（ISP，也称为相机传感器）供应商之间的跨平台兼容性，相机管道模型是虚拟的，且不直接对应任何真正的 ISP。不过，它与真正的处理管道足够相似，因此您可以有效地将其映射到硬件。此外，它足够抽象，可支持多种不同的算法和操作顺序，而不会影响质量、效率或跨设备兼容性。<br />相机管道还支持应用框架开启自动对焦等功能的触发器。它还会将通知发送回应用框架，以通知应用自动对焦锁定或错误等事件。<br />
+  <img src="images/camera_hal.png" alt="相机硬件抽象层" id="figure2"/>
+  </p><p class="img-caption">
+  <strong>图 2.</strong>  相机管道</p>请注意，上图所示的一些图像处理块在初始版本中没有明确定义。<br />相机管道假设如下方面：<p></p>
+<ul>
+  <li>RAW Bayer 输出在 ISP 内部不经过任何处理。</li>
+  <li>统计信息根据原始传感器数据生成。</li>
+  <li>将原始传感器数据转换为 YUV 的各种处理块按任意顺序排列。</li>
+  <li>当显示多个刻度和剪裁单元时，所有的缩放器单元共享输出区域控件（数字缩放）。不过，每个单元都可能具有不同的输出分辨率和像素格式。</li>
+</ul>
+<p><strong>API 用途摘要</strong><br />下面简要介绍使用 Android Camera API 的步骤。有关这些步骤（包括 API 调用）的详细说明，请参阅“启动和预期操作顺序”部分。</p>
+<ol>
+  <li>监听和枚举相机设备。</li>
+  <li>打开设备并连接监听器。</li>
+  <li>配置目标使用情形的输出（如静态捕获、录制等）。</li>
+  <li>为目标使用情形创建请求。</li>
+  <li>捕获/重复请求和连拍。</li>
+  <li>接收结果元数据和图片数据。</li>
+  <li>切换使用情形时，返回到第 3 步。</li>
+</ol>
+<p><strong>HAL 操作摘要</strong></p>
+<ul>
+  <li>捕获的异步请求来自于框架。</li>
+  <li>HAL 设备必须按顺序处理请求。对于每个请求，均产生输出结果元数据以及一个或多个输出图片缓冲区。</li>
+  <li>请求和结果以及后续请求引用的流遵守先进先出规则。</li>
+  <li>指定请求的所有输出的时间戳必须完全相同，以便框架可以根据需要将它们匹配在一起。</li>
+  <li>所有捕获配置和状态（不包括 3A 例程）都包含在请求和结果中。</li>
+</ul>
+<img src="images/camera-hal-overview.png" alt="相机 HAL 概览" id="figure3"/>
+<p class="img-caption">
+  <strong>图 3.</strong>  相机 HAL 概览</p>
+<h2 id="startup">启动和预期操作顺序</h2>
+<p>本节包含有关使用 Camera API 时预期步骤的详细说明。有关这些结构和方法的定义，请参阅 <a href="https://android.googlesource.com/platform/hardware/libhardware/+/master/include/hardware/camera3.h">platform/hardware/libhardware/include/hardware/camera3.h</a>。</p>
+<ol>
+  <li>框架调用 camera_module_t-&gt;common.open()，而这会返回一个 hardware_device_t 结构。</li>
+  <li>框架检查 hardware_device_t-&gt;version 字段，并为该版本的相机硬件设备实例化相应的处理程序。如果版本是 CAMERA_DEVICE_API_VERSION_3_0，则该设备会转型为 camera3_device_t。</li>
+  <li>框架调用 camera3_device_t-&gt;ops-&gt;initialize() 并显示框架回调函数指针。在调用 ops 结构中的任何其他函数之前，这只会在 open() 之后调用一次。</li>
+  <li>框架调用 camera3_device_t-&gt;ops-&gt;configure_streams() 并显示到 HAL 设备的输入/输出流列表。</li>
+  <li>框架为 configure_streams 中列出的至少一个输出流分配 gralloc 缓冲区并调用 camera3_device_t-&gt;ops-&gt;register_stream_buffers()。相同的流仅注册一次。</li>
+  <li>框架通过调用 camera3_device_t-&gt;ops-&gt;construct_default_request_settings() 来为某些使用情形请求默认设置。这可能会在第 3 步之后的任何时间发生。</li>
+  <li>框架通过基于其中一组默认设置的设置以及至少一个框架之前注册的输出流来构建第一个捕获请求并将其发送到 HAL。它通过 camera3_device_t-&gt;ops-&gt;process_capture_request() 发送到 HAL。HAL 必须阻止此调用返回，直到准备好发送下一个请求。</li>
+  <li>框架继续提交请求，并且可能会为尚未注册的流调用 register_stream_buffers()，并调用 construct_default_request_settings 来为其他使用情形获取默认设置缓冲区。</li>
+  <li>当请求捕获开始（传感器开始曝光以进行捕获）时，HAL 会调用 camera3_callback_ops_t-&gt;notify() 并显示 SHUTTER 事件，包括帧号和开始曝光的时间戳。此通知调用必须在第一次调用该帧号的 process_capture_result() 之前进行。</li>
+  <li>在某个管道延迟后，HAL 开始使用 camera3_callback_ops_t-&gt;process_capture_result() 将完成的捕获返回到框架。这些捕获按照与提交请求相同的顺序返回。一次可发起多个请求，具体取决于相机 HAL 设备的管道深度。</li>
+  <li>一段时间后，框架可能会停止提交新的请求、等待现有捕获完成（所有缓冲区都已填充，所有结果都已返回），然后再次调用 configure_streams()。这会重置相机硬件和管道，以获得一组新的输入/输出流。可重复使用先前配置中的部分流；如果这些流的缓冲区已经过 HAL 注册，则不会再次注册。如果至少还有一个已注册的输出流，则框架从第 7 步继续（否则，需要先完成第 5 步）。</li>
+  <li>或者，框架可能会调用 camera3_device_t-&gt;common-&gt;close() 以结束相机会话。当框架中没有其他处于活动状态的调用时，它可能随时会被调用；尽管在所有发起的捕获完成（所有结果都已返回，所有缓冲区都已填充）之前，调用可能会阻塞。在 close 调用返回后，不允许再从 HAL 对 camera3_callback_ops_t 函数进行更多调用。一旦进行 close() 调用，该框架可能不会调用任何其他 HAL 设备函数。</li>
+  <li>在发生错误或其他异步事件时，HAL 必须调用 camera3_callback_ops_t-&gt;notify() 并返回相应的错误/事件消息。从严重的设备范围错误通知返回后，HAL 应表现为在其上调用了 close()。但是，HAL 必须在调用 notify() 之前取消或完成所有待处理的捕获，以便在调用 notify() 并返回严重错误时，框架不会收到来自设备的更多回调。在严重的错误消息返回 notify() 方法后，close() 之外的方法应该返回 -ENODEV 或 NULL。</li>
+</ol>
+<img src="images/camera-ops-flow.png" width="600" height="434" alt="相机操作流程" id="figure4"/>
+<p class="img-caption">
+  <strong>图 4.</strong>  相机操作流程</p>
+<h2 id="ops-modes">操作模式</h2>
+<p>相机 HAL3 设备可以实现以下两种可能的操作模式之一：有限和全面模式。更加高端的新设备有望实现全面支持。有限模式的硬件要求与相机 HAL 设备 v1 实现的硬件要求大致一致，旧版设备或便宜设备会实现这一模式。全面模式是有限模式的严格超集，它们有着基本相同的操作流程，如上所述。</p>
+<p>HAL 必须使用 android.info.supportedHardwareLevel 静态元数据条目来表示其支持级别，0 表示有限模式支持，1 表示全面模式支持。</p>
+<p>大致来说，有限模式设备不允许应用控制捕获设置（仅限 3A 控件）、高速率捕获高分辨率图片、读取原始传感器或支持高于最大录制分辨率的 YUV 输出流（JPEG 仅适用于较大图片）。<br />以下是有限模式行为的详细信息：</p>
+<ul>
+  <li>有限模式设备不需要在捕获请求设置和捕获的实际图片数据之间实现准确的同步。相反，对设置的更改可能会在将来的某个时间生效，并且可能不是针对每个设置条目的相同输出帧。对设置进行快速更改可能会导致某些设置永远不能用于捕获。但是，包含高分辨率输出缓冲区 (&gt; 1080p) 的捕获必须使用指定的设置（不过，要了解处理速率，请参阅下文）。</li>
+  <li>有限模式下包含高分辨率 (&gt; 1080p) 输出缓冲区的捕获可能会在 process_capture_request() 中阻塞，直到填满所有输出缓冲区。全面模式 HAL 设备必须以该像素格式的静态元数据中显示的速率处理高分辨率请求的序列。HAL 仍必须调用 process_capture_result() 以提供输出；框架必须做好准备，以便 process_capture_request() 进行阻塞，直至该请求的 process_capture_result() 为有限模式设备完成高分辨率捕获。</li>
+  <li>有限模式设备不需要支持大多数设置/结果/静态信息元数据。有限模式 HAL 设备只需消耗或生成以下设置：<ul>
+      <li>android.control.aeAntibandingMode（控件）</li>
+      <li>android.control.aeExposureCompensation（控件）</li>
+      <li>android.control.aeLock（控件）</li>
+      <li>android.control.aeMode（控件）</li>
+      <li>[OFF 表示 ON_FLASH_TORCH]</li>
+      <li>android.control.aeRegions（控件）</li>
+      <li>android.control.aeTargetFpsRange（控件）</li>
+      <li>android.control.afMode（控件）</li>
+      <li>[OFF 表示无限远聚焦]</li>
+      <li>android.control.afRegions（控件）</li>
+      <li>android.control.awbLock（控件）</li>
+      <li>android.control.awbMode（控件）</li>
+      <li>[不支持 OFF]</li>
+      <li>android.control.awbRegions（控件）</li>
+      <li>android.control.captureIntent（控件）</li>
+      <li>android.control.effectMode（控件）</li>
+      <li>android.control.mode（控件）</li>
+      <li>[不支持 OFF]</li>
+      <li>android.control.sceneMode（控件）</li>
+      <li>android.control.videoStabilizationMode（控件）</li>
+      <li>android.control.aeAvailableAntibandingModes（静态）</li>
+      <li>android.control.aeAvailableModes（静态）</li>
+      <li>android.control.aeAvailableTargetFpsRanges（静态）</li>
+      <li>android.control.aeCompensationRange（静态）</li>
+      <li>android.control.aeCompensationStep（静态）</li>
+      <li>android.control.afAvailableModes（静态）</li>
+      <li>android.control.availableEffects（静态）</li>
+      <li>android.control.availableSceneModes（静态）</li>
+      <li>android.control.availableVideoStabilizationModes（静态）</li>
+      <li>android.control.awbAvailableModes（静态）</li>
+      <li>android.control.maxRegions（静态）</li>
+      <li>android.control.sceneModeOverrides（静态）</li>
+      <li>android.control.aeRegions（动态）</li>
+      <li>android.control.aeState（动态）</li>
+      <li>android.control.afMode（动态）</li>
+      <li>android.control.afRegions（动态）</li>
+      <li>android.control.afState（动态）</li>
+      <li>android.control.awbMode（动态）</li>
+      <li>android.control.awbRegions（动态）</li>
+      <li>android.control.awbState（动态）</li>
+      <li>android.control.mode（动态）</li>
+      <li>android.flash.info.available（静态）</li>
+      <li>android.info.supportedHardwareLevel（静态）</li>
+      <li>android.jpeg.gpsCoordinates（控件）</li>
+      <li>android.jpeg.gpsProcessingMethod（控件）</li>
+      <li>android.jpeg.gpsTimestamp（控件）</li>
+      <li>android.jpeg.orientation（控件）</li>
+      <li>android.jpeg.quality（控件）</li>
+      <li>android.jpeg.thumbnailQuality（控件）</li>
+      <li>android.jpeg.thumbnailSize（控件）</li>
+      <li>android.jpeg.availableThumbnailSizes（静态）</li>
+      <li>android.jpeg.maxSize（静态）</li>
+      <li>android.jpeg.gpsCoordinates（动态）</li>
+      <li>android.jpeg.gpsProcessingMethod（动态）</li>
+      <li>android.jpeg.gpsTimestamp（动态）</li>
+      <li>android.jpeg.orientation（动态）</li>
+      <li>android.jpeg.quality（动态）</li>
+      <li>android.jpeg.size（动态）</li>
+      <li>android.jpeg.thumbnailQuality（动态）</li>
+      <li>android.jpeg.thumbnailSize（动态）</li>
+      <li>android.lens.info.minimumFocusDistance（静态）</li>
+      <li>android.request.id（控件）</li>
+      <li>android.request.id（动态）</li>
+      <li>android.scaler.cropRegion（控件）</li>
+      <li>[忽略 (x,y)，假定中心缩放]</li>
+      <li>android.scaler.availableFormats（静态）</li>
+      <li>[不支持 RAW]</li>
+      <li>android.scaler.availableJpegMinDurations（静态）</li>
+      <li>android.scaler.availableJpegSizes（静态）</li>
+      <li>android.scaler.availableMaxDigitalZoom（静态）</li>
+      <li>android.scaler.availableProcessedMinDurations（静态）</li>
+      <li>android.scaler.availableProcessedSizes（静态）</li>
+      <li>[不支持完整分辨率]</li>
+      <li>android.scaler.maxDigitalZoom（静态）</li>
+      <li>android.scaler.cropRegion（动态）</li>
+      <li>android.sensor.orientation（静态）</li>
+      <li>android.sensor.timestamp（动态）</li>
+      <li>android.statistics.faceDetectMode（控件）</li>
+      <li>android.statistics.info.availableFaceDetectModes（静态）</li>
+      <li>android.statistics.faceDetectMode（动态）</li>
+      <li>android.statistics.faceIds（动态）</li>
+      <li>android.statistics.faceLandmarks（动态）</li>
+      <li>android.statistics.faceRectangles（动态）</li>
+      <li>android.statistics.faceScores（动态）</li>
+    </ul>
+  </li>
+</ul>
+<h2 id="interaction">应用捕获请求之间的互动、3A 控件和处理管道</h2>
+<p>根据 3A 控件块中的设置，相机管道会忽略应用捕获请求中的某些参数，并改用 3A 控件例程提供的值。例如，启用自动曝光时，传感器的曝光时间、帧持续时间和敏感度参数由平台 3A 算法控制，且所有应用指定的值都会被忽略。必须在输出元数据中报告由 3A 例程为帧选择的值。下表描述了 3A 控件块的不同模式和由这些模式控制的属性。有关这些属性的定义，请参阅 <a href="https://android.googlesource.com/platform/system/media/+/master/camera/docs/docs.html">platform/system/media/camera/docs/docs.html</a> 文件。</p>
+<table>
+  <tbody><tr>
+    <th>参数</th>
+    <th>状态</th>
+    <th>受控制的属性</th>
+  </tr>
+  <tr>
+    <td>android.control.aeMode</td>
+    <td>OFF</td>
+    <td>无</td>
+  </tr>
+  <tr>
+    <td></td>
+    <td>ON</td>
+    <td>android.sensor.exposureTime
+android.sensor.frameDuration
+android.sensor.sensitivity android.lens.aperture（如果支持的话）
+android.lens.filterDensity（如果支持的话）</td>
+  </tr>
+  <tr>
+    <td></td>
+    <td>ON_AUTO_FLASH</td>
+    <td>均已开启，还有 android.flash.firingPower、android.flash.firingTime 和 android.flash.mode</td>
+  </tr>
+  <tr>
+    <td></td>
+    <td>ON_ALWAYS_FLASH</td>
+    <td>与 ON_AUTO_FLASH 相同</td>
+  </tr>
+  <tr>
+    <td></td>
+    <td>ON_AUTO_FLASH_RED_EYE</td>
+    <td>与 ON_AUTO_FLASH 相同</td>
+  </tr>
+  <tr>
+    <td>android.control.awbMode</td>
+    <td>OFF</td>
+    <td>无</td>
+  </tr>
+  <tr>
+    <td></td>
+    <td>WHITE_BALANCE_*</td>
+    <td>android.colorCorrection.transform。如果 android.colorCorrection.mode 为 FAST 或 HIGH_QUALITY，则进行特定于平台的调整。</td>
+  </tr>
+  <tr>
+    <td>android.control.afMode</td>
+    <td>OFF</td>
+    <td>无</td>
+  </tr>
+  <tr>
+    <td></td>
+    <td>FOCUS_MODE_*</td>
+    <td>android.lens.focusDistance</td>
+  </tr>
+  <tr>
+    <td>android.control.videoStabilization</td>
+    <td>OFF</td>
+    <td>无</td>
+  </tr>
+  <tr>
+    <td></td>
+    <td>ON</td>
+    <td>可调整 android.scaler.cropRegion 来实现视频防抖</td>
+  </tr>
+  <tr>
+    <td>android.control.mode</td>
+    <td>OFF</td>
+    <td>AE、AWB 和 AF 处于停用状态</td>
+  </tr>
+  <tr>
+    <td></td>
+    <td>AUTO</td>
+    <td>单独使用 AE、AWB 和 AF 设置</td>
+  </tr>
+  <tr>
+    <td></td>
+    <td>SCENE_MODE_*</td>
+    <td>可替换上述所有参数。各个 3A 控件均处于停用状态。</td>
+  </tr>
+</tbody></table>
+<p>针对 3A 算法提供的控件大多一对一映射到旧 API 的参数（例如，曝光补偿、取景模式或白平衡模式）上。<br />在图 2 中，图像处理块中的控件都以类似的原理操作，并且每个块一般都具有 3 种模式：</p>
+<ul>
+  <li>OFF：该处理块处于停用状态。无法停用去马赛克、色彩校正和色调曲线调整块。</li>
+  <li>FAST：与 OFF 模式相比，此模式下的处理块可能不会降低输出帧速率，但是考虑到限制条件，它应该会产生能够产生的最优质输出。通常，这会用于预览或视频录制模式，或用于连拍静态图片。在某些设备上，这可能等同于 OFF 模式（不能在不降低帧速率的情况下进行处理）；而在某些设备上，这可能等同于 HIGH_QUALITY 模式（最佳质量仍不会降低帧速率）。</li>
+  <li>HIGHQUALITY：在这种模式下，处理块应尽可能产生最优质结果，根据需要减缓输出帧速率。通常，这会用于静态捕获优质图片。一些块包括可以进行选择的手动控件（而非 FAST 或 HIGHQUALITY）。例如，颜色校正块支持颜色变换矩阵，而色调曲线调整支持任意的全局色调映射曲线。</li>
+</ul>
+  <p>相机子系统可以支持的最大帧速率受到多种因素的影响：</p>
+<ul>
+  <li>所请求的输出图片流的分辨率</li>
+  <li>在成像器上提供分箱/跳过模式</li>
+  <li>成像器接口的带宽</li>
+  <li>各种 ISP 处理块的带宽</li>
+</ul>
+<p>由于这些因素在不同的 ISP 和传感器之间可能有很大差异，因此相机 HAL 接口会尝试将带宽限制抽象为尽可能简单的模型。显示的模型具有以下特性：</p>
+<ul>
+  <li>考虑到应用的已请求输出流大小，图片传感器始终配置为尽可能输出最小的分辨率。最小分辨率定义为至少与请求的最大输出流一样大。</li>
+  <li>因为任何请求都可能使用任意或所有当前配置的输出流，所以传感器和 ISP 必须配置为支持同时将单个捕获扩展到所有流。</li>
+  <li>对于不包含 JPEG 流的请求，它们表现得像经过处理的 YUV 流一样；在直接引用它们的请求中，它们用作 JPEG 流。</li>
+  <li>JPEG 处理器可以并行运行到相机管道的剩余部分，但不能一次处理多个捕获。</li>
+</ul>
+
+</body></html>

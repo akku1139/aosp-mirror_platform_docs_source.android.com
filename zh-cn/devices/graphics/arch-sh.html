@@ -1,0 +1,51 @@
+<html devsite><head>
+    <title>Surface 和 SurfaceHolder</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>从 1.0 开始，<a href="http://developer.android.com/reference/android/view/Surface.html">Surface</a> 类一直是公共 API 的一部分。它的描述简单如下：“在由屏幕合成器管理的原始缓冲区上进行处理”。这句描述在最初编写时是准确的，但在现代系统上却远远不足。</p>
+
+<p>Surface 表示通常（但并非总是！）由 SurfaceFlinger 消耗的缓冲区队列的生产方。当您渲染到 Surface 上时，产生的结果将进入相关缓冲区，该缓冲区被传递给消耗方。Surface 不仅仅是您可以随意擦写的原始内存数据块。</p>
+
+<p>用于显示 Surface 的 BufferQueue 通常配置为三重缓冲；但按需分配缓冲区。因此，如果生产方足够缓慢地生成缓冲区 - 也许是以 30fps 的速度在 60fps 的显示屏上播放动画 - 队列中可能只有两个分配的缓冲区。这有助于最小化内存消耗。您可以看到与 <code>dumpsys SurfaceFlinger</code> 输出中每个层级相关的缓冲区的摘要。</p>
+
+<h2 id="canvas">画布渲染</h2>
+
+<p>曾经有一段时间所有渲染都是用软件完成的，您今天仍然可以这样做。低级实现由 Skia 图形库提供。如果要绘制一个矩形，您可以调用库，然后它会在缓冲区中适当地设置字节。为了确保两个客户端不会同时更新某个缓冲区，或者在该缓冲区正在被显示时写入该缓冲区，您必须锁定该缓冲区才能进行访问。<code>lockCanvas()</code> 可锁定该缓冲区并返回用于绘制的 Canvas，<code>unlockCanvasAndPost()</code> 则解锁该缓冲区并将其发送到合成器。</p>
+
+<p>随着时间的推移，出现了具有通用 3D 引擎的设备，于是 Android 围绕 OpenGL ES 进行了重新定位。然而，必须确保旧 API 依然适用于应用和应用框架代码，所以我们努力对 Canvas API 进行了硬件加速。从<a href="http://developer.android.com/guide/topics/graphics/hardware-accel.html">硬件加速</a>页面的图表可以看出，整个过程并非一帆风顺。特别要注意的一点是，虽然提供给 View 的 <code>onDraw()</code> 方法的 Canvas 可能已硬件加速，但是当应用通过 <code>lockCanvas()</code> 直接锁定 Surface 时所获得的 Canvas 从未获得硬件加速。</p>
+
+<p>当您锁定一个 Surface 以便访问 Canvas 时，“CPU 渲染器”将连接到 BufferQueue 的生产方，直到 Surface 被销毁时才会断开连接。大多数其他生产方（如 GLES）可以断开连接并重新连接到 Surface，但是基于 Canvas 的“CPU 渲染器”则不能。这意味着如果您已经为某个 Canvas 将相关 Surface 锁定，则无法使用 GLES 在该 Surface 上进行绘制或从视频解码器向其发送帧。</p>
+
+<p>生产方首次从 BufferQueue 请求缓冲区时，缓冲区将被分配并初始化为零。有必要进行初始化，以避免意外地在进程之间共享数据。然而，当您重新使用缓冲区时，以前的内容仍然存在。如果您反复调用 <code>lockCanvas()</code> 和 <code>unlockCanvasAndPost()</code> 而不绘制任何内容，则会在先前渲染的帧之间循环。</p>
+
+<p>Surface 锁定/解锁代码会保留对先前渲染的缓冲区的引用。如果在锁定 Surface 时指定了脏区域，那么它将从以前的缓冲区复制非脏像素。缓冲区很有可能由 SurfaceFlinger 或 HWC 处理；但是由于我们只需从中读取内容，所以无需等待独占访问。</p>
+
+<p>应用直接在 Surface 上进行绘制的主要非 Canvas 方法是通过 OpenGL ES。相关说明请参阅 <a href="#eglsurface">EGLSurface 和 OpenGL ES</a> 部分。</p>
+
+<h2 id="surfaceholder">SurfaceHolder</h2>
+
+<p>与 Surface 配合使用的一些功能需要 SurfaceHolder，特别是 SurfaceView。最初的想法是，Surface 代表合成器管理的原始缓冲区，而 SurfaceHolder 由应用管理，并跟踪更高层次的信息（如维度和格式）。Java 语言定义对应的是底层本机实现。可以说，这种划分方式已不再有用，但它长期以来一直是公共 API 的一部分。</p>
+
+<p>一般来说，与 View 相关的任何内容都涉及到 SurfaceHolder。一些其他 API（如 MediaCodec）将在 Surface 本身上运行。您可以轻松地从 SurfaceHolder 获取 Surface，因此当您拥有 SurfaceHolder 时，使用它即可。</p>
+
+<p>用于获取和设置 Surface 参数（例如大小和格式）的 API 是通过 SurfaceHolder 实现的。</p>
+
+</body></html>
