@@ -21,8 +21,8 @@
       limitations under the License.
   -->
 
-<p>In Android O, the device kernel splits into System-on-Chip (SoC), device, and
-board-specific deliverables. This sets up the kernel and Android such that
+<p>In Android 8.0, the device kernel splits into System-on-Chip (SoC), device,
+and board-specific deliverables. This sets up the kernel and Android such that
 Original Device Manufacturers (ODMs) and Original Equipment Manufacturers (OEMs)
 can work in isolated board–specific trees for board–specific features, drivers,
 etc., enabling them to override common kernel configuration, add new drivers in
@@ -91,12 +91,11 @@ infrastructure required to ensure independent kernel and filesystem OTA updates
 in the future.</p>
 
 <h3 id="file-locations">File locations</h3>
-<p>While Android 7.x and earlier do not mandate against kernel modules (and
-include support for <code>insmod</code> and <code>rmmod</code>), Android O
-recommends the use of kernel modules in the ecosystem. The following table shows
-potential board–specific peripheral support required across three Android boot
-modes:</p>
-
+<p>While Android 7.x and earlier versions do not mandate against kernel modules
+(and include support for <code>insmod</code> and <code>rmmod</code>), Android
+8.0 recommends the use of kernel modules in the ecosystem. The following table
+shows potential board–specific peripheral support required across three Android
+boot modes:</p>
 <table>
 <tr>
 <th>Boot Mode</th>
@@ -119,7 +118,7 @@ modes:</p>
 <td><span class="compare-yes"></span></td>
 <td><span class="compare-no"></span></td>
 <td><span class="compare-no"></span></td>
-<td><span class="compare-no"></span></td>>
+<td><span class="compare-no"></span></td>
 <td><span class="compare-no"></span></td>
 </tr>
 <tr>
@@ -179,9 +178,9 @@ mounted in Recovery mode.</li>
 </ul>
 
 <p>In Android 7.x and earlier, <code>/vendor</code> and <code>/odm</code>
-partitions are <strong>not</strong> mounted early. In Android O, to make module
-loading from these partitions possible, provisions have been made to mount
-partitions early for both
+partitions are <strong>not</strong> mounted early. In Android 8.0, to make
+module loading from these partitions possible, provisions have been made to
+mount partitions early for both
 <a href="https://source.android.com/devices/tech/ota/ab_updates">non-A/B and A/B
 devices</a>. This also ensures the partitions are mounted in both Android and
 Charger modes.</p>
@@ -234,12 +233,41 @@ on early-init
         /vendor/lib/modules module_a module_b module_c ...
 </pre>
 
-<p>The kernel image may be updated separately from the vendor image, meaning
-that kernel modules may be used with kernels other than the one they were
-originally compiled against. To allow for this, and to protect against ABI
-breakages, module versioning is used. Module versioning is enabled by
-<code>CONFIG_MODVERSIONS=y</code> (one of the required kernel configuration
-options mentioned above) and is documented in the kernel tree at
+<p>Typically, a kernel module must be compiled with the kernel that the module
+is to be used with (otherwise the kernel will refuse to load the module).
+<code>CONFIG_MODVERSIONS</code> provides a workaround by detecting breakages in
+the ABI. This feature calculates a Cyclic Redundancy Check (CRC) value for the
+prototype of each exported symbol in the kernel and stores the values as part of
+the kernel; for symbols used by a kernel module, the values are also stored in
+the kernel module. When the module is loaded, the values for the symbols used by
+the module are compared with the ones in the kernel. If the values match, the
+module is loaded; otherwise the load fails.</p>
+
+<p>To enable the updating of the kernel image separately from the vendor image,
+enable <code>CONFIG_MODVERSIONS</code>. Doing so allows small updates to the
+kernel (such as bug fixes from LTS) to be made while maintaining compatibility
+with existing kernel modules in the vendor image. However,
+<code>CONFIG_MODVERSIONS</code> does not itself fix an ABI breakage. If the
+prototype of an exported symbol in the kernel changes, either due to
+modification of the source or because the kernel configuration changed, this
+breaks compatibility with kernel modules that use that symbol. In such cases,
+the kernel module must be recompiled.</p>
+
+<p>For example, the <code>task_struct</code> structure in the kernel (defined in
+<code>include/linux/sched.h</code>) contains many fields conditionally included
+depending on the kernel configuration. The <code>sched_info</code> field is
+present only if <code>CONFIG_SCHED_INFO</code> is enabled (which occurs when
+<code>CONFIG_SCHEDSTATS</code> or <code>CONFIG_TASK_DELAY_ACCT</code> are
+enabled). If these configuration options change state, the layout of the
+<code>task_struct</code> structure changes and any exported interfaces from the
+kernel that use <code>task_struct</code> are altered (e.g.
+<code>set_cpus_allowed_ptr</code> in <code>kernel/sched/core.c</code>).
+Compatibility with previously-compiled kernel modules that use these interfaces
+breaks, requiring those modules to be rebuilt with the new kernel
+configuration.</p>
+
+<p>For more details on <code>CONFIG_MODVERSIONS</code>, refer to the
+documentation in the kernel tree at
 <code>Documentation/kbuild/modules.txt</code>.</p>
 
 <h2 id="mounting-partitions-early-first-stage-mount">Mounting partitions early
@@ -255,9 +283,9 @@ loading of kernel modules as soon as possible after kernel boot).</p>
 Android 8.0</a>.</aside>
 
 <p>Android must have access to the filesystem(s) on which the modules reside. To
-enable, Android O supports mounting <code>/system</code>, <code>/vendor</code>,
-or <code>/odm</code> as early as <code>init</code>'s first stage (i.e before
-selinux is initialized). Device makers can use
+enable, Android 8.0 supports mounting <code>/system</code>,
+<code>/vendor</code>, or <code>/odm</code> as early as <code>init</code>'s first
+stage (i.e before selinux is initialized). Device makers can use
 <a href="/devices/architecture/dto/index.html">device tree overlays</a> to
 specify <code>fstab</code> entries for early mounted partitions.</p>
 
@@ -315,7 +343,7 @@ requirement).</li>
 
 <h3 id="early-mounting-device-tree-vboot-1-0">Early mounting device tree, VBoot
 1.0</h3>
-<p>In Android O, <code>init</code> parses the device tree and creates
+<p>In Android 8.0, <code>init</code> parses the device tree and creates
 <code>fstab</code> entries to mount the partition early during its first stage.
 An fstab entry takes the form:</p>
 
@@ -557,7 +585,7 @@ tree patching in the bootloader with the help of
 
 <p>In Android 7.x and earlier, Android did not require device tree support and
 did not provide recommendations regarding how vendors pass DT blobs to the
-kernel or where they store them. Android O recommends such support to keep the
+kernel or where they store them. Android 8.0 recommends such support to keep the
 board–specific and SoC-only parts of the kernel separate.</p>
 
 <h3 id="partitioning-requirements">Partitioning requirements</h3>
@@ -607,7 +635,7 @@ combined device tree to the kernel.</li>
 <a href="/devices/architecture/dto/index.html">Device Tree Overlays</a>.</p>
 
 <h2 id="core-kernel-requirements">Core kernel requirements</h2>
-<p>Android O mandates a minimum kernel version and kernel configuration and
+<p>Android 8.0 mandates a minimum kernel version and kernel configuration and
 checks them both in VTS as well as during an OTA. Android device kernels must
 enable the kernel <code>.config</code> support along with the option to read the
 kernel configuration at runtime through <code>procfs</code>.</p>
@@ -627,13 +655,13 @@ CONFIG_IKCONFIG_PROC=y
 <p>Kernel version requirements:</p>
 <ul>
 <li>All SoCs productized in 2017 must launch with kernel 4.4 or newer.</li>
-<li>All other SoCs launching new Android devices running Android O must use
+<li>All other SoCs launching new Android devices running Android 8.0 must use
 kernel 3.18 or newer.</li>
-<li>Regardless of launch date, all SoCs with device launches on Android O remain
-subject to kernel changes required to enable Treble.</li>
-<li>Older Android devices released prior to Android O but that will be upgraded
-to Android O can continue to use their original base kernel version if
-desired.</li>
+<li>Regardless of launch date, all SoCs with device launches on Android 8.0
+remain subject to kernel changes required to enable Treble.</li>
+<li>Older Android devices released prior to Android 8.0 but that will be
+upgraded to Android 8.0 can continue to use their original base kernel version
+if desired.</li>
 </ul>
 
 <h3 id="device-tree-support">Device tree support</h3>
@@ -664,8 +692,8 @@ changelist</a>.</p>
 <code>debugfs</code>. It may be enabled, but VTS testing may be done with
 <code>debugfs</code> unmounted.</p>
 
-<h2 id="beyond-android-o">Beyond Android O</h2>
-<p>Android O recommends any board–specific kernel functionality to be in the
+<h2 id="beyond-android-o">Beyond Android 8.0</h2>
+<p>Android 8.0 recommends any board–specific kernel functionality to be in the
 form of loadable kernel modules and device–tree overlays. The rest of the kernel
 is treated monolithically with respect to Android (whether or not is it is
 actually a monolithic kernel, or parts of it are compiled as kernel modules).
@@ -701,13 +729,13 @@ Figure 2 (below) illustrates how the workflow will change in an ideal,
 unified–per–SoC–kernel scenario:</p>
 
 <img src="../images/treble_kernel_treble.png">
-<figcaption><strong>Figure 2.</strong> Android O and higher device
+<figcaption><strong>Figure 2.</strong> Android 8.0 and higher device
 kernels.</figcaption>
 
 <p>This is intended to solve the problem of fragmented kernel repos by
 recommending and working with device manufacturers to stay up to date with the
-common SoC kernel. Android O provides all possible options to ODMs to help them
-avoid maintaining their own SoC kernels and instead rely on the common SoC
+common SoC kernel. Android 8.0 provides all possible options to ODMs to help
+them avoid maintaining their own SoC kernels and instead rely on the common SoC
 kernel for LTS upgrades/bug fixes/security patches/etc.</p>
 
 <p>As a start, we want to facilitate all ODMs/vendors using a single kernel
