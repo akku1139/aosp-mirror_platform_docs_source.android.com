@@ -1,0 +1,123 @@
+<html devsite><head>
+    <title>概览</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>Android 输入子系统名义上是由遍历系统多个层的事件管道组成。</p>
+<h2 id="input-pipeline">输入管道</h2>
+<p>在最低层，物理输入设备会生成描述状态更改（例如按键按压和触摸接触点）的信号。设备固件以某种方式编码和传输这些信号，例如向系统发送 USB HID 报告或在 I2C 总线上产生中断。</p>
+<p>然后，信号由 Linux 内核中的设备驱动程序解码。Linux 内核为许多标准的外围设备提供驱动程序，特别是那些符合 HID 协议的外围设备。然而，原始设备制造商 (OEM) 通常必须为在低级别紧密集成到系统的嵌入式设备（如触摸屏）提供自定义驱动程序。</p>
+<p>输入设备驱动程序负责通过 Linux 输入协议将设备特定信号转换为标准输入事件格式。Linux 输入协议在 <code>linux/input.h</code> 内核头文件中定义了一组标准事件类型和代码。这样一来，内核之外的组件就不需要关注物理扫描代码、HID 用途、I2C 消息、GPIO 引脚等方面的详细信息。</p>
+<p>接下来，Android <code>EventHub</code> 组件通过打开与每个输入设备关联的 <code>evdev</code> 驱动程序从内核读取输入事件。然后，Android InputReader 组件根据设备类别解码输入事件，并生成 Android 输入事件流。在此过程中，Linux 输入协议事件代码将根据输入设备配置、键盘布局文件和各种映射表，转化为 Android 事件代码。</p>
+<p>最后，<code>InputReader</code> 将输入事件发送到 InputDispatcher，后者将这些事件转发到相应的窗口。</p>
+<h2 id="control-points">控制点</h2>
+<p>在输入管道中有几个阶段会影响对输入设备行为的控制。</p>
+<h3 id="driver-and-firmware-configuration">驱动程序和固件配置</h3>
+<p>输入设备驱动程序经常通过在寄存器中设置参数甚或上传固件本身来配置输入设备的行为。对于诸如触摸屏等嵌入式设备尤其如此，其中一大部分校准过程涉及到调整这些参数或修复固件，以提供所需的精度和响应能力并抑制噪声。</p>
+<p>驱动程序配置选项通常在内核板级支持包 (BSP) 中指定为模块参数，以便同一驱动程序可以支持多种不同的硬件实现。</p>
+<p>本文档旨在介绍驱动程序或固件配置，但在总体上提供了有关设备校准的指导。</p>
+<h3 id="board-configuration-properties">板配置属性</h3>
+<p>内核板级支持包 (BSP) 可以通过由 Android InputReader 组件使用的 SysFS 导出板配置属性，如虚拟键在触摸屏上的位置。</p>
+<p>有关不同设备如何使用板配置属性的详细信息，请参阅设备类别部分。</p>
+<h3 id="resource-overlays">资源叠加层</h3>
+<p>有几个输入行为是通过 <code>config.xml</code> 中的资源叠加层配置的，例如机盖开关的操作。</p>
+<p>以下是几个例子：</p>
+<ul>
+<li>
+<p><code>config_lidKeyboardAccessibility</code>：指定机盖开关对硬件键盘可访问还是隐藏的影响。</p>
+</li>
+<li>
+<p><code>config_lidNavigationAccessibility</code>：指定机盖开关对触控板可访问还是隐藏的影响。</p>
+</li>
+<li>
+<p><code>config_longPressOnPowerBehavior</code>：指定当用户按住电源按钮时应该发生的情况。</p>
+</li>
+<li>
+<p><code>config_lidOpenRotation</code>：指定机盖开关对屏幕方向的影响。</p>
+</li>
+</ul>
+<p>要详细了解每个配置选项，请参阅 <code>frameworks/base/core/res/res/values/config.xml</code> 中的文档。</p>
+<h3 id="key-maps">按键映射</h3>
+<p>Android <code>EventHub</code> 和 <code>InputReader</code> 组件使用按键映射来配置按键、操纵杆按钮和操纵杆轴从 Linux 事件代码到 Android 事件代码的映射。映射可能会因设备或语言的不同而不同。</p>
+<p>要详细了解不同设备如何使用按键映射，请参阅设备类别部分。</p>
+<h3 id="input-device-configuration-files">输入设备配置文件</h3>
+<p>Android <code>EventHub</code> 和 <code>InputReader</code> 组件使用输入设备配置文件来配置特殊设备特征，例如，如何报告触摸尺寸信息。</p>
+<p>要详细了解不同设备如何使用输入设备配置映射，请参阅设备类别部分。</p>
+<h2 id="understanding-hid-usages-and-event-codes">了解 HID 用途和事件代码</h2>
+<p>通常使用几个不同的标识符来指代键盘上的任何指定按键、游戏控制器上的按钮、操纵杆轴或其他控件。这些标识符之间的关系并非总是一样的：它们取决于一组映射表，其中一些映射是固定的，还有一些映射随设备特征、设备驱动程序、当前语言区域、系统配置、用户偏好设置和其他因素而变化。</p>
+<dl>
+<dt>物理扫描代码</dt>
+<dd>
+<p>物理扫描代码是与每个按键、按钮或其他控件相关联的设备特定标识符。由于物理扫描代码通常因设备而异，因此固件或设备驱动程序负责将其映射到标准标识符，例如 HID 用途或 Linux 按键代码。</p>
+<p>扫描代码主要用于键盘。其他设备通常使用 GPIO 引脚、I2C 消息或其他方式在低级别进行通信。因此，软件堆栈的上层依赖于设备驱动程序来确定发生的操作。</p>
+</dd>
+<dt>HID 用途</dt>
+<dd>
+<p>HID 用途是一种标准标识符，用于报告控件（如键盘按键、操纵杆轴、鼠标按钮或触摸接触点）的状态。大多数 USB 和蓝牙输入设备都符合 HID 规范，使得系统能够以统一的方式与它们进行连接。</p>
+<p>Android 框架依赖于 Linux 内核 HID 驱动程序来将 HID 用途代码转换为 Linux 按键代码和其他标识符。因此，主要是外设制造商关注 HID 用途。</p>
+</dd>
+<dt>Linux 按键代码</dt>
+<dd>
+<p>Linux 按键代码是用于按键或按钮的标准标识符。Linux 按键代码在 <code>linux/input.h</code> 头文件中使用以前缀 <code>KEY_</code> 或 <code>BTN_</code> 开头的常量进行定义。Linux 内核输入驱动程序负责将物理扫描代码、HID 用途和其他设备特定信号转换为 Linux 按键代码，并作为 <code>EV_KEY</code> 事件的一部分提供有关它们的信息。</p>
+<p>Android API 有时将与按键相关联的 Linux 按键代码称为其“扫描代码”。这在技术上是错误的，但是有助于在 API 中区分 Linux 按键代码和 Android 按键代码。</p>
+</dd>
+<dt>Linux 相对或绝对轴代码</dt>
+<dd>
+<p>Linux 相对或绝对轴代码是一种标准标识符，用于报告沿着某个轴的相对位移或绝对位置，例如鼠标沿其 X 轴的相对位移或者操纵杆沿其 X 轴的绝对位置。Linux 轴代码在 <code>linux/input.h</code> 头文件中使用以前缀 <code>REL_</code> 或 <code>ABS_</code> 开头的常量进行定义。Linux 内核输入驱动程序负责将 HID 用途和其他设备特定信号转换为 Linux 轴代码，并作为 <code>EV_REL</code> 和 <code>EV_ABS</code> 事件的一部分提供有关它们的信息。</p>
+</dd>
+<dt>Linux 开关代码</dt>
+<dd>
+<p>Linux 开关代码是用于报告设备上的开关（例如机盖开关）状态的标准标识符。Linux 开关代码在 <code>linux/input.h</code> 头文件中使用以前缀 <code>SW_</code> 开头的常量进行定义。Linux 内核输入驱动程序以 <code>EV_SW</code> 事件形式报告开关状态更改。</p>
+<p>Android 应用通常不会接收来自开关的事件，但系统可能会在内部使用它们来控制各种特定于设备的功能。</p>
+</dd>
+<dt>Android 按键代码</dt>
+<dd>
+<p>Android 按键代码是在 Android API 中定义的标准标识符，用于指示特定按键（如“主屏幕”）。Android 按键代码由 <code>android.view.KeyEvent</code> 类作为以前缀 <code>KEYCODE_</code> 开头的常量进行定义。</p>
+<p>按键布局指定了 Linux 按键代码如何映射到 Android 按键代码。可以使用不同的按键布局，具体取决于键盘型号、语言、国家/地区、布局或特殊功能。</p>
+<p>使用特定于设备和语言区域的按键字符映射将 Android 按键代码组合转换为字符代码。例如，当同时按下标识为 <code>KEYCODE_SHIFT</code> 和 <code>KEYCODE_A</code> 的按键时，系统将在按键字符映射中查找该组合并找到大写字母“A”，然后将其插入当前聚焦的文本微件中。</p>
+</dd>
+<dt>Android 轴代码</dt>
+<dd>
+<p>Android 轴代码是在 Android API 中定义的标准标识符，用于指示特定设备轴。Android 轴代码由 <code>android.view.MotionEvent</code> 类定义为以前缀 <code>AXIS_</code> 开头的常量。</p>
+<p>按键布局指定了 Linux 轴代码如何映射到 Android 轴代码。可能会使用不同的按键布局，具体取决于设备型号、语言、国家/地区、布局或特殊功能。</p>
+</dd>
+<dt>Android 元状态</dt>
+<dd>
+<p>Android 元状态是在 Android API 中定义的标准标识符，用于指示按哪些辅助键。Android 元状态由 <code>android.view.KeyEvent</code> 类定义为以前缀 <code>META_</code> 开头的常量。</p>
+<p>当前元状态由 Android InputReader 组件确定，该组件用于监控何时按下/释放辅助键（如 <code>KEYCODE_SHIFT_LEFT</code>）并设置/重置相应的元状态标记。</p>
+<p>辅助键和元状态之间的关系采用硬编码，但是按键布局可以改变辅助键本身的映射方式，这反过来又会影响元状态。</p>
+</dd>
+<dt>Android 按钮状态</dt>
+<dd>
+<p>Android 按钮状态是在 Android API 中定义的标准标识符，用于指示按下（鼠标或触控笔上的）哪些按钮。Android 按钮状态由 <code>android.view.MotionEvent</code> 类定义为以前缀 <code>BUTTON_</code> 开头的常量。</p>
+<p>当前的按钮状态由 Android InputReader 组件确定，该组件用于监控何时按下/释放（鼠标或触控笔上的）按钮并设置/重置相应的按钮状态标记。</p>
+<p>按钮和按钮状态之间的关系采用硬编码。</p>
+</dd>
+</dl>
+<h2 id="further-reading">延伸阅读</h2>
+<ol>
+<li><a href="http://www.kernel.org/doc/Documentation/input/event-codes.txt">Linux 输入事件代码</a></li>
+<li><a href="http://www.kernel.org/doc/Documentation/input/multi-touch-protocol.txt">Linux 多点触控协议</a></li>
+<li><a href="http://www.kernel.org/doc/Documentation/input/input.txt">Linux 输入驱动程序</a></li>
+<li><a href="http://www.kernel.org/doc/Documentation/input/ff.txt">Linux 强制反馈</a></li>
+<li><a href="http://www.usb.org/developers/hidpage">HID 信息，包括 HID 用途表</a></li>
+</ol>
+
+</body></html>
