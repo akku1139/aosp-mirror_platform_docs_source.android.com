@@ -1,0 +1,132 @@
+<html devsite><head>
+    <title>媒体资源管理器的 OEM 依赖项</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>本文档旨在帮助原始设备制造商 (OEM) 正确实现对 Android 媒体资源管理器和相关 API 的支持。</p>
+
+<h2 id="1_max_concurrent_codec_instances">1. 最大并发编解码器实例数量</h2>
+
+<p><code>CodecCapabilities.getMaxSupportedInstances</code> 接口返回支持的并发编解码器实例的最大数量。</p>
+
+<p>CTS 测试 <code>testGetMaxSupportedInstances(android.media.cts.MediaCodecCapabilitiesTest)</code> 用于强制在 <code>/etc/media_codecs.xml</code> 中设置合适的最大值。</p>
+
+<p>示例如下：</p>
+
+<pre class="devsite-click-to-copy">
+...
+&lt;MediaCodecs&gt;
+    ...
+    &lt;Encoders&gt;
+        &lt;MediaCodec name="OMX.<em>&lt;vendor&gt;</em>.video.encoder.avc" type="video/avc" &gt;
+           ...
+            &lt;Limit name="concurrent-instances" max="13" /&gt;
+        &lt;/MediaCodec&gt;
+        ...
+    &lt;/Encoders&gt;
+    ...
+&lt;/MediaCodecs&gt;
+</pre>
+
+<p>OEM 可以使用此测试来生成可通过测试的并发限制。具体操作步骤如下：</p>
+
+  <ol>
+    <li>首先使用 cts-tradefed 运行测试。
+    </li><li>评估生成的失败消息。示例如下：<pre class="devsite-click-to-copy">
+There was 1 failure:
+1) testGetMaxSupportedInstances(android.media.cts.MediaCodecCapabilitiesTest)
+junit.framework.AssertionFailedError: In order to pass the test, please publish
+following codecs' concurrent instances limit in /etc/media_codecs.xml:
+&lt;MediaCodec name="OMX.<em>&lt;vendor&gt;</em>.video.encoder.mpeg4" type="video/mp4v-es" &gt;
+    &lt;Limit name="concurrent-instances" max="13" /&gt;
+&lt;/MediaCodec&gt;
+&lt;MediaCodec name="OMX.<em>&lt;vendor&gt;</em>.video.encoder.h263" type="video/3gpp" &gt;
+    &lt;Limit name="concurrent-instances" max="13" /&gt;
+&lt;/MediaCodec&gt;
+&lt;MediaCodec name="OMX.<em>&lt;vendor&gt;</em>.video.encoder.avc" type="video/avc" &gt;
+    &lt;Limit name="concurrent-instances" max="13" /&gt;
+&lt;/MediaCodec&gt;
+&lt;MediaCodec name="OMX.<em>&lt;vendor&gt;</em>.video.encoder.vp8" type="video/x-vnd.on2.vp8" &gt;
+    &lt;Limit name="concurrent-instances" max="13" /&gt;
+&lt;/MediaCodec&gt;
+&lt;MediaCodec name="OMX.<em>&lt;vendor&gt;</em>.video.decoder.avc" type="video/avc" &gt;
+    &lt;Limit name="concurrent-instances" max="13" /&gt;
+&lt;/MediaCodec&gt;
+&lt;MediaCodec name="OMX.<em>&lt;vendor&gt;</em>.video.decoder.avc.secure" type="video/avc" &gt;
+    &lt;Limit name="concurrent-instances" max="4" /&gt;
+&lt;/MediaCodec&gt;
+&lt;MediaCodec name="OMX.<em>&lt;vendor&gt;</em>.video.decoder.mpeg4" type="video/mp4v-es" &gt;
+    &lt;Limit name="concurrent-instances" max="12" /&gt;
+&lt;/MediaCodec&gt;
+&lt;MediaCodec name="OMX.<em>&lt;vendor&gt;</em>.video.decoder.h263" type="video/3gpp" &gt;
+    &lt;Limit name="concurrent-instances" max="12" /&gt;
+&lt;/MediaCodec&gt;
+&lt;MediaCodec name="OMX.<em>&lt;vendor&gt;</em>.video.decoder.vp8" type="video/x-vnd.on2.vp8" &gt;
+    &lt;Limit name="concurrent-instances" max="12" /&gt;
+&lt;/MediaCodec&gt;
+</pre>
+
+    </li><li>将测试失败消息中建议的 <code>concurrent-instances</code> 行添加到 <code>/etc/media_codecs.xml</code> 文件。
+
+    </li><li>重新运行测试以验证测试是否成功。
+  </li></ol>
+
+<h2 id="2_achievable_frame_rates_for_video_codecs">2. 视频编解码器可实现的帧速率</h2>
+<p><code>VideoCapabilities.getAchievableFrameRatesFor</code> 接口针对某个视频大小返回可实现的视频帧率的范围。此信息必须由 OEM 通过位于 <code>/etc/media_codecs_performance.xml</code> 的 XML 文件为每个设备提供。这些设置由 <code>com.android.cts.videoperf.VideoEncoderDecoderTest</code> 和 <code>android.media.cts.VideoDecoderPerfTest</code> CTS 测试进行测试。</p>
+
+<p>OEM 可以使用 CTS 测试来生成可通过测试的 XML 文件。具体操作步骤如下：</p>
+  <ol>
+    <li>首先使用 cts-tradefed 运行测试。鉴于 Android 性能的波动性，建议多次运行测试以获得更准确的最小值和最大值。
+    </li><li>使用提供的 <a href="https://android.googlesource.com/platform/cts/+/marshmallow-cts-dev/tools/cts-media/get_achievable_rates.py">get_achievable_rates.py</a> 脚本生成 XML 文件。
+    </li><li>将 XML 文件放置在以下位置：<code>/etc/media_codecs_performance.xml</code><br />通常通过将 XML 文件放置在设备项目 (device/<em>&lt;vendor&gt;</em>/<em>&lt;product&gt;</em>) 中并将 <code>PRODUCT_COPY_FILES</code> 行添加到 <code>device.mk</code> 来完成此过程，如下所示：<pre class="devsite-click-to-copy">
+PRODUCT_COPY_FILES += \
+...
+   device/moto/shamu/media_codecs.xml:system/etc/media_codecs.xml \
++    device/moto/shamu/media_codecs_performance.xml:system/etc/media_codecs_performance.xml
+</pre>
+    </li><li>重新运行性能测试以验证测试是否成功。
+  </li></ol>
+
+<h2 id="3_co-exist_of_secure_codec_and_non-secure_codec">3. 安全编解码器和非安全编解码器共存</h2>
+
+<ul>
+  <li>supports-secure-with-non-secure-codec - 如果安全编解码器实例和非安全编解码器实例不能同时共存，则应在 <code>media_codecs.xml</code> 文件中作为全局设置指明。
+<pre class="devsite-click-to-copy">
+&lt;MediaCodecs&gt;
+    &lt;Settings&gt;
+        &lt;Setting name="supports-secure-with-non-secure-codec" value="false" /&gt;
+    &lt;/Settings&gt;
+    &lt;Encoders&gt;
+…
+</pre>
+  </li><li>supports-multiple-secure-codecs - 如果不支持多个安全编解码器实例共存，则应在 <code>media_codecs.xml</code> 文件中作为全局设置指明。
+<pre class="devsite-click-to-copy">
+&lt;MediaCodecs&gt;
+    &lt;Settings&gt;
+        &lt;Setting name="supports-multiple-secure-codecs" value="false" /&gt;
+    &lt;/Settings&gt;
+    &lt;Encoders&gt;
+…
+</pre>
+  </li><li>请注意，默认情况下，两个设置都为 true，这意味着如果支持这些设置，则无需将设置行添加到 <code>media_codecs.xml</code>。
+  </li><li>如果这两个设置未正确设置，<code>ResourceManagerTest</code> CTS 测试可能会失败。
+</li></ul>
+
+</body></html>

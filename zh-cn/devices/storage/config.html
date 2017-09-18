@@ -1,0 +1,96 @@
+<html devsite><head>
+    <title>设备配置</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>外部存储由 <code>vold</code> init 服务和 <code>MountService</code> 系统服务共同管理。外部物理存储卷的装载由 <code>vold</code> 处理，它通过执行分阶段操作来准备好媒体，然后再将其提供给应用。</p>
+
+<h2 id="file_mappings">文件映射</h2>
+<p>对于 Android 4.2.2 及更早版本，特定于设备的 <code>vold.fstab</code> 配置文件定义从 sysfs 设备到文件系统装载点的映射，每行都遵循以下格式：</p>
+<pre><code>dev_mount &lt;label&gt; &lt;mount_point&gt; &lt;partition&gt; &lt;sysfs_path&gt; [flags]
+</code></pre>
+<ul>
+<li><code>label</code>：卷的标签。</li>
+<li><code>mount_point</code>：要装载卷的文件系统路径。</li>
+<li><code>partition</code>：分区编号（从 1 开始）；如果是第一个可用分区，则为“auto”。</li>
+<li><code>sysfs_path</code>：可以提供此装载点的设备的一个或多个 sysfs 路径。这些路径用空格分开，且必须都以 <code>/</code> 开头。</li>
+<li><code>flags</code>：可选的逗号分隔标记列表，不能包含 <code>/</code>。可能的值包括 <code>nonremovable</code> 和 <code>encryptable</code>。</li>
+</ul>
+<p>对于 Android 4.3 及更高版本，init、vold 和 recovery 所使用的各种 fstab 文件在 <code>/fstab.&lt;device&gt;</code> 文件中进行统一。对于由 <code>vold</code> 管理的外部存储卷，条目应采用以下格式：</p>
+<pre><code>&lt;src&gt; &lt;mnt_point&gt; &lt;type&gt; &lt;mnt_flags&gt; &lt;fs_mgr_flags&gt;
+</code></pre>
+<ul>
+<li><code>src</code>：sysfs（通常在 /sys 下装载）下可以提供装载点的设备的路径。路径必须以 <code>/</code> 开头。</li>
+<li><code>mount_point</code>：要装载卷的文件系统路径。</li>
+<li><code>type</code>：卷上的文件系统类型。如果是外部卡，则通常为 <code>vfat</code>。</li>
+<li><code>mnt_flags</code>：<code>Vold</code> 会忽略此字段，应将其设置为 <code>defaults</code></li>
+<li><code>fs_mgr_flags</code>：<code>Vold</code> 会忽略此字段中不包含 <code>voldmanaged=</code> 标记的统一的 fstab 中的任何行。该标记必须后跟描述卡的标签，以及分区号或字词 <code>auto</code>。例如：<code>voldmanaged=sdcard:auto</code>。其他可能的标记有 <code>nonremovable</code>、<code>encryptable=sdcard</code>、<code>noemulatedsd</code> 和 <code>encryptable=userdata</code>。</li>
+</ul>
+
+<h2 id="configuration_details">配置详情</h2>
+<p>框架层以及以上的外部存储交互通过 <code>MountService</code> 进行处理。由于 Android 6.0 中进行了配置更改（例如移除了 storage_list.xml 资源叠加层），因此配置详情分为两类。
+
+</p><h3 id="android_5_x_and_earlier">Android 5.x 及更早版本</h3>特定于设备的 <code>storage_list.xml</code> 配置文件（通常通过 <code>frameworks/base</code> 叠加层提供）定义存储设备的属性和限制。<code>&lt;StorageList&gt;</code> 元素包含一个或多个 <code>&lt;storage&gt;</code> 元素，其中一个元素应被标记为主元素。<code>&lt;storage&gt;</code> 属性包括：<p></p>
+<ul>
+<li><code>mountPoint</code>：此装载的文件系统路径。</li>
+<li><code>storageDescription</code>：描述此装载的字符串资源。</li>
+<li><code>primary</code>：如果此装载是主要外部存储，则为 true。</li>
+<li><code>removable</code>：如果此装载包含可移动媒体（如物理 SD 卡），则为 true。</li>
+<li><code>emulated</code>：如果此装载由可能使用 FUSE 守护进程的内部存储模拟和支持，则为 true。</li>
+<li><code>mtp-reserve</code>：MTP 应为免费存储预留的存储 MB 数。仅在装载被标记为模拟时使用。</li>
+<li><code>allowMassStorage</code>：如果此装载可通过 USB 大容量存储设备共享，则为 true。</li>
+<li><code>maxFileSize</code>：最大文件大小（以 MB 为单位）。</li>
+</ul>
+<p>设备可以通过模拟由内部存储支持的文件系统（不区分大小写，无需权限）来提供外部存储。<code>system/core/sdcard</code> 中的 FUSE 守护进程提供一个可能的实现，可添加为特定于设备的 <code>init.rc</code> 服务：</p>
+<pre><code># virtual sdcard daemon running as media_rw (1023)
+service sdcard /system/bin/sdcard &lt;source_path&gt; &lt;dest_path&gt; 1023 1023
+    class late_start
+</code></pre>
+<p>其中，<code>source_path</code> 为提供支持的内部存储，<code>dest_path</code> 为目标装载点。</p>
+<p>配置特定于设备的 <code>init.rc</code> 脚本时，必须将 <code>EXTERNAL_STORAGE</code> 环境变量定义为主要外部存储的路径。<code>/sdcard</code> 路径也必须通过符号链接解析到同一位置。如果设备在平台更新之间调整外部存储的位置，则应创建符号链接，以便旧的路径继续发挥作用。</p>
+
+<h3 id="android_6_0">Android 6.0</h3>
+<p>目前，存储子系统的配置集中在特定于设备的 <code>fstab</code> 文件中，并且移除了一些历史静态配置文件/变量，以支持更多动态行为：</p>
+<ul>
+   <li><code>storage_list.xml</code> 资源叠加层已被移除，框架已不再使用该叠加层。现在，存储设备在被 <code>vold</code> 检测到时动态配置。
+   </li><li><code>EMULATED_STORAGE_SOURCE/TARGET</code> 环境变量已被移除，Zygote 已不再使用这些变量来配置特定于用户的装载点。相反，用户分离现在由特定于用户的 GID 强制执行，主要共享存储由 <code>vold</code> 在运行时装载到位。
+  <ul>
+     <li>开发者可以根据其使用情形继续动态或静态构建路径。在路径中包含 UUID 可识别每个卡，以便为开发者提供更清晰的位置。（例如，<code>/storage/ABCD-1234/report.txt</code> 明显是与 <code>/storage/DCBA-4321/report.txt</code> 不同的文件。）
+  </li></ul>
+   </li><li>硬编码的 FUSE 服务已从特定于设备的 <code>init.rc</code> 文件中移除，在需要时将从 <code>vold</code> 动态派生。
+</li></ul>
+<p>除了这些配置更改之外，Android 6.0 还包含可合并的存储设备的概念。对于 Android 6.0 设备，任何未被合并的物理媒体都被视为便携式设备。</p>
+
+<h4 id="adoptable_storage">可合并的存储设备</h4>
+<p>要在 <code>fstab</code> 中表示可合并的存储设备，请使用 <code>fs_mgr_flags</code> 字段中的 <code>encryptable=userdata</code> 属性。典型定义如下：</p>
+<pre><code>/devices/platform/mtk-msdc.1/mmc_host*           auto      auto     defaults
+voldmanaged=sdcard1:auto,encryptable=userdata
+</code></pre>
+<p>合并存储设备时，该平台会擦除内容并写入定义两个分区的 GUID 分区表：</p>
+<ul>
+   <li>一个较小的空 <code>android_meta</code> 分区，预留以备将来使用的。分区类型 GUID 为 19A710A2-B3CA-11E4-B026-10604B889DCF。</li><li>一个较大的 <code>android_ext</code> 分区，使用 dm-crypt 加密并使用 <code>ext4</code> 或 <code>f2fs</code>（取决于内核功能）格式化。分区类型 GUID 为 193D1EA4-B3CA-11E4-B075-10604B889DCF。</li></ul>
+<h4 id="portable_storage">便携式存储设备</h4>
+<p>在 <code>fstab</code> 中，具有 <code>voldmanaged</code> 属性的存储设备默认被视为便携式设备，除非定义了其他属性（如 <code>encryptable=userdata</code>）。例如，典型的 USB OTG 设备的定义如下：</p>
+<pre><code>/devices/*/xhci-hcd.0.auto/usb*             auto            auto    defaults
+                                                    voldmanaged=usb:auto
+</code></pre>
+<p>该平台在装载之前使用 <code>blkid</code> 检测文件系统类型，用户可以选择在文件系统不受支持时将媒体格式化。</p>
+
+</body></html>

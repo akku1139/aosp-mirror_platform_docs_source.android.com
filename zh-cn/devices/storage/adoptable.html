@@ -1,0 +1,49 @@
+<html devsite><head>
+    <title>可合并的存储设备</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>Android 一直都支持外部存储配件（如 SD 卡），但由于预期的无常性以及为<a href="/devices/storage/traditional.html">传统外部存储设备</a>只提供最低限度的数据保护，因此这些配件一直以来仅限于简单的文件存储。Android 6.0 推出了<a href="http://developer.android.com/about/versions/marshmallow/android-6.0.html#adoptable-storage">合并</a>外部存储媒介以充当内部存储设备的功能。</p>
+
+<p>当合并外部存储媒介时，系统将对其进行格式化和加密处理，以便一次仅与单个 Android 设备配合使用。由于该媒介与合并它的 Android 设备紧密关联，因此可以安全地为所有用户存储应用和私密数据。</p>
+
+<p>当用户将新的存储媒介（如 SD卡）插入到可合并的位置时，Android 会询问他们想要如何使用该媒介。他们可以选择合并该媒介，这样的话，系统会对该媒介进行格式化和加密处理，或者也可以继续按原样将其用于简单的文件存储。如果他们选择合并媒介，平台会询问是否将主要共享存储内容（通常装载在 <code>/sdcard</code> 上）迁移到新合并的媒介上，从而腾出宝贵的内部存储空间。不同于因使用 <a href="https://en.wikipedia.org/wiki/Master_boot_record">MBR</a> 而限制为 2TB 的传统存储设备，可合并的存储设备使用 <a href="https://en.wikipedia.org/wiki/GUID_Partition_Table">GPT</a>，因而文件存储限制约为 9ZB。</p>
+
+<p>只有当开发者通过 <code>android:installLocation</code> 属性指示提供支持时，才能将应用放置在合并的存储媒介上。新安装的受支持的应用将自动放置在具有最多可用空间的存储设备上，用户可以在“设置”应用中在存储设备之间移动支持的应用。<em></em>移动到已合并媒介的应用在媒介弹出时被记住，并在重新插入媒介时返回弹出前的状态。</p>
+
+<h2 id="security">安全性</h2>
+
+<p>平台为每个合并的设备随机生成加密密钥，该密钥存储在 Android 设备的内部存储设备上。这样可以有效地使得合并的媒介与内部存储设备一样安全。密钥与合并的设备（基于合并的分区 GUID）相关联。合并的设备使用通过 <code>aes-cbc-essiv:sha256</code> 算法和 128 位密钥大小配置的 <code>dm-crypt</code> 进行加密。</p>
+
+<p>合并设备的磁盘布局紧密对应内部数据分区，包括 SELinux 标签等。当在 Android 设备上支持多用户时，合并的存储设备也通过与内部存储设备相同的隔离级别支持多用户。</p>
+
+<p>由于合并的存储设备的内容与合并该设备的 Android 设备密切相关，加密密钥不应可以从父设备中进行提取，因此该存储设备无法装载到其他位置。</p>
+
+<h2 id="performance_and_stability">性能和稳定性</h2>
+
+<p>应该只考虑合并位于稳定位置（如电池盒内或防护盖后面的插槽）的外部存储媒介，以避免意外的数据丢失或损坏。尤其是，绝不应该考虑合并连接到手机或平板电脑的 USB 设备。一种常见的例外情况是连接到电视类设备的外部 U 盘，因为整个电视机通常安装在一个稳定的位置。</p>
+
+<p>当用户合并新的存储设备时，平台将运行基准测试，并将其性能与内部存储设备进行比较。如果所合并设备的速度明显慢于内部存储设备，则平台将警告用户体验可能会受到影响。此基准根据常用 Android 应用的实际 I/O 行为得出。目前，AOSP 实现只会在超出单个阈值时警告用户，但是设备制造商可以进一步做出调整，例如如果存储卡运行非常缓慢，则完全拒绝合并。</p>
+
+<p>合并的设备必须使用支持 POSIX 权限和扩展属性（如 <code>ext4</code> 或 <code>f2fs</code>）的文件系统进行格式化。为了获得最佳性能，建议基于闪存的存储设备使用 <code>f2fs</code> 文件系统。</p>
+
+<p>在执行周期性空闲维护时，平台将向合并的媒介发出 <code>FI_TRIM</code>（就像对待内部存储设备那样）。目前的 SD 卡规格不支持 <code>DISCARD</code> 命令；内核转而会使用 <code>ERASE</code> 命令，SD 卡固件可以选择使用该命令来满足优化目的。</p>
+
+</body></html>

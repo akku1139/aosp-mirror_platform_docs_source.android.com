@@ -1,0 +1,98 @@
+<html devsite><head>
+    <title>输入设备配置文件</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>输入设备配置文件（<code>.idc</code> 文件）包含特定设备的配置属性，这些属性会影响输入设备的行为。</p>
+<p>输入设备配置文件通常并非标准外围设备（例如 HID 键盘和鼠标）所必需的，因为默认的系统行为通常可确保它们开箱即用。另一方面，内置的嵌入式设备（尤其是触摸屏）几乎总是需要输入设备配置文件来指定其行为。</p>
+<h2 id="rationale">基本原理</h2>
+<p>根据关联的 Linux 内核输入设备驱动程序报告的事件类型和属性，Android 会自动检测和配置大多数输入设备功能。</p>
+<p>例如，如果输入设备支持 <code>EV_REL</code> 事件类型、代码 <code>REL_X</code> 和 <code>REL_Y</code> 以及 <code>EV_KEY</code> 事件类型和 <code>BTN_MOUSE</code>，则 Android 会将输入设备归类为鼠标。鼠标的默认行为是在屏幕上显示光标，光标跟踪鼠标的移动并在鼠标被点击时模拟触摸操作。虽然可以通过不同的方式配置鼠标，但是默认行为通常足以用于标准的鼠标外围设备。</p>
+<p>某些类别的输入设备更加模糊。例如，多点触摸屏和触摸板都至少支持 <code>EV_ABS</code> 事件类型以及代码 <code>ABS_MT_POSITION_X</code> 和 <code>ABS_MT_POSITION_Y</code>。不过，这些设备的主要用途千差万别，无法总能自动确定。此外，还需要其他信息才能了解触摸设备报告的压力和大小信息。因此，触摸设备（尤其是内置触摸屏）通常都需要 IDC 文件。</p>
+<h2 id="location">位置</h2>
+<p>输入设备配置文件由 USB 供应商、产品（及可选版本）ID 或输入设备名称定位。</p>
+<p>按顺序查阅以下路径。</p>
+<ul>
+<li><code>/system/usr/idc/Vendor_XXXX_Product_XXXX_Version_XXXX.idc</code></li>
+<li><code>/system/usr/idc/Vendor_XXXX_Product_XXXX.idc</code></li>
+<li><code>/system/usr/idc/DEVICE_NAME.idc</code></li>
+<li><code>/data/system/devices/idc/Vendor_XXXX_Product_XXXX_Version_XXXX.idc</code></li>
+<li><code>/data/system/devices/idc/Vendor_XXXX_Product_XXXX.idc</code></li>
+<li><code>/data/system/devices/idc/DEVICE_NAME.idc</code></li>
+</ul>
+<p>当构建包含设备名称的文件路径时，设备名称中除“0-9”、“a-z”、“A-Z”、“-”或“_”之外的所有字符将替换为“_”。</p>
+<h2 id="syntax">句法</h2>
+<p>输入设备配置文件是由属性分配和注释组成的纯文本文件。</p>
+<h3 id="properties">属性</h3>
+<p>属性分配均由属性名称、<code>=</code>、属性值和新行组成。例如：</p>
+<pre class="devsite-click-to-copy">
+property = value
+</pre>
+<p>属性名称为非空的文字文本标识符，不能包含空格。输入系统的每个组件都定义一组用于配置其功能的属性。</p>
+<p>属性值为非空字符串文字、整数或浮点数。不能包含空格或保留字符 <code>\</code> 或 <code>"</code>。</p>
+<p>属性名称和值区分大小写。</p>
+<h3 id="comments">注释</h3>
+<p>注释行以“#”开头，并持续到这一行的结束。例如：</p>
+<pre class="devsite-click-to-copy">
+# A comment!
+</pre>
+<p>空白行会被忽略。</p>
+<h3 id="example">示例</h3>
+<pre class="devsite-click-to-copy">
+# This is an example of an input device configuration file.
+# It might be used to describe the characteristics of a built-in touch screen.
+
+# This is an internal device, not an external peripheral attached to the USB
+# or Bluetooth bus.
+device.internal = 1
+
+# The device should behave as a touch screen, which uses the same orientation
+# as the built-in display.
+touch.deviceType = touchScreen
+touch.orientationAware = 1
+
+# Additional calibration properties...
+# etc...
+</pre>
+<h2 id="common-properties">通用属性</h2>
+<p>以下属性在所有输入设备类之间通用。</p>
+<p>如需了解每个类所使用的特殊属性，请参阅各个输入设备类的文档。</p>
+<h4 id="deviceinternal"><code>device.internal</code></h4>
+<p>定义：<code>device.internal</code> = <code>0</code> | <code>1</code><em></em></p>
+<p>指定输入设备属于内置组件，还是外部连接（很可能可拆卸）的外围设备。</p>
+<ul>
+<li>
+<p>如果值为 <code>0</code>，则该设备为外部设备。</p>
+</li>
+<li>
+<p>如果值为 <code>1</code>，则该设备为内部设备。</p>
+</li>
+<li>
+<p>如果该值未指定，则 USB (BUS_USB) 或蓝牙 (BUS_BLUETOOTH) 总线上的所有设备的默认值均为 <code>0</code>，否则，值为 <code>1</code>。</p>
+</li>
+</ul>
+<p>该属性决定有关唤醒事件的默认策略决定。</p>
+<p>内部输入设备一般不从休眠状态中唤醒显示屏，除非关键布局文件或硬编码的策略规则中明确进行了相应配置。这种区别可防止按键和触摸意外唤醒您口袋中的手机。通常只定义几个唤醒键。</p>
+<p>相反，外部输入设备通常会更主动地唤醒设备，因为它们在传输过程中被假定为关闭或未插入。例如，按下外部键盘上的任何一个键就能很好地说明用户希望唤醒设备并得到响应。</p>
+<p>务必确保所有内部输入设备 <code>device.internal</code> 属性的值都得到正确设置。</p>
+<h2 id="validation">验证</h2>
+<p>确保使用<a href="validate-keymaps.html">验证按键映射</a>工具验证您的输入设备配置文件。</p>
+
+</body></html>
