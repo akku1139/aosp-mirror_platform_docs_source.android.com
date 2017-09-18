@@ -1,0 +1,364 @@
+<html devsite><head>
+    <title>USB 数字音频</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>本文综述了 Android 对 USB 数字音频和相关 USB 协议的支持。
+</p>
+
+<h3 id="audience">目标读者</h3>
+
+<p>本文的目标读者是 Android 设备原始设备制造商 (OEM)、SoC 供应商、USB 音频外设供应商、高级音频应用开发者以及希望详细了解 Android 上的 USB 数字音频内件的其他人士。
+</p>
+
+<p>Nexus 设备的最终用户则应该查看 <a href="https://support.google.com/nexus/">Nexus 帮助中心</a>中的<a href="https://support.google.com/nexus/answer/6127700">使用 USB 主机模式录制和播放音频</a>一文。虽然这篇文章并非面向最终用户，但某些发烧友级消费者可能会发现感兴趣的部分。</p>
+
+<h2 id="overview">USB 概览</h2>
+
+<p>维基百科 <a href="http://en.wikipedia.org/wiki/USB">USB</a> 一文对通用串行总线 (USB) 进行了非正式描述，而 <a href="http://www.usb.org/">USB Implementers Forum, Inc</a> 发布的标准给出了正式定义。为了方便起见，我们在本文中总结了重要的 USB 概念，但上述标准仍是权威参考。
+</p>
+
+<h3 id="terminology">基本概念和术语</h3>
+
+<p>USB 是一种<a href="http://en.wikipedia.org/wiki/Bus_(computing)">总线</a>，具有单个数据传输操作启动器，称为“主机”。<i></i>主机通过总线与<a href="http://en.wikipedia.org/wiki/Peripheral">外设</a>进行通信。
+</p>
+
+<p class="note"><strong>注意</strong>：术语“设备”和“配件”是“外设”的常见同义词。<i></i><i></i><i></i>在本文中，我们避免使用这些术语，因为它们可能与 Android <a href="http://en.wikipedia.org/wiki/Mobile_device">设备</a>或称为<a href="http://developer.android.com/guide/topics/connectivity/usb/accessory.html">配件模式</a>的 Android 特定概念相混淆。
+</p>
+
+<p>主机的一个重要作用是“枚举”：检测哪些外设连接到总线并通过“描述符”查询其属性的过程。<i></i><i></i>
+</p>
+
+<p>外设可能是一个物理对象，但实际上实现了多个逻辑“功能”。<i></i>例如，摄像头外设可以兼备相机功能和麦克风音频功能。
+</p>
+
+<p>每个外设功能都有一个“接口”，用于定义与该功能通信所用的协议。<i></i>
+</p>
+
+<p>主机通过连接到<a href="http://en.wikipedia.org/wiki/Communication_endpoint">端点</a>、数据源或外设功能之一提供的接收器的<a href="http://en.wikipedia.org/wiki/Stream_(computing)">管道</a>与外设进行通信。
+</p>
+
+<p>有两种管道：“消息”和“信息流”。<i></i><i></i>消息管道用于双向控制和状态。信息流管道用于单向数据传输。
+</p>
+
+<p>主机发起所有数据传输，因此术语“输入”和“输出”是相对于主机而言的。<i></i><i></i>输入操作将数据从外设传输到主机，而输出操作则将数据从主机传输到外设。
+</p>
+
+<p>有三种主要的数据传输模式：“中断”、“批量”和“等时”。<i></i><i></i><i></i>我们将在音频上下文中进一步讨论等时模式。
+</p>
+
+<p>外设可能具有连接到外部世界（超出外设自身范围）的“终端”。<i></i>这样，外设可以在 USB 协议和“实际”信号之间进行转换。终端是功能的逻辑对象。
+</p>
+
+<h2 id="androidModes">Android USB 模式</h2>
+
+<h3 id="developmentMode">开发模式</h3>
+
+<p>
+自 Android 首次发布以来，“开发模式”就一直存在。<i></i>在运行桌面操作系统（如 Linux、Mac OS X 或 Windows）的主机 PC 中，Android 设备显示为 USB 外设。唯一可见的外设功能是 <a href="http://en.wikipedia.org/wiki/Android_software_development#Fastboot">Android fastboot</a> 或 <a href="http://developer.android.com/tools/help/adb.html">Android 调试桥 (adb)</a>。fastboot 和 adb 协议所在层高于 USB 批量数据传输模式所在层。
+</p>
+
+<h3 id="hostMode">主机模式</h3>
+
+<p>
+<i></i>“主机模式”在 Android 3.1（API 级别 12）中被引入。
+</p>
+
+<p>由于 Android 设备必须充当主机，并且大多数 Android 设备都包含一个不直接允许主机操作的微型 USB 连接器，因此通常需要如下 On-The-Go (<a href="http://en.wikipedia.org/wiki/USB_On-The-Go">OTG</a>) 适配器：</p>
+
+<img src="images/otg.jpg" style="image-orientation: 90deg;" height="50%" width="50%" alt="OTG" id="figure1"/>
+<p class="img-caption">
+  <strong>图 1.</strong> On-The-Go (OTG) 适配器</p>
+
+<p>Android 设备可能无法提供充足的电力来运行特定的外设，具体取决于外设需要的电力以及 Android 设备能够提供的电力。即使能够提供充足的电力，Android 设备的电池电量也可能会大幅下降。对于这些情况，请使用供电<a href="http://en.wikipedia.org/wiki/USB_hub">集线器</a>，如下图所示：</p>
+
+<img src="images/hub.jpg" alt="电源集线器" id="figure2"/>
+<p class="img-caption">
+  <strong>图 2.</strong> 供电集线器</p>
+
+<h3 id="accessoryMode">配件模式</h3>
+
+<p>
+配件模式在 Android 3.1（API 级别 12）中被引入，并将其反向移植到 Android 2.3.4。<i></i>在这种模式下，Android 设备作为 USB 外设运行，并受另一个设备（例如，充当主机的基座）控制。开发模式与配件模式之间的区别在于，在配件模式下，除了 adb 之外，主机还可以看到其他 USB 功能。Android 设备从开发模式开始运行，然后通过重新协商过程转换到配件模式。
+</p>
+
+<p>配件模式在 Android 4.1 中增加了功能，特别是下述音频功能。
+</p>
+
+<h2 id="usbAudio">USB 音频</h2>
+
+<h3 id="class">USB 类</h3>
+
+<p>每个外设功能都有一个关联的设备类文档，用于指定该功能的标准协议。<i></i>这使得类兼容主机和外设功能可以互操作，而无需详细了解彼此的运行原理。<i></i>如果主机和外设由不同的实体提供，则类兼容性至关重要。
+</p>
+
+<p>术语“免驱动”是“类兼容”的常见同义词，表示可以使用此类外设的标准功能，而无需安装特定于操作系统的<a href="http://en.wikipedia.org/wiki/Device_driver">驱动程序</a>。<i></i><i></i>您可以认为，如果某个外设宣称“无需驱动程序”便可用于主要桌面操作系统，那么该外设属于类兼容外设，但可能有例外情况。
+</p>
+
+<h3 id="audioClass">USB 音频类</h3>
+
+<p>在本文中，我们只关注实现音频功能的外设，因而仅介绍音频设备类。USB 音频类规范存在以下两个版本：类 1 (UAC1) 和类 2 (UAC2)。
+</p>
+
+<h3 id="otherClasses">与其他类比较</h3>
+
+<p>USB 包括许多其他设备类，其中一些类可能会与音频类相混淆。<a href="http://en.wikipedia.org/wiki/USB_mass_storage_device_class">大容量存储类</a> (MSC) 用于面向扇区的媒体访问，而<a href="http://en.wikipedia.org/wiki/Media_Transfer_Protocol">媒体传输协议</a> (MTP) 则用于对媒体进行完全文件访问。MSC 和 MTP 可以用于传输音频文件，但只有 USB 音频类适用于实时流式传输。
+</p>
+
+<h3 id="audioTerminals">音频终端</h3>
+
+<p>音频外设的终端通常是模拟的。在外设输入终端提供的模拟信号通过<a href="http://en.wikipedia.org/wiki/Analog-to-digital_converter">模拟转数字转换器</a> (ADC) 转换为数字，并通过 USB 协议进行传输，以供主机消耗。ADC 是主机的数据源。<i></i>同样，主机通过 USB 协议将数字音频信号发送到外设，然后<a href="http://en.wikipedia.org/wiki/Digital-to-analog_converter">数字转模拟转换器</a> (DAC) 对信号进行转换并呈现给模拟输出终端。DAC 是主机的接收器。<i></i>
+</p>
+
+<h3 id="channels">通道</h3>
+
+<p>具有音频功能的外设可以包括源终端、接收终端或两者。每个方向可能有一个通道（单声道）、两个通道（立体声）或更多。<i></i><i></i>具有两个以上通道的外设称为多声道。<i></i>通常将立体声流解释为由左和右声道组成，并且延伸为将多通道流解释为具有对应于每个声道的空间位置。<i></i><i></i>然而，没有为每个通道分配任何特定的标准空间含义也是非常合适的（相较于 <a href="http://en.wikipedia.org/wiki/HDMI">HDMI</a> 而言，对于 USB 音频尤为如此）。在这种情况下，由应用和用户决定每个通道的使用方式。例如，四通道 USB 输入流可以将前三个通道连接到房间内的各种麦克风，最后一个通道从 AM 收音机接收输入。
+</p>
+
+<h3 id="isochronous">等时传输模式</h3>
+
+<p>USB 音频采用等时传输模式实现其实时特性，但代价是无法实现错误恢复。在等时模式下，带宽得到保证，并使用循环冗余校验 (CRC) 检测数据传输错误。但是在发生错误的情况下，不会进行包确认或重新传输。
+</p>
+
+<p>在每个起始帧 (SOF) 周期内发生等时传输。SOF 周期为全速 1 毫秒，高速 125 微秒。每个全速帧可承载高达 1023 字节的有效载荷，高速帧可承载 1024 字节。综合这两种情况，我们计算出最大传输速率为每秒 1023000 或 8192000 字节。这为组合音频采样率、通道数和位深设置了理论上限。实际上限更低。
+</p>
+
+<p>在等时模式下，有三种子模式：</p>
+
+<ul>
+<li>自动调节</li>
+<li>异步</li>
+<li>同步</li>
+</ul>
+
+<p>在自动调节子模式下，外设接收器或信号源根据主机的潜在变化采样率进行调节。
+</p>
+
+<p>在异步（也称为隐式反馈）子模式下，接收器或信号源确定采样率，然后主机相应地做出调整。异步子模式的主要理论优势是信号源或接收器 USB 时钟在物理和电气上更接近于驱动 DAC 或 ADC 的时钟（实际上可能与驱动 DAC 或 ADC 的时钟相同或从其衍生而来）。这种接近意味着异步子模式应该不太容易受到时钟抖动的影响。此外，DAC 或 ADC 使用的时钟可能具有比主机时钟更高的精度和更低的偏移。
+</p>
+
+<p>在同步子模式下，每个 SOF 周期传输固定数量的字节。音频采样率实际上派生自 USB 时钟。同步子模式不常用于音频，因为主机和外设均受到 USB 时钟的控制。
+</p>
+
+<p>下表对等时子模式进行了总结：</p>
+
+<table>
+<tbody><tr>
+  <th>子模式</th>
+  <th>每包<br />字节数</th>
+  <th>采样率<br />决定因素</th>
+  <th>是否用于音频</th>
+</tr>
+<tr>
+  <td>自动调节</td>
+  <td>不固定</td>
+  <td>主机</td>
+  <td>是</td>
+</tr>
+<tr>
+  <td>异步</td>
+  <td>不固定</td>
+  <td>外设</td>
+  <td>是</td>
+</tr>
+<tr>
+  <td>同步</td>
+  <td>固定</td>
+  <td>USB 时钟</td>
+  <td>否</td>
+</tr>
+</tbody></table>
+
+<p>在实践中，子模式当然重要，但也应考虑其他因素。
+</p>
+
+<h2 id="androidSupport">Android 对 USB 音频类的支持</h2>
+
+<h3 id="developmentAudio">开发模式</h3>
+
+<p>开发模式不支持 USB 音频。
+</p>
+
+<h3 id="hostAudio">主机模式</h3>
+
+<p>Android 5.0（API 级别 21）及以上版本支持 USB 音频类 1 (UAC1) 功能的一部分：</p>
+
+<ul>
+<li>Android 设备必须作为主机</li>
+<li>音频格式必须是 PCM（接口类型 I）</li>
+<li>位深必须是 16 位、24 位或 32 位，其中 24 位有用音频数据在 32 位字的最高有效位内左对齐</li>
+<li>采样率必须是 48 kHz、44.1 kHz、32 kHz、24 kHz、22.05 kHz、16 kHz、12 kHz、11.025 kHz 或 8 kHz</li>
+<li>通道数必须为 1（单声道）或 2（立体声）</li>
+</ul>
+
+<p>查看 Android 框架源代码时，可能会发现除支持这些功能所需最低代码之外的附加代码。但此代码尚未经过验证，因此尚未声明更高级的功能。
+</p>
+
+<h3 id="accessoryAudio">配件模式</h3>
+
+<p>Android 4.1（API 级别 16）增加了对主机音频播放的有限支持。在配件模式下，Android 会自动将其音频输出导向到 USB。也就是说，Android 设备充当主机（例如基座）的数据源。
+</p>
+
+<p>配件模式音频具有以下特点：</p>
+
+<ul>
+<li>Android 设备必须由能够首先将 Android 设备从开发模式切换到配件模式的信息丰富的主机控制，然后主机必须从适当的端点传输音频数据。因此，Android 设备不会对主机显示为“免驱动”。
+</li>
+<li>方向必须为输入（相对于主机而言）<i></i></li>
+<li>音频格式必须为 16 位 PCM</li>
+<li>采样率必须为 44.1 kHz</li>
+<li>通道数必须为 2（立体声）</li>
+</ul>
+
+<p>配件模式音频尚未广泛采用，目前不推荐用于新设计。
+</p>
+
+<h2 id="applications">USB 数字音频的应用</h2>
+
+<p>顾名思义，USB 数字音频信号由<a href="http://en.wikipedia.org/wiki/Digital_data">数字</a>数据流表示，而非常见的 TRS 迷你<a href="http://en.wikipedia.org/wiki/Phone_connector_(audio)">耳机连接器</a>使用的<a href="http://en.wikipedia.org/wiki/Analog_signal">模拟</a>信号。最终任何数字信号都必须先转换为模拟信号，然后才能被听到。选择在哪里进行转换时需要做出取舍。
+</p>
+
+<h3 id="comparison">两种 DAC 设计</h3>
+
+<p>在下面的示例图中，我们比较了两种设计。首先，我们设计了一个配有应用处理器 (AP)、板载 DAC、放大器和连接到耳机的模拟 TRS 连接器的移动设备。我们还考虑设计一个将 USB 连接到外部 USB DAC 和放大器并且配备耳机的移动设备。
+</p>
+
+<img src="images/dac.png" alt="DAC 比较" id="figure3"/>
+<p class="img-caption">
+  <strong>图 3.</strong> 两个 DAC 的比较</p>
+
+<p>哪个设计更好？答案取决于您的需求。每个设计各有优缺点。
+</p>
+<p class="note"><strong>注意</strong>：这是一个人为的比较，因为真正的 Android 设备可能同时具有这两种选项。
+</p>
+
+<p>第一个设计 A 更简单、更便宜、消耗更少的功率，并且将是更可靠的设计（假设其他组件同等可靠）。然而，通常需要权衡音频质量和其他要求。例如，如果这是一个大众市场设备，则可能需要适应普通消费者的需求，而不是针对发烧友。
+</p>
+
+<p>在第二个设计中，外部音频外设 C 可以专为更高的音频质量和更大的功率输出而设计，不会影响基本大众市场 Android 设备 B 的成本。是的，这是一个更昂贵的设计，而且成本只有真正有需求的人会去承担。
+</p>
+
+<p>移动设备因具有高密度电路板而声名狼藉，因为带来了更多<a href="http://en.wikipedia.org/wiki/Crosstalk_(electronics)">串扰</a>机会，可能会降低相邻的模拟信号质量。数字通信不易受<a href="http://en.wikipedia.org/wiki/Noise_(electronics)">噪音</a>影响，因此将 DAC 从 Android 设备 A 移到外部电路板 C，可使最终的模拟阶段在物理和电气上与密集且嘈杂的电路板相隔离，从而产生更高的保真音频。
+</p>
+
+<p>另一方面，第二种设计更为复杂，复杂性越高，失败的几率就越高。还有来自 USB 控制器的额外延迟。
+</p>
+
+<h3 id="hostApplications">主机模式应用</h3>
+
+<p>典型的 USB 主机模式音频应用包括：</p>
+
+<ul>
+<li>听音乐</li>
+<li>电话</li>
+<li>即时通讯和语音聊天</li>
+<li>录音</li>
+</ul>
+
+<p>对于所有这些应用，Android 会检测到兼容的 USB 数字音频外设，并根据音频策略规则自动导向音频播放和捕获。立体声内容在外设的前两个通道上播放。
+</p>
+
+<p>没有特定于 USB 数字音频的 API。对于高级用途，自动导向可能会干扰 USB 感知的应用。对于这样的应用，请通过<a href="http://developer.android.com/tools/index.html">设置/开发者选项</a>的媒体部分中的相应控件停用自动导向。
+</p>
+
+<h3 id="hostDebugging">在主机模式下进行调试</h3>
+
+<p>在 USB 主机模式下，通过 USB 进行 adb 调试不可用。请参阅 <a href="http://developer.android.com/tools/help/adb.html">Android 调试桥</a>的<a href="http://developer.android.com/tools/help/adb.html#wireless">无线用法</a>部分，了解备选方案。
+</p>
+
+<h2 id="compatibility">实现 USB 音频</h2>
+
+<h3 id="recommendationsPeripheral">面向音频外设供应商的建议</h3>
+
+<p>为了与 Android 设备进行互操作，音频外设供应商应该：</p>
+
+<ul>
+<li>采用兼容音频类的设计；目前 Android 目标是类 1，但是计划兼容类 2 是明智之举</li>
+<li>避免<a href="http://en.wiktionary.org/wiki/quirk">怪异行为</a></li>
+<li>测试与参考和热门 Android 设备的互操作性</li>
+<li>清楚地记录支持的功能、音频类兼容性、电源要求等，以便消费者做出明智的决定</li>
+</ul>
+
+<h3 id="recommendationsAndroid">面向 Android 设备 OEM 和 SoC 供应商的建议</h3>
+
+<p>为了支持 USB 数字音频，设备 OEM 和 SoC 供应商应该：</p>
+
+<ul>
+<li>设计支持 USB 主机模式的硬件</li>
+<li>通过 <code>android.hardware.usb.host.xml</code> 功能标记在框架级别启用通用 USB 主机支持</li>
+<li>启用所有需要的内核功能：USB 主机模式、USB 音频、等时传输模式；请参阅 <a href="/devices/tech/config/kernel.html">Android 内核配置</a></li>
+<li>及时了解最新的内核版本和补丁程序；尽管类兼容是一个至高的目标，但是仍然存在具有<a href="http://en.wiktionary.org/wiki/quirk">怪异行为</a>的音频外设，不过最新的内核提供了解决这些怪异行为的方法</li>
+<li>启用 USB 音频策略，如下所述</li>
+<li>将 audio.usb.default 添加到 device.mk 中的 PRODUCT_PACKAGES</li>
+<li>测试与常见 USB 音频外设的互操作性</li>
+</ul>
+
+<h3 id="enable">如何启用 USB 音频策略</h3>
+
+<p>要启用 USB 音频，请在音频策略配置文件中添加一个条目。通常位于以下位置：</p>
+<pre class="devsite-click-to-copy">
+device/oem/codename/audio_policy.conf
+</pre>
+<p>路径名中的“oem”应替换为制造 Android 设备的 OEM 的名称，“codename”应替换为设备代号。
+</p>
+
+<p>以下是一个示例条目：</p>
+
+<pre class="devsite-click-to-copy">
+audio_hw_modules {
+  ...
+  usb {
+    outputs {
+      usb_accessory {
+        sampling_rates 44100
+        channel_masks AUDIO_CHANNEL_OUT_STEREO
+        formats AUDIO_FORMAT_PCM_16_BIT
+        devices AUDIO_DEVICE_OUT_USB_ACCESSORY
+      }
+      usb_device {
+        sampling_rates dynamic
+        channel_masks dynamic
+        formats dynamic
+        devices AUDIO_DEVICE_OUT_USB_DEVICE
+      }
+    }
+    inputs {
+      usb_device {
+        sampling_rates dynamic
+        channel_masks AUDIO_CHANNEL_IN_STEREO
+        formats AUDIO_FORMAT_PCM_16_BIT
+        devices AUDIO_DEVICE_IN_USB_DEVICE
+      }
+    }
+  }
+  ...
+}
+</pre>
+
+<h3 id="sourceCode">源代码</h3>
+
+<p>用于 USB 音频的音频硬件抽象层 (HAL) 实现位于以下位置：</p>
+<pre class="devsite-click-to-copy">
+hardware/libhardware/modules/usbaudio/
+</pre>
+<p>USB 音频 HAL 在很大程度上取决于 tinyalsa（如<a href="terminology.html">音频术语</a>中所述）。<i></i>虽然 USB 音频依赖于等时传输，但这是通过 ALSA 实现抽象出来的。所以，USB 音频 HAL 和 tinyalsa 不需要关注 USB 协议的这部分。
+</p>
+
+</body></html>

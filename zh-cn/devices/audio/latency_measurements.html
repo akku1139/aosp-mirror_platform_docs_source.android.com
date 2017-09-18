@@ -1,0 +1,378 @@
+<html devsite><head>
+    <title>音频延迟时间测量</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p><a href="http://en.wikipedia.org/wiki/Latency_%28engineering%29">延迟时间</a>是一项重要的系统性能指标。<a href="latency.html">音频延迟时间</a>指标有多种类型，其中一个很实用且易于理解的指标是<a href="latency_measure.html#measuringRoundTrip">往返延迟时间</a>。根据该指标的定义，音频延迟时间是指音频信号进入移动设备的输入设备，由应用处理器上运行的应用进行处理，然后退出输出设备，这整个过程所花费的时间。</p>
+
+<img src="images/round_trip_on_device.png" alt="设备上的往返音频延迟时间" id="figure1"/>
+<p class="img-caption"><strong>图 1. </strong> 设备上的往返音频延迟时间：T<sub>output</sub> - T<sub>input</sub></p>
+
+<p>本页提供了选定 Nexus/Pixel 设备和 Android 平台版本的往返音频延迟时间测量结果。</p>
+
+<h2 id="why">为什么要测量延迟时间</h2>
+
+<p>Google 会测量和报告延迟时间，以便 Android 应用开发者获取所需数据，从而针对实际设备上的可用延迟时间做出明智决策。我们会分享选定 Nexus 和 Pixel 设备的延迟时间数值，以此鼓励整个 Android 社区的成员来测量、发布和减少所有 Android 设备上的延迟时间。<em></em>欢迎加入我们，一起为减少音频延迟时间而努力！</p>
+
+<h2 id="app">应用对延迟时间的影响</h2>
+
+<p>信号处理技术可能会在延迟时间中添加以下类型的延迟：</p>
+<ul>
+<li><strong>算法</strong>：这是一种固有延迟，不会因 CPU 而异。例如由<a href="http://en.wikipedia.org/wiki/Finite_impulse_response">有限脉冲响应</a> (FIR) 过滤器增加的延迟。</li>
+<li><strong>计算</strong>：这种延迟与所需的 CPU 周期数有关。例如，信号的衰减通常通过乘法运算完成，而该运算所需的周期数则取决于 CPU。</li>
+</ul>
+
+<h2 id="how">如何测量</h2>
+
+<p>我们使用 <a href="loopback.html">Dr. Rick O'Rang 音频环回软件狗</a>和<a href="latency_measure.html#larsenTest">音频反馈（拉尔森效应）测试</a>得出了本页列出的测量结果。测量假设应用信号处理技术增加了零算法延迟时间和近零计算延迟时间。</p>
+
+<p>我们通过耳机连接器来测量往返延迟时间有以下几个原因：</p>
+<img src="images/round_trip_via_headset_connector.png" alt="通过耳机连接器测量的往返延迟时间" id="figure2"/>
+<p class="img-caption"><strong>图 2. </strong> 通过耳机连接器测量的往返延迟时间：T<sub>output</sub> - T<sub>input</sub></p>
+<ul>
+<li>重要的音乐应用（如吉他和语音处理）一般会使用耳机连接器。</li>
+<li>测量设备上的麦克风和扬声器之间的往返延迟时间可能会比较麻烦，因为在露天环境下难以避免反馈环进入不受控制的振荡状态。</li>
+<li>设备上的换能器都很小，为了实现它们的小尺寸则需要牺牲频率响应。出于补偿目的，换能器会应用数字信号处理技术，但这会增加设备上路径的算法延迟时间。</li>
+</ul>
+
+<p>在有些情况下，设备上的麦克风和扬声器延迟时间确实有重要作用，但这通常是针对单向延迟而不是往返延迟。<em></em><a href="latency_measure.html#measuringOutput">测量输出设备延迟时间</a>和<a href="latency_measure.html#measuringInput">测量输入设备延迟时间</a>中介绍了测量单向延迟时间的相关技术。</p>
+
+<h2 id="measurements">测量结果示例</h2>
+
+<p>下面列出的是特定于某个<a href="/source/build-numbers.html">版本号</a>的测量结果。设备按初始版本和平台版本的大致顺序列出；您也可以<a href="#chart">查看图表中的延迟时间</a>。测试应用会使用 Android 原生音频 API（基于 OpenSL ES）。</p>
+
+<table>
+<tbody><tr>
+  <th>型号</th>
+  <th>平台<br />版本</th>
+  <th>版本<br />号</th>
+  <th>抽样频率<br />(Hz)</th>
+  <th>缓冲区空间<br />（帧）</th>
+  <th>缓冲区空间<br />（毫秒）</th>
+  <th>往返<br />延迟时间（毫秒）<br />± 1 个缓冲区</th>
+</tr>
+
+<tr>
+  <td>Nexus One</td>
+  <td>2.3.6</td>
+  <td>GRK39F</td>
+  <td>44100</td>
+  <td>768</td>
+  <td>17.4</td>
+  <td>345</td>
+</tr>
+
+<tr>
+  <td>Nexus S</td>
+  <td>2.3.6</td>
+  <td>GRK39F</td>
+  <td>44100</td>
+  <td>1024</td>
+  <td>23.2</td>
+  <td>260</td>
+</tr>
+
+<tr>
+  <td>Nexus S</td>
+  <td>4.0.4</td>
+  <td>IMM76D</td>
+  <td>44100</td>
+  <td>1024</td>
+  <td>23.2</td>
+  <td>260</td>
+</tr>
+
+<tr>
+  <td>Nexus S</td>
+  <td>4.1.2</td>
+  <td>JZO54K</td>
+  <td>44100</td>
+  <td>880</td>
+  <td>20</td>
+  <td>210</td>
+</tr>
+
+<tr>
+  <td>Galaxy Nexus</td>
+  <td>4.0.1</td>
+  <td>ITL41D</td>
+  <td>44100</td>
+  <td>976</td>
+  <td>22.1</td>
+  <td>270</td>
+</tr>
+
+<tr>
+  <td>Galaxy Nexus</td>
+  <td>4.3</td>
+  <td>JWR66Y</td>
+  <td>44100</td>
+  <td>144</td>
+  <td>3.3</td>
+  <td>130</td>
+</tr>
+
+<tr>
+  <td>Nexus 4</td>
+  <td>4.2.2</td>
+  <td>JDQ39E</td>
+  <td>48000</td>
+  <td>240</td>
+  <td>5</td>
+  <td>195</td>
+</tr>
+
+<tr>
+  <td>Nexus 4</td>
+  <td>5.1</td>
+  <td>LMY47O</td>
+  <td>48000</td>
+  <td>240</td>
+  <td>5</td>
+  <td>58</td>
+</tr>
+
+<tr>
+  <td>Nexus 10</td>
+  <td>5.0.2</td>
+  <td>LRX22G</td>
+  <td>44100</td>
+  <td>256</td>
+  <td>5.8</td>
+  <td>36</td>
+</tr>
+
+<tr>
+  <td>Nexus 10</td>
+  <td>5.1</td>
+  <td>LMY47D</td>
+  <td>44100</td>
+  <td>256</td>
+  <td>5.8</td>
+  <td>35</td>
+</tr>
+
+<tr>
+  <td>Nexus 7<br />2013</td>
+  <td>4.3</td>
+  <td>JSR78D</td>
+  <td>48000</td>
+  <td>240</td>
+  <td>5</td>
+  <td>149</td>
+</tr>
+
+<tr>
+  <td>Nexus 7<br />2013</td>
+  <td>4.4</td>
+  <td>KRT16S</td>
+  <td>48000</td>
+  <td>240</td>
+  <td>5</td>
+  <td>85</td>
+</tr>
+
+<tr>
+  <td>Nexus 7<br />2013</td>
+  <td>5.0.2</td>
+  <td>LRX22G</td>
+  <td>48000</td>
+  <td>240</td>
+  <td>5</td>
+  <td>64</td>
+</tr>
+
+<tr>
+  <td>Nexus 7<br />2013</td>
+  <td>5.1</td>
+  <td>LMY47O</td>
+  <td>48000</td>
+  <td>240</td>
+  <td>5</td>
+  <td>55</td>
+</tr>
+
+<tr>
+  <td>Nexus 7<br />2013</td>
+  <td>6.0</td>
+  <td>MRA58K</td>
+  <td>48000</td>
+  <td>240</td>
+  <td>5</td>
+  <td>55</td>
+</tr>
+
+<tr>
+  <td>Nexus 5</td>
+  <td>4.4.4</td>
+  <td>KTU84P</td>
+  <td>48000</td>
+  <td>240</td>
+  <td>5</td>
+  <td>95</td>
+</tr>
+
+<tr>
+  <td>Nexus 5</td>
+  <td>5.0.0</td>
+  <td>LRX21O</td>
+  <td>48000</td>
+  <td>240</td>
+  <td>5</td>
+  <td>47</td>
+</tr>
+
+<tr>
+  <td>Nexus 5</td>
+  <td>5.1</td>
+  <td>LMY47I</td>
+  <td>48000</td>
+  <td>240</td>
+  <td>5</td>
+  <td>42</td>
+</tr>
+
+<tr>
+  <td>Nexus 5</td>
+  <td>6.0</td>
+  <td>MRA58K</td>
+  <td>48000</td>
+  <td>192</td>
+  <td>4</td>
+  <td>38</td>
+</tr>
+
+<tr>
+  <td>Nexus 9</td>
+  <td>5.0.0</td>
+  <td>LRX21L</td>
+  <td>48000</td>
+  <td>256</td>
+  <td>5.3</td>
+  <td>35</td>
+</tr>
+
+<tr>
+  <td>Nexus 9</td>
+  <td>5.0.1</td>
+  <td>LRX22C</td>
+  <td>48000</td>
+  <td>256</td>
+  <td>5.3</td>
+  <td>38</td>
+</tr>
+
+<tr>
+  <td>Nexus 9</td>
+  <td>5.1.1</td>
+  <td>LMY47X</td>
+  <td>48000</td>
+  <td>256</td>
+  <td>5.3</td>
+  <td>32</td>
+</tr>
+
+<tr>
+  <td>Nexus 9</td>
+  <td>6.0</td>
+  <td>MRA58K</td>
+  <td>48000</td>
+  <td>128</td>
+  <td>2.6</td>
+  <td>15</td>
+</tr>
+
+<tr>
+  <td>Nexus 6</td>
+  <td>5.0.1</td>
+  <td>LRX22C</td>
+  <td>48000</td>
+  <td>240</td>
+  <td>5</td>
+  <td>65</td>
+</tr>
+
+<tr>
+  <td>Nexus 6</td>
+  <td>5.1</td>
+  <td>LMY47I</td>
+  <td>48000</td>
+  <td>240</td>
+  <td>5</td>
+  <td>42</td>
+</tr>
+
+<tr>
+  <td>Nexus 6</td>
+  <td>6.0</td>
+  <td>MRA58K</td>
+  <td>48000</td>
+  <td>192</td>
+  <td>4</td>
+  <td>33</td>
+</tr>
+
+<tr>
+  <td>Nexus 5X</td>
+  <td>6.0</td>
+  <td>MDA89E</td>
+  <td>48000</td>
+  <td>192</td>
+  <td>4</td>
+  <td>18</td>
+</tr>
+
+<tr>
+  <td>Nexus 6P</td>
+  <td>6.0</td>
+  <td>MDA89D</td>
+  <td>48000</td>
+  <td>192</td>
+  <td>4</td>
+  <td>18</td>
+</tr>
+
+<tr>
+  <td>Pixel</td>
+  <td>7.1.2</td>
+  <td>NHG47L</td>
+  <td>48000</td>
+  <td>192</td>
+  <td>4</td>
+  <td>18</td>
+</tr>
+
+<tr>
+  <td>Pixel XL</td>
+  <td>7.1.2</td>
+  <td>NHG47L</td>
+  <td>48000</td>
+  <td>192</td>
+  <td>4</td>
+  <td>18</td>
+</tr>
+
+</tbody></table>
+
+<a id="chart"></a>
+<img src="/devices/audio/images/round-trip-latencies.png"/>
+<p class="img-caption"><strong>图 3. </strong> 往返延迟时间。</p>
+
+</body></html>

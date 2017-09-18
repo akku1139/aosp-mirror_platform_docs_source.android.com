@@ -1,0 +1,64 @@
+<html devsite><head>
+    <title>错误和信息流处理</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<h2 id="error-mgmt">错误管理</h2>
+<p>如果出现严重错误，则具有返回值的相机 HAL 设备操作函数将全部返回 -ENODEV/NULL。这意味着该设备无法继续操作，必须由框架进行关闭。一旦某种方法返回了此错误，或者如果调用 notify() 且返回 ERROR_DEVICE，则只能成功调用 close() 方法。所有其他方法都将返回 -ENODEV/NULL。<br />如果以错误顺序调用了设备操作，例如如果框架先调用 configure_streams() 后调用 initialize()，则该设备将会从调用中返回 -ENOSYS，且不执行任何操作。<br />图片拍摄过程中的瞬时错误必须通过 notify() 进行报告，如下所述：</p>
+<ul>
+  <li>如果整个拍摄过程失败，则必须由 HAL 进行报告，具体方法是调用 notify() 且返回 ERROR_REQUEST。在这种情况下，不能报告结果元数据或输出缓冲区的单个错误。</li>
+  <li>如果无法生成拍摄的元数据，但已填充某些图像缓冲区，则 HAL 必须调用 notify() 且返回 ERROR_RESULT。</li>
+  <li>如果无法填充输出图像缓冲区，但已生成元数据或已填充其他一些缓冲区，则 HAL 必须为各个失败的缓冲区调用 notify() 且返回 ERROR_BUFFER。</li>
+</ul>
+<p>在发生此类瞬时失败的情况下，HAL 必须仍然调用 process_capture_result 且返回有效的输出 buffer_handle_t。如果无法生成结果元数据，则应该为 NULL。如果无法填充某些缓冲区，则其同步栅栏必须设为错误状态。<br />无效的输入参数会导致相应方法返回 -EINVAL。在这种情况下，框架必须表现为如同从未进行过该调用一样。</p>
+<h2 id="stream-mgmt">信息流管理</h2>
+<h3 id="configure_streams">configure_streams</h3>
+<p>重置 HAL 相机设备的处理管道，并设置新的输入和输出信息流。此调用将使用 stream_list 中定义的信息流来替换任何现有的信息流配置。在使用 process_capture_request() 提交请求之前，此方法会在 initialize() 之后至少被调用一次。<br />stream_list 必须包含至少一个支持输出的信息流，但不得包含多个支持输入的信息流。<br />stream_list 可包含同时属于当前有效的信息流组（源自先前对 configure_stream() 的调用）中的信息流。此类信息流已具有用法、maxbuffer 和私有指针的有效值。如果此类信息流已注册缓冲区，则系统不会针对这样的信息流再次调用 register_stream_buffers()，信息流中的缓冲区可立即列入输入请求中。<br />HAL 如果需要将现有信息流的流配置更改为新的配置，可能会在配置调用期间重写用法和/或 maxbuffer 的值。该框架会检测到此类更改，然后重新分配信息流缓冲区，并且在请求中使用该信息流中的缓冲区之前会再次调用 register_stream_buffers()。<br />如果 stream_list 中不包含当前有效的信息流，则 HAL 可以安全地移除对该信息流的任何引用。在框架稍后调用 configure() 期间也不会重复使用该信息流，并且在 configure_streams() 调用返回之后，它的所有 gralloc 缓冲区都将被释放。<br />stream_list 结构归框架所有，在此调用完成后可能就无法被访问了。单个 camera3streamt 结构的地址将仍然可供 HAL 访问，直到第一个 configure_stream() 调用结束（该调用的 stream_list 参数中不再包含该 camera3streamt）。除了在 configure_streams() 调用期间的用法和 maxbuffer 的成员之外，HAL 可能不会更改私有指针之外的信息流结构中的值。<br />如果是新的信息流，则其结构的用法、maxbuffer 和私有指针字段都将被设为 0。HAL 设备必须在 configure_streams() 调用返回之前设置这些字段。随后，框架和平台 gralloc 模块将使用这些字段为各个信息流分配 gralloc 缓冲区。<br />框架使用此类新信息流来调用 register_stream_buffers() 之后，信息流的缓冲区便可以列入拍摄请求中。不过，在提交请求之前，并不要求框架为所有信息流注册缓冲区。这样一来，预览信息流就可以快速启动（举例说明），而其他信息流的分配则稍后或同时发生。</p>
+<h4><strong>前提条件</strong></h4>
+<p>仅当没有正在处理的拍摄时，框架才会调用此方法。也就是说，所有结果已返回到框架，所有进行中的输入和输出缓冲区已返回，且其释放同步栅栏已收到 HAL 发出的信号。在 configure_streams() 调用过程中，框架不会提交新的拍摄请求。</p>
+<h4><strong>后置条件</strong></h4>
+<p>如相机设备的静态元数据中所述，HAL 设备必须自行配置，从而根据给定的输出信息流大小和格式提供尽可能高的输出帧速率。</p>
+<h4><strong>效果预期</strong></h4>
+<p>此调用预计为重型调用，由于可能需要重置和重新配置图片传感器和相机处理管道，因此可能需要几百毫秒才能完成。不过，HAL 设备应尽量避免重新配置延迟，以尽可能避免在应用操作模式改变（例如从静态拍摄切换到视频录制）期间出现用户可见的停顿。</p>
+<h4><strong>返回值</strong></h4>
+<ul>
+  <li>0：信息流配置成功时返回</li>
+  <li>未定义的返回值</li>
+  <li>-EINVAL：如果请求的信息流配置无效，则返回此值。以下是一些无效信息流配置的示例：<ul>
+      <li>包括多个支持输入的信息流（INPUT 或 BIDIRECTIONAL）</li>
+      <li>不包括任何支持输出的信息流（OUTPUT 或 BIDIRECTIONAL）</li>
+      <li>包括采用不受支持格式（或者格式的不受支持大小）的信息流。</li>
+      <li>包括过多特定格式的输出信息流。</li>
+      <li>请注意，鉴于信息流配置在配置之前经过检查确认，因此框架提交无效信息流配置不属于正常操作。无效配置意味着框架代码中存在错误，或者 HAL 的静态元数据与对信息流的要求不相符。</li>
+    </ul>
+  </li>
+  <li>-ENODEV：如果出现致命错误且设备不再运行，则返回此值。返回此错误后，框架只能成功调用 close()。</li>
+</ul>
+<h3 id="register-stream">register_stream_buffers</h3>
+<p>通过 HAL 设备为指定的信息流注册缓冲区。框架调用此方法发生在 configure_streams 定义新信息流之后、该信息流的缓冲区被列入拍摄请求之前。如果随后的 configure_streams() 调用中列出了同一信息流，框架将不会为该信息流再次调用 register_stream_buffers。<br />框架不需要在提交第一个拍摄请求之前，为配置的所有信息流注册缓冲区。这样可以在其他信息流仍然处于分配过程中时快速启动预览（或类似用例）。<br />此方法旨在让 HAL 设备映射或以其他方式准备缓冲区以供稍后使用。传入的缓冲区将被锁定以供使用。在调用结束时，所有缓冲区都必须准备好返回到信息流。bufferset 参数仅在此调用期间有效。<br />如果信息流格式设为 HAL_PIXEL_FORMAT_IMPLEMENTATION_DEFINED，则相机 HAL 应在此处检查传入的缓冲区，以确定任何平台专用的像素格式信息。</p>
+<h4><strong>返回值</strong></h4>
+<ul>
+  <li>0：新信息流的缓冲区注册成功时返回。</li>
+  <li>-EINVAL：如果 streambufferset 不引用有效的活动信息流或者缓冲区数组无效，则返回此值。</li>
+  <li>-ENOMEM：如果注册缓冲区时出错，则返回此值。框架必须将所有信息流缓冲区视为未注册，并且可尝试稍后重新注册。</li>
+  <li>-ENODEV：如果出现致命错误且设备不再运行，则返回此值。返回此错误后，框架只能成功调用 close()。</li>
+</ul>
+
+</body></html>
