@@ -1,0 +1,269 @@
+<html devsite><head>
+    <title>相机版本支持</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>本页详细介绍了 Camera HAL、API 和相关的 Android 兼容性测试套件 (CTS) 测试中的版本差异。还介绍了在 Android 7.0 中为增强和提高相机框架安全性而进行的几项架构更改，以及供应商在其相机实现中为支持这些更改所必须进行的更新。</p>
+
+<h2 id="glossary">术语</h2>
+
+<p>本页中用到以下术语：</p>
+
+<dl>
+
+<dt>Camera API1</dt>
+<dd>Android 4.4 及更低版本设备上的应用级相机框架，通过 <code>android.hardware.Camera</code> 类提供。</dd>
+
+<dt>Camera API2</dt>
+<dd>Android 5.0 及更高版本设备上的应用级相机框架，通过<code> android.hardware.camera2</code> 包提供。</dd>
+
+<dt>Camera HAL</dt>
+<dd>由 SoC 供应商实现的相机模块层。该应用级公共框架基于 Camera HAL 构建而成。</dd>
+
+<dt>Camera HAL3.1</dt>
+<dd>随 Android 4.4 发布的相机设备 HAL 版本。</dd>
+
+<dt>Camera HAL3.2</dt>
+<dd>随 Android 5.0 发布的相机设备 HAL 版本。</dd>
+
+<dt>Camera API1 CTS</dt>
+<dd>在 Camera API1 之上运行的相机兼容性测试套件 (CTS) 测试集。</dd>
+
+<dt>Camera API2 CTS</dt>
+<dd>在 Camera API2 之上运行的另一个相机 CTS 测试集。</dd>
+
+</dl>
+
+<h2 id="camera_apis">相机 API</h2>
+<p>Android 包含以下相机 API。</p>
+
+<h3 id="camera_api1">Camera API1</h3>
+
+<p>Android 5.0 已弃用 Camera API1，而且随着新平台开发的重点放在 Camera API2 上，Camera API1 会逐渐被淘汰。但是，该淘汰期限将会很长，而且 Android 版本将会在一段时间内继续支持 Camera API1 应用。具体来说，将继续为以下内容提供支持：</p>
+
+<ul>
+<li><em></em>应用的 Camera API1 接口。在 Camera API1 之上构建的相机应用应该与运行早期 Android 版本的设备一样工作。
+</li>
+<li>Camera HAL 版本。<em></em>包括对 Camera HAL1.0 的支持。</li>
+</ul>
+
+<h3 id="camera_api2">Camera API2</h3>
+
+<p>Camera API2 框架为应用提供较低级别的相机控件，包括高效的零复制连拍/视频流以及曝光、增益、白平衡增益、颜色转换、去噪、锐化等方面的每帧控件。有关详细信息，请观看 <a href="https://www.youtube.com/watch?v=92fgcUNCHic&feature=youtu.be&t=29m50s">Google I/O 视频概览</a>。</p>
+
+<p>Android 5.0 及更高版本包括 Camera API2；但是，运行 Android 5.0 及更高版本的设备可能并非支持所有 Camera API2 功能。应用可以通过 Camera API2 接口查询的 <code>android.info.supportedHardwareLevel</code> 属性会报告以下支持级别之一：</p>
+
+<ul>
+<li><code>LEGACY</code>。这些设备通过 Camera API2 接口为应用提供功能，而且这些功能与通过 Camera API1 接口提供给应用的功能大致相同。旧版框架代码在概念上将 Camera API2 调用转换为 Camera API1 调用；旧版设备不支持 Camera API2 功能，例如每帧控件。</li>
+<li><code>FULL</code>。这些设备支持 Camera API2 的所有主要功能，并且必须使用 Camera HAL 3.2 或更高版本以及 Android 5.0 或更高版本。</li>
+<li><code>LIMITED</code>。这些设备支持部分（但不是全部）Camera API2 功能，并且必须使用 Camera HAL 3.2 或更高版本。</li>
+</ul>
+
+<p>各项功能通过 Camera API2 接口中的 <code>android.request.availableCapabilities</code> 属性提供。<code>FULL</code> 设备需要 <code>MANUAL_SENSOR</code> 和 <code>MANUAL_POST_PROCESSING</code> 等功能。即使对于 <code>FULL</code> 设备，<code>RAW</code> 功能也是可选的。
+<code>LIMITED</code> 设备可以播发这些功能的任何子集，包括空子集。但是，必须始终定义 <code>BACKWARD_COMPATIBLE</code> 功能。</p>
+
+<p>设备支持的硬件级别及其支持的特定 Camera API2 功能采用以下功能标记的形式提供，以允许 Google Play 过滤 Camera API2 相机应用。</p>
+
+<ul>
+  <li><code>android.hardware.camera.hardware_level.full</code>
+  </li><li><code>android.hardware.camera.capability.raw</code>
+  </li><li><code>android.hardware.camera.capability.manual_sensor</code>
+  </li><li><code>android.hardware.camera.capability.manual_post_processing</code>
+</li></ul>
+
+<h2 id="cts_requirements">CTS 要求</h2>
+
+<p>运行 Android 5.0 及更高版本的设备必须通过 Camera API1 CTS、Camera API2 CTS 和 CTS 验证程序相机测试。</p>
+
+<p>不具备 Camera HAL3.2 实现且不能支持完整的 Camera API2 接口的设备仍必须通过 Camera API2 CTS 测试。但是，该设备将在 Camera API2 <code>LEGACY</code> 模式下运行（在该模式下，Camera API2 调用在概念上映射到 Camera API1 调用），因此与 Camera API1 之外的特征或功能相关的任何 Camera API2 CTS 测试都将自动跳过。</p>
+
+<p>在旧版设备上，未跳过的 Camera API2 CTS 测试使用现有的公共 Camera API1 接口和功能，没有新的要求。显示的错误（并导致 Camera API2 CTS 失败）是设备现有 Camera HAL 中已经存在的错误，因此可由现有 Camera API1 应用找到。我们预计不会出现太多此类错误（但是，任何此类错误均必须修复，才能通过 Camera API2 CTS 测试）。</p>
+
+<h2 id="hardening">相机框架强化</h2>
+
+<p>为了增强媒体和相机框架安全性，Android 7.0 已将相机服务从 mediaserver 中移出。供应商可能需要根据正在使用的 API 和 HAL 版本对 Camera HAL 进行更改。以下部分详细介绍了在 HAL1 和 HAL3 的 AP1 和 AP2 中进行的架构更改，以及常规要求。</p>
+
+<h3 id="hardening_api1">API1 的架构更改</h3>
+<p>API1 视频录制可能会假定相机和视频编码器存在于同一进程中。在以下对象上使用 API1 时：</p>
+
+<ul>
+<li>HAL3，其中相机服务使用 BufferQueue 在进程之间传递缓冲区，<strong>不需要供应商更新</strong>。
+<p><img src="images/ape_camera_n_api1_hal3.png" alt="HAL3 上 API1 中的 Android 7.0 相机和媒体堆栈" id="figure1"/></p>
+<p class="img-caption"><strong>图 1. </strong>HAL3 上 API1 中的 Android 7.0 相机和媒体堆栈。</p>
+</li>
+<li>HAL1，支持在视频缓冲区中传递元数据，<strong>供应商必须更新 HAL 才能使用 kMetadataBufferTypeNativeHandleSource</strong>（Android 7.0 中不再支持 <code>kMetadataBufferTypeCameraSource</code>）。
+<p><img src="images/ape_camera_n_api1_hal1.png" alt="HAL1 上 API1 中的 Android 7.0 相机和媒体堆栈" id="figure1"/></p>
+<p class="img-caption"><strong>图 2. </strong>HAL1 上 API1 中的 Android 7.0 相机和媒体。</p>
+</li>
+</ul>
+
+<h3 id="hardening_api2">API2 的架构更改</h3>
+<p>对于 HAL1 或 HAL3 上的 API2，BufferQueue 会传递缓冲区，以便这些路径继续工作。以下对象上用于 API2 的 Android 7.0 架构：</p>
+
+<ul>
+<li>HAL1 不受 cameraservice 移动的影响，并且<strong>不需要供应商更新</strong>。</li>
+<li><em></em>HAL3 会受到影响，但<strong>不需要供应商更新</strong>：<p><img src="images/ape_camera_n_api2_hal3.png" alt="HAL2 上 API2 中的 Android 7.0 相机和媒体堆栈" id="figure1"/></p>
+<p class="img-caption"><strong>图 3. </strong>HAL3 上 API2 中的 Android 7.0 相机和媒体堆栈。</p>
+</li>
+</ul>
+
+<h3 id="hardening_general">其他要求</h3>
+<p>为增强媒体和相机框架安全性而进行的架构更改包括以下附加设备要求。</p>
+
+<ul>
+<li><strong>常规</strong>。由于 IPC，设备需要额外带宽，这可能会影响对时间敏感的相机使用情况，例如高速视频录制。供应商可以通过运行 <code>android.hardware.camera2.cts.PerformanceTest</code> 和 Google 相机应用进行 120/240 FPS 高速视频录制，以衡量实际影响。设备还需要少量额外的 RAM 来创建新进程。</li>
+<li><strong>在视频缓冲区中传递元数据</strong>（仅限 HAL1）。<em></em>如果 HAL1 在视频缓冲区中存储元数据而非实际的 YUV 帧数据，则 HAL 必须使用 <code>kMetadataBufferTypeNativeHandleSource</code> 作为元数据缓冲区类型，并在视频缓冲区中传递 <code>VideoNativeHandleMetadata</code>（<code>kMetadataBufferTypeCameraSource</code> 在 Android 7.0 中不再受支持）。通过 <code>VideoNativeHandleMetadata</code>，相机和媒体框架能够正确地对原生句柄进行序列化和反序列化，从而在进程之间传递视频缓冲区。</li>
+<li><strong>缓冲区句柄地址不一定始终存储相同的缓冲区</strong>（仅限 HAL3）。<em></em>对于每个捕获请求，HAL3 会获取缓冲区句柄的地址。HAL 不能使用地址来识别缓冲区，因为地址可能会在 HAL 返回缓冲区之后存储另一个缓冲区句柄。您必须更新 HAL，以便使用缓冲区句柄来标识缓冲区。例如：HAL 接收缓冲区句柄地址 A，该地址存储缓冲区句柄 A。在 HAL 返回缓冲区句柄 A 之后，缓冲区句柄地址 A 可能在 HAL 下次接收到它时存储缓冲区句柄 B。</li>
+<li><strong>更新用于 cameraserver 的 SELinux 策略</strong>。如果设备特定的 SELinux 策略向 mediaserver 授予运行相机的权限，则您必须更新 SELinux 策略，以授予 cameraserver 正确的权限。我们建议不要为 cameraserver 复制 mediaserver 的 SELinux 策略（因为 mediaserver 和 cameraserver 通常在系统中需要不同的资源）。Cameraserver 应仅具有执行相机功能所需的权限，并且 mediaserver 中任何不必要的相机相关权限均应被删除。<p></p>
+
+<h3 id="hardening_validation">验证</h3>
+<p>对于包含相机且运行 Android 7.0 的所有设备，请通过运行 Android 7.0 CTS 来验证相关实现。尽管 Android 7.0 不包含验证相机服务更改的新 CTS 测试，但如果您尚未进行上述更新，则现有 CTS 测试将失败。</p>
+
+<h2 id="version-history">Camera HAL 版本历史记录</h2>
+<p>有关可用于评估 Android Camera HAL 的测试列表，请参阅 <a href="/compatibility/cts/camera-hal.html">Camera HAL 测试核对清单</a>。</p>
+
+<h3 id="34">3.4</h3>
+
+<p>对受支持的元数据添加了少许内容并对 data_space 支持进行了更改：</p>
+
+<ul>
+<li>如果支持 <code>RAW_OPAQUE</code> 格式，则必须强制添加 <code>ANDROID_SENSOR_OPAQUE_RAW_SIZE</code> 静态元数据。</li>
+<li>如果支持任何 RAW 格式，则必须强制添加 <code>ANDROID_CONTROL_POST_RAW_SENSITIVITY_BOOST_RANGE</code> 静态元数据。</li>
+<li>使用数据空间编码的版本 0 定义，将 <code>camera3_stream_t data_space</code> 字段切换为更灵活的定义。</li>
+<li>可用于 HALv3.2 或更高版本的常规元数据添加项：<ul>
+  <li>
+  <a href="https://developer.android.com/reference/android/hardware/camera2/CameraMetadata.html#INFO_SUPPORTED_HARDWARE_LEVEL_3"><code>ANDROID_INFO_SUPPORTED_HARDWARE_LEVEL_3</code>
+  </a></li>
+  <li><code>ANDROID_CONTROL_POST_RAW_SENSITIVITY_BOOST</code></li>
+  <li><code>ANDROID_CONTROL_POST_RAW_SENSITIVITY_BOOST_RANGE</code></li>
+  <li><code>ANDROID_SENSOR_DYNAMIC_BLACK_LEVEL</code></li>
+  <li><code>ANDROID_SENSOR_DYNAMIC_WHITE_LEVEL</code></li>
+  <li><code>ANDROID_SENSOR_OPAQUE_RAW_SIZE</code></li>
+  <li><code>ANDROID_SENSOR_OPTICAL_BLACK_REGIONS</code></li>
+  </ul>
+  </li><li>
+</li></ul>
+
+<h3 id="33">3.3</h3>
+
+<p>扩展功能 HAL 的小修订：</p>
+
+<ul>
+  <li>OPAQUE 和 YUV 重新处理 API 更新。</li>
+  <li>对深度输出缓冲区的基本支持。</li>
+  <li>为 <code>camera3_stream_t</code> 添加了 <code>data_space</code> 字段。</li>
+  <li>为 <code>camera3_stream_t</code> 添加了旋转字段。</li>
+  <li>为 <code>camera3_stream_configuration_t</code> 添加了 camera3 流配置操作模式。</li>
+</ul>
+
+<h3 id="32">3.2</h3>
+
+<p>扩展功能 HAL 的小修订：</p>
+
+<ul>
+<li>弃用了 <code>get_metadata_vendor_tag_ops</code>。在 <code>camera_common.h</code> 中改用 <code>get_vendor_tag_ops</code>。</li>
+<li>弃用了 <code>register_stream_buffers</code>。框架在 <code>process_capture_request</code> 中提供给 HAL 的所有 gralloc 缓冲区在任何时候可能都是新的。</li>
+<li>添加了部分结果支持。在获得完整结果之前，通过多次调用 <code>process_capture_result</code> 可以获得可用结果的子集。</li>
+<li>为 <code>camera3_request_template</code> 添加了手动模板。应用可以使用此模板直接控制捕获设置。</li>
+<li>重新制定双向和输入流规范。</li>
+<li>更改输入缓冲区返回路径。缓冲区在 <code>process_capture_result</code> 而不是 <code>process_capture_request</code> 中返回。</li>
+</ul>
+
+<h3 id="31">3.1</h3>
+
+<p>扩展功能 HAL 的小修订：</p>
+
+<ul>
+<li><code>configure_streams</code> 将消耗方使用标记传递给 HAL。</li>
+<li>刷新调用以尽可能快地丢弃所有传输中的请求/缓冲区。</li>
+</ul>
+
+<h3 id="30">3.0</h3>
+
+<p>扩展功能 HAL 的首次修订：</p>
+
+<ul>
+<li>重要版本更改，因为 ABI 完全不同。在所需的硬件功能或操作模式方面，与 2.0 相比没有更改。</li>
+<li>重新设计了输入请求和流队列接口：框架调用 HAL 且后续请求和流缓冲区已经出队。包含同步框架支持，这是高效实现所必需的。</li>
+<li>已将触发器移动到请求中，将大多数通知移动到结果中。</li>
+<li>将框架中的所有回调合并到一个结构中，并将所有设置方法合并到单个 <code>initialize()</code> 调用中。</li>
+<li>将信息流配置整合到单个调用中，从而简化信息流管理。双向信息流替代 STREAM_FROM_STREAM 构造。</li>
+<li>为较旧/受限的硬件设备限制了模式语义。</li>
+</ul>
+
+<h3 id="20">2.0</h3>
+
+<p>初始版本的扩展功能 HAL (Android 4.2) [camera2.h]：</p>
+
+<ul>
+<li>足够实现现有 <code>android.hardware.Camera</code> API。</li>
+<li>允许用于相机服务层中的 ZSL 队列。</li>
+<li>未针对任何新功能（如手动捕获控制、Bayer RAW 捕获，RAW 数据的重新处理等）进行测试。</li>
+</ul>
+
+<h3 id="10">1.0</h3>
+
+<p>初始 Android Camera HAL (Android 4.0) [camera.h]：</p>
+
+<ul>
+<li>已从 C++ CameraHardwareInterface 抽象层进行转换。</li>
+<li>支持 <code>android.hardware.Camera</code> API。</li>
+</ul>
+
+<h2 id="module_version">相机模块版本历史记录</h2>
+
+<p>本部分基于 <code>camera_module_t.common.module_api_version</code> 提供了相机硬件模块的模块版本控制信息。两个最重要的十六进制数字表示主要版本，而两个最不重要的数字表示次要版本。</p>
+
+<h3 id="24">2_4</h3>
+
+<p>此相机模块版本添加了以下 API 更改：</p>
+
+<ol>
+ <li>手电筒模式支持。<em></em>框架可以为具有闪光灯元件的任何相机设备打开手电筒模式，而无需打开相机设备。相机设备对闪光灯单元的访问优先级高于相机模块；如果已通过模块接口启用手电筒，则打开相机设备会关闭手电筒。当出现任何资源冲突时（例如调用 <code>open()</code> 以打开相机设备），Camera HAL 模块必须通过手电筒模式状态回调通知框架，指明手电筒模式已关闭。</li>
+
+ <li>外部相机（如 USB 热插拔相机）支持。<em></em>仅当相机已连接且准备好用于外部热插拔相机时，API 更新才会指明相机静态信息可用。当相机状态不是 <code>CAMERA_DEVICE_STATUS_PRESENT</code> 时，获取静态信息的调用将为无效调用。框架仅依赖设备状态更改回调来管理可用的外部相机列表。
+ </li>
+
+ <li>相机仲裁提示。<em></em>添加了相关支持，以明确指明可以同时打开和使用的相机设备数量。要指定有效的设备组合，应始终在由 <code>get_camera_info</code> 调用返回的 <code>camera_info</code> 结构中设置 <code>resource_cost</code> 和 <code>conflicting_devices</code> 字段。</li>
+
+ <li>模块初始化方法。<em></em>在加载 HAL 模块后由相机服务调用，以允许初始化 HAL 一次。该方法在调用任何其他模块方法之前调用。</li>
+</ol>
+
+<h3 id="23">2_3</h3>
+
+<p>该相机模块版本添加了对打开旧版 Camera HAL 设备的支持。如果同一设备可以支持多个设备 API 版本，则框架利用该支持可以打开相机设备作为较低设备 HAL 版本的 HAL 设备。标准硬件模块打开调用 (common.methods-&gt;open) 会继续使用支持的最新版本（即 <code>camera_info_t.device_version</code> 中列出的版本）打开相机设备。</p>
+
+<h3 id="22">2_2</h3>
+
+<p>该相机模块版本添加了模块供应商标记支持，并且弃用了以前只能通过打开设备才可访问的旧版 <code>vendor_tag_query_ops</code>。</p>
+
+<h3 id="21">2_1</h3>
+
+<p>该相机模块版本添加了对从 Camera HAL 模块到框架的异步回调支持，利用该支持可以通知框架关于相机模块状态的更改。提供有效 <code>set_callbacks()</code> 方法的模块必须至少报告此版本号。</p>
+
+<h3 id="20">2_0</h3>
+
+<p>报告此版本号的相机模块会实现相机模块 HAL 接口的第二个版本。可通过此模块打开的相机设备可能支持 1.0 版本或 2.0 版本的相机设备 HAL 接口。camera_info 的 <code>device_version</code> 字段始终有效；如果 <code>device_version</code> 字段为 2.0 或更高版本，则 <code>camera_info</code> 的 <code>static_camera_characteristics</code> 字段有效。</p>
+
+<h3 id="10">1_0</h3>
+
+<p>报告这些版本号的相机模块实现了初始相机模块 HAL 接口。可通过此模块打开的所有相机设备仅支持版本 1 的相机设备 HAL。<code>camera_info</code> 的 <code>device_version</code> 和 <code>static_camera_characteristics</code> 字段无效。只有 <code>android.hardware.Camera</code> API 受该模块及其设备的支持。</p>
+
+</li></ul></body></html>

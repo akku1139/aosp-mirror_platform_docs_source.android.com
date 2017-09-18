@@ -1,0 +1,109 @@
+<html devsite><head>
+    <title>配置预处理效果</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>Android 平台向 <a href="http://developer.android.com/reference/android/media/audiofx/package-summary.html">audiofx</a> 软件包（可供开发者访问）中支持的设备提供音频效果。例如，Nexus 10 支持以下预处理效果：</p>
+
+<ul>
+<li>
+<a href="http://developer.android.com/reference/android/media/audiofx/AcousticEchoCanceler.html">回声消除</a></li>
+<li>
+<a href="http://developer.android.com/reference/android/media/audiofx/AutomaticGainControl.html">自动增益控制</a></li>
+<li>
+<a href="http://developer.android.com/reference/android/media/audiofx/NoiseSuppressor.html">噪音抑制</a></li>
+</ul>
+
+<h2 id="audiosources">与 AudioSources 配对</h2>
+<p>预处理效果与在其下请求预处理的使用情形模式配对。在 Android 应用的开发过程中，使用情形称为 <code>AudioSource</code>；且应用开发者会要求使用 <code>AudioSource</code> 的抽象，而不是实际的音频硬件设备。Android 音频政策管理器根据特定于产品的规则将 <code>AudioSource</code> 映射到指定的捕获路径配置（设备、增益、预处理等）。我们向开发者提供了以下来源：</p>
+
+<ul>
+<li><code>android.media.MediaRecorder.AudioSource.CAMCORDER</code></li>
+<li><code>android.media.MediaRecorder.AudioSource.VOICE_COMMUNICATION</code></li>
+<li><code>android.media.MediaRecorder.AudioSource.VOICE_CALL</code></li>
+<li><code>android.media.MediaRecorder.AudioSource.VOICE_DOWNLINK</code></li>
+<li><code>android.media.MediaRecorder.AudioSource.VOICE_UPLINK</code></li>
+<li><code>android.media.MediaRecorder.AudioSource.VOICE_RECOGNITION</code></li>
+<li><code>android.media.MediaRecorder.AudioSource.MIC</code></li>
+<li><code>android.media.MediaRecorder.AudioSource.DEFAULT</code></li>
+</ul>
+
+<p>针对各个 <code>AudioSource</code> 请求的默认预处理效果在 <code>/system/etc/audio_effects.conf</code> 文件中指定。要为各个 <code>AudioSource</code> 指定您自己的默认效果，请创建一个 <code>/system/vendor/etc/audio_effects.conf</code> 文件，并指定要开启的预处理效果。有关示例，请参阅 <code>device/samsung/manta/audio_effects.conf</code> 中的 Nexus 10 实现。AudioEffect 实例在创建和销毁时获取和释放会话，因此效果（如响度增强器）能够在整个会话期间持续存在。</p>
+
+<p class="warning"><strong>警告</strong>：对于 <code>VOICE_RECOGNITION</code> 使用情形，请勿启用噪音抑制预处理效果。从此音频来源录制时，该效果应默认处于停用状态，您不得在自己的 audio_effects.conf 文件中启用它。无论该效果处于默认启用状态的原因在于配置文件，还是音频 HAL 实现的默认行为，都将导致设备无法满足<a href="/compatibility/index.html">兼容性要求</a>。</p>
+
+<p>以下示例为 VoIP <code>AudioSource</code> 和摄像机 <code>AudioSource</code> 启用了预处理。通过以这种方式声明 <code>AudioSource</code> 配置，框架会自动向音频 HAL 请求使用这些效果。</p>
+
+<pre class="devsite-click-to-copy">
+pre_processing {
+   voice_communication {
+       aec {}
+       ns {}
+   }
+   camcorder {
+       agc {}
+   }
+}
+</pre>
+
+<h2 id="tuning">来源调谐</h2>
+
+<p><code>AudioSource</code> 调谐对音频增益或音频处理没有明确的要求，但语音识别 (<code>VOICE_RECOGNITION</code>) 除外。语音识别的要求包括：</p>
+
+<ul>
+<li>100Hz 至 4kHz 范围内的平坦频率响应 (+/- 3dB)</li>
+<li>近距离通话配置：90dB SPL 读取值为 2500 的 RMS（16 位样本）</li>
+<li>在 -18dB 至 +12dB 范围内相对于 90dB SPL 的呈线性的电平轨道</li>
+<li>THD &lt; 1%（100Hz 至 4000Hz 范围内的 90dB SPL）</li>
+<li>近超声要求（有关测试，请参阅<a href="/compatibility/cts/near-ultrasound.html">近超声测试</a>）：<ul>
+<li>支持 CDD 中第 7.8.3 节中定义的 SUPPORT_PROPERTY_MIC_NEAR_ULTRASOUND。</li>
+<li>支持 44100 或 48000 采样率中的一个，或者两者都支持（无带通或抗混叠滤波器的情况下）。</li>
+</ul></li>
+<li>效果/预处理必须默认处于停用状态。</li>
+</ul>
+
+<p>关于调谐不同来源的不同效果，示例如下：</p>
+
+<ul>
+<li>噪音抑制器<ul>
+<li>调谐 <code>CAMCORDER</code> 的风噪抑制器</li>
+<li>调谐 <code>VOICE_COMMUNICATION</code> 的静态噪音抑制器</li>
+</ul>
+</li>
+<li>自动增益控制<ul>
+<li>调谐 <code>VOICE_COMMUNICATION</code> 和手机主麦克风的近距离通话</li>
+<li>调谐 <code>CAMCORDER</code> 的远距离通话</li>
+</ul>
+</li>
+</ul>
+
+<h2 id="resources">资源</h2>
+
+<p>有关详情，请参阅以下资源：</p>
+
+<ul>
+<li><a href="http://developer.android.com/reference/android/media/audiofx/package-summary.html">audiofx 软件包</a>的相关 Android 文档</li>
+
+<li><a href="http://developer.android.com/reference/android/media/audiofx/NoiseSuppressor.html">噪音抑制音频效果</a>的相关 Android 文档</li>
+
+<li>Nexus 10 的 <code>device/samsung/manta/audio_effects.conf</code> 文件</li>
+</ul>
+
+</body></html>

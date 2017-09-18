@@ -1,0 +1,107 @@
+<html devsite><head>
+    <title>媒体框架强化</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>为了提高设备安全性，Android 7.0 将整体的 <code>mediaserver</code> 进程分解为多个进程，同时仅向各个进程提供所需的权限和功能。这些变更通过以下方式减少了媒体框架安全漏洞：</p>
+<ul>
+<li>将 AV 管道组件拆分为应用专用的沙盒进程。</li>
+<li>启用可更新的媒体组件（提取器、编解码器等）。</li>
+</ul>
+
+<p>这些变更还大大降低了大多数媒体相关安全漏洞的严重程度，确保最终用户的设备和数据安全，从而提高了最终用户的安全性。</p>
+
+<p>原始设备制造商 (OEM) 和 SoC 供应商需要更新他们的 HAL 和框架变更，使之与新架构兼容。具体来说，由于供应商提供的 Android 代码通常假定所有内容均在同一进程中运行，因此，供应商必须更新其代码以传递对于各进程均有意义的本机句柄 (<code>native_handle</code>)。有关媒体强化相关变更的参考实现，请参阅 <code>frameworks/av</code> 和 <code>frameworks/native</code>。</p>
+
+<h2 id="arch_changes">架构变更</h2>
+<p>旧版 Android 使用单个整体的 <code>mediaserver</code> 进程，该进程具有众多权限（相机访问权、音频访问权、视频驱动程序访问权、文件访问权、网络访问权等）。Android 7.0 将 <code>mediaserver</code> 进程拆分为几个新进程，这些进程要求的权限要少得多：</p>
+
+<p><img src="images/ape_media_split.png" alt="mediaserver 强化"/></p>
+<p class="img-caption"><strong>图 1. </strong> mediaserver 强化的架构变更</p>
+
+<p>采用这种新型架构之后，即使某个进程遭到入侵，恶意代码也无法获得之前 mediaserver 所拥有的全部权限。进程受 SElinux 和 seccomp 政策的限制。
+</p>
+
+<p class="note"><strong>注意</strong>：由于供应商依赖项的原因，有些编解码器仍在 <code>mediaserver</code> 中运行，因此会为 <code>mediaserver</code> 授予非必要的权限。具体来说，Widevine Classic 将继续在 Android 7.0 的 <code>mediaserver</code> 中运行。</p>
+
+<h3 id="mediaserver-changes">MediaServer 变更</h3>
+<p>在 Android 7.0 中，<code>mediaserver</code> 进程用于驱动播放和录制，例如在组件与进程之间传递和同步缓冲区。进程通过标准的 Binder 机制进行通信。</p>
+<p>在标准的本地文件播放会话中，应用将文件描述符 (FD) 传递到 <code>mediaserver</code>（通常通过 MediaPlayer Java API），而 <code>mediaserver</code> 将执行以下操作：</p>
+<ol>
+<li>将 FD 封装到已传递给提取器进程的 Binder DataSource 对象中，提取器进程利用该对象读取使用 Binder IPC 的文件。（mediaextractor 不获取 FD，而是通过对 <code>mediaserver</code> 执行 Binder 回调来获取数据。）</li>
+<li>检查文件，针对该文件类型创建适当的提取器（例如 MP3Extractor 或 MPEG4Extractor），然后将提取器的 Binder 接口返回到 <code>mediaserver</code> 进程。</li>
+<li>对提取器执行 Binder IPC 调用，以确定文件中的数据类型（例如 MP3 或 H.264 数据）。</li>
+<li>调用 <code>mediacodec</code> 进程来创建所需类型的编解码器；接收这些编解码器的 Binder 接口。</li>
+<li>对提取器执行重复的 Binder IPC 调用以读取编码的示例，使用 Binder IPC 将编码的数据发送到 <code>mediacodec</code> 进程进行解码，然后接收解码的数据。</li>
+</ol>
+<p>某些用例不涉及任何编解码器（例如分流播放，这种播放会将编码的数据直接发送到输出设备），或者编解码器可能会直接呈现解码的数据，而不是返回解码数据的缓冲区（视频播放）。</p>
+
+<h3 id="mediacodecservice_changes">MediaCodecService 变更</h3>
+<p>编码器和解码器位于编解码器服务中。由于供应商依赖项的原因，并非所有编解码器都位于编解码器进程中。在 Android 7.0 中：</p>
+<ul>
+<li>非安全解码器和软件编码器位于编解码器进程中。</li>
+<li>安全解码器和硬件编码器位于 <code>mediaserver</code>（未变更）中。</li>
+</ul>
+
+<p>应用（或 mediaserver）调用编解码器进程来创建所需类型的编解码器，然后调用该编解码器传递编码的数据并检索解码的数据（解码），或者传递解码的数据并检索编码的数据（编码）。传入编解码器以及从中传出的数据已经使用了共享内存，因此该进程未发生改变。</p>
+
+<h3 id="mediadrmserver_changes">MediaDrmServer 变更</h3>
+<p>在播放受 DRM 保护的内容（例如 Google Play 电影中的影片）时，会使用 DRM 服务器。该服务器会采用安全方式对加密的数据进行解密，因此可以访问证书和密钥存储以及其他敏感组件。由于供应商依赖关系，DRM 进程尚未应用于所有情况。</p>
+
+<h3 id="audioserver_changes">AudioServer 变更</h3>
+<p>AudioServer 进程负责托管音频相关组件，例如音频输入和输出、确定音频转接的 policymanager 服务，以及 FM 电台服务。要详细了解音频变更和实现指南，请参阅<a href="/devices/audio/implement.html">实现音频</a>。</p>
+
+<h3 id="cameraserver_changes">CameraServer 变更</h3>
+<p>CameraServer 负责控制相机，并且在录制视频时用于从相机获取视频帧，然后将其传递给 <code>mediaserver</code> 进行进一步处理。要详细了解 CameraServer 变更和实现指南，请参阅<a href="/devices/camera/versioning.html#hardening">相机框架强化</a>。</p>
+
+<h3 id="extractor_service_changes">ExtractorService 变更</h3>
+<p>提取器服务负责托管提取器，即可解析媒体框架支持的各种文件格式的组件。<em></em>提取器服务是所有服务中权限最少的，它无法读取 FD，因此通过调用 Binder 接口（由各个播放会话的 <code>mediaserver for</code> 向其提供）来访问文件。</p>
+<p>应用（或 <code>mediaserver</code>）调用提取器进程来获取 <code>IMediaExtractor</code>，调用该 <code>IMediaExtractor</code> 来获取文件中包含的曲目的 <code> IMediaSources</code>，然后调用 <code>IMediaSources</code> 来读取其中的数据。</p>
+<p>为了在进程之间传输数据，应用（或 <code>mediaserver</code>）将 reply-Parcel 中的数据添加为 Binder 事务的一部分或使用共享内存：</p>
+
+<ul>
+<li>使用<strong>共享内存</strong>需要进行额外的 Binder 调用来释放共享内存，但这样可以加快速度并降低大型缓冲区的功耗。
+</li>
+<li>使用 <strong>in-Parcel</strong> 需要执行额外的复制操作，但对于小于 64KB 的缓冲区来说，这样可以加快速度并降低功耗。</li>
+</ul>
+
+<h2 id="implementation">实现</h2>
+<p>为了支持将 <code>MediaDrm</code> 和 <code>MediaCrypto</code> 组件移动到新的 <code>mediadrmserver</code> 进程，供应商必须更改安全缓冲区的分配方法，以允许在进程之间共享缓冲区。</p>
+<p>在旧版 Android 中，安全缓冲区由 <code>OMX::allocateBuffer</code> 在 <code>mediaserver</code> 中分配，并在同一进程的解密过程中使用，如下图所示：</p>
+
+<p><img src="images/ape_media_buffer_alloc_pren.png"/></p>
+<p class="img-caption"><strong>图 2. </strong> Android 6.0 及更低版本中的 mediaserver 中的缓冲区分配。</p>
+
+<p>在 Android 7.0 中，缓冲区分配进程已变更为一种新机制，可在提供灵活性的同时最大限度地减少对现有实现的影响。通过使用新的 <code>mediadrmserver</code> 进程中的 <code>MediaDrm</code> 和 <code>MediaCrypto</code> 堆栈，缓冲区将以不同的方法进行分配，而供应商必须更新安全缓冲区句柄，以便当 <code>MediaCodec</code> 在 <code>MediaCrypto</code> 上调用解密操作时可以进行跨 binder 传输。</p>
+
+<p><img src="images/ape_media_buffer_alloc_n.png"/></p>
+<p class="img-caption"><strong>图 3. </strong> Android 7.0 及更高版本中的 mediaserver 中的缓冲区分配。</p>
+
+<h3 id="native_handles">使用本机句柄</h3>
+<p><code>OMX::allocateBuffer</code> 必须返回一个指向 <code>native_handle</code> 结构的指针，其中包含文件描述符 (FD) 和其他整数数据。<code>native_handle</code> 具有使用 FD 的所有优势，包括对序列化/反序列化的现有 binder 支持，可为当前不使用 FD 的供应商提供更多灵活性。</p>
+<p>使用 <code>native_handle_create()</code> 分配本机句柄。框架代码拥有已分配的 <code>native_handle</code> 结构的所有权，并负责在最初分配 <code>native_handle</code> 的进程以及对其进行反序列化的进程中释放资源。该框架依次使用 <code>native_handle_close()</code> 和 <code>native_handle_delete()</code> 释放本机句柄，然后使用 <code>Parcel::writeNativeHandle()/readNativeHandle()</code> 对 <code>native_handle</code> 进行序列化/反序列化。
+</p>
+<p>使用 FD 表示安全缓冲区的 SoC 供应商可以使用其 FD 来填充 <code>native_handle</code> 中的 FD。不使用 FD 的供应商可以使用 <code>native_buffer</code> 中的其他字段来表示安全缓冲区。</p>
+
+<h3 id="decrypt_location">设置解密位置</h3>
+<p>供应商必须更新在 <code>native_handle</code> 上运行的 OEMCrypto 解密方法，以执行任何必要的供应商特定操作，以使 <code>native_handle</code> 在新的进程空间中可用（变更通常包括对 OEMCrypto 库的更新）。</p>
+<p><code>allocateBuffer</code> 是一种标准 OMX 操作，Android 7.0 中包含用于查询此项支持的全新 OMX 扩展程序 (<code>OMX.google.android.index.allocateNativeHandle</code>)，以及通知 OMX 实现应当使用本机句柄的 <code>OMX_SetParameter</code> 调用。</p>
+
+</body></html>

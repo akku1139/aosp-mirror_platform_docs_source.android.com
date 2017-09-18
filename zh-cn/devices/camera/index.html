@@ -1,0 +1,109 @@
+<html devsite><head>
+    <title>相机</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<img style="float: right; margin: 0px 15px 15px 15px;" src="images/ape_fwk_hal_camera.png" alt="Android 相机 HAL 图标"/>
+
+<p>Android 的相机硬件抽象层 (HAL) 可将 <a href="http://developer.android.com/reference/android/hardware/package-summary.html">android.hardware</a> 中较高级别的相机框架 API 连接到底层的相机驱动程序和硬件。相机子系统包括相机管道组件的实现，而相机 HAL 则可提供用于实现您的这些组件版本的接口。</p>
+
+<p>有关最新信息，请参阅以下资源：</p>
+<ul>
+<li><a href="https://android.googlesource.com/platform/hardware/libhardware/+/master/include/hardware/camera.h">camera.h</a> 源文件</li>
+<li><a href="https://android.googlesource.com/platform/hardware/libhardware/+/master/include/hardware/camera3.h">camera3.h</a> 源文件</li>
+<li><a href="https://android.googlesource.com/platform/hardware/libhardware/+/master/include/hardware/camera_common.h">camera_common.h</a> 源文件</li>
+<li><a href="https://developer.android.com/reference/android/hardware/camera2/CameraMetadata.html">CameraMetadata</a> 面向开发者的参考资料</li>
+</ul>
+
+<h2 id="architecture">架构</h2>
+<p>下列图表和列表说明了 HAL 组件：</p>
+
+<img src="images/ape_fwk_camera.png" alt="Android 相机架构" id="figure1"/>
+<p class="img-caption"><strong>图 1.</strong> 相机架构</p>
+
+<dl>
+  <dt>应用框架</dt>
+  <dd>应用代码位于应用框架级别，它利用 <a href="http://developer.android.com/reference/android/hardware/Camera.html">android.hardware.Camera</a> API 来与相机硬件互动。在内部，此代码会调用相应的 JNI 粘合类，以访问与该相机互动的原生代码。</dd>
+  <dt>JNI</dt>
+  <dd>与 <a href="http://developer.android.com/reference/android/hardware/Camera.html">android.hardware.Camera</a> 关联的 JNI 代码位于 <code>frameworks/base/core/jni/android_hardware_Camera.cpp</code>。此代码会调用较低级别的原生代码以获取对物理相机的访问权限，并返回用于在框架级别创建 <a href="http://developer.android.com/reference/android/hardware/Camera.html">android.hardware.Camera</a> 对象的数据。</dd>
+  <dt>原生框架</dt><dt>
+  </dt><dd>在 <code>frameworks/av/camera/Camera.cpp</code> 中定义的原生框架可提供相当于 <a href="http://developer.android.com/reference/android/hardware/Camera.html">android.hardware.Camera</a> 类的原生类。此类会调用 IPC binder 代理，以获取对相机服务的访问权限。</dd>
+  <dt>Binder IPC 代理</dt>
+  <dd>IPC binder 代理有助于越过进程边界实现通信。调用相机服务的 <code>frameworks/av/camera</code> 目录中有 3 个相机 binder 类。ICameraService 是相机服务的接口，ICamera 是已打开的特定相机设备的接口，ICameraClient 是返回应用框架的设备接口。</dd>
+  <dt>相机服务</dt>
+  <dd>位于 <code>frameworks/av/services/camera/libcameraservice/CameraService.cpp</code> 下的相机服务是与 HAL 进行互动的实际代码。</dd>
+  <dt>HAL</dt>
+  <dd>硬件抽象层定义了由相机服务调用且您必须实现以确保相机硬件正常运行的标准接口。</dd>
+  <dt>内核驱动程序</dt>
+  <dd>相机的驱动程序可与实际相机硬件和您的 HAL 实现进行互动。相机和驱动程序必须支持 YV12 和 NV21 图片格式，以便在显示和视频录制时支持预览相机图片。</dd>
+</dl>
+
+<h2 id="implementing">实现 HAL</h2>
+<p>HAL 位于相机驱动程序和更高级别的 Android 框架之间，并可定义您必须实现的接口，以便应用可以正确操作相机硬件。HAL 接口在 <code>hardware/libhardware/include/hardware/camera.h</code> 和 <code>hardware/libhardware/include/hardware/camera_common.h</code> 标头文件中定义。
+</p>
+
+<p><code>camera_common.h</code> 可定义 <code>camera_module</code>；这是一个标准结构，可用于获取有关相机的一般信息，例如相机 ID 和所有相机通用的属性（例如，摄像头是前置摄像头还是后置摄像头）。</p>
+
+<p>
+<code>camera.h</code> 包含与 <a href="http://developer.android.com/reference/android/hardware/Camera.html">android.hardware.Camera</a> 相对应的代码。此标头文件会声明一个 <code>camera_device</code> 结构，该结构又反过来包含一个带函数指针（可实现 HAL 接口）的 <code>camera_device_ops</code> 结构。有关开发者可以设置的相机参数的文档，请参阅 <code>frameworks/av/include/camera/CameraParameters.h</code>。通过 HAL 中的 <code>int
+(*set_parameters)(struct camera_device *, const char *parms)</code> 来设置这些参数以及指向的函数。</p>
+
+<p>有关 HAL 实现的示例，请参阅 <code>hardware/ti/omap4xxx/camera</code> 中的 Galaxy Nexus HAL 实现。</p>
+
+<h2 id="configuring">配置共享库</h2>
+<p>设置 Android 编译系统，以将 HAL 实现正确打包到共享库中，并通过创建 <code>Android.mk</code> 文件将其复制到相应位置：</p>
+
+<ol>
+<li>创建一个 <code>device/&lt;company_name&gt;/&lt;device_name&gt;/camera</code> 目录以包含您库的源文件。</li>
+
+<li>创建一个 <code>Android.mk</code> 文件来编译共享库。确保 Makefile 包含以下行：<pre class="devsite-click-to-copy">
+LOCAL_MODULE := camera.&lt;device_name&gt;
+LOCAL_MODULE_RELATIVE_PATH := hw
+</pre>
+<p>您的库必须命名为 <code>camera.&lt;device_name&gt;</code>（自动附加 <code>.so</code>），以便 Android 可以正确加载库。例如，请参阅 <code>hardware/ti/omap4xxx/Android.mk</code> 中的 Galaxy Nexus 相机的 Makefile。</p></li>
+
+<li>使用您设备的 Makefile 复制 <code>frameworks/native/data/etc</code> 目录中的必要功能 XML 文件，以指定您的设备具有相机功能。例如，要指定您的设备具有相机闪光灯并可自动对焦，请在您设备的 <code>&lt;device&gt;/&lt;company_name&gt;/&lt;device_name&gt;/device.mk</code> Makefile 中添加以下行：<pre class="devsite-click-to-copy">
+PRODUCT_COPY_FILES := \ ...
+
+PRODUCT_COPY_FILES += \
+frameworks/native/data/etc/android.hardware.camera.flash-autofocus.xml:system/etc/permissions/android.hardware.camera.flash-autofocus.xml \
+</pre>
+<p>有关设备 Makefile 的示例，请参阅 <code>device/samsung/tuna/device.mk</code>。</p></li>
+
+<li>在 <code>device/&lt;company_name&gt;/&lt;device_name&gt;/media_profiles.xml</code> 和 <code>device/&lt;company_name&gt;/&lt;device_name&gt;/media_codecs.xml</code> XML 文件中声明您相机的媒体编解码器、格式和分辨率功能。有关详细信息，请参阅<a href="/devices/media/index.html#expose">将编解码器展示给框架</a>。</li>
+
+<li>在您设备的 <code>device/&lt;company_name&gt;/&lt;device_name&gt;/device.mk</code> Makefile 中添加以下行，以将 <code>media_profiles.xml</code> 和 <code>media_codecs.xml</code> 文件复制到相应位置：<pre class="devsite-click-to-copy">
+# media config xml file
+PRODUCT_COPY_FILES += \
+    &lt;device&gt;/&lt;company&gt;/&lt;device&gt;/media_profiles.xml:system/etc/media_profiles.xml
+
+# media codec config xml file
+PRODUCT_COPY_FILES += \
+    &lt;device&gt;/&lt;company&gt;/&lt;device&gt;/media_codecs.xml:system/etc/media_codecs.xml
+</pre></li>
+
+<li>要将相机应用包含在您设备的系统映像中，请在设备的 <code>device/&lt;company&gt;/&lt;device&gt;/device.mk</code> Makefile 中的 <code>PRODUCT_PACKAGES</code> 变量中指定该应用：<pre class="devsite-click-to-copy">
+PRODUCT_PACKAGES := \
+Gallery2 \
+...
+</pre></li>
+</ol>
+
+</body></html>
