@@ -1,0 +1,92 @@
+<html devsite><head>
+    <title>验证按键映射工具</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>Android 框架有一个名为 <code>validatekeymaps</code> 的小工具，用于验证输入设备配置文件、按键布局文件、按键字符映射文件和虚拟按键定义文件的语法。</p>
+<h2 id="compilation">编译</h2>
+<p>要编译 <code>validatekeymaps</code>，请设置开发环境，下载 Android 源代码树，对其进行编译，然后运行以下命令：</p>
+<pre class="devsite-terminal devsite-click-to-copy">
+mmm frameworks/base/tools/validatekeymaps
+</pre>
+<p>该命令应该会将一个名为 validatekeymaps 的主机工具编译到 <code>out/host/&lt;os&gt;/bin</code> 目录中。</p>
+<h2 id="usage">使用</h2>
+<p>如果您通过运行 <code>envsetup.sh</code> 设置了开发环境，那么 <code>validatekeymaps</code> 工具应当已经位于您的路径中。您可以通过运行 <code>validatekeymaps</code> 进行验证。</p>
+<pre class="devsite-terminal devsite-click-to-copy">
+validatekeymaps
+</pre>
+<p>您应该会看到以下输出内容：</p>
+<pre>
+Keymap Validation Tool
+
+Usage:
+ validatekeymaps [*.kl] [*.kcm] [*.idc] [virtualkeys.*] [...]
+   Validates the specified key layouts, key character maps,
+   input device configurations, or virtual key definitions.
+</pre>
+<p>然后，您只需运行 <code>validatekeymaps</code>，并为其提供一个或多个要进行验证的文件的路径。</p>
+<pre class="devsite-terminal devsite-click-to-copy">
+validatekeymaps frameworks/base/data/keyboards/Generic.kl
+</pre>
+<p>示例：</p>
+<pre>
+Validating file 'frameworks/base/data/keyboards/Generic.kl'...
+No errors.
+
+Success.
+</pre>
+<p>如果出现错误…</p>
+<pre class="devsite-terminal devsite-click-to-copy">
+validatekeymaps Bad.kl
+</pre>
+<p>示例：</p>
+<pre>
+Validating file 'Bad.kl'...
+E/KeyLayoutMap(87688): Bad.kl:24: Expected keyword, got 'ke'.
+Error -22 parsing key layout file.
+
+Failed!
+</pre>
+<h2 id="automation">自动化</h2>
+<p><em></em>最好先在所有配置文件上运行 <code>validatekeymaps</code>，然后再将这些文件安装到设备中。</p>
+<p>通过使用脚本或 makefile，该过程可以作为编译系统的一部分轻松地自动执行。</p>
+<p>以下示例 Makefile 基于 <code>frameworks/base/data/keyboards/Android.mk</code> 的内容。</p>
+<pre class="devsite-click-to-copy">
+# This makefile performs build time validation of framework keymap files.
+
+LOCAL_PATH := $(call my-dir)
+
+# Validate all key maps.
+include $(CLEAR_VARS)
+
+validatekeymaps := $(HOST_OUT_EXECUTABLES)/validatekeymaps$(HOST_EXECUTABLE_SUFFIX)
+files := MyKeyboard.kl MyKeyboard.kcm MyTouchScreen.idc
+
+LOCAL_MODULE := validate_framework_keymaps
+LOCAL_MODULE_TAGS := optional
+LOCAL_REQUIRED_MODULES := validatekeymaps
+
+validate_framework_keymaps: $(files)
+    $(hide) $(validatekeymaps) $(files)
+
+include $(BUILD_PHONY_PACKAGE)
+</pre>
+
+</body></html>

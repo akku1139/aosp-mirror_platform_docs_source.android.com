@@ -1,0 +1,325 @@
+<html devsite><head>
+    <title>配置音频政策</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>Android 7.0 引入了一种新的音频政策配置文件格式 (XML)，用于描述音频拓扑。</p>
+
+<p>以前的 Android 版本需要使用 <code>device/&lt;company&gt;/&lt;device&gt;/audio/audio_policy.conf</code> 来声明您产品上存在的音频设备（您可以在 <code>device/samsung/tuna/audio/audio_policy.conf</code> 中查看此文件针对 Galaxy Nexus 音频硬件的示例）。但是，.conf 是一种简单的专有格式，有较大的局限性，无法描述电视和汽车等应用的复杂拓扑。</p>
+
+<p>Android 7.0 弃用了 <code>audio_policy.conf</code>，并增加了对使用 XML 文件格式来定义音频拓扑的支持，这种文件格式更通俗易懂，具有多种编辑和解析工具，并且足够灵活，可以描述复杂的音频拓扑。</p>
+
+<p .="" class="note"><strong>注意</strong>：Android 7.0 仍支持使用 <code>audio_policy.conf</code>；默认使用这种旧版格式。要使用 XML 文件格式，需要在设备 Makefile 中添加构建选项 <code>USE_XML_AUDIO_POLICY_CONF
+:= 1</code>。</p>
+
+<h2 id="xml_advantages">XML 格式的优势</h2>
+<p>与在 .conf 文件中一样，新的 XML 文件支持定义输出输入流配置文件、可用于播放和捕获的设备以及音频属性的数量和类型。此外，XML 格式还提供以下增强功能：</p>
+
+<ul>
+<li>音频配置文件目前的结构类似于 HDMI 简单音频描述符，支持每种音频格式使用一组不同的采样率/声道掩码。</li>
+<li>设备和流之间所有可能连接的显式定义。以前，借助隐式规则，可以使连接到同一 HAL 模块的所有设备互连，从而阻止音频政策控制使用音频补丁程序 API 请求的连接。现在，在 XML 格式中，拓扑描述定义了连接限制。</li>
+<li>对“包含”的支持可避免出现重复的标准 A2DP、USB 或重新导向提交定义。<em></em></li>
+<li>可自定义的音量曲线。以前，音量表采用硬编码格式。在 XML 格式中，音量表通过描述来定义，并且可自定义。</li>
+</ul>
+
+<p><code>frameworks/av/services/audiopolicy/config/audio_policy_configuration.xml</code> 中的模板展示了很多已在使用的上述功能。</p>
+
+<h2 id="xml_file_format">文件格式和位置</h2>
+<p>新的音频政策配置文件是 <code>audio_policy_configuration.xml</code>，位于 <code>/system/etc</code>。要查看采用新的 XML 文件格式的简单音频政策配置，请查看以下示例。</p>
+
+  <section class="expandable">
+    <h4 class="showalways">显示音频政策示例</h4>
+<pre class="devsite-click-to-copy">
+&lt;?xml version="1.0" encoding="UTF-8" standalone="yes"?&gt;
+&lt;audioPolicyConfiguration version="1.0" xmlns:xi="http://www.w3.org/2001/XInclude"&gt;
+    &lt;globalConfiguration speaker_drc_enabled="true"/&gt;
+    &lt;modules&gt;
+        &lt;module name="primary" halVersion="3.0"&gt;
+            &lt;attachedDevices&gt;
+                &lt;item&gt;Speaker&lt;/item&gt;
+                &lt;item&gt;Earpiece&lt;/item&gt;
+                &lt;item&gt;Built-In Mic&lt;/item&gt;
+            &lt;/attachedDevices&gt;
+            &lt;defaultOutputDevice&gt;Speaker&lt;/defaultOutputDevice&gt;
+            &lt;mixPorts&gt;
+                &lt;mixPort name="primary output" role="source" flags="AUDIO_OUTPUT_FLAG_PRIMARY"&gt;
+                    &lt;profile name="" format="AUDIO_FORMAT_PCM_16_BIT"
+                             samplingRates="48000" channelMasks="AUDIO_CHANNEL_OUT_STEREO"/&gt;
+                &lt;/mixPort&gt;
+                &lt;mixPort name="primary input" role="sink"&gt;
+                    &lt;profile name="" format="AUDIO_FORMAT_PCM_16_BIT"
+                             samplingRates="8000,16000,48000"
+                             channelMasks="AUDIO_CHANNEL_IN_MONO"/&gt;
+                &lt;/mixPort&gt;
+            &lt;/mixPorts&gt;
+            &lt;devicePorts&gt;
+                &lt;devicePort tagName="Earpiece" type="AUDIO_DEVICE_OUT_EARPIECE" role="sink"&gt;
+                   &lt;profile name="" format="AUDIO_FORMAT_PCM_16_BIT"
+                            samplingRates="48000" channelMasks="AUDIO_CHANNEL_IN_MONO"/&gt;
+                &lt;/devicePort&gt;
+                &lt;devicePort tagName="Speaker" role="sink" type="AUDIO_DEVICE_OUT_SPEAKER" address=""&gt;
+                    &lt;profile name="" format="AUDIO_FORMAT_PCM_16_BIT"
+                             samplingRates="48000" channelMasks="AUDIO_CHANNEL_OUT_STEREO"/&gt;
+                &lt;/devicePort&gt;
+                &lt;devicePort tagName="Wired Headset" type="AUDIO_DEVICE_OUT_WIRED_HEADSET" role="sink"&gt;
+                    &lt;profile name="" format="AUDIO_FORMAT_PCM_16_BIT"
+                             samplingRates="48000" channelMasks="AUDIO_CHANNEL_OUT_STEREO"/&gt;
+                &lt;/devicePort&gt;
+                &lt;devicePort tagName="Built-In Mic" type="AUDIO_DEVICE_IN_BUILTIN_MIC" role="source"&gt;
+                    &lt;profile name="" format="AUDIO_FORMAT_PCM_16_BIT"
+                             samplingRates="8000,16000,48000"
+                             channelMasks="AUDIO_CHANNEL_IN_MONO"/&gt;
+                &lt;/devicePort&gt;
+                &lt;devicePort tagName="Wired Headset Mic" type="AUDIO_DEVICE_IN_WIRED_HEADSET" role="source"&gt;
+                    &lt;profile name="" format="AUDIO_FORMAT_PCM_16_BIT"
+                             samplingRates="8000,16000,48000"
+                             channelMasks="AUDIO_CHANNEL_IN_MONO"/&gt;
+                &lt;/devicePort&gt;
+            &lt;/devicePorts&gt;
+            &lt;routes&gt;
+                &lt;route type="mix" sink="Earpiece" sources="primary output"/&gt;
+                &lt;route type="mix" sink="Speaker" sources="primary output"/&gt;
+                &lt;route type="mix" sink="Wired Headset" sources="primary output"/&gt;
+                &lt;route type="mix" sink="primary input" sources="Built-In Mic,Wired Headset Mic"/&gt;
+            &lt;/routes&gt;
+        &lt;/module&gt;
+        &lt;xi:include href="a2dp_audio_policy_configuration.xml"/&gt;
+    &lt;/modules&gt;
+
+    &lt;xi:include href="audio_policy_volumes.xml"/&gt;
+    &lt;xi:include href="default_volume_tables.xml"/&gt;
+&lt;/audioPolicyConfiguration&gt;
+</pre></section>
+
+<p>顶层结构中包含与各个音频 HAL 硬件模块对应的模块，其中每个模块都有一系列混合端口、设备端口和导向：</p>
+<ul>
+<li><strong>混合端口</strong>描述了可以在音频 HAL 处打开以供播放和捕获的流的可能配置文件。</li>
+<li><strong>设备端口</strong>描述了可以附上其类型（以及（可选）地址和音频属性，如果相关）的设备。</li>
+<li><strong>导向</strong>（新）现在已从混合端口描述符中分离出来，支持描述从设备到设备或从流到设备的导向。</li>
+</ul>
+
+<p>音量表是定义用于将界面索引转换为音量（以 dB 为单位）的曲线的点的简单列表。单独的包含文件提供默认曲线，但每个对应于指定使用情形和设备类别的曲线都可以被替换。</p>
+
+  <section class="expandable">
+    <h4 class="showalways">显示音量表示例</h4>
+<pre class="devsite-click-to-copy">
+&lt;?xml version="1.0" encoding="UTF-8"?&gt;
+&lt;volumes&gt;
+    &lt;reference name="FULL_SCALE_VOLUME_CURVE"&gt;
+        &lt;point&gt;0,0&lt;/point&gt;
+        &lt;point&gt;100,0&lt;/point&gt;
+    &lt;/reference&gt;
+    &lt;reference name="SILENT_VOLUME_CURVE"&gt;
+        &lt;point&gt;0,-9600&lt;/point&gt;
+        &lt;point&gt;100,-9600&lt;/point&gt;
+    &lt;/reference&gt;
+    &lt;reference name="DEFAULT_VOLUME_CURVE"&gt;
+        &lt;point&gt;1,-4950&lt;/point&gt;
+        &lt;point&gt;33,-3350&lt;/point&gt;
+        &lt;point&gt;66,-1700&lt;/point&gt;
+        &lt;point&gt;100,0&lt;/point&gt;
+    &lt;/reference&gt;
+&lt;/volumes&gt;
+</pre></section>
+
+  <section class="expandable">
+    <h4 class="showalways">显示音量示例</h4>
+<pre class="devsite-click-to-copy">
+&lt;?xml version="1.0" encoding="UTF-8"?&gt;
+&lt;volumes&gt;
+    &lt;volume stream="AUDIO_STREAM_VOICE_CALL" deviceCategory="DEVICE_CATEGORY_HEADSET" ref="DEFAULT_VOLUME_CURVE"/&gt;
+    &lt;volume stream="AUDIO_STREAM_VOICE_CALL" deviceCategory="DEVICE_CATEGORY_SPEAKER" ref="DEFAULT_VOLUME_CURVE"/&gt;
+    &lt;volume stream="AUDIO_STREAM_VOICE_CALL" deviceCategory="DEVICE_CATEGORY_EARPIECE" ref="DEFAULT_VOLUME_CURVE"/&gt;
+    &lt;volume stream="AUDIO_STREAM_VOICE_CALL" deviceCategory="DEVICE_CATEGORY_EXT_MEDIA" ref="DEFAULT_VOLUME_CURVE"/&gt;
+
+    &lt;volume stream="AUDIO_STREAM_SYSTEM" deviceCategory="DEVICE_CATEGORY_HEADSET" ref="DEFAULT_VOLUME_CURVE"/&gt;
+    &lt;volume stream="AUDIO_STREAM_SYSTEM" deviceCategory="DEVICE_CATEGORY_SPEAKER" ref="DEFAULT_VOLUME_CURVE"/&gt;
+    &lt;volume stream="AUDIO_STREAM_SYSTEM" deviceCategory="DEVICE_CATEGORY_EARPIECE" ref="DEFAULT_VOLUME_CURVE"/&gt;
+    &lt;volume stream="AUDIO_STREAM_SYSTEM" deviceCategory="DEVICE_CATEGORY_EXT_MEDIA" ref="DEFAULT_VOLUME_CURVE"/&gt;
+
+    &lt;volume stream="AUDIO_STREAM_RING" deviceCategory="DEVICE_CATEGORY_HEADSET" ref="DEFAULT_VOLUME_CURVE"/&gt;
+    &lt;volume stream="AUDIO_STREAM_RING" deviceCategory="DEVICE_CATEGORY_SPEAKER" ref="DEFAULT_VOLUME_CURVE"/&gt;
+    &lt;volume stream="AUDIO_STREAM_RING" deviceCategory="DEVICE_CATEGORY_EARPIECE" ref="DEFAULT_VOLUME_CURVE"/&gt;
+    &lt;volume stream="AUDIO_STREAM_RING" deviceCategory="DEVICE_CATEGORY_EXT_MEDIA"ref="DEFAULT_VOLUME_CURVE"/&gt;
+
+    &lt;volume stream="AUDIO_STREAM_MUSIC" deviceCategory="DEVICE_CATEGORY_HEADSET" ref="DEFAULT_VOLUME_CURVE"/&gt;
+    &lt;volume stream="AUDIO_STREAM_MUSIC" deviceCategory="DEVICE_CATEGORY_SPEAKER"&gt;
+        &lt;point&gt;1,-5500&lt;/point&gt;
+        &lt;point&gt;20,-4300&lt;/point&gt;
+        &lt;point&gt;86,-1200&lt;/point&gt;
+        &lt;point&gt;100,0&lt;/point&gt;
+    &lt;/volume&gt;
+    &lt;volume stream="AUDIO_STREAM_MUSIC" deviceCategory="DEVICE_CATEGORY_EARPIECE" ref="DEFAULT_VOLUME_CURVE"/&gt;
+    &lt;volume stream="AUDIO_STREAM_MUSIC" deviceCategory="DEVICE_CATEGORY_EXT_MEDIA" ref="DEFAULT_VOLUME_CURVE"/&gt;
+
+    &lt;volume stream="AUDIO_STREAM_ALARM" deviceCategory="DEVICE_CATEGORY_HEADSET" ref="DEFAULT_VOLUME_CURVE"/&gt;
+    &lt;volume stream="AUDIO_STREAM_ALARM" deviceCategory="DEVICE_CATEGORY_SPEAKER" ref="DEFAULT_VOLUME_CURVE"/&gt;
+    &lt;volume stream="AUDIO_STREAM_ALARM" deviceCategory="DEVICE_CATEGORY_EARPIECE" ref="DEFAULT_VOLUME_CURVE"/&gt;
+    &lt;volume stream="AUDIO_STREAM_ALARM" deviceCategory="DEVICE_CATEGORY_EXT_MEDIA" ref="DEFAULT_VOLUME_CURVE"/&gt;
+
+    &lt;volume stream="AUDIO_STREAM_NOTIFICATION" deviceCategory="DEVICE_CATEGORY_HEADSET" ref="DEFAULT_VOLUME_CURVE"/&gt;
+    &lt;volume stream="AUDIO_STREAM_NOTIFICATION" deviceCategory="DEVICE_CATEGORY_SPEAKER" ref="DEFAULT_VOLUME_CURVE"/&gt;
+    &lt;volume stream="AUDIO_STREAM_NOTIFICATION" deviceCategory="DEVICE_CATEGORY_EARPIECE" ref="DEFAULT_VOLUME_CURVE"/&gt;
+    &lt;volume stream="AUDIO_STREAM_NOTIFICATION" deviceCategory="DEVICE_CATEGORY_EXT_MEDIA" ref="DEFAULT_VOLUME_CURVE"/&gt;
+
+    &lt;volume stream="AUDIO_STREAM_BLUETOOTH_SCO" deviceCategory="DEVICE_CATEGORY_HEADSET" ref="DEFAULT_VOLUME_CURVE"/&gt;
+    &lt;volume stream="AUDIO_STREAM_BLUETOOTH_SCO" deviceCategory="DEVICE_CATEGORY_SPEAKER" ref="DEFAULT_VOLUME_CURVE"/&gt;
+    &lt;volume stream="AUDIO_STREAM_BLUETOOTH_SCO" deviceCategory="DEVICE_CATEGORY_EARPIECE" ref="DEFAULT_VOLUME_CURVE"/&gt;
+    &lt;volume stream="AUDIO_STREAM_BLUETOOTH_SCO" deviceCategory="DEVICE_CATEGORY_EXT_MEDIA" ref="DEFAULT_VOLUME_CURVE"/&gt;
+
+    &lt;volume stream="AUDIO_STREAM_ENFORCED_AUDIBLE" deviceCategory="DEVICE_CATEGORY_HEADSET" ref="DEFAULT_VOLUME_CURVE"/&gt;
+    &lt;volume stream="AUDIO_STREAM_ENFORCED_AUDIBLE" deviceCategory="DEVICE_CATEGORY_SPEAKER" ref="DEFAULT_VOLUME_CURVE"/&gt;
+    &lt;volume stream="AUDIO_STREAM_ENFORCED_AUDIBLE" deviceCategory="DEVICE_CATEGORY_EARPIECE" ref="DEFAULT_VOLUME_CURVE"/&gt;
+    &lt;volume stream="AUDIO_STREAM_ENFORCED_AUDIBLE" deviceCategory="DEVICE_CATEGORY_EXT_MEDIA" ref="DEFAULT_VOLUME_CURVE"/&gt;
+
+    &lt;volume stream="AUDIO_STREAM_DTMF" deviceCategory="DEVICE_CATEGORY_SPEAKER" ref="DEFAULT_VOLUME_CURVE"/&gt;
+    &lt;volume stream="AUDIO_STREAM_DTMF" deviceCategory="DEVICE_CATEGORY_SPEAKER" ref="DEFAULT_VOLUME_CURVE"/&gt;
+    &lt;volume stream="AUDIO_STREAM_DTMF" deviceCategory="DEVICE_CATEGORY_EARPIECE" ref="DEFAULT_VOLUME_CURVE"/&gt;
+    &lt;volume stream="AUDIO_STREAM_DTMF" deviceCategory="DEVICE_CATEGORY_EXT_MEDIA" ref="DEFAULT_VOLUME_CURVE"/&gt;
+
+    &lt;volume stream="AUDIO_STREAM_TTS" deviceCategory="DEVICE_CATEGORY_HEADSET" ref="SILENT_VOLUME_CURVE"/&gt;
+    &lt;volume stream="AUDIO_STREAM_TTS" deviceCategory="DEVICE_CATEGORY_SPEAKER" ref="FULL_SCALE_VOLUME_CURVE"/&gt;
+    &lt;volume stream="AUDIO_STREAM_TTS" deviceCategory="DEVICE_CATEGORY_EARPIECE" ref="SILENT_VOLUME_CURVE"/&gt;
+    &lt;volume stream="AUDIO_STREAM_TTS" deviceCategory="DEVICE_CATEGORY_EXT_MEDIA" ref="SILENT_VOLUME_CURVE"/&gt;
+
+    &lt;volume stream="AUDIO_STREAM_ACCESSIBILITY" deviceCategory="DEVICE_CATEGORY_HEADSET" ref="DEFAULT_VOLUME_CURVE"/&gt;
+    &lt;volume stream="AUDIO_STREAM_ACCESSIBILITY" deviceCategory="DEVICE_CATEGORY_SPEAKER" ref="DEFAULT_VOLUME_CURVE"/&gt;
+    &lt;volume stream="AUDIO_STREAM_ACCESSIBILITY" deviceCategory="DEVICE_CATEGORY_EARPIECE" ref="DEFAULT_VOLUME_CURVE"/&gt;
+    &lt;volume stream="AUDIO_STREAM_ACCESSIBILITY" deviceCategory="DEVICE_CATEGORY_EXT_MEDIA" ref="DEFAULT_VOLUME_CURVE"/&gt;
+
+    &lt;volume stream="AUDIO_STREAM_REROUTING" deviceCategory="DEVICE_CATEGORY_HEADSET" ref="FULL_SCALE_VOLUME_CURVE"/&gt;
+    &lt;volume stream="AUDIO_STREAM_REROUTING" deviceCategory="DEVICE_CATEGORY_SPEAKER" ref="FULL_SCALE_VOLUME_CURVE"/&gt;
+    &lt;volume stream="AUDIO_STREAM_REROUTING" deviceCategory="DEVICE_CATEGORY_EARPIECE" ref="FULL_SCALE_VOLUME_CURVE"/&gt;
+    &lt;volume stream="AUDIO_STREAM_REROUTING" deviceCategory="DEVICE_CATEGORY_EXT_MEDIA" ref="FULL_SCALE_VOLUME_CURVE"/&gt;
+
+    &lt;volume stream="AUDIO_STREAM_PATCH" deviceCategory="DEVICE_CATEGORY_HEADSET" ref="FULL_SCALE_VOLUME_CURVE"/&gt;
+    &lt;volume stream="AUDIO_STREAM_PATCH" deviceCategory="DEVICE_CATEGORY_SPEAKER" ref="FULL_SCALE_VOLUME_CURVE"/&gt;
+    &lt;volume stream="AUDIO_STREAM_PATCH" deviceCategory="DEVICE_CATEGORY_EARPIECE" ref="FULL_SCALE_VOLUME_CURVE"/&gt;
+    &lt;volume stream="AUDIO_STREAM_PATCH" deviceCategory="DEVICE_CATEGORY_EXT_MEDIA" ref="FULL_SCALE_VOLUME_CURVE"/&gt;
+&lt;/volumes&gt;
+</pre></section>
+
+<h2 id="file_inclusions">文件包含</h2>
+<p>XML 包含 (XInclude) 方法可用于包含位于其他 XML 文件中的音频政策配置信息。所有包含的文件必须遵循上述结构，同时满足以下限制条件：</p>
+<ul>
+<li>文件只能包含顶层元素。</li>
+<li>文件不能包含 Xinclude 元素。</li>
+</ul>
+<p>使用“包含”可避免将标准 Android 开放源代码项目 (AOSP) 音频 HAL 模块配置信息复制到所有音频政策配置文件（这样做容易出错）。我们为以下音频 HAL 提供了标准音频政策配置 xml 文件：</p>
+<ul>
+<li><strong>A2DP</strong>：<code>a2dp_audio_policy_configuration.xml</code></li>
+<li><strong>重新导向子混音</strong>：<code>rsubmix_audio_policy_configuration.xml</code></li>
+<li><strong>USB</strong>：<code>usb_audio_policy_configuration.xml</code></li>
+</ul>
+
+<h2 id="code_reorg">音频政策代码重组</h2>
+<p>Android 7.0 将 <code>AudioPolicyManager.cpp</code> 拆分为多个模块，使其更易于维护，并突出显示可配置的内容。<code>frameworks/av/services/audiopolicy</code> 的新组织包括以下模块：</p>
+
+<table>
+<tbody><tr>
+<th>模块</th>
+<th>说明</th>
+</tr>
+
+<tr>
+<td><code>/managerdefault</code></td>
+<td>包含所有应用通用的常规接口和行为实现。类似于剥离了引擎功能和基本类的 <code>AudioPolicyManager.cpp</code>。</td>
+</tr>
+
+<tr>
+<td><code>/common</code></td>
+<td>定义基本类（例如，输入输出音频流配置文件、音频设备描述符、音频补丁程序、音频端口等的数据结构）。以前，该模块在 <code>AudioPolicyManager.cpp</code> 内定义。</td>
+</tr>
+
+<tr>
+<td><code>/engine</code></td>
+<td><p>实现规则，这些规则定义应将哪些设备和音量用于指定使用情形。该模块会实现标准接口（包含通用部分），例如，为指定的播放或捕获使用情形获取适当的设备，或设置可以改变导向选择的已连接设备或外部状态（即强制使用的调用状态）。</p>
+<p>两种版本（自定义版本和默认版本）中都提供该模块；使用构建选项 <code>USE_CONFIGURABLE_AUDIO_POLICY</code> 进行选择。</p></td>
+</tr>
+
+<tr>
+<td><code>/engineconfigurable</code></td>
+<td>依赖参数框架的政策引擎实现（请参阅下文）。配置基于参数框架，相关政策由 XML 文件定义。</td>
+</tr>
+
+<tr>
+<td><code>/enginedefault</code></td>
+<td>基于以前的 Android 音频政策管理器实现的政策引擎实现。这是默认模块，包含当前 Nexus 和 AOSP 实现对应的硬编码规则。</td>
+</tr>
+
+<tr>
+<td><code>/service</code></td>
+<td>包含 Binder 接口、线程和锁定实现（包含连接框架其余部分的接口）。</td>
+</tr>
+
+</tbody></table>
+
+<h2 id="policy_config">使用参数框架的配置</h2>
+<p>Android 7.0 重组了音频政策代码，使其更易于理解和维护，同时也支持完全由配置文件定义的音频政策。重组和音频政策设计基于 Intel 的参数框架，该框架基于插件和规则，用于处理各种参数。</p>
+
+<p>通过使用新的可配置音频政策，供应商和原始设备制造商 (OEM) 可以：</p>
+<ul>
+<li>用 XML 来描述系统的结构及其参数。</li>
+<li>编写（用 C++ 语言）或重复使用后端（插件）来访问所描述的参数。</li>
+<li>定义（用 XML 或特定于网域的语言）指定参数必须取指定值所依据的条件/规则。</li>
+</ul>
+
+<p>AOSP 中包含使用参数框架的音频政策配置文件示例，路径为：<code>Frameworks/av/services/audiopolicy/engineconfigurable/parameter-framework/example/Settings/PolicyConfigurableDomains.xml</code>。有关详情，请参阅介绍<a href="https://github.com/01org/parameter-framework">参数框架</a>和 <a href="http://01org.github.io/parameter-framework/hosting/Android_M_Configurable_Audio_Policy.pdf">Android 可配置音频政策</a>的 Intel 文档。</p>
+
+<h2 id="policy_routing_apis">音频政策导向 API</h2>
+<p>Android 6.0 引入了一个公共 Enumeration and Selection API，位于音频补丁程序/音频端口基础架构之上。借助它，应用开发者可以为连接的音频录制或轨道指明特定设备输出或输入的偏好设置。</p>
+<p>在 Android 7.0 中，Enumeration and Selection API 通过了 CTS 测试的验证，并经过扩展，可导向原生 C/C++ (OpenSL ES) 音频流。原生流的导向仍然由 Java 完成，另外还添加了 <code>AudioRouting</code> 接口，该接口会取代、合并、弃用特定于 <code>AudioTrack</code> 和 <code>AudioRecord</code> 类的显式导向方法。</p>
+
+<p>要详细了解 Enumeration and Selection API，请参阅 <a href="https://developer.android.com/ndk/guides/audio/opensl-for-android.html?hl=fi#configuration-interface">Android 配置接口</a>和 <code>OpenSLES_AndroidConfiguration.h</code>。要详细了解音频导向，请参阅 <a href="https://developer.android.com/reference/android/media/AudioRouting.html">AudioRouting</a>。
+</p>
+
+<h2 id="multichannel">多声道支持</h2>
+
+<p>如果您的硬件和驱动程序通过 HDMI 支持多声道音频，则可以将音频流直接输出到音频硬件（这样可以绕过 AudioFlinger 混音器，也就不会被降混成两个声道）。音频 HAL 必须展示输出流配置文件是否支持多声道音频功能。如果 HAL 展示其功能，则默认的政策管理器会允许通过 HDMI 进行多声道播放。有关实现的详情，请参阅 <code>device/samsung/tuna/audio/audio_hw.c</code>。</p>
+
+<p>要指定您的产品包含多声道音频输出，请修改音频政策配置文件，对产品的多声道输出进行描述。以下示例来自 Galaxy Nexus，其展示了动态声道掩码，这表示音频政策管理器会在连接后查询 HDMI 接收器支持的实际声道掩码。<em></em></p>
+
+<pre class="devsite-click-to-copy">
+audio_hw_modules {
+  primary {
+    outputs {
+        ...
+        hdmi {
+          sampling_rates 44100|48000
+          channel_masks dynamic
+          formats AUDIO_FORMAT_PCM_16_BIT
+          devices AUDIO_DEVICE_OUT_AUX_DIGITAL
+          flags AUDIO_OUTPUT_FLAG_DIRECT
+        }
+        ...
+    }
+    ...
+  }
+  ...
+}
+</pre>
+
+<p>您也可以指定静态声道掩码，例如 <code>AUDIO_CHANNEL_OUT_5POINT1</code>。当把内容发送到不支持多声道音频的音频设备时，AudioFlinger 的混音器会自动将该内容降混成立体声。</p>
+
+<h2 id="codecs">媒体编解码器</h2>
+
+<p>确保针对您的产品正确声明您的硬件和驱动程序支持的音频编解码器。有关详情，请参阅<a href="/devices/media/index.html#expose">将编解码器展示给框架</a>。</p>
+
+</body></html>

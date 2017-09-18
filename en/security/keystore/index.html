@@ -66,9 +66,29 @@ keys "ratchet" forward along with the device, but any reversion of the device to
 a previous release causes the keys to be unusable.
 </p>
 
-<h2 id=goals>Goals</h2>
+<p>
+In Android 8.0, Keymaster 3 transitioned from the old-style C-structure Hardware
+Abstraction Layer (HAL) to the C++ HAL interface generated from a definition
+in the new Hardware Interface Definition Language (HIDL). As part of the change,
+many of the argument types changed, though types and methods have a one-to-one
+correspondence with the old types and the HAL struct methods. See the
+<a href="/security/keystore/implementer-ref">Functions</a> page for more details.
+</p>
+<p>
+In addition to this interface revision, Android 8.0 extends Keymaster 2's
+attestation feature to support
+<a href="/security/keystore/attestation#id-attestation">ID attestation</a>.
+ID attestation provides a limited and optional mechanism for strongly attesting
+to hardware identifiers, such as device serial number, product name, and phone
+ID (IMEI / MEID). To implement this addition, change the ASN.1 attestation
+schema to add ID attestation. Keymaster implementations need to find some secure
+way to retrieve the relevant data items, as well as to define a mechanism for
+securely and permanently disabling the feature.
+</p>
 
-<p>The Android 7.0 Keystore API and the underlying Keymaster HAL
+<h2 id="goals">Goals</h2>
+
+<p>The Android Keystore API and the underlying Keymaster HAL
 provides a basic but adequate set of cryptographic primitives to allow the
 implementation of protocols using access-controlled, hardware-backed keys.</p>
 
@@ -77,12 +97,12 @@ Android 6.0 adds the following:</p>
 
 <ul>
   <li>A usage control scheme to allow key usage to be limited, to mitigate the risk
-of security compromise due to misuse of keys
+of security compromise due to misuse of keys</li>
   <li>An access control scheme to enable restriction of keys to specified users,
-clients, and a defined time range
+clients, and a defined time range</li>
 </ul>
 
-<h2 id=architecture>Architecture</h2>
+<h2 id="architecture">Architecture</h2>
 
 <p>The Keymaster HAL is an OEM-provided, dynamically-loadable library used by the
 Keystore service to provide hardware-backed cryptographic services. To keep
@@ -108,7 +128,7 @@ Developer site</a>.</p>
 algorithms but only to marshal and unmarshal requests to the secure world. The
 wire format is implementation-defined.</p>
 
-<h2 id=compatibility_with_previous_versions>Compatibility with previous versions</h2>
+<h2 id="compatibility_with_previous_versions">Compatibility with previous versions</h2>
 
 <p>The Keymaster 1 HAL is completely incompatible with the
 previously-released HALs, e.g. Keymaster 0.2 and 0.3. To facilitate
@@ -125,6 +145,95 @@ methods and allowing the <code>finish()</code> method to accept input. This redu
 number of round trips to the TEE in cases where the input is available all at
 once, and simplifies implementation of AEAD decryption.
 </p>
+
+<p>In Android 8.0, Keymaster 3 transitioned from the old-style C-structure
+HAL to the C++ HAL interface generated from a definition in the new
+Hardware Interface Definition Language (HIDL). A new-style HAL
+implementation is created by subclassing the generated
+<code>IKeymasterDevice</code> class and implementing the pure virtual
+methods. As part of the change, many of the argument types have changed,
+though types and methods have a one-to-one correspondence with the old
+types and the HAL struct methods.</p>
+
+
+<h3 id="hidl-overview">HIDL overview</h3>
+
+<p>
+The Hardware Interface Definition Language (HIDL) provides an implementation
+language-independent mechanism for specifying hardware interfaces. The HIDL
+tooling currently supports generation of C++ and Java interfaces. It's expected
+that most Trusted Execution Environment (TEE) implementers will find the C++
+tooling more convenient, so this document discusses only the C++ representation.
+</p>
+<p>
+HIDL interfaces consist of a set of methods, expressed as:
+</p>
+<pre class="devsite-click-to-copy">
+	methodName(<var>INPUT ARGUMENTS</var>) generates (<var>RESULT ARGUMENTS</var>);
+</pre>
+<p>
+There are various pre-defined types, and HALs can define new enumerated and
+structure types. For more details on HIDL, see the <a
+     href="/reference/">Reference section</a>.
+</p>
+<p>
+An example method from the Keymaster 3 <code>IKeymasterDevice.hal</code> is:
+</p>
+
+
+<pre class="devsite-click-to-copy">generateKey(vec&lt;KeyParameter&gt; keyParams)
+        generates(ErrorCode error, vec&lt;uint8_t&gt; keyBlob, 
+                  KeyCharacteristics keyCharacteristics);</pre>
+<p>
+This is the equivalent of the following from the keymaster2 HAL.:
+</p>
+
+<pre class="devsite-click-to-copy">keymaster_error_t (*generate_key)(
+        const struct keymaster2_device* dev,
+        const keymaster_key_param_set_t* params,
+        keymaster_key_blob_t* key_blob,
+        keymaster_key_characteristics_t* characteristics);
+</pre>
+<p>
+In the HIDL version, the <code>dev</code> argument is removed, because it's
+implicit. The <code>params</code> argument is no longer a struct containing a
+pointer referencing an array of <code>key_parameter_t</code> objects, but a
+<code>vec</code> (vector) containing <code>KeyParameter</code> objects. The
+return values are listed in the "<code>generates</code>" clause, including a
+vector of <code>uint8_t</code> values for the key blob.
+</p>
+<p>
+The C++ virtual method generated by the HIDL compiler is:
+</p>
+
+<pre class="devsite-click-to-copy">
+Return&lt;void&gt; generateKey(const hidl_vec&lt;KeyParameter&gt;& keyParams,
+                         generateKey_cb _hidl_cb) override;
+</pre>
+<p>
+Where <code>generate_cb</code> is a function pointer defined as:
+</p>
+
+<pre class="devsite-click-to-copy">std::function&lt;void(ErrorCode error, const hidl_vec&lt;uint8_t&gt;& keyBlob,
+                   const KeyCharacteristics& keyCharacteristics)&gt;
+</pre>
+<p>
+That is, <code>generate_cb</code> is a function that takes the return values
+listed in the generate clause. The HAL implementation class overrides this
+<code>generateKey</code> method and calls the <code>generate_cb</code> function
+pointer to return the result of the operation to the caller. Note the function
+pointer call is <strong>synchronous</strong>. The caller calls
+<code>generateKey</code> and <code>generateKey</code> calls the supplied
+function pointer, which executes to completion, returning control to the
+<code>generateKey</code> implementation, which then returns to the caller.
+</p>
+<p>
+For a detailed example, see the default implementation in
+<code>hardware/interfaces/keymaster/3.0/default/KeymasterDevice.cpp</code>.
+The default implementation provides backward compatibility for devices with
+old-style keymaster0, keymaster1, or keymaster2 HALS.</p>
+
+
 
   </body>
 </html>

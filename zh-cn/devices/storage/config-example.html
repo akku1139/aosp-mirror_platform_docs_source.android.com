@@ -1,0 +1,141 @@
+<html devsite><head>
+    <title>配置示例</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>下文提供了适用于各种设备类型的外部存储配置示例，其中仅包含配置文件的相关部分。
+</p><p>由于 Android 6.0 中发生了配置变化（例如移除 <code>storage_list.xml</code> 资源叠加层），因此配置示例分为两类。</p>
+
+<h2 id="android_5_x">Android 5.x 及更早版本</h2>
+<h3 id="android_5_x_physical">仅主要物理存储</h3>
+<p>这是 Nexus One 等具有单一外部存储设备（一种物理 SD 卡）的设备的典型配置。</p>
+<p>首先，原始物理设备必须装载在 <code>/mnt/media_rw</code>（仅系统和 FUSE 守护进程可以访问该位置）下。然后，当插入/移除媒体时，<code>vold</code> 将管理 <code>fuse_sdcard0</code> 服务。
+</p><h4>fstab.hardware</h4>
+<pre><code>[physical device node]  auto  vfat  defaults  voldmanaged=sdcard0:auto,noemulatedsd
+</code></pre>
+<h4>init.hardware.rc</h4>
+<pre><code>on init
+    mkdir /mnt/media_rw/sdcard0 0700 media_rw media_rw
+    mkdir /storage/sdcard0 0700 root root
+    export EXTERNAL_STORAGE /storage/sdcard0
+service fuse_sdcard0 /system/bin/sdcard -u 1023 -g 1023 -d /mnt/media_rw/sdcard0 /storage/sdcard0
+    class late_start
+    disabled
+</code></pre>
+<h4>storage_list.xml</h4>
+<pre><code>&lt;storage
+    android:mountPoint="/storage/sdcard0"
+    android:storageDescription="@string/storage_sd_card"
+    android:removable="true"
+    android:primary="true"
+    android:maxFileSize="4096" /&gt;
+</code></pre>
+<h3 id="android_5_x_emulated">仅主要模拟存储</h3>
+<p>这是 Nexus 4 等具有单一外部存储设备（由设备上的内部存储设备提供支持）的设备的典型配置。</p>
+<h4>init.hardware.rc</h4>
+<pre><code>on init
+    mkdir /mnt/shell/emulated 0700 shell shell
+    mkdir /storage/emulated 0555 root root
+    export EXTERNAL_STORAGE /storage/emulated/legacy
+    export EMULATED_STORAGE_SOURCE /mnt/shell/emulated
+    export EMULATED_STORAGE_TARGET /storage/emulated
+on fs
+    setprop ro.crypto.fuse_sdcard true
+service sdcard /system/bin/sdcard -u 1023 -g 1023 -l /data/media /mnt/shell/emulated
+    class late_start
+</code></pre>
+<h4>storage_list.xml</h4>
+<pre><code>&lt;storage
+    android:storageDescription="@string/storage_internal"
+    android:emulated="true"
+    android:mtpReserve="100" /&gt;
+</code></pre>
+<h3 id="android_5_x_both">模拟存储为主，物理存储为辅</h3>
+<p>这是 Xoom 等具有多个外部存储设备（其中主要设备由设备上的内部存储设备提供支持，辅助设备是物理 SD 卡）的设备的典型配置。</p>
+<p>首先，原始物理设备必须装载在 <code>/mnt/media_rw</code>（仅系统和 FUSE 守护进程可以访问该位置）下。然后，当插入/移除媒体时，<code>vold</code> 将管理 <code>fuse_sdcard1</code> 服务。</p>
+<h4>fstab.hardware</h4>
+<pre><code>[physical device node]  auto  vfat  defaults  voldmanaged=sdcard1:auto
+</code></pre>
+<h4>init.hardware.rc</h4>
+<pre><code>on init
+    mkdir /mnt/shell/emulated 0700 shell shell
+    mkdir /storage/emulated 0555 root root
+    mkdir /mnt/media_rw/sdcard1 0700 media_rw media_rw
+    mkdir /storage/sdcard1 0700 root root
+    export EXTERNAL_STORAGE /storage/emulated/legacy
+    export EMULATED_STORAGE_SOURCE /mnt/shell/emulated
+    export EMULATED_STORAGE_TARGET /storage/emulated
+    export SECONDARY_STORAGE /storage/sdcard1
+on fs
+    setprop ro.crypto.fuse_sdcard true
+service sdcard /system/bin/sdcard -u 1023 -g 1023 -l /data/media /mnt/shell/emulated
+    class late_start
+service fuse_sdcard1 /system/bin/sdcard -u 1023 -g 1023 -w 1023 -d /mnt/media_rw/sdcard1 /storage/sdcard1
+    class late_start
+    disabled
+</code></pre>
+<h4>storage_list.xml</h4>
+<pre><code>&lt;storage
+    android:storageDescription="@string/storage_internal"
+    android:emulated="true"
+    android:mtpReserve="100" /&gt;
+&lt;storage
+    android:mountPoint="/storage/sdcard1"
+    android:storageDescription="@string/storage_sd_card"
+    android:removable="true"
+    android:maxFileSize="4096" /&gt;
+</code></pre>
+
+<h2 id="android_6">Android 6.0</h2>
+<h3 id="android_6_physical">仅主要物理存储</h3>
+<p>这是原始 Android One 等具有单一外部存储设备（一种物理 SD 卡）的设备的典型配置。这种配置没有辅助共享存储空间，且设备不支持多用户。</p>
+<h4>fstab.device</h4>
+<pre><code>/devices/platform/mtk-msdc.1/mmc_host*         auto        auto       defaults
+voldmanaged=sdcard0:auto,encryptable=userdata,noemulatedsd
+</code></pre>
+<h4>init.device.rc</h4>
+<pre><code>on init
+    # By default, primary storage is physical
+    setprop ro.vold.primary_physical 1
+    </code></pre>
+<h3 id="android_6_emulated">仅主要模拟存储</h3>
+<p>这是 Nexus 6 等具有单一外部存储设备（由设备上的内部存储设备提供支持）的设备的典型配置。</p>
+<ul>
+  <li>主共享存储空间 (<code>/sdcard</code>) 在内部存储设备的顶部进行模拟。
+  </li><li>没有辅助 SD 卡存储设备。
+  </li><li>支持 USB OTG 存储设备。
+  </li><li>支持多用户。
+</li></ul>
+<h4>fstab.device</h4>
+<pre><code>/devices/*/xhci-hcd.0.auto/usb*             auto            auto    defaults
+                                                    voldmanaged=usb:auto</code></pre>
+<h3 id="android_6_both">模拟存储为主，物理存储为辅</h3>
+<p>这是 Xoom 等具有多个外部存储设备（其中主要设备由设备上的内部存储设备提供支持，辅助设备是物理 SD 卡）的设备的典型配置。</p>
+<ul>
+  <li>主共享存储空间 (<code>/sdcard</code>) 在内部存储设备的顶部进行模拟。
+  </li><li>辅助存储设备是可以采用的物理 SD 卡插槽。
+  </li><li>支持多用户。
+</li></ul>
+<h4>fstab.device</h4>
+<pre><code>/devices/platform/mtk-msdc.1/mmc_host*           auto      auto     defaults
+voldmanaged=sdcard1:auto,encryptable=userdata
+</code></pre>
+
+</body></html>

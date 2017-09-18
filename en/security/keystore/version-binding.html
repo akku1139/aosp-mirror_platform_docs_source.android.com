@@ -20,12 +20,11 @@
       See the License for the specific language governing permissions and
       limitations under the License.
   -->
-
+ 
 <p>
-In Keymaster1, all keymaster keys were cryptographically bound to the device
-<em>Root of Trust</em>, the <a href="/security/verifiedboot/">verified boot
-key</a>. In Keymaster2, all keys are
-also bound to the operating system and patch level of the system image.
+In Keymaster 1, all keymaster keys were cryptographically bound to the device
+<em>Root of Trust</em>, or the verified boot key. In Keymaster 2 and above, all
+keys are also bound to the operating system and patch level of the system image.
 This ensures that an attacker who discovers a weakness in an old
 version of system or TEE software cannot roll a device back to the vulnerable
 version and use keys created with the newer version. In addition, when a key
@@ -37,37 +36,42 @@ reversion of the device to a previous release will cause the keys to be
 unusable.
 </p>
 
-<h2 id="hal-changes">HAL changes</h2>
+<h2 id="hal-changes">HAL Changes</h2>
 <p>
 To support version binding and version attestation, Android 7.1 added the tags
-<code>KM_TAG_OS_VERSION</code> and <code>KM_TAG_OS_PATCHLEVEL</code> and the
-methods <code>configure</code> and <code>upgrade_key</code>. The version tags
-are automatically added by keymaster2 implementations to all newly-generated (or
+<code>Tag::OS_VERSION</code> and <code>Tag::OS_PATCHLEVEL</code> and the
+methods <code>configure</code> and <code>upgradeKey</code>. The version tags
+are automatically added by Keymaster 2+ implementations to all newly-generated (or
 updated) keys. Further, any attempt to use a key that does not have an OS
 version or patch level matching the current system OS version or patch level,
-respectively, is rejected with <code>KM_ERROR_KEY_REQUIRES_UPGRADE</code>.
+respectively, is rejected with <code>ErrorCode::KEY_REQUIRES_UPGRADE</code>.
 </p>
 <p>
-<code>KM_TAG_OS_VERSION</code> is a <code>KM_UINT</code> that represents the
+<code>Tag::OS_VERSION</code> is a <code>UINT</code> that represents the
 major, minor, and sub-minor portions of an Android system version as MMmmss,
 where MM is the major version, mm is the minor version and ss is the sub-minor
 version. For example 6.1.2 would be represented as 060102.
 </p>
 <p>
-<code>KM_TAG_OS_PATCHLEVEL</code> is a <code>KM_UINT</code> that represents the
+<code>Tag::OS_PATCHLEVEL</code> is a <code>UINT</code> that represents the
 year and month of the last update to the system as YYYYMM, where YYYY is the
 four-digit year and MM is the two-digit month. For example, March 2016 would be
 represented as 201603.
 </p>
 
-<h3 id="upgrade_key">Upgrade_key</h3>
+<h3 id="upgrade_key">UpgradeKey</h3>
 <p>
 To allow keys to be upgraded to the new OS version and patch level of the system
-image, Android 7.1 added the <code>upgrade_key</code> method to the HAL:
+image, Android 7.1 added the <code>upgradeKey</code> method to the HAL:
 </p>
 
-<pre
-class="prettyprint">keymaster_error_t (*upgrade_key)(const struct keymaster2_device* dev,
+<p><strong>Keymaster 3</strong></p>
+<pre class="devsite-click-to-copy">
+    upgradeKey(vec<uint8_t> keyBlobToUpgrade, vec<KeyParameter> upgradeParams)
+        generates(ErrorCode error, vec<uint8_t> upgradedKeyBlob);</pre>
+<p><strong>Keymaster 2</strong></p>
+<pre class="devsite-click-to-copy">
+keymaster_error_t (*upgrade_key)(const struct keymaster2_device* dev,
     const keymaster_key_blob_t* key_to_upgrade,
     const keymaster_key_param_set_t* upgrade_params,
     keymaster_key_blob_t* upgraded_key);
@@ -75,39 +79,47 @@ class="prettyprint">keymaster_error_t (*upgrade_key)(const struct keymaster2_dev
 
 <ul>
   <li><code>dev</code> is the device structure</li>
-  <li><code>key_to_upgrade</code> is the key which needs to be upgraded</li>
-  <li><code>upgrade_params</code> are parameters needed to upgrade the key. These
-  will include <code>KM_TAG_APPLICATION_ID</code> and
-  <code>KM_TAG_APPLICATION_DATA</code>, which are necessary to decrypt the key
+  <li><code>keyBlobToUpgrade</code> is the key which needs to be upgraded</li>
+  <li><code>upgradeParams</code> are parameters needed to upgrade the key. These
+  will include <code>Tag::APPLICATION_ID</code> and
+  <code>Tag::APPLICATION_DATA</code>, which are necessary to decrypt the key
   blob, if they were provided during generation.</li>
-  <li><code>upgraded_key</code> is the output parameter, used to return the new
+  <li><code>upgradedKeyBlob</code> is the output parameter, used to return the new
   key blob.</li>
 </ul>
 
+
 <p>
-If <code>upgrade_key</code> is called with a key blob that cannot be parsed or
-is otherwise invalid, it returns <code>KM_ERROR_INVALID_KEY_BLOB</code>. If it
+If <code>upgradeKey</code> is called with a key blob that cannot be parsed or
+is otherwise invalid, it returns <code>ErrorCode::INVALID_KEY_BLOB</code>. If it
 is called with a key whose patch level is greater than the current system value,
-it returns <code>KM_ERROR_INVALID_ARGUMENT</code>. If it is called with a key
+it returns <code>ErrorCode::INVALID_ARGUMENT</code>. If it is called with a key
 whose OS version is greater than the current system value, and the system value
-is non-zero, it returns KM_ERROR_INVALID_ARGUMENT. OS version upgrades from
-non-zero to zero are allowed. In the event of errors communicating with the
-secure world, it returns an appropriate error value (e.g.
-<code>KM_SECURE_HW_ACCESS_DENIED</code>, <code>KM_SECURE_HW_BUSY</code>, etc.)
-Otherwise, it returns <code>KM_ERROR_OK</code> and returns a new key blob in
-<code>upgraded_key</code>.
+is non-zero, it returns <code>ErrorCode::INVALID_ARGUMENT</code>. OS version
+upgrades from non-zero to zero are allowed. In the event of errors
+communicating with the secure world, it returns an appropriate error value (e.g.
+<code>ErrorCode::SECURE_HW_ACCESS_DENIED</code>, <code>ErrorCode::SECURE_HW_BUSY</code>, etc.)
+Otherwise, it returns <code>ErrorCode::OK</code> and returns a new key blob in
+<code>upgradedKeyBlob</code>.
 </p>
 <p>
-<code>key_to_upgrade</code> remains valid after the <code>upgrade_key</code>
+<code>keyBlobToUpgrade</code> remains valid after the <code>upgradeKey</code>
 call, and could theoretically be used again if the device were downgraded. In
-practice, keystore generally calls <code>delete_key</code> on the
-<code>key_to_upgrade</code> blob shortly after the call to upgrade_key. If
-<code>key_to_upgrade</code> had tag <code>KM_TAG_ROLLBACK_RESISTANT</code>, then
-<code>upgraded_key</code> should have it as well (and should be rollback
+practice, keystore generally calls <code>deleteKey</code> on the
+<code>keyBlobToUpgrade</code> blob shortly after the call to <code>upgradeKey</code>. If
+<code>keyBlobToUpgrade</code> had tag <code>Tag::ROLLBACK_RESISTANT</code>, then
+<code>upgradedKeyBlob</code> should have it as well (and should be rollback
 resistant).
 </p>
 
 <h2 id="secure-configuration">Secure configuration</h2>
+
+<p class="note">
+<strong>Note</strong>: Keymaster 3 removed the Keymaster 2 method
+<code>configure</code>. The information previously provided to Keymaster HALs
+through <code>configure</code> is available in system properties files, and
+manufacturer implementations read those files during startup.
+</p>
 <p>
 To implement version binding, the keymaster TA needs a way to securely receive
 the current OS version and patch level (version information), and to ensure that
@@ -133,26 +145,26 @@ to the keymaster HAL:
 
 
 <pre
-class="prettyprint">keymaster_error_t (*configure)(const struct keymaster2_device* dev,
+class="devsite-click-to-copy">keymaster_error_t (*configure)(const struct keymaster2_device* dev,
 	const keymaster_key_param_set_t* params);
 </pre>
 
 <p>
-The <code>params</code> argument contains <code>KM_TAG_OS_VERSION</code> and
-<code>KM_TAG_OS_PATCHLEVEL</code>. This method is called by keymaster2 clients
+The <code>params</code> argument contains <code>Tag::OS_VERSION</code> and
+<code>Tag::OS_PATCHLEVEL</code>. This method is called by keymaster2 clients
 after opening the HAL, but before calling any other methods. If any other method
 is called before configure, the TA returns
-<code>KM_ERROR_KEYMASTER_NOT_CONFIGURED</code>.
+<code>ErrorCode::KEYMASTER_NOT_CONFIGURED</code>.
 </p>
 
 <p>
 The first time <code>configure</code> is called after the device boots, it
 should verify that the version information provided matches what was provided by
 the bootloader. If the version information does not match,
-<code>configure</code> returns <code>KM_ERROR_INVALID_ARGUMENT</code>, and all
+<code>configure</code> returns <code>ErrorCode::INVALID_ARGUMENT</code>, and all
 other keymaster methods continue returning
-<code>KM_ERROR_KEYMASTER_NOT_CONFIGURED</code>. If the information matches,
-<code>configure</code> returns <code>KM_ERROR_OK</code>, and other keymaster
+<code>ErrorCode::KEYMASTER_NOT_CONFIGURED</code>. If the information matches,
+<code>configure</code> returns <code>ErrorCode::OK</code>, and other keymaster
 methods begin functioning normally.
 </p>
 
