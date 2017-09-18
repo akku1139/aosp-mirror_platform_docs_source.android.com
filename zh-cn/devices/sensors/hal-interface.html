@@ -1,0 +1,184 @@
+<html devsite><head>
+    <title>HAL 接口</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p><a href="/devices/halref/sensors_8h.html">sensors.h</a> 中声明的 HAL 接口表示 Android <a href="sensor-stack.html#framework">框架</a>与特定于硬件的软件之间的接口。HAL 实现必须定义 sensors.h 中声明的每个函数。主要函数如下：</p>
+<ul>
+  <li><code>get_sensors_list</code> - 返回所有传感器的列表。</li>
+  <li><code>activate</code> - 启动或停止传感器。</li>
+  <li><code>batch</code> - 设置传感器的参数，如采样率和最大报告延迟。</li>
+  <li><code>setDelay</code> - 仅用于 HAL 版本 1.0。设置指定传感器的采样率。</li>
+  <li><code>flush</code> - 刷写指定传感器的 FIFO 并在完成后报告刷写完成事件。</li>
+  <li><code>poll</code> - 返回可用的传感器事件。</li>
+</ul>
+<p>实现必须是线程安全的，并且允许从不同线程调用这些函数。</p>
+<p>该接口还定义了这些函数使用的几个类型。主要类型如下：</p>
+<ul>
+  <li><code>sensors_module_t</code></li>
+  <li><code>sensors_poll_device_t</code></li>
+  <li><code>sensor_t</code></li>
+  <li><code>sensors_event_t</code></li>
+</ul>
+<p>除了下面的部分，还可参阅 <a href="/devices/halref/sensors_8h.html">sensors.h</a> 详细了解这些类型。</p>
+<h2 id="get_sensors_list_list">get_sensors_list(list)</h2>
+<pre class="prettyprint">int (*get_sensors_list)(struct sensors_module_t* module, struct sensor_t
+  const** list);</pre>
+<p>该函数提供由 HAL 实现的传感器列表。要详细了解如何定义传感器，请参阅 <a href="#sensor_t">sensor_t</a>。</p>
+<p>传感器在列表中显示的顺序是将传感器报告给应用的顺序。通常，先显示基础传感器，然后显示复合传感器。</p>
+<p>如果几个传感器的传感器类型和唤醒属性相同，则列表中的第一个传感器称为“默认”传感器。该传感器由 <code>getDefaultSensor(int sensorType, bool wakeUp)</code> 返回。</p>
+<p>该函数返回列表中的传感器数量。</p>
+<h2 id="activate_sensor_true_false">activate(sensor, true/false)</h2>
+<pre class="prettyprint">int (*activate)(struct sensors_poll_device_t *dev, int sensor_handle, int
+  enabled);</pre>
+<p>激活或禁用传感器。</p>
+<p><code>sensor_handle</code> 是要激活/禁用的传感器的句柄。传感器的句柄由其 <a href="#sensor_t">sensor_t</a> 结构的 <code>handle</code> 字段定义。</p>
+<p><code>enabled</code> 设为 1 时启用传感器，设为 0 时则停用传感器。</p>
+<p>单次传感器在接收到事件后立即自动自行禁用，并且必须仍接受通过调用 <code>activate(...,
+  enabled=0)</code> 进行禁用。</p>
+<p>非唤醒传感器绝不会阻止 SOC 进入暂停模式；即 HAL 不应代表应用控制部分唤醒锁定。</p>
+<p>持续提交事件的唤醒传感器会阻止 SOC 进入暂停模式，但如果无需提交任何事件，则必须释放部分唤醒锁定。</p>
+<p>如果 <code>enabled</code> 为 1 且传感器已激活，则该函数是空操作且操作成功。</p>
+<p>如果 <code>enabled</code> 为 0 且传感器已禁用，则该函数是空操作且操作成功。</p>
+<p>如果操作成功了，则该函数返回 0；否则返回表示错误的负数。</p>
+<h2 id="batch_sensor_flags_sampling_period_maximum_report_latency">batch(sensor, flags, sampling period, maximum report latency)</h2>
+<pre class="prettyprint">
+int (*batch)(
+     struct sensors_poll_device_1* dev,
+     int sensor_handle,
+     int flags,
+     int64_t sampling_period_ns,
+     int64_t max_report_latency_ns);
+</pre>
+<p>设置传感器的参数，包括<a href="#sampling_period_ns">采样率</a>和<a href="#max_report_latency_ns">最大报告延迟</a>。该函数可在传感器被激活时调用，在这种情况下，它一定不能导致任何传感器测量丢失：从一个采样率转换到另一个采样率时不能导致丢失事件，而从较高最大报告延迟转换为较低最大报告延迟时也不能丢失事件。</p>
+<p><code>sensor_handle</code> 是要配置的传感器的句柄。</p>
+<p><code>flags</code> 当前未使用。</p>
+<p><code>sampling_period_ns</code> 是传感器运行时应采用的采样周期，以纳秒为单位。要了解详情，请参阅 <a href="#sampling_period_ns">sampling_period_ns</a>。</p>
+<p><code>max_report_latency_ns</code> 是事件在通过 HAL 报告之前可以延迟的最长时间，以纳秒为单位。要了解详情，请参阅 <a href="#max_report_latency_ns">max_report_latency_ns</a> 段落。</p>
+<p>如果操作成功了，则该函数返回 0；否则返回表示错误的负数。</p>
+<h3 id="sampling_period_ns">sampling_period_ns</h3>
+<p><code>sampling_period_ns</code> 参数的含义取决于指定传感器的报告模式：</p>
+<ul>
+  <li>连续模式：<code>sampling_period_ns</code> 是采样率，指的是生成事件的速率。</li>
+  <li>变化模式：<code>sampling_period_ns</code> 限制事件的采样率，表示事件的生成频率不会高于每 <code>sampling_period_ns</code> 纳秒一次。可能会有比 <code>sampling_period_ns</code> 长的周期，在这种情况下，如果测量值长时间不变化，则不会生成任何事件。要了解详情，请参阅<a href="report-modes.html#on-change">变化</a>报告模式。</li>
+  <li>单次模式：<code>sampling_period_ns</code> 会被忽略。该参数没有任何作用。</li>
+  <li>特殊模式：要详细了解 <code>sampling_period_ns</code> 如何用于特殊的传感器，请参阅具体的<a href="sensor-types.html">传感器类型说明</a>。</li>
+</ul>
+<p>要详细了解 <code>sampling_period_ns</code> 在不同模式下的影响，请参阅<a href="report-modes.html">报告模式</a>。</p>
+<p>对于连续和变化传感器：</p>
+<ul>
+  <li>如果 <code>sampling_period_ns</code> 小于 <code>sensor_t.minDelay</code>，则 HAL 实现必须静默将其钳位到 <code>max(sensor_t.minDelay, 1ms)</code>。Android 不支持以高于 1000Hz 的频率生成事件。</li>
+  <li>如果 <code>sampling_period_ns</code> 大于 <code>sensor_t.maxDelay</code>，则 HAL 实现必须静默将其截断为 <code>sensor_t.maxDelay</code>。</li>
+</ul>
+<p>物理传感器的运行速率和时钟精度有时会受到限制。因此，实际采样率与请求的频率可以不同，只要它满足下表中的要求即可。</p>
+<table>
+  <tbody><tr>
+    <th><p>如果请求的频率</p></th>
+    <th><p>那么实际频率必须</p></th>
+  </tr>
+  <tr>
+    <td><p>低于最小频率 (&lt;1/maxDelay)</p></td>
+    <td><p>在最小频率的 90％-110％ 之间</p></td>
+  </tr>
+  <tr>
+    <td><p>在最小和最大频率之间</p></td>
+    <td><p>在请求频率的 90％-220％ 之间</p></td>
+  </tr>
+  <tr>
+    <td><p>高于最大频率 (&gt;1/minDelay)</p></td>
+    <td><p>在最大频率的 90％-110％ 之间</p>
+      <p>同时低于 1100Hz</p></td>
+  </tr>
+</tbody></table>
+<p>请注意，本约定仅对始终只有一个客户端的 HAL 层有效。而在 SDK 层，由于框架中会出现多路复用现象，应用可能会获得不同的速率。要了解详情，请参阅<a href="sensor-stack.html#framework">框架</a>。</p>
+<h3 id="max_report_latency_ns">max_report_latency_ns</h3>
+<p><code>max_report_latency_ns</code> 设置事件在 SoC 唤醒期间通过 HAL 报告之前可以延迟并存储在硬件 FIFO 中的最长时间，以纳秒为单位。</p>
+<p>值为零表示事件必须在测量完成后立即报告，一旦从该传感器发出的事件出现在 FIFO 中，就完全跳过 FIFO，或者将 FIFO 清空。</p>
+<p>例如，以 50Hz 激活的加速度计如果 <code>max_report_latency_ns=0</code>，则在 SoC 唤醒期间每秒触发中断 50 次。</p>
+<p>当 <code>max_report_latency_ns&gt;0</code> 时，在检测到传感器事件后无需立即报告。只要所有事件的延迟均不超过 max_report_latency_ns 纳秒，就可以暂时存储在硬件 FIFO 中并批量报告。也就是说，一次性记录并返回上一批之后的所有事件。这样一来，发送到 SoC 的中断数量会减少，并且在传感器捕获数据并进行批量处理时，SoC 可以切换到低电耗模式（闲置）。</p>
+<p>每个事件都具有相关联的时间戳。事件的报告时间有所延迟并不影响事件时间戳。时间戳必须准确且对应于事件实际发生的时间，而不是对应于事件的报告时间。</p>
+<p>允许传感器事件暂时存储在硬件 FIFO 中不会修改 <code>poll</code> 的行为：不同传感器的事件可交错；和往常一样，同一传感器的所有事件按时间排序。</p>
+<p>要详细了解传感器批量处理（包括暂停模式和非暂停模式中的行为），请参阅<a href="batching.html">批量处理</a>。</p>
+<h2 id="setdelay_sensor_sampling_period">setDelay(sensor, sampling period)</h2>
+<pre class="prettyprint">
+int (*setDelay)(
+     struct sensors_poll_device_t *dev,
+     int sensor_handle,
+     int64_t sampling_period_ns);
+</pre>
+<p>在 1.0 版本之后的 HAL 中，该函数已被弃用，并且无法再调用。改为调用 <code>batch</code> 函数来设置 <code>sampling_period_ns</code> 参数。</p>
+<p>在 1.0 版本的 HAL 中，使用 setDelay（而非 batch）来设置 <a href="#sampling_period_ns">sampling_period_ns</a>。</p>
+<h2 id="flush_sensor">flush(sensor)</h2>
+<pre class="prettyprint">int (*flush)(struct sensors_poll_device_1* dev, int sensor_handle);</pre>
+<p>将<a href="#metadata_flush_complete_events">刷写完成事件</a>添加到指定传感器的硬件 FIFO 的末尾并刷写 FIFO；这些事件会照常提交（即好像最大报告延迟已过期一样）并从 FIFO 中移除。</p>
+<p>刷写异步发生（即该函数必须立即返回）。如果实现将一个 FIFO 用于多个传感器，则刷写该 FIFO，并且仅为指定传感器添加刷写完成事件。</p>
+<p>如果指定传感器没有 FIFO（无法缓冲），或者如果 FIFO 在调用时为空，则 <code>flush</code> 仍必须操作成功并为该传感器发送刷写完成事件。这适用于除单次传感器以外的所有传感器。</p>
+<p>当调用 <code>flush</code> 时，即使该传感器的 FIFO 中已经存在刷写事件，也必须创建另一个刷写事件并将其添加到 FIFO 的末尾，并且必须刷写 FIFO。<code>flush</code> 调用的次数必须等于创建的刷写完成事件数。</p>
+<p><code>flush</code> 不适用于<a href="report-modes.html#one-shot">单次</a>传感器；如果 <code>sensor_handle</code> 指的是单次传感器，则 <code>flush</code> 必须返回 <code>-EINVAL</code>，并且不生成任何刷写完成元数据事件。</p>
+<p>如果操作成功了，则该函数返回 0；如果指定的传感器是单次传感器或未启用，则返回 <code>-EINVAL</code>；否则返回表示错误的负数。</p>
+<h2 id="poll">poll()</h2>
+<pre class="prettyprint">int (*poll)(struct sensors_poll_device_t *dev, sensors_event_t* data, int
+  count);</pre>
+<p>通过填充 <code>data</code> 参数返回传感器数据数组。该函数必须禁用，直到事件可用为止。如果操作成功了，则该函数返回读取的事件数，或者如果发生错误，则返回表示错误的负数。</p>
+<p><code>data</code> 中返回的事件数必须小于或等于 <code>count</code> 参数。该函数不应返回 0（没有任何事件）。</p>
+<h2 id="sequence_of_calls">调用的顺序</h2>
+<p>当设备启动时，调用 <code>get_sensors_list</code>。</p>
+<p>当传感器激活时，则先通过请求的参数调用 <code>batch</code> 函数，然后调用 <code>activate(..., enable=1)</code>。</p>
+<p>请注意，在 1_0 版本的 HAL 中，顺序是相反的，先调用 <code>activate</code>，然后调用 <code>set_delay</code>。</p>
+<p>当激活状态下的传感器的请求特性发生变化时，调用 <code>batch</code> 函数。</p>
+<p>即使是未激活传感器，也可以随时调用 <code>flush</code>（在这种情况下，必须返回 <code>-EINVAL</code>）</p>
+<p>当传感器禁用时，将调用 <code>activate(..., enable=0)</code>。</p>
+<p>在上述调用的同时，反复调用 <code>poll</code> 函数以请求数据。即使在没有激活任何传感器的情况下，仍可以调用 <code>poll</code>。</p>
+<h2 id="sensors_module_t">sensors_module_t</h2>
+<p><code>sensors_module_t</code> 是用于为传感器创建 Android 硬件模块的类型。HAL 的实现必须定义一个该类型的对象 <code>HAL_MODULE_INFO_SYM</code>，以提供 <a href="#get_sensors_list_list">get_sensors_list</a> 函数。要了解详情，请参阅 <a href="/devices/halref/sensors_8h.html">sensors.h</a> 中 <code>sensors_module_t</code> 的定义和 <code>hw_module_t</code> 的定义。</p>
+<h2 id="sensors_poll_device_t_sensors_poll_device_1_t">sensors_poll_device_t/sensors_poll_device_1_t</h2>
+<p><code>sensors_poll_device_1_t</code> 包含上文定义的方法的剩余部分：<code>activate</code>、<code>batch</code>、<code>flush</code> 和 <code>poll</code>。其 <code>common</code> 字段（类型为 <a href="/devices/halref/structhw__device__t.html">hw_device_t</a>）定义 HAL 的版本号。</p>
+<h2 id="sensor_t">sensor_t</h2>
+<p><code>sensor_t</code> 表示 <a href="index.html">Android 传感器</a>。以下是 sensor_t 的一些重要字段：</p>
+<p><strong>name</strong>：表示传感器的用户可见字符串。该字符串通常包括底层传感器的部件名称、传感器的类型以及是否为唤醒传感器。例如，“LIS2HH12 Accelerometer”、“MAX21000 Uncalibrated Gyroscope”、“BMP280 Wake-up Barometer”、“MPU6515 Game Rotation Vector”。</p>
+<p><strong>handle</strong>：用于在注册到传感器或从传感器生成事件时表示传感器的整数。</p>
+<p><strong>type</strong>：传感器的类型。要详细了解传感器类型的解释，请参阅<a href="index.html">什么是 Android 传感器？</a>； 要了解官方传感器类型，请参阅<a href="sensor-types.html">传感器类型</a>。对于非官方传感器类型，<code>type</code> 必须以 <code>SENSOR_TYPE_DEVICE_PRIVATE_BASE</code> 开头。</p>
+<p><strong>stringType</strong>：传感器的类型（以字符串表示）。如果传感器为官方类型，则设置为 <code>SENSOR_STRING_TYPE_*</code>。如果传感器为制造商特定类型，<code>stringType</code> 必须以制造商的反向域名开头。例如，由 Fictional-Company 的 Cool-product 团队定义的传感器（例如 unicorn 检测器）可以使用 <code>stringType=”com.fictional_company.cool_product.unicorn_detector”</code>。<em></em><code>stringType</code> 用于唯一标识非官方传感器类型。要详细了解传感器类型和字符串类型，请参阅 <a href="/devices/halref/sensors_8h.html">sensors.h</a>。</p>
+<p><strong>requiredPermission</strong>：表示应用必须拥有的权限（查看传感器、注册到传感器和接收传感器数据）的字符串。空字符串表明应用不需要获取该传感器的任何访问权限。<a href="sensor-types.html#heart_rate">心率监测器</a>等传感器类型具有强制性的 <code>requiredPermission</code>。提供敏感用户信息（例如心率）的所有传感器必须受到权限保护。</p>
+<p><strong>flags</strong>：传感器的标记，用于定义传感器的报告模式以及传感器是否为唤醒传感器。例如，对于单次唤醒传感器，<code>flags = SENSOR_FLAG_ONE_SHOT_MODE | SENSOR_FLAG_WAKE_UP</code>。当前版本的 HAL 中未使用的标记的位必须等于 0。</p>
+<p><strong>maxRange</strong>：传感器可报告的最大值，与已报告值的单位相同。传感器必须能够报告 <code>[-maxRange; maxRange]</code> 范围内（未过载）的值。请注意，这意味着从常规意义上来说传感器的总范围是 <code>2*maxRange</code>。当传感器报告几条轴上的值时，该范围适用于每条轴。例如，“+/- 2g”加速度计会报告 <code>maxRange = 2*9.81 = 2g</code>。</p>
+<p><strong>resolution</strong>：传感器可测量出的最小差值。该字段通常基于 <code>maxRange</code> 和测量时的位数计算得来。</p>
+<p><strong>power</strong>：启用传感器的功耗成本，以毫安为单位。该字段值几乎始终大于底层传感器的相关数据表中报告的功耗。要了解详情，请参阅<a href="sensor-types.html#base_sensors_=_not_equal_to_physical_sensors">基础传感器不等于物理传感器</a>这篇文章；要详细了解如何测量传感器的功耗，请参阅<a href="power-use.html#power_measurement_process">功率测量过程</a>。如果传感器的功耗取决于设备是否正在移动，则 <code>power</code> 字段中报告的值是移动时的功耗。</p>
+<p><strong>minDelay</strong>：对于连续传感器，采样周期（以微秒为单位）对应于传感器支持的最快速率。要详细了解该值是如何使用的，请参阅 <a href="#sampling_period_ns">sampling_period_ns</a>。请注意，<code>minDelay</code> 以微秒为单位，而 <code>sampling_period_ns</code> 以纳秒为单位。对于变化和特殊报告模式传感器，除非另行指定，否则 <code>minDelay</code> 必须为 0。对于单次传感器，该值必须为 -1。</p>
+<p><strong>maxDelay</strong>：对于连续和变化传感器，采样周期（以微秒为单位）对应于传感器支持的最慢速率。要详细了解该值是如何使用的，请参阅 <a href="#sampling_period_ns">sampling_period_ns</a>。请注意，<code>maxDelay</code> 以毫秒为单位，而 <code>sampling_period_ns</code> 以纳秒为单位。对于特殊和单次传感器，<code>maxDelay</code> 必须为 0。</p>
+<p><strong>fifoReservedEventCount</strong>：硬件 FIFO 中为该传感器保留的事件数。如果该传感器有一个专用的 FIFO，则 <code>fifoReservedEventCount</code> 是该专用 FIFO 的大小。如果 FIFO 与其他传感器共享，则 <code>fifoReservedEventCount</code> 是为该传感器保留的 FIFO 部分的大小。对于大多数共享 FIFO 的系统以及没有硬件 FIFO 的系统，该值为 0。</p>
+<p><strong>fifoMaxEventCount</strong>：FIFO 中可为该传感器存储的最大事件数。该值总是大于或等于 <code>fifoReservedEventCount</code>。该值用于估计在假设不激活任何其他传感器的情况下，以特定速率注册到传感器时 FIFO 多快会被填满。对于没有硬件 FIFO 的系统，<code>fifoMaxEventCount</code> 为 0。要了解详情，请参阅<a href="batching.html">批量处理</a>。</p>
+<p>对于官方传感器类型的传感器，一些字段会被框架覆盖。例如，<a href="sensor-types.html#accelerometer">加速度计</a>传感器被强制使用连续报告模式，而<a href="sensor-types.html#heart_rate">心率</a>监测器被强制受 <code>SENSOR_PERMISSION_BODY_SENSORS</code> 权限的保护。</p>
+<h2 id="sensors_event_t">sensors_event_t</h2>
+<p>由 Android 传感器生成并通过 <a href="#poll">poll</a> 函数报告的传感器事件具有 <code>type sensors_event_t</code>。以下是 <code>sensors_event_t</code> 的一些重要字段：</p>
+<p><strong>version</strong>：必须是 <code>sizeof(struct sensors_event_t)</code></p>
+<p><strong>sensor</strong>：生成事件的传感器的句柄，由 <code>sensor_t.handle</code> 定义。</p>
+<p><strong>type</strong>：生成事件的传感器的传感器类型，由 <code>sensor_t.type</code> 定义。</p>
+<p><strong>timestamp</strong>：事件的时间戳，以纳秒为单位。这是事件（采取了步骤，或是进行了加速度计测量）发生的时间，而不是事件报告的时间。<code>timestamp</code> 必须与 <code>elapsedRealtimeNano</code> 时钟同步，并且对于连续传感器，抖动必须很小。有时需要进行时间戳过滤以满足 CDD 要求，因为仅使用 SoC 中断时间来设置时间戳会导致抖动过大，并且仅使用传感器芯片时间来设置时间戳可能会由于传感器时钟漂移而无法与 <code>elapsedRealtimeNano</code> 时钟同步。</p>
+<p><strong>数据和重叠字段</strong>：由传感器测量的值。这些字段的含义和单位特定于每种传感器类型。要了解数据字段的说明，请参阅 <a href="/devices/halref/sensors_8h.html">sensors.h</a> 和不同<a href="sensor-types.html">传感器类型</a>的定义。对于某些传感器，也可以通过 <code>status</code> 字段在数据中同时报告读数精度。该字段只能针对选定传感器类型通过管道传递，作为精度值出现在 SDK 层。对于这类传感器，其<a href="sensor-types.html">传感器类型</a>定义中会提及必须设置 status 字段。</p>
+<h3 id="metadata_flush_complete_events">元数据刷写完成事件</h3>
+<p>元数据事件的类型与常规传感器事件的类型相同：<code>sensors_event_meta_data_t = sensors_event_t</code>。元数据事件通过 poll 与其他传感器事件一起返回，且拥有如下字段：</p>
+<p><strong>version</strong>：必须是 <code>META_DATA_VERSION</code></p>
+<p><strong>type</strong>：必须是 <code>SENSOR_TYPE_META_DATA</code></p>
+<p><strong>sensor、reserved 和 timestamp</strong>：必须为 0</p>
+<p><strong>meta_data.what</strong>：包含该事件的元数据类型。目前有一个有效的元数据类型：<code>META_DATA_FLUSH_COMPLETE</code>。</p>
+<p><code>META_DATA_FLUSH_COMPLETE</code> 事件表示传感器 FIFO 刷写完成。当 <code>meta_data.what=META_DATA_FLUSH_COMPLETE</code> 时，必须将 <code>meta_data.sensor</code> 设置为已刷写的传感器的句柄。此类事件当且仅当对传感器调用 <code>flush</code> 时生成。要了解详情，请参阅有关 <a href="#flush_sensor">flush</a> 函数的部分。</p>
+
+</body></html>

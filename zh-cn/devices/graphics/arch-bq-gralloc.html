@@ -1,0 +1,70 @@
+<html devsite><head>
+    <title>BufferQueue 和 gralloc</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>要了解 Android 图形系统，需首先了解后台的 BufferQueue 和 gralloc HAL。</p>
+
+<p>BufferQueue 类是 Android 中所有图形处理操作的核心。它的作用很简单：将生成图形数据缓冲区的一方（生产方）连接到接受数据以进行显示或进一步处理的一方（消耗方）。<em></em><em></em>几乎所有在系统中移动图形数据缓冲区的内容都依赖于 BufferQueue。</p>
+
+<p>gralloc 内存分配器会进行缓冲区分配，并通过供应商特定的 HAL 接口来实现（请参见 <code>hardware/libhardware/include/hardware/gralloc.h</code>）。<code>alloc()</code> 函数获得预期的参数（宽度、高度、像素格式）以及一组用法标记（详见下文）。</p>
+
+<h2 id="BufferQueue">BufferQueue 生产方和消耗方</h2>
+
+<p>基本用法很简单：生产方请求一个可用的缓冲区 (<code>dequeueBuffer()</code>)，并指定一组特性，包括宽度、高度、像素格式和用法标记。生产方填充缓冲区并将其返回到队列 (<code>queueBuffer()</code>)。随后，消耗方获取该缓冲区 (<code>acquireBuffer()</code>) 并使用该缓冲区的内容。当消耗方操作完毕后，将该缓冲区返回到队列 (<code>releaseBuffer()</code>)。</p>
+
+<p><em></em>最新的 Android 设备支持“同步框架”，这使得系统能够在与可以异步处理图形数据的硬件组件结合使用时提高工作效率。例如，生产方可以提交一系列 OpenGL ES 绘制命令，然后在渲染完成之前将输出缓冲区加入队列。该缓冲区伴有一个栅栏，当内容准备就绪时，栅栏会发出信号。当该缓冲区返回到空闲列表时，会伴有第二个栅栏，因此消耗方可以在内容仍在使用期间释放该缓冲区。该方法缩短了缓冲区通过系统时的延迟时间，并提高了吞吐量。</p>
+
+<p>队列的一些特性（例如可以容纳的最大缓冲区数）由生产方和消耗方联合决定。但是，BufferQueue 负责根据需要分配缓冲区。除非特性发生变化，否则将会保留缓冲区；例如，如果生产方请求具有不同大小的缓冲区，则系统会释放旧的缓冲区，并根据需要分配新的缓冲区。</p>
+
+<p>生产方和消耗方可以存在于不同的进程中。目前，消耗方始终创建和拥有数据结构。在旧版本的 Android 中，只有生产方才进行 Binder 处理（即生产方可能在远程进程中，但消耗方必须存在于创建队列的进程中）。Android 4.4 和更高版本已发展为更常规的实现。</p>
+
+<p>BufferQueue 永远不会复制缓冲区内容（移动如此多的数据是非常低效的操作）。相反，缓冲区始终通过句柄进行传递。</p>
+
+<h2 id="gralloc_HAL">gralloc HAL 用法标记</h2>
+
+<p>gralloc 分配器不仅仅是在原生堆上分配内存的另一种方法；在某些情况下，分配的内存可能并非缓存一致，或者可能完全无法从用户空间访问。分配的性质由用法标记确定，这些标记包括以下属性：</p>
+
+<ul>
+<li>从软件 (CPU) 访问内存的频率</li>
+<li>从硬件 (GPU) 访问内存的频率</li>
+<li>是否将内存用作 OpenGL ES (GLES) 纹理</li>
+<li>视频编码器是否会使用内存</li>
+</ul>
+
+<p>例如，如果您的格式指定 RGBA 8888 像素，并且您指明将从软件访问缓冲区（这意味着您的应用将直接触摸像素），则分配器必须按照 R-G-B-A 的顺序为每个像素创建 4 个字节的缓冲区。相反，如果您指明仅从硬件访问缓冲区且缓冲区作为 GLES 纹理，则分配器可以执行 GLES 驱动程序所需的任何操作 - BGRA 排序、非线性搅和布局、替代颜色格式等。允许硬件使用其首选格式可以提高性能。</p>
+
+<p>某些值在特定平台上无法组合。例如，视频编码器标记可能需要 YUV 像素，因此将无法添加软件访问权并指定 RGBA 8888。</p>
+
+<p>gralloc 分配器返回的句柄可以通过 Binder 在进程之间传递。</p>
+
+<h2 id="tracking">使用 Systrace 跟踪 BufferQueue</h2>
+
+<p>要真正了解图形缓冲区如何移动，请使用 Systrace。系统级图形代码经过很好的检测，很多相关的应用框架代码也是如此。</p>
+
+<p>要完整地说明如何有效地使用 Systrace，则需要很长的篇幅。我们首先介绍如何启用 <code>gfx</code>、<code>view</code> 和 <code>sched</code> 标记。您还将在跟踪记录中看到 BufferQueue。如果您以前使用过 Systrace，则可能已经见到过它们，但不知道它们是什么。例如，如果您在 <a href="https://github.com/google/grafika">Grafika</a> 的“播放视频 (SurfaceView)”正在运行时获取跟踪记录，则标有 SurfaceView 的行会告诉您在任何给定时间排队的缓冲区数量。<em></em></p>
+
+<p>当应用处于活动状态时，该值会递增（触发 MediaCodec 解码器渲染帧），而在 SurfaceFlinger 正在工作和消耗缓冲区时，该值会递减。当以 30fps 的帧率显示视频时，队列的值从 0 变为 1，因为大约 60fps 的显示速度可以轻松跟上来源的帧率。（另请注意，SurfaceFlinger 仅在有工作要执行时才被唤醒，而不是每秒唤醒 60 次。系统会尽力尝试避免工作，而且如果屏幕没有任何更新，将完全停用 VSYNC。）</p>
+
+<p>如果您切换到 Grafika 的“播放视频 (TextureView)”并获取新的跟踪记录，将看到一个标为 com.android.grafika/com.android.grafika.PlayMovieActivity 的行。这是主界面层，其只是另一个 BufferQueue。由于 TextureView 渲染到界面层（而不是单独的层），因此您将在此看到所有视频驱动的更新。</p>
+
+<p>有关 Systrace 工具的更多信息，请参阅 <a href="https://developer.android.com/studio/profile/systrace-commandline.html">Systrace 文档</a>。</p>
+
+</body></html>

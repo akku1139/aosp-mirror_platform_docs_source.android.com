@@ -143,6 +143,52 @@ assemble_vintf \
     -c $(TARGET_OUT_VENDOR)/manifest.xml \
 </pre>
 
+<h4><strong>Example:</strong> Generate device manifest from fragments</h4>
+
+<p>Multiple device manifest fragments can be bundled at build time. For example:</p>
+
+<pre class="prettyprint">
+&lt;!-- device/manufacturer/device_name/manifest_common.xml -->
+&lt;manifest version="1.0" type="device">
+    &lt;!-- common HALs here -->
+&lt;/manifest>
+</pre>
+
+<pre class="prettyprint">
+&lt;!-- device/manufacturer/device_name/ir.xml -->
+&lt;manifest version="1.0" type="device">
+    &lt;hal>
+        &lt;name>android.hardware.ir&lt;/name>
+        &lt;version>1.0&lt;/version>
+        &lt;!-- other fields -->
+    &lt;/hal>
+&lt;/manifest>
+</pre>
+
+<pre class="prettyprint">
+# device/manufacturer/device_name/BoardConfig.mk
+DEVICE_MANIFEST_FILE := device/manufacturer/device_name/manifest_common.xml
+ifdef BOARD_ENABLE_IR
+    DEVICE_MANIFEST_FILE += device/manufacturer/device_name/ir.xml
+endif
+</pre>
+
+<p>Then, <code>assemble_vintf</code> adds Ir HAL to device manifest if <code>BOARD_ENABLE_IR</code>
+is defined, and omits it if <code>BOARD_ENABLE_IR</code> is not defined. The following commands
+(modified to omit implementation details) are executed to generate the device manifest:</p>
+
+<pre class="prettyprint">
+# if BOARD_ENABLE_IR is defined
+BOARD_SEPOLICY_VERS=10000.0 assemble_vintf \
+    -i device/manufacturer/device_name/manifest_common.xml:device/manufacturer/device_name/ir.xml \
+    -o $(TARGET_OUT_VENDOR)/manifest.xml
+
+# if BOARD_ENABLE_IR is not defined
+BOARD_SEPOLICY_VERS=10000.0 assemble_vintf \
+    -i device/manufacturer/device_name/manifest_common.xml \
+    -o $(TARGET_OUT_VENDOR)/manifest.xml
+</pre>
+
 <p>For details, see:</p>
 
 <pre class="devsite-terminal">assemble_vintf --help</pre>
