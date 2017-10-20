@@ -1,0 +1,132 @@
+<html devsite><head>
+    <title>客户端使用情况</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>您可以重构经过条件式编译的代码，以便从 HAL 接口动态读取值。例如：</p>
+
+<pre class="devsite-click-to-copy">
+#ifdef TARGET_FORCE_HWC_FOR_VIRTUAL_DISPLAYS
+//some code fragment
+#endif
+</pre>
+
+<p>随后，框架代码便可以调用一个在 <code>&lt;configstore/Utils.h&gt;</code> 中定义的适当效用函数（根据其类型）。</p>
+
+<h2 id="example">ConfigStore 示例</h2>
+<p>以下示例显示了读取 <code>TARGET_FORCE_HWC_FOR_VIRTUAL_DISPLAYS</code>（在 ConfigStore HAL 中定义为 <code>forceHwcForVirtualDisplays()</code>，返回类型为 <code>OptionalBool</code>）的情形：</p>
+
+<pre class="devsite-click-to-copy">
+#include &lt;configstore/Utils.h&gt;
+using namespace android::hardware::configstore;
+using namespace android::hardware::configstore::V1_0;
+
+static bool vsyncPhaseOffsetNs = getBool&lt;ISurfaceFlingerConfigs,
+        ISurfaceFlingerConfigs::forceHwcForVirtualDisplays&gt;(false);
+</pre>
+
+<p>效用函数（上例中的 <code>getBool</code>）会与 <code>configstore</code> 服务进行通信以获取接口函数代理的句柄，然后通过 HIDL/hwbinder 来调用句柄，从而检索该值。</p>
+
+<h2 id="utility-functions">效用函数</h2>
+<p><code>&lt;configstore/Utils.h&gt;</code> (<code>configstore/1.0/include/configstore/Utils.h</code>) 会为每个原始返回类型（包括 <code>Optional[Bool|String|Int32|UInt32|Int64|UInt64]</code>）提供效用函数，如下所示：</p>
+
+<table>
+
+<tbody><tr>
+<th>类型</th>
+<th>函数（已省略模板参数）<em></em></th>
+</tr>
+
+<tr>
+<td><code>OptionalBool</code></td>
+<td><code>bool getBool(const bool defValue)</code></td>
+</tr>
+
+<tr>
+<td><code>OptionalInt32</code></td>
+<td><code>int32_t getInt32(const int32_t defValue)</code></td>
+</tr>
+
+<tr>
+<td><code>OptionalUInt32</code></td>
+<td><code>uint32_t getUInt32(const uint32_t defValue)</code></td>
+</tr>
+
+<tr>
+<td><code>OptionalInt64</code></td>
+<td><code>int64_t getInt64(const int64_t defValue)</code></td>
+</tr>
+
+<tr>
+<td><code>OptionalUInt64</code></td>
+<td><code>uint64_t getUInt64(const uint64_t defValue)</code></td>
+</tr>
+
+<tr>
+<td><code>OptionalString</code></td>
+<td><code>std::string getString(const std::string &amp;defValue)</code></td>
+</tr>
+
+</tbody></table>
+
+<p><code>defValue</code> 是在 HAL 实现没有为配置项指定值时返回的默认值。每个函数都需要使用两个模板参数：</p>
+<ul>
+<li><code><strong>I</strong></code>. 接口类名称。</li>
+<li><code><strong>Func</strong></code>. 用于获取配置项的成员函数指针。</li>
+</ul>
+<p>由于配置值是只读属性且不会发生更改，因此效用函数会在内部缓存配置值。使用同一链接单元中的缓存值可以更有效地执行后续调用。</p>
+
+<h2 id="utils">使用 configstore-utils</h2>
+<p>ConfigStore HAL 旨在向前兼容次要版本升级，这意味着当 HAL 进行升级并且某些框架代码使用新引入的项时，您仍然可以使用 <code>/vendor</code> 中旧的次要版本的 ConfigStore 服务。</p>
+
+<p>为了实现向前兼容性，请确保在实现过程中遵循以下准则：</p>
+
+<ol>
+<li>当只有旧版服务可用时，新项使用默认值。<em></em>例如：
+
+<pre class="devsite-click-to-copy">
+service = V1_1::IConfig::getService(); // null if V1_0 is installed
+value = DEFAULT_VALUE;
+  if(service) {
+    value = service-&gt;v1_1API(DEFAULT_VALUE);
+  }
+</pre>
+
+</li>
+
+<li>客户端使用引入 ConfigStore 项的最早的接口。例如：
+
+<pre class="devsite-click-to-copy">
+V1_1::IConfig::getService()-&gt;v1_0API(); // NOT ALLOWED
+
+V1_0::IConfig::getService()-&gt;v1_0API(); // OK
+</pre>
+</li>
+<li>可以为旧版接口检索新版服务。在以下示例中，如果已安装版本为 v1_1，则必须为 getService() 返回 v1_1 服务：<pre class="devsite-click-to-copy">
+V1_0::IConfig::getService()-&gt;v1_0API();
+</pre>
+
+<p class="note"><strong>注意</strong>：<a href="https://android-review.googlesource.com/c/393736/">当前 AOSP 实现</a>符合此要求。</p>
+</li>
+</ol>
+
+<p>当 <code>configstore-utils</code> 库中的访问函数用于访问 ConfigStore 项时，#1 由实现保证，#2 由编译器错误保证。基于这些原因，我们强烈建议尽量使用 <code>configstore-utils</code>。</p>
+
+</body></html>
