@@ -1,0 +1,72 @@
+<html devsite><head>
+    <title>编译和验证</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>您可以使用设备树编译器 (DTC) 来编译设备树源文件。不过，在将叠加 DT 应用于目标主 DT 之前，您还应该通过模拟 DTO 的行为来验证结果。</p>
+
+<h2 id="compile">通过 DTC 进行编译</h2>
+<p>使用 <code>dtc</code> 编译 <code>.dts</code> 时，您必须添加选项 <code>-@</code> 以在生成的 <code>.dtbo</code> 中添加 <code>__symbols__</code> 节点。<code>__symbols__</code> 节点包含带标签的所有节点的列表，DTO 库可使用这个列表作为参考。</p>
+
+<p>编译主 <code>.dts</code> 的示例命令：</p>
+
+<pre class="devsite-terminal">
+dtc -@ -O dtb -o my_main_dt.dtb my_main_dt.dts
+</pre>
+
+<p>编译叠加 DT <code>.dts</code> 的示例命令：</p>
+
+<pre class="devsite-terminal">
+dtc -@ -O dtb -o my_overlay_dt.dtbo my_overlay_dt.dts
+</pre>
+
+<p class="note"><strong>注意</strong>：如果您遇到 DTC 编译错误：<code>invalid option --'@'</code>，则可能需要更新 DTC 版本。在 AOSP 上游，官方 DTC 对 DTO 的支持从<a href="https://github.com/dgibson/dtc/tree/v1.4.4" class="external">版本 1.4.4</a> 开始，而且大部分补丁程序在 2016 年 12 月后就完成了合并。为了支持 DTO，建议您使用 AOSP 中的 <code><a href="https://android.googlesource.com/platform/external/dtc/" class="external">external/dtc</a></code>，它已与最新的 DTC 同步（已视需要合并 DTO 补丁程序）。</p>
+
+<h2 id="verify">在主机上验证 DTO 结果</h2>
+<p>验证流程可以帮助您识别将叠加 DT 放在主 DT 上时可能发生的错误。更新目标之前，您可以通过在 <code>.dts</code> 中使用 <code>/include/</code> 来模拟 DTO 行为，从而在主机上验证叠加 DT 的结果。</p>
+
+<p class="note"><strong>注意</strong>：<code>/include/</code> 不支持在叠加 DT 源中使用 <code>__overlay__</code>。</p>
+
+<p><img src="../images/treble_dto_simulate.png"/></p>
+<p><strong>图 1</strong> 使用语法 <code>/include/</code> 来模拟主机上的 DTO。</p>
+
+<ol>
+<li>创建叠加 <code>.dts</code> 的副本。在副本中，移除第一行头文件。例如：<pre>
+/dts-v1/;
+/plugin/;
+</pre>将文件另存为 <code>my_overlay_dt_wo_header.dts</code>（或您希望的任何文件名）。</li>
+
+<li>创建主 <code>.dts</code> 的副本。在副本中的最后一行后，为您在第 1 步中创建的文件附加包含语法。例如：<pre>
+/include/ "my_overlay_dt_wo_header.dts"
+</pre>将文件另存为 <code>my_main_dt_with_include.dts</code>（或您希望的任何文件名）。</li>
+
+<li>使用 <code>dtc</code> 编译 <code>my_main_dt_with_include.dts</code> 以获得合并的 DT，这应该与使用 DTO 进行编译所得到的结果相同。例如：<pre class="devsite-terminal">
+dtc -@ -O dtb -o my_merged_dt.dtb my_main_dt_with_include.dts
+</pre>
+</li>
+
+<li>使用 <code>dtc</code> 转储 <code>my_merged_dt.dto</code>。
+<pre class="devsite-terminal">
+dtc -O dts -o my_merged_dt.dts my_merged_dt.dtb
+</pre>
+</li>
+</ol>
+
+</body></html>
