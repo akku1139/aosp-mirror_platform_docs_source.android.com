@@ -35,8 +35,10 @@ characters. This meant that to create a wrap property with the name of the app,
 it was necessary to truncate the name to fit. In Android O and later, this
 limit is much greater and should require no truncation.</p>
 
-<p>This page covers use of <code>debuggerd</code>, a daemon process for
-collecting error information after applications crash. Other pages explore system services with
+<p>This page covers the basics surrounding crash dumps found in logcat output.
+Other pages have far more detail about
+<a href="/devices/tech/debug/native-crash.html">diagnosing native crashes</a>,
+exploring system services with
 <a
    href="https://developer.android.com/studio/command-line/dumpsys.html">
   <code>dumpsys</code></a>, viewing
@@ -46,26 +48,28 @@ collecting error information after applications crash. Other pages explore syste
 <a href="/devices/tech/debug/asan.html">AddressSanitizer</a> to detect memory
 bugs in native code, evaluating
 <a href="/devices/tech/debug/eval_perf.html"> performance issues</a> (includes
-<a href="/devices/tech/debug/systrace">systrace</a>), and using
-<a href="/devices/tech/debug/gdb.html">GNU Project debugger (GDB)</a> and
+<a href="/devices/tech/debug/systrace">systrace</a>), and using the
+<a href="/devices/tech/debug/gdb.html">GNU debugger (GDB)</a> and
 other debugging tools.</p>
 
-<h2 id=debuggerd>Using debuggerd</h2>
+<h2 id=debuggerd>Crash dumps</h2>
 
-<p>The <code>debuggerd</code> process dumps registers and unwinds the stack.
-When a dynamically linked executable starts, several signal handlers are
-registered that connect to <code>debuggerd</code> (or <code>debuggerd64)</code>
-in the event that signals (such as SIGSEGV or SIGABRT) are sent to the process.</p>
+<p>When a dynamically linked executable starts, several signal handlers are
+registered that, in the event of a crash, cause a basic crash dump to be written to logcat
+and a more detailed "tombstone" file to be written to <code>/data/tombstones/</code>.
+The tombstone is a file with extra data about the crashed process. In particular, it contains
+stack traces for all the threads in the crashing process (not just the thread that caught the
+signal), a full memory map, and a list of all open file descriptors.</p>
 
-<p>It's possible for <code>debuggerd</code> to attach only if nothing else is
+Before Android 8.0, crashes were handled by the
+<code>debuggerd</code> and <code>debuggerd64</code> daemons. In Android O and later,
+<code>crash_dump32</code> and <code>crash_dump64</code> are spawned as needed.</p>
+
+<p>It's possible for the crash dumper to attach only if nothing else is
 already attached, which means using tools such as <code>strace</code> or
-<code>gdb</code> will prevent <code>debuggerd</code> from working. You can also
-explicitly prevent <code>debuggerd</code> from attaching by calling
-<code>prctl(PR_SET_DUMPABLE, 0)</code>, which can be useful when you need to
-opt out of crash reporting.</p>
+<code>gdb</code> will prevent crash dumps from occurring.</p>
 
-<p>Example <code>debuggerd</code> output (with timestamps and extraneous
-information removed):</p>
+<p>Example output (with timestamps and extraneous information removed):</p>
 
 <pre class="devsite-click-to-copy">
 *** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***
@@ -90,18 +94,13 @@ backtrace:
 Tombstone written to: /data/tombstones/tombstone_06
 </pre>
 
-<p>The last line of <code>debuggerd</code> output dumps a summary to the log and
-writes a full <em>tombstone</em> to disk. The tombstone is simply a file with
-extra data about the crashed process; it contains information that can be
-helpful in debugging a crash, in particular the stack traces for all threads in
-the crashing process (not just the thread that caught the signal) and a full
-memory map.</p>
+<p>The last line of output gives the location of the full <em>tombstone</em> on disk.</p>
 
-<p>Assuming the unstripped binaries can be found, you can get a more detailed
-unwind with line number information by pasting the above example into
+<p>Assuming you have the unstripped binaries available, you can get a more detailed
+unwind with line number information by pasting the stack into
 <code>development/scripts/stack</code>:</p>
 
-<p class="key-point"><strong>Tip:</strong> For convenience, if you've lunched
+<p class="key-point"><strong>Tip:</strong> For convenience, if you've run <code>lunch</code>
 <code>stack</code> will be on your $PATH already so you don't need to give the
 full path.</p>
 
@@ -109,7 +108,7 @@ full path.</p>
 development/tools/stack
 </pre>
 
-<p>Example output:</p>
+<p>Example output (based on the logcat output above):</p>
 <pre class="devsite-click-to-copy">
 Reading native crash info from stdin
 03-02 23:53:49.477 17951 17951 F DEBUG   : *** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***
@@ -156,8 +155,7 @@ Stack Trace:
 
 <p class="note"><strong>Note:</strong> Some system libraries are built with
 <code>LOCAL_STRIP_MODULE := keep_symbols</code> to provide usable backtraces
-directly from <code>debuggerd</code> without taking up anywhere near as much
-space as an unstripped version.</p>
+directly without taking up anywhere near as much space as an unstripped version.</p>
 
 <p>You can also <code>stack</code> an entire tombstone. Example:</p>
 <pre class="devsite-terminal devsite-click-to-copy">
@@ -170,8 +168,8 @@ For more information about diagnosing native crashes and tombstones, see
 
 <h2 id="tombstone">Getting a stack trace/tombstone from a running process</h2>
 
-<p>You can also use <code>debuggerd</code> on a running process. From the
-command line, invoke <code>debuggerd</code> using a process ID (PID) to dump the
+<p>You can also use the <code>debuggerd</code> tool to get a stack dump from a running process.
+From the command line, invoke <code>debuggerd</code> using a process ID (PID) to dump a
 full tombstone to <code>stdout</code>. To get just the stack for every thread in
 the process, include the <code>-b</code> or <code>--backtrace</code> flag.</p>
 
