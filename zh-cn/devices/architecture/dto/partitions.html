@@ -1,0 +1,252 @@
+<html devsite><head>
+    <title>DTB/DTBO 分区</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>如果您的 DTB/DTBO 位于专属的分区（例如 <code>dtb</code> 和 <code>dtbo</code> 分区）中，请使用以下表格结构和头文件格式：</p>
+
+<p><img src="../images/treble_dto_partition_layout.png"/></p>
+<figcaption><strong>图 1</strong> <code>dtb</code>/<code>dtbo</code> 分区布局示例（要了解 AVB 签名相关信息，请参阅<a href="/devices/architecture/dto/implement.html#security">安全性</a>）。
+</figcaption>
+
+<h2 id="structures">数据结构</h2>
+<p><code>dt_table_header</code> <strong>仅</strong>适用于 <code>dtb</code>/<code>dtbo</code> 分区；您不能在 <code>image.gz</code> 末尾处附加此格式。如果您有一个 DTB/DTBO，则仍必须使用此格式（并且，<code>dt_table_header</code> 中的 <code>dt_entry_size</code> 为 1）。</p>
+
+<pre class="prettyprint">
+#define DT_TABLE_MAGIC 0xd7b7ab1e
+
+struct dt_table_header {
+  uint32_t magic;             // DT_TABLE_MAGIC
+  uint32_t total_size;        // includes dt_table_header + all dt_table_entry
+                              // and all dtb/dtbo
+  uint32_t header_size;       // sizeof(dt_table_header)
+
+  uint32_t dt_entry_size;     // sizeof(dt_table_entry)
+  uint32_t dt_entry_count;    // number of dt_table_entry
+  uint32_t dt_entries_offset; // offset to the first dt_table_entry
+                              // from head of dt_table_header
+
+  uint32_t page_size;         // flash page size we assume
+  uint32_t reserved[1];       // must be zero
+};
+
+struct dt_table_entry {
+  uint32_t dt_size;
+  uint32_t dt_offset;         // offset from head of dt_table_header
+
+  uint32_t id;                // optional, must be zero if unused
+  uint32_t rev;               // optional, must be zero if unused
+  uint32_t custom[4];         // optional, must be zero if unused
+};
+</pre>
+
+<p>要读取所有 <code>dt_table_entry</code>，请使用 <code>dt_entry_size</code>、<code>dt_entry_count</code> 和 <code>dt_entries_offset</code>。示例：</p>
+<pre class="prettyprint">
+my_read(entries_buf,
+        header_addr + header-&gt;dt_entries_offset,
+        header-&gt;dt_entry_size * header-&gt;dt_entry_count);
+</pre>
+
+<p><code>dt_table_entry</code> 中的 <code>id</code>、<code>rev</code>、<code>custom</code> 是设备树的可选硬件标识，引导加载程序可以使用这些标识有效地识别要加载的 DTB/DTBO。如果引导加载程序需要获取更多信息，请将其放在 DTB/DTBO 中，引导加载程序可在这里解析 DTB/DTBO，从而读取这些信息（参见下面的示例代码）。</p>
+
+<h2 id="sample-code">示例代码</h2>
+<p>以下示例代码可检查引导加载程序中的硬件标识。
+</p>
+
+<ul>
+<li><code>check_dtbo()</code> 函数用于检查硬件标识。首先它会检查结构 <code>dt_table_entry</code> 中的数据（<code>id</code>、<code>rev</code> 等）。如果这种数据未能提供充足的信息，它会将 <code>dtb</code> 数据加载到内存中，并检查 <code>dtb</code> 中的值。</li>
+<li><code>my_hw_information</code> 和 <code>soc_id</code> 属性的值会在根节点进行解析（请参见 <code>my_dtbo_1.dts</code> 中的示例）。
+
+<pre class="prettyprint">
+[my_dtbo_1.dts]
+/dts-v1/;
+/plugin/;
+
+/ {
+  /* As DTS design, these properties only for loader, won't overlay */
+  compatible = "board_manufacturer,board_model";
+
+  /* These properties are examples */
+  board_id = &lt;0x00010000&gt;;
+  board_rev = &lt;0x00010001&gt;;
+  another_hw_information = "some_data";
+  soc_id = &lt;0x68000000&gt;;
+  ...
+};
+
+&amp;device@0 {
+  value = &lt;0x1&gt;;
+  status = "okay";
+};
+
+[my_bootloader.c]
+int check_dtbo(const dt_table_entry *entry, uint32_t header_addr) {
+  ...
+  if (entry-&gt;id != ... || entry-&gt;rev != ...) {
+    ...
+  }
+  ...
+  void * fdt_buf = my_load_dtb(header_addr + entry-&gt;dt_offset, entry-&gt;dt_size);
+  int root_node_off = fdt_path_offset(fdt_buf, "/");
+  ...
+  const char *my_hw_information =
+    (const char *)fdt_getprop(fdt_buf, root_node_off, "my_hw_information", NULL);
+  if (my_hw_information != NULL &amp;&amp; strcmp(my_hw_information, ...) != 0) {
+    ...
+  }
+  const fdt32_t *soc_id = fdt_getprop(fdt_buf, root_node_off, "soc_id", NULL);
+  if (soc_id != NULL &amp;&amp; *soc_id != ...) {
+    ...
+  }
+  ...
+}
+</pre></li></ul>
+
+<h2 id="mkdtimg">mkdtimg</h2>
+<p><code>mkdtimg</code> 是用于创建 <code>dtb</code>/<code>dtbo</code> 映像（AOSP 中 <code>system/libufdt</code> 下的<a href="https://android-review.googlesource.com/#/q/topic:mkdtimg+(status:open+OR+status:merged+OR+status:pending)" class="external">源代码</a>）的工具。<code>mkdtimg</code> 支持多个命令，包括 <code>create</code>、<code>cfg_create</code> 和 <code>dump</code>。</p>
+
+<h3 id="create">create</h3>
+<p>使用 <code>create</code> 命令创建 <code>dtb</code>/<code>dtbo</code> 映像：</p>
+<pre class="prettyprint">
+$mkdtimg create &lt;image_filename&gt; (&lt;global-option&gt;...) \
+    &lt;ftb1_filename&gt; (&lt;entry1_option&gt;...) \
+    &lt;ftb2_filename&gt; (&lt;entry2_option&gt;...) \
+    ...
+</pre>
+
+<p><code>ftbX_filename</code> 会在映像中生成一个 <code>dt_table_entry</code>。<code>entryX_option</code> 是分配给 <code>dt_table_entry</code> 的值。这些值可以是以下任一值：</p>
+<pre class="prettyprint">
+--id=&lt;number|path&gt;
+--rev=&lt;number|path&gt;
+--custom0=&lt;number|path&gt;
+--custom1=&lt;number|path&gt;
+--custom2=&lt;number|path&gt;
+--custom3=&lt;number|path&gt;
+</pre>
+
+<p>数字值可以是 32 位数字（如 68000）或十六进制数字（如 0x6800）。或者，您也可以使用以下格式指定路径：</p>
+<pre class="prettyprint">
+&lt;full_node_path&gt;:&lt;property_name&gt;
+</pre>
+
+<p>例如，<code>/board/:id</code>。<code>mkdtimg</code> 从 DTB/DTBO 文件中的路径读取值，并将值（32 位）分配给 <code>dt_table_entry</code> 中的相对属性。或者，您也可以将 <code>global_option</code> 作为所有条目的默认选项。<code>dt_table_header</code> 中 <code>page_size</code> 的默认值为 2048；可使用 <code>global_option --page_size=&lt;number&gt;</code> 分配不同的值。</p>
+
+<p>示例：</p>
+<pre class="prettyprint">
+[board1.dts]
+/dts-v1/;
+/plugin/;
+
+/ {
+  compatible = "board_manufacturer,board_model";
+  board_id = &lt;0x00010000&gt;;
+  board_rev = &lt;0x00010001&gt;;
+  another_hw_information = "some_data";
+  ...
+};
+
+&amp;device@0 {
+  value = &lt;0x1&gt;;
+  status = "okay";
+};
+
+$mkdtimg create dtbo.img --id=/:board_id --custom0=0xabc \
+  board1.dtbo \
+  board2.dtbo --id=0x6800 \
+  board3.dtbo --id=0x6801 --custom0=0x123
+</pre>
+
+<ul>
+<li>第一个 <code>dt_table_entry</code> (<code>board1.dtbo</code>) <code>id</code> 为 <code>0x00010000</code>，<code>custom[0]</code> 为 <code>0x00000abc</code>。</li>
+<li>第二个 <code>id</code> 为 <code>0x00006800</code>，<code>custom[0]</code> 为 <code>0x00000abc</code>。</li>
+<li>第三个 <code>id</code> 为 <code>0x00006801</code>，<code>custom[0]</code> 为 <code>0x00000123</code>。</li>
+<li>所有其他项均使用默认值 (<code>0</code>)。</li>
+</ul>
+
+<h3 id="cfg-create">cfg_create</h3>
+<p><code>cfg_create</code> 命令可创建具有采用以下格式的配置文件的映像：</p>
+<pre class="prettyprint">
+# global options
+  &lt;global_option&gt;
+  ...
+# entries
+&lt;ftb1_filename&gt;     # comment
+  &lt;entry1_option&gt;   # comment
+  ...
+&lt;ftb2_filename&gt;
+  &lt;entry2_option&gt;
+  ...
+...
+</pre>
+
+<p>选项 <code>global_option</code> 和 <code>entryX_option</code> 必须以一个或多个空格字符开头（这些选项与 <code>create</code> 选项相同，不带 <code>--</code> 前缀）。空行或者以 <code>#</code> 开头的行将被忽略。</p>
+
+<p>示例：</p>
+<pre class="prettyprint">
+[dtboimg.cfg]
+# global options
+  id=/:board_id
+  rev=/:board_rev
+  custom0=0xabc
+
+board1.dtbo
+
+board2.dtbo
+  id=0x6800       # override the value of id in global options
+
+board2.dtbo
+  id=0x6801       # override the value of id in global options
+  custom0=0x123   # override the value of custom0 in global options
+
+$mkdtimg cfg_create dtbo.img dtboimg.cfg
+</pre>
+
+<p><code>mkdtimg</code> 不会处理 <code>.dtb</code>/<code>.dtbo</code> 文件的对齐方式，而是将它们附加到映像上。当您使用 <code>dtc</code> 将 <code>.dts</code> 编译为 <code>.dtb</code>/<code>.dtbo</code> 时，必须添加选项 <code>-a</code>。例如，添加选项 <code>-a 4</code> 会添加内边距，因此 <code>.dtb</code>/<code>.dtbo</code> 的大小将调整为 4 个字节。</p>
+
+<p>多个 DT 表格条目可以共享一个 <code>.dtb</code>/<code>.dtbo</code>。如果您为不同的条目使用同一个文件名，则系统只会在具有相同 <code>dt_offset</code> 和 <code>dt_size</code> 的映像中存储一份内容。使用具有相同 DT 的不同硬件时，这种方式非常有用。</p>
+
+<h3 id="dump">转储</h3>
+<p>对于 <code>dtb</code>/<code>dtbo</code> 映像，请使用 <code>dump</code> 命令打印映像中的信息。示例：</p>
+<pre class="prettyprint">
+$mkdtimg dump dtbo.img
+dt_table_header:
+               magic = d7b7ab1e
+          total_size = 1300
+         header_size = 32
+       dt_entry_size = 32
+      dt_entry_count = 3
+   dt_entries_offset = 32
+           page_size = 2048
+         reserved[0] = 00000000
+dt_table_entry[0]:
+             dt_size = 380
+           dt_offset = 128
+                  id = 00010000
+                 rev = 00010001
+           custom[0] = 00000abc
+           custom[1] = 00000000
+           custom[2] = 00000000
+           custom[3] = 00000000
+           (FDT)size = 380
+     (FDT)compatible = board_manufacturer,board_model
+...
+</pre>
+
+</body></html>
