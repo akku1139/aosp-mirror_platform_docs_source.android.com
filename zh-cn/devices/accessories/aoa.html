@@ -1,0 +1,128 @@
+<html devsite><head>
+    <title>Android 开放配件协议 1.0</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>Android USB 配件必须遵循 Android 开放配件 (AOA) 协议，该协议规定了配件如何检测 Android 设备并与其建立通信。配件应执行以下步骤：</p>
+
+<ol>
+<li>等待设备连接并对其进行检测。</li>
+<li>确定设备是否支持配件模式。</li>
+<li>尝试以配件模式启动设备（如需要）。</li>
+<li>如果设备支持 AOA，则与该设备建立通信。</li>
+</ol>
+
+<p>以下部分介绍了如何执行上述步骤。</p>
+
+<p class="note"><strong>注意</strong>：要开发能通过 USB 连接到 Android 设备的新配件，请使用 <a href="aoa2.html">AOAv2</a>。</p>
+
+<h2 id="wait-for-and-detect-connected-devices">等待设备连接并对其进行检测</h2>
+
+<p>配件应该不间断地检查是否连接了 Android 设备。设备成功连接后，配件应该确定设备是否支持配件模式。</p>
+
+<h2 id="determine-accessory-mode-support">确定是否支持配件模式</h2>
+
+<p>当 Android 设备成功连接后，它可能处于以下三种状态之一：
+</p>
+
+<ul>
+<li>支持 Android 配件模式，并且已处于配件模式。</li>
+<li>支持 Android 配件模式，但是未处于配件模式。</li>
+<li>不支持 Android 配件模式。</li>
+</ul>
+
+<p>在初次连接时，配件应该检查所连接设备的 USB 设备描述符的供应商 ID 和产品 ID。供应商 ID 应与 Google 的 ID (<code>0x18D1</code>) 相符。如果设备已经处于配件模式，则产品 ID 应为 <code>0x2D00</code> 或 <code>0x2D01</code>，配件可以使用自己的通信协议通过批量传输端点<a href="#establish-communication-with-the-device">与设备建立通信</a>（不需要以配件模式启动设备）。</p>
+
+<p class="note"><strong>注意</strong>：<code>0x2D00</code> 是为支持配件模式的 Android 设备预留的产品 ID。<code>0x2D01</code> 则是为同时支持配件模式和 Android 调试桥 (ADB) 协议的设备预留的产品 ID，这类设备提供了第二个接口（具有两个批量端点，用于 ADB 通信）。如果您在计算机上模拟配件，则可以使用这些端点来调试配件应用。一般来说，不要使用该接口，除非配件在设备上实现了到 ADB 的直通通信。
+</p>
+
+<p>如果发现 USB 设备描述符中的供应商 ID 或产品 ID 与期望值不符，则配件无法确定设备是否支持 Android 配件模式。配件应尝试以配件模式启动设备（详见下文）以确定设备是否支持配件模式。</p>
+
+<h2 id="attempt-to-start-in-accessory-mode">尝试以配件模式启动</h2>
+
+<p>如果供应商 ID 和产品 ID 与处于配件模式下的 Android 设备不对应，则配件无法辨别未处于配件模式下的设备是否支持配件模式。发生这种情况是因为支持配件模式（但未处于配件模式下）的设备首先报告的是设备制造商的供应商 ID 和产品 ID，而不是 AOA<em></em> 供应商 ID 和产品 ID<em></em>。</p>
+
+<p>配件应尝试以配件模式启动设备，以确定设备是否支持该模式：</p>
+
+<ol>
+  <li>发送 51 控制请求（“获取协议”）以确定设备是否支持 Android 配件协议。如果设备支持协议，则返回一个非零数字，代表所支持的协议版本。该控制请求为端点 0 上的请求，具有以下特征：
+
+<pre class="devsite-click-to-copy">
+requestType:    USB_DIR_IN | USB_TYPE_VENDOR
+request:        51
+value:          0
+index:          0
+data:           protocol version number (16 bits little endian sent from the
+                device to the accessory)
+</pre>
+  </li>
+
+  <li>如果设备返回所支持的协议版本，则向设备发送含标识字符串信息的控制请求。该信息让设备可以确定适合配件的应用（如果没有适合配件的应用，则向用户呈现一个网址）。该控制请求为端点 0 上的请求（适用每个字符串 ID），具有以下特征：
+
+<pre class="devsite-click-to-copy">
+requestType:    USB_DIR_OUT | USB_TYPE_VENDOR
+request:        52
+value:          0
+index:          string ID
+data            zero terminated UTF8 string sent from accessory to device
+</pre>
+
+  <p>支持以下字符串 ID，并且每个字符串的最大值为 256 个字节（必须以零结束，以 <code>\0</code> 结尾）。</p>
+
+<pre class="devsite-click-to-copy">
+manufacturer name:  0
+model name:         1
+description:        2
+version:            3
+URI:                4
+serial number:      5
+</pre>
+  </li>
+
+  <li>发送控制请求，要求设备以配件模式启动。该控制请求为端点 0 上的请求，具有以下特征：
+
+<pre class="devsite-click-to-copy">
+requestType:    USB_DIR_OUT | USB_TYPE_VENDOR
+request:        53
+value:          0
+index:          0
+data:           none
+</pre>
+  </li>
+</ol>
+
+<p>完成这些步骤后，配件应等待所连接的 USB 设备在配件模式下将其自身重新接入总线，然后重新枚举所连接的设备。该算法通过检查供应商 ID 和产品 ID 来<a href="#determine-accessory-mode-support">确定设备是否支持配件模式</a>，如果设备成功切换到配件模式，那么供应商 ID 和产品 ID 应该是正确的（例如，与 Google 的供应商 ID 和产品 ID 而不是设备制造商的 ID 相对应）。如果 ID 正确，配件则进而<a href="#establish-communication-with-the-device">与设备建立通信</a>。</p>
+
+<p class="note"><strong>注意</strong>：AOA 当前不支持同时进行 AOA 连接和 MTP 连接。要从 AOA 切换到 MTP，配件必须首先与 USB 设备断开连接（断开物理连接或以电气等效的方式断开），然后使用 MTP 重新连接 USB 设备。</p>
+
+<p>如果有任意步骤失败，配件则确定设备不支持 Android 配件模式，并等待下一个设备连接。</p>
+
+<h2 id="establish-communication-with-the-device">与设备建立通信</h2>
+
+<p>如果配件检测到配件模式下的 Android 设备，则配件可以查询设备接口和端点描述符，以获取用于与设备进行通信的批量端点。</p>
+
+<p>接口和批量端点的数量取决于产品 ID。具有以下产品 ID 的 Android 设备所具备的接口情况：</p>
+
+<ul>
+<li><code>0x2D00</code> 有一个接口，该接口有两个批量端点，用于输入和输出通信。</li>
+<li><code>0x2D01</code> 有两个接口，每个接口有两个批量端点，用于输入和输出通信。第一个接口处理标准通信，第二个接口则处理 ADB 通信。要使用接口，请找到第一个批量输入和输出端点，使用 <code>SET_CONFIGURATION</code> (<code>0x09</code>) 设备请求将设备配置的值设为 1，然后使用端点进行通信。</li>
+</ul>
+
+</body></html>

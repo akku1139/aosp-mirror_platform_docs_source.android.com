@@ -1,0 +1,299 @@
+<html devsite>
+  <head>
+    <title>Optimizing DTOs</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>This page details optimizations you can make to your DTO implementation,
+describes restrictions against overlaying the root node, and provides sample
+implementation instructions and code.</p>
+
+<h2 id=kernel>Kernel command line</h2>
+<p>The original kernel command line in device tree is located in the
+<code>chosen/bootargs</code> node. The bootloader must concatenate this location
+with other sources of kernel command line:</p>
+<pre class="prettyprint">
+/dts-v1/;
+
+/ {
+  chosen: chosen {
+    bootargs = "...";
+  };
+};
+</pre>
+
+<p>DTO <strong>cannot</strong> concatenate values from main DT and overlay DT.
+We recommend putting the kernel command line of the main DT in
+<code>chosen/bootargs</code> and the kernel command line of the overlay DT in
+<code>chosen/bootargs_ext</code>. Bootloader can then concatenate these
+locations and pass the result to the kernel.</p>
+
+<table>
+<tr>
+<th width="50%">main.dts</th>
+<th>overlay.dts</th>
+</tr>
+<tr>
+<td>
+<pre class="prettyprint">
+/dts-v1/;
+
+/ {
+  chosen: chosen {
+    bootargs = "...";
+  };
+};
+</pre>
+</td>
+
+<td class="alt">
+<pre class="prettyprint">
+/dts-v1/;
+/plugin/;
+
+&amp;chosen {
+  bootargs_ext = "...";
+};
+</pre>
+</td>
+</tr>
+</table>
+
+<h2 id=libufdt>libufdt</h2>
+<p>While the latest
+<code><a href="https://github.com/dgibson/dtc/tree/master/libfdt" class="external">libfdt</code></a>
+supports DTO, we recommend using <code>libufdt</code> to implement DTO (source
+at
+<code><a href="https://android.googlesource.com/platform/system/libufdt/+/refs/heads/master" class="external">platform/system/libufdt</code></a>
+in AOSP). <code>libufdt</code> builds a real tree structure (un-flattened device
+tree, or <em>ufdt</em>) from the flattened device tree (FDT), so it can improve
+the merging of two <code>.dtb</code> files from O(N2) to O(N), where N is the
+number of nodes in the tree.</p>
+
+<h3 id=performance>Performance testing</h3>
+<p>In Google's internal testing, using <code>libufdt</code> on 2405
+<code>.dtb</code> and 283 <code>.dtbo</code> DT nodes results in file sizes of
+70,618 and 8,566 bytes after compilation. Compared with a
+<a href="http://fxr.watson.org/fxr/source/boot/fdt/" class="external">DTO
+implementation</a> ported from FreeBSD (124ms runtime), <code>libufdt</code>
+DTO runtime is 10ms.</p>
+
+<p>In performance testing for Pixel devices, we compared <code>libufdt</code>
+and <code>libfdt</code>. The number of base nodes effect is similar, but
+includes the following differences:</p>
+<ul>
+<li>500 overlay (append or override) operations have 6~8x time difference</li>
+<li>1000 overlay (append or override) operations have 8~10x time difference</li>
+</ul>
+
+<p>Example with appending count set to X:</p>
+<p><img src="../images/treble_dto_appending.png"></p>
+<figcaption><strong>Figure 1.</strong> Appending count is X.</figcaption>
+
+<p>Example with overriding count set to X:</p>
+<p><img src="../images/treble_dto_overriding.png"></p>
+<figcaption><strong>Figure 2.</strong> Overriding count is X.</figcaption>
+
+<p><code>libufdt</code> is developed with some <code>libfdt</code> APIs and data
+structures. When using <code>libufdt</code>, you must include and link
+<code>libfdt</code> (however in your code you can use <code>libfdt</code> API to
+operate DTB or DTBO).</p>
+
+<h3 id=api>libufdt DTO API</h3>
+<p>The main API to DTO in <code>libufdt</code> is as follows:</p>
+<pre class="prettyprint">
+struct fdt_header *ufdt_apply_overlay(
+        struct fdt_header *main_fdt_header,
+        size_t main_fdt_size,
+        void *overlay_fdt,
+        size_t overlay_size);
+</pre>
+
+<p>The parameter <code>main_fdt_header</code> is the main DT and
+<code>overlay_fdt</code> is the buffer containing the contents of a
+<code>.dtbo</code> file. The return value is a new buffer containing the merged
+DT (or <code>null</code> in case of error). The merged DT is formated in FDT,
+which you can pass to the kernel when starting the kernel.</p>
+
+<p>The new buffer from the return value is created by <code>dto_malloc()</code>,
+which you should implement when porting <code>libufdt</code> into bootloader.
+For reference implementations, refer to
+<code>sysdeps/libufdt_sysdeps_*.c</code>.</p>
+
+<h2 id=root>Root node restrictions</h2>
+<p>You cannot overlay a new node or property into the root node of main DT
+because overlay operations rely on labels. Because the main DT must define a
+label and the overlay DT assigns the nodes to be overlaid with labels, we
+cannot give a label for the root node (and therefore cannot overlay the root
+node).</p>
+
+<p>SoC vendors must define the overlaying ability of main DT; ODM/OEMs can only
+append or override nodes with labels defined by the SoC vendor. As a workaround,
+you can define a <strong><code>odm</code></strong> node under the root node in
+base DT, enabling all ODM nodes in overlay DT to add new nodes. Alternatively,
+you could put all SoC-related nodes in the base DT into a
+<strong><code>soc</code></strong> node under root node as described below:</p>
+
+<table>
+<tr>
+<th width="50%">main.dts</th>
+<th>overlay.dts</th>
+</tr>
+<tr>
+<td>
+<pre>
+/dts-v1/;
+
+/ {
+    compatible = "corp,bar";
+    ...
+
+    chosen: chosen {
+        bootargs = "...";
+    };
+
+    /* nodes for all soc nodes */
+    soc {
+        ...
+        soc_device@0: soc_device@0 {
+            compatible = "corp,bar";
+            ...
+        };
+        ...
+    };
+
+    odm: odm {
+        /* reserved for overlay by odm */
+    };
+};
+</pre>
+</td>
+
+<td class="alt">
+<pre class="prettyprint">
+/dts-v1/;
+/plugin/;
+
+/ {
+};
+
+&amp;chosen {
+    bootargs_ex = "...";
+};
+
+&amp;odm {
+    odm_device@0 {
+        ...
+    };
+    ...
+};
+</pre>
+</td>
+</tr>
+</table>
+
+<h2 id=sample>Sample DTO implementation</h2>
+<p>The following instructions walk you through a sample implementation of DTO
+with <code>libufdt</code> (sample code below).</p>
+
+<h3 id=sample-instructions>Sample DTO instructions</h3>
+
+<ol>
+<li>Include libraries. To use <code>libufdt</code>, include <code>libfdt</code>
+for data structures and APIs:
+<pre class="prettyprint">
+#include &lt;libfdt.h&gt;
+#include &lt;ufdt_overlay.h&gt;
+</pre>
+</li>
+
+<li>Load main DT and overlay DT. Load <code>.dtb</code> and <code>.dtbo</code>
+from storage into memory (exact steps depend on your design). At this point, you
+should have the buffer and size of <code>.dtb</code>/<code>.dtbo</code>:
+<pre class="prettyprint">
+main_size = my_load_main_dtb(main_buf, main_buf_size)
+</pre>
+<pre class="prettyprint">
+overlay_size = my_load_overlay_dtb(overlay_buf, overlay_buf_size);
+</pre>
+</li>
+
+<li>Overlay the DTs:
+<ol>
+
+<li>Use <code>ufdt_install_blob()</code> to get the FDT header for main DT:
+<pre class="prettyprint">
+main_fdt_header = ufdt_install_blob(main_buf, main_size);
+main_fdt_size = main_size;
+</pre>
+</li>
+<li>Call <code>ufdt_apply_overlay()</code> to DTO to get a merged DT in FDT
+format:
+<pre class="prettyprint">
+merged_fdt = ufdt_apply_overlay(main_fdt_header, main_fdt_size,
+                                overlay_buf, overlay_size);
+</pre>
+</li>
+
+<li>To get the size of <code>merged_fdt</code>, use <code>dtc_totalsize()</code>:
+<pre class="prettyprint">
+merged_fdt_size = dtc_totalsize(merged_fdt);
+</pre>
+</li>
+
+<li>Pass merged DT to start kernel. When you start the kernel, pass merged DT to
+kernel:
+<pre class="prettyprint">
+my_kernel_entry(0, machine_type, merged_fdt);
+</pre>
+</li>
+</ol></li></ol>
+
+<h3 id=sample-code>Sample DTO code</h3>
+<pre class="prettyprint">
+#include &lt;libfdt.h&gt;
+#include &lt;ufdt_overlay.h&gt;
+
+…
+
+{
+  struct fdt_header *main_fdt_header;
+  struct fdt_header *merged_fdt;
+
+  /* load main dtb into memory and get the size */
+  main_size = my_load_main_dtb(main_buf, main_buf_size);
+
+  /* load overlay dtb into memory and get the size */
+  overlay_size = my_load_overlay_dtb(overlay_buf, overlay_buf_size);
+
+  /* overlay */
+  main_fdt_header = ufdt_install_blob(main_buf, main_size);
+  main_fdt_size = main_size;
+  merged_fdt = ufdt_apply_overlay(main_fdt_header, main_fdt_size,
+                                  overlay_buf, overlay_size);
+  merged_fdt_size = dtc_totalsize(merged_fdt);
+
+  /* pass to kernel */
+  my_kernel_entry(0, machine_type, merged_fdt);
+}
+</pre>
+
+  </body>
+</html>

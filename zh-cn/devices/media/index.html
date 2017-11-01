@@ -1,0 +1,84 @@
+<html devsite><head>
+    <title>媒体</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<img style="float: right; margin: 0px 15px 15px 15px;" src="images/ape_fwk_hal_media.png" alt="Android 媒体 HAL 图标"/>
+
+<p>Android 包含 Stagefright。Stagefright 是位于 Native 层的媒体播放引擎，内置了基于软件的编解码器，且适用于热门媒体格式。</p>
+
+<p>Stagefright 音频和视频播放功能包括集成 OpenMAX 编解码器、会话管理、基于时间的同步渲染、传输控制和 DRM。</p>
+
+<p>Stagefright 还支持集成您提供的自定义硬件编解码器。要设置编码和解码媒体的硬件路径，您必须将基于硬件的编解码器作为 OpenMax IL（集成层）组件进行实现。</p>
+
+<p class="note"><strong>注意</strong>：Stagefright 更新可通过 Android <a href="/security/bulletin/index.html">每月安全更新</a>过程，作为 Android 操作系统版本的一部分进行更新。</p>
+
+<h2 id="architecture">架构</h2>
+<p>媒体应用根据以下架构与 Android Native 多媒体框架进行交互。</p>
+<img src="/devices/media/images/ape_fwk_media.png" alt="Android 媒体架构" id="figure1"/><p class="img-caption"><strong>图 1.</strong> 媒体架构</p>
+
+<dl>
+<dt>应用框架</dt>
+<dd>应用代码位于应用框架层，可利用 <a href="http://developer.android.com/reference/android/media/package-summary.html">android.media</a> API 与多媒体硬件进行交互。</dd>
+
+<dt>Binder IPC</dt>
+<dd>Binder IPC 代理用于促进跨越进程边界的通信。它们位于 <code>frameworks/av/media/libmedia</code> 目录中，并以字母“I”开头。</dd>
+
+<dt>Native 多媒体框架</dt>
+<dd>在 Native 层，Android 提供了一个利用 Stagefright 引擎进行音频和视频录制及播放的多媒体框架。Stagefright 随附支持的软件编解码器的默认列表，并且您可以使用 OpenMax 集成层标准实现自己的硬件编解码器。有关实现的更多详细信息，请参阅位于 <code>frameworks/av/media</code> 中的 MediaPlayer 和 Stagefright 组件。</dd>
+
+<dt>OpenMAX 集成层 (IL)</dt>
+<dd>OpenMAX IL 为 Stagefright 提供了一种标准化的方式来识别和使用基于硬件的自定义多媒体编解码器（称为组件）。您必须以名为 <code>libstagefrighthw.so</code> 的共享库的形式提供 OpenMAX 插件。此插件将 Stagefright 与您的自定义编解码器组件相连接，并且该组件必须根据 OpenMAX IL 组件标准来实现。</dd>
+</dl>
+
+<h2 id="codecs">实现自定义编解码器</h2>
+<p>Stagefright 随附适用于通用媒体格式的内置软件编解码器，但您也可以添加自己的自定义硬件编解码器作为 OpenMAX 组件。为此，您必须创建 OMX 组件和一个 OMX 插件，将您的自定义编解码器与 Stagefright 框架相结合。关于组件，请参阅 <code>hardware/ti/omap4xxx/domx/</code>；关于 Galaxy Nexus 的示例插件，请参阅 <code>hardware/ti/omap4xx/libstagefrighthw</code>。</p>
+
+<p>添加您自己的编解码器：</p>
+<ol>
+<li>根据 OpenMAX IL 组件标准创建您的组件。组件接口位于 <code>frameworks/native/include/media/OpenMAX/OMX_Component.h</code> 文件中。要详细了解 OpenMAX IL 规范，请访问 <a href="http://www.khronos.org/openmax/">OpenMAX 网站</a>。</li>
+<li>创建一个将您的组件与 Stagefright 服务相连接的 OpenMAX 插件。关于创建插件的接口，请参阅 <code>frameworks/native/include/media/hardware/OMXPluginBase.h</code> 和 <code>HardwareAPI.h</code> 标头文件。</li>
+<li>将您的插件构建为产品 Makefile 中名为 <code>libstagefrighthw.so</code> 的共享库。例如：
+<br />
+<pre class="devsite-click-to-copy">
+LOCAL_MODULE := libstagefrighthw
+</pre>
+<p>在设备的 Makefile 中，确保将模块声明为产品包：</p>
+<pre class="devsite-click-to-copy">
+PRODUCT_PACKAGES += \
+  libstagefrighthw \
+  ...
+</pre>
+</li>
+</ol>
+
+<h2 id="expose">将编解码器暴露给框架</h2>
+<p>Stagefright 服务解析 <code>system/etc/media_codecs.xml</code> 和 <code>system/etc/media_profiles.xml</code>，从而向应用开发者暴露设备支持的编解码器和配置文件（通过 <code>android.media. MediaCodecList</code> 和 <code>android.media.CamcorderProfile</code> 类）。您必须在 <code>device/&lt;company&gt;/&lt;device&gt;/</code> 目录中创建两个文件，并将其复制到设备 Makefile 中系统映像的 <code>system/etc</code> 目录中。例如：</p>
+<pre class="devsite-click-to-copy">
+PRODUCT_COPY_FILES += \
+  device/samsung/tuna/media_profiles.xml:system/etc/media_profiles.xml \
+  device/samsung/tuna/media_codecs.xml:system/etc/media_codecs.xml \
+</pre>
+
+<p>有关完整示例，请参阅 <code>device/samsung/tuna/media_codecs.xml</code> 和 <code>device/samsung/tuna/media_profiles.xml</code>。</p>
+
+<p class="note"><strong>注意</strong>：从 Android 4.1 开始，不再支持媒体编解码器的 <code>&lt;Quirk&gt;</code> 元素。</p>
+
+</body></html>

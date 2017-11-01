@@ -1,0 +1,73 @@
+<html devsite><head>
+    <title>导出常量</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>在接口不兼容 Java（例如由于使用联合类型而不兼容 Java）的情况下，可能仍需将常量（枚举值）导出到 Java 环境。这种情况需要用到 <code>hidl-gen -Ljava-constants
+…</code>，它会将已添加注释的枚举声明从软件包的接口文件提取出来，并生成一个名为 <code>[PACKAGE-NAME]-V[PACKAGE-VERSION]-java-constants</code> 的 java 库。请为每个要导出的枚举声明添加注释，如下所示：</p>
+
+<pre class="prettyprint">
+@export
+enum Foo : int32_t {
+  SOME_VALUE,
+  SOME_OTHER_VALUE,
+};
+</pre>
+
+<p>如有必要，这一类型导出到 Java 环境时所使用的名称可以不同于接口声明中选定的名称，方法是添加注释参数 <code>name</code>：</p>
+
+<pre class="prettyprint">
+@export(name="JavaFoo")
+enum Foo : int32_t {
+  SOME_VALUE,
+  SOME_OTHER_VALUE,
+};
+</pre>
+
+<p>如果依据 Java 惯例或个人偏好需要将一个公共前缀添加到枚举类型的值，请使用注释参数 <code>value_prefix</code>：</p>
+
+<pre class="prettyprint">
+// File "types.hal".
+
+package android.hardware.bar@1.0;
+
+@export(name="JavaFoo", value_prefix="JAVA_")
+enum Foo : int32_t {
+  SOME_VALUE,
+  SOME_OTHER_VALUE,
+};
+</pre>
+
+<p>生成的 Java 类如下所示：</p>
+
+<pre class="prettyprint">
+package android.hardware.bar.V1_0;
+
+public class Constants {
+  public final class JavaFoo {
+    public static final int JAVA_SOME_VALUE = 0;
+    public static final int JAVA_SOME_OTHER_VALUE = 1;
+  };
+};
+</pre>
+
+<p>最后，针对 <code>types.hal</code> 中声明的枚举类型的 Java 类型声明将划分到指定软件包中的类 <code>Constants</code> 内。声明为接口子级的枚举类型将划分到该接口的 Java 类声明下。</p>
+
+</body></html>

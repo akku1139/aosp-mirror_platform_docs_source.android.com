@@ -1,0 +1,103 @@
+<html devsite>
+  <head>
+    <title>Compiling &amp; Verifying</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>You can use Device Tree Compiler (DTC) to compile the Device Tree Source
+files. However, before applying the overlay DT on the target main DT, you should
+also verify the result by simulating the behavior of DTO.</p>
+
+<h2 id=compile>Compiling with DTC</h2>
+<p>When using <code>dtc</code> to compile <code>.dts</code>, you must add option
+<code>-@</code> to add a <code>__symbols__</code> node in the resulting
+<code>.dtbo</code>. The <code>__symbols__</code> node contains a list of all
+nodes that are marked with a label, which the DTO library can use for
+references.</p>
+
+<p>Sample command to build main DT <code>.dts</code>:</p>
+
+<pre class="devsite-terminal">
+dtc -@ -O dtb -o my_main_dt.dtb my_main_dt.dts
+</pre>
+
+<p>Sample command to build the overlay DT <code>.dts</code>:</p>
+
+<pre class="devsite-terminal">
+dtc -@ -O dtb -o my_overlay_dt.dtbo my_overlay_dt.dts
+</pre>
+
+<p class="note"><strong>Note:</strong> If you encounter the DTC build error:
+<code>invalid option --'@'</code>, you might need to update your DTC version.
+Upstream of AOSP, the official DTC supports DTO as of
+<a href="https://github.com/dgibson/dtc/tree/v1.4.4" class="external">version
+1.4.4</a> and most patches are merged after December 2016. For DTO support, we
+recommend using the
+<code><a href="https://android.googlesource.com/platform/external/dtc/" class="external">external/dtc</code></a>
+in AOSP, which is synced with the latest DTC (with DTO patches merged as
+needed).</p>
+
+<h2 id=verify>Verify DTO results on the host</h2>
+<p>Verification can help you identify errors that might occur when placing the
+overlay DT on the main DT. Before updating the target, you can verify the
+result of overlaying DT on the host by simulating the behavior of DTO using
+<code>/include/</code> in <code>.dts</code>.</p>
+
+<p class="note"><strong>Note:</strong> <code>/include/</code> does NOT support
+the use of <code>__overlay__</code> in overlay DT sources.</p>
+
+<p><img src="../images/treble_dto_simulate.png"></p>
+<p><strong>Figure 1.</strong> Use syntax <code>/include/</code> to simulate DTO
+on the host.</p>
+
+<ol>
+<li>Create a copy of the overlay <code>.dts</code>. In the copy, remove the
+first line header. Example:
+<pre>
+/dts-v1/;
+/plugin/;
+</pre>
+Save the file as <code>my_overlay_dt_wo_header.dts</code> (or any filename you
+want).</li>
+
+<li>Create a copy of the main <code>.dts</code>. In the copy, after the last
+line, append the include syntax for the file you created in step 1. For example:
+<pre>
+/include/ "my_overlay_dt_wo_header.dts"
+</pre>
+Save the file as <code>my_main_dt_with_include.dts</code> (or any filename you
+want).</li>
+
+<li>Use <code>dtc</code> to compile <code>my_main_dt_with_include.dts</code> to
+get the merged DT, which should be the same result as DTO. For example:
+<pre class="devsite-terminal">
+dtc -@ -O dtb -o my_merged_dt.dtb my_main_dt_with_include.dts
+</pre>
+</li>
+
+<li>Use <code>dtc</code> to dump <code>my_merged_dt.dto</code>.
+<pre class="devsite-terminal">
+dtc -O dts -o my_merged_dt.dts my_merged_dt.dtb
+</pre>
+</li>
+</ol>
+
+  </body>
+</html>

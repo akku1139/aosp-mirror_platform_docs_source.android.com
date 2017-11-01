@@ -1,0 +1,400 @@
+<html devsite><head>
+    <title>诊断原生代码崩溃问题</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>如果您之前从未遇到过原生代码崩溃问题，请从<a href="/devices/tech/debug/index.html">调试原生 Android 平台代码</a>着手。
+</p>
+
+<h2 id="crashtypes">原生代码崩溃问题的类型</h2>
+<p>以下部分详细介绍了最常见的几类原生代码崩溃问题。每类崩溃问题都包含一段 <code>debuggerd</code> 输出示例，其中的关键证据可以帮助您区分特定类型的崩溃问题（以橙色斜体突出显示）。
+</p>
+<h3 id="abort">中止</h3>
+<p>中止操作很有趣，因为这是刻意而为。中止方法多种多样（包括调用 <code><a href="http://man7.org/linux/man-pages/man3/abort.3.html">abort(3)</a></code>、<code><a href="http://man7.org/linux/man-pages/man3/assert.3.html">assert(3)</a></code> 失败、使用 Android 专用的严重记录类型之一），但所有这些方法都涉及调用 <code>abort</code>。调用 <code>abort</code> 基本上表示调用的线程附加了 SIGABRT，因此在 <code>libc.so</code> 中有 SIGABRT 并显示“abort”的帧是要在 <code>debuggerd</code> 的输出中查找以识别这种情况。
+
+</p><p>如上文所述，可能会显示明确的“中止消息”行。不过，您还应该查看 <code>logcat</code> 输出，看看此线程在刻意终止自身之前记录的内容，因为基本的中止基元不接受消息。
+</p>
+<p>旧版 Android（特别是 32 位 ARM 的 Android）遵循原始中止调用（此处为帧 4）与信号实际发送（此处为帧 0）之间的复杂路径：</p>
+<pre class="no-pretty-print">
+pid: 1656, tid: 1656, name: crasher  &gt;&gt;&gt; crasher &lt;&lt;&lt;
+signal 6 (<i style="color:Orange">SIGABRT</i>), code -6 (SI_TKILL), fault addr --------
+<i style="color:Orange">Abort message</i>: 'some_file.c:123: some_function: assertion "false" failed'
+    r0 00000000  r1 00000678  r2 00000006  r3 f70b6dc8
+    r4 f70b6dd0  r5 f70b6d80  r6 00000002  r7 0000010c
+    r8 ffffffed  r9 00000000  sl 00000000  fp ff96ae1c
+    ip 00000006  sp ff96ad18  lr f700ced5  pc f700dc98  cpsr 400b0010
+backtrace:
+    #00 pc 00042c98  /system/lib/libc.so (tgkill+12)
+    #01 pc 00041ed1  /system/lib/libc.so (pthread_kill+32)
+    #02 pc 0001bb87  /system/lib/libc.so (raise+10)
+    #03 pc 00018cad  /system/lib/libc.so (__libc_android_abort+34)
+    #04 pc 000168e8  /system/lib/<i style="color:Orange">libc.so</i> (<i style="color:Orange">abort</i>+4)
+    #05 pc 0001a78f  /system/lib/libc.so (__libc_fatal+16)
+    #06 pc 00018d35  /system/lib/libc.so (__assert2+20)
+    #07 pc 00000f21  /system/xbin/crasher
+    #08 pc 00016795  /system/lib/libc.so (__libc_init+44)
+    #09 pc 00000abc  /system/xbin/crasher
+</pre>
+<p>较新版本直接从 <code>abort</code> 调用 <code><a href="http://man7.org/linux/man-pages/man2/tgkill.2.html">tgkill(2)</a></code>，因此您在到达所关注帧之前需要跳过的堆栈帧更少：</p><pre class="no-pretty-print">pid: 25301, tid: 25301, name: crasher  &gt;&gt;&gt; crasher &lt;&lt;&lt;
+signal 6 (SIGABRT), code -6 (SI_TKILL), fault addr --------
+    r0 00000000  r1 000062d5  r2 00000006  r3 00000008
+    r4 ffa09dd8  r5 000062d5  r6 000062d5  r7 0000010c
+    r8 00000000  r9 00000000  sl 00000000  fp ffa09f0c
+    ip 00000000  sp ffa09dc8  lr eac63ce3  pc eac93f0c  cpsr 000d0010
+backtrace:
+    #00 pc 00049f0c  /system/lib/libc.so (tgkill+12)
+    #01 pc 00019cdf  /system/lib/libc.so (abort+50)
+    #02 pc 000012db  /system/xbin/crasher (maybe_abort+26)
+    #03 pc 000015b7  /system/xbin/crasher (do_action+414)
+    #04 pc 000020d5  /system/xbin/crasher (main+100)
+    #05 pc 000177a1  /system/lib/libc.so (__libc_init+48)
+    #06 pc 000010e4  /system/xbin/crasher (_start+96)
+</pre>
+<p>您可以使用 <code>crasher
+abort</code> 重现此类崩溃问题的实例
+</p>
+<h3 id="nullpointer">纯 Null 指针解引用</h3>
+<p>这是典型的原生代码崩溃问题，虽然它只是下一类崩溃问题的特殊情况，但值得单独说明，因为这类崩溃问题通常无需细细思量。
+</p>
+<p>在以下示例中，尽管崩溃函数在 <code>libc.so</code> 中，但因为字符串函数仅在指定给它们的指针上进行操作，所以您可以推断出 <code><a href="http://man7.org/linux/man-pages/man3/strlen.3.html">strlen(3)</a></code> 通过 Null 指针进行调用，且此类崩溃问题应直接发送给调用代码的作者。在这种情况下，帧 #01 是不良调用程序。
+</p>
+
+<pre class="no-pretty-print">pid: 25326, tid: 25326, name: crasher  &gt;&gt;&gt; crasher &lt;&lt;&lt;
+signal 11 (<i style="color:Orange">SIGSEGV</i>), code 1 (SEGV_MAPERR), <i style="color:Orange">fault addr 0x0</i>
+    r0 00000000  r1 00000000  r2 00004c00  r3 00000000
+    r4 ab088071  r5 fff92b34  r6 00000002  r7 fff92b40
+    r8 00000000  r9 00000000  sl 00000000  fp fff92b2c
+    ip ab08cfc4  sp fff92a08  lr ab087a93  pc efb78988  cpsr 600d0030
+
+backtrace:
+    #00 pc 00019988  /system/lib/libc.so (strlen+71)
+    #01 pc 00001a8f  /system/xbin/crasher (strlen_null+22)
+    #02 pc 000017cd  /system/xbin/crasher (do_action+948)
+    #03 pc 000020d5  /system/xbin/crasher (main+100)
+    #04 pc 000177a1  /system/lib/libc.so (__libc_init+48)
+    #05 pc 000010e4  /system/xbin/crasher (_start+96)
+</pre>
+<p>您可以使用 <code>crasher
+strlen-NULL</code> 重现此类崩溃问题的实例
+</p>
+<h3 id="lowaddress">低地址 Null 指针解引用</h3>
+<p>在许多情况下，故障地址不会为 0，而是其他一些小数字。两位或三位地址尤其常见，而六位地址几乎肯定不是 Null 指针解引用 - 这需要 1 MiB 的偏移量。通常，当您有代码将 Null 指针解引用为看似有效的结构时，就会发生这种情况。常见的函数是 <code><a href="http://man7.org/linux/man-pages/man3/fprintf.3.html">fprintf(3)</a></code>（或任何其他使用 FILE* 的函数）和 <code><a href="http://man7.org/linux/man-pages/man3/readdir.3.html">readdir(3)</a></code>，因为代码通常无法确认是 <code><a href="http://man7.org/linux/man-pages/man3/fopen.3.html">fopen(3)</a></code> 还是 <code><a href="http://man7.org/linux/man-pages/man3/opendir.3.html">opendir(3)</a></code> 实际首先成功调用。
+
+</p><p>以下是 <code>readdir</code> 的示例：</p>
+<pre class="no-pretty-print">pid: 25405, tid: 25405, name: crasher  &gt;&gt;&gt; crasher &lt;&lt;&lt;
+signal 11 (<i style="color:Orange">SIGSEGV</i>), code 1 (SEGV_MAPERR), <i style="color:Orange">fault addr 0xc</i>
+    r0 0000000c  r1 00000000  r2 00000000  r3 3d5f0000
+    r4 00000000  r5 0000000c  r6 00000002  r7 ff8618f0
+    r8 00000000  r9 00000000  sl 00000000  fp ff8618dc
+    ip edaa6834  sp ff8617a8  lr eda34a1f  pc eda618f6  cpsr 600d0030
+
+backtrace:
+    #00 pc 000478f6  /system/lib/libc.so (pthread_mutex_lock+1)
+    #01 pc 0001aa1b  /system/lib/libc.so (readdir+10)
+    #02 pc 00001b35  /system/xbin/crasher (readdir_null+20)
+    #03 pc 00001815  /system/xbin/crasher (do_action+976)
+    #04 pc 000021e5  /system/xbin/crasher (main+100)
+    #05 pc 000177a1  /system/lib/libc.so (__libc_init+48)
+    #06 pc 00001110  /system/xbin/crasher (_start+96)
+</pre>
+<p>这里，崩溃问题的直接原因是 <code><a href="http://man7.org/linux/man-pages/man3/pthread_mutex_lock.3p.html">pthread_mutex_lock(3)</a></code> 尝试访问地址 0xc（帧 0）。但是 <code>pthread_mutex_lock</code> 执行的第一项操作是解引用指定给它的 <code>pthread_mutex_t*</code> 的 <code>state</code> 元素。如果您查看源代码，则会发现该元素在结构中的偏移量为零，这表示指定给 <code>pthread_mutex_lock</code> 的指针 0xc 无效。从帧 1 可以看出，<code>readdir</code> 将该指针指定给它，这会从指定的 <code>DIR*</code> 中提取 <code>mutex_</code> 字段。通过查看该结构，您会发现 <code>struct DIR</code> 中 <code>mutex_</code> 的偏移量为 <code>sizeof(int) + sizeof(size_t) + sizeof(dirent*)</code>，在 32 位设备上即 4 + 4 + 4 = 12 = 0xc，由此找到错误所在：调用程序向 <code>readdir</code> 传递了一个 Null 指针。此时，您可以将该堆栈粘贴到堆栈工具中，以找出这个问题在 logcat 中的发生位置。<em></em>
+
+</p><pre class="no-pretty-print">
+  struct DIR {
+    int fd_;
+    size_t available_bytes_;
+    dirent* next_;
+    pthread_mutex_t mutex_;
+    dirent buff_[15];
+    long current_pos_;
+  };
+</pre>
+<p>在大多数情况下，实际上您可以跳过此分析。一个充分的低位故障地址通常意味着您可以跳过堆栈中的任意 <code>libc.so</code> 帧，并直接归咎于调用的代码。但情况并非总是如此，这些例外将是您用作展示的绝佳机会。
+</p>
+<p>您可以使用 <code>crasher
+fprintf-NULL</code> 或 <code>crasher readdir-NULL</code> 重现此类崩溃问题的实例
+</p>
+<h3 id="fortify">FORTIFY 失败</h3>
+<p>FORTIFY 失败是中止的一种特殊情况，当 C 库检测到可能导致安全漏洞的问题时，就会发生 FORTIFY 失败。很多 C 库函数已得到加强；它们需要一个额外的参数来确定缓冲区的实际大小，并在运行时检查您尝试执行的操作是否真的适合。<em></em>以下示例显示代码尝试 <code>read(fd, buf, 32)</code> 入实际上只有 10 字节长的缓冲区…
+</p>
+<pre class="no-pretty-print">pid: 25579, tid: 25579, name: crasher  &gt;&gt;&gt; crasher &lt;&lt;&lt;
+signal 6 (SIGABRT), code -6 (SI_TKILL), fault addr --------
+Abort message: '<i style="color:Orange">FORTIFY: read: prevented 32-byte write into 10-byte buffer'</i>
+    r0 00000000  r1 000063eb  r2 00000006  r3 00000008
+    r4 ff96f350  r5 000063eb  r6 000063eb  r7 0000010c
+    r8 00000000  r9 00000000  sl 00000000  fp ff96f49c
+    ip 00000000  sp ff96f340  lr ee83ece3  pc ee86ef0c  cpsr 000d0010
+
+backtrace:
+    #00 pc 00049f0c  /system/lib/libc.so (tgkill+12)
+    #01 pc 00019cdf  /system/lib/libc.so (abort+50)
+    #02 pc 0001e197  /system/lib/libc.so (<i style="color:Orange">__fortify_fatal</i>+30)
+    #03 pc 0001baf9  /system/lib/libc.so (__read_chk+48)
+    #04 pc 0000165b  /system/xbin/crasher (do_action+534)
+    #05 pc 000021e5  /system/xbin/crasher (main+100)
+    #06 pc 000177a1  /system/lib/libc.so (__libc_init+48)
+    #07 pc 00001110  /system/xbin/crasher (_start+96)
+</pre>
+<p>您可以使用 <code>crasher
+fortify</code> 重现此类型崩溃问题的实例
+</p>
+<h3 id="stackcorruption">-fstack-protector 检测到的堆栈损坏</h3>
+<p>编译器的 <code>-fstack-protector</code> 选项会在具有栈上缓冲区的函数中插入检查机制，以防止缓冲区溢出。默认情况下，此选项会为平台代码而非应用启用。如果启用此选项，编译器会向<a href="https://en.wikipedia.org/wiki/Function_prologue">函数序言</a>添加指令，以在堆栈上写入刚刚超过上一局部值的随机值，并向函数结尾添加指令以进行回读并确认是否发生更改。如果该值已更改，则已被缓冲区溢出覆盖，因此该结尾会调用 <code>__stack_chk_fail</code> 来记录消息和中止。
+</p>
+<pre class="no-pretty-print">pid: 26717, tid: 26717, name: crasher  &gt;&gt;&gt; crasher &lt;&lt;&lt;
+signal 6 (SIGABRT), code -6 (SI_TKILL), fault addr --------
+<i style="color:Orange">Abort message: 'stack corruption detected'</i>
+    r0 00000000  r1 0000685d  r2 00000006  r3 00000008
+    r4 ffd516d8  r5 0000685d  r6 0000685d  r7 0000010c
+    r8 00000000  r9 00000000  sl 00000000  fp ffd518bc
+    ip 00000000  sp ffd516c8  lr ee63ece3  pc ee66ef0c  cpsr 000e0010
+
+backtrace:
+    #00 pc 00049f0c  /system/lib/libc.so (tgkill+12)
+    #01 pc 00019cdf  /system/lib/libc.so (abort+50)
+    #02 pc 0001e07d  /system/lib/libc.so (__libc_fatal+24)
+    #03 pc 0004863f  /system/lib/libc.so (<i style="color:Orange">__stack_chk_fail</i>+6)
+    #04 pc 000013ed  /system/xbin/crasher (smash_stack+76)
+    #05 pc 00001591  /system/xbin/crasher (do_action+280)
+    #06 pc 00002219  /system/xbin/crasher (main+100)
+    #07 pc 000177a1  /system/lib/libc.so (__libc_init+48)
+    #08 pc 00001144  /system/xbin/crasher (_start+96)
+</pre>
+<p>您可以通过回溯中是否出现 <code>__stack_chk_fail</code> 以及特定中止消息将此中止与其他类型的中止区分开来。
+</p>
+<p>您可以使用 <code>crasher
+smash-stack</code> 重现此类型崩溃问题的实例
+</p>
+
+<h2 id="crashdump">崩溃转储</h2>
+
+<p>如果您现在没有正在调查的特定崩溃问题，则平台来源包括用于测试 <code>debuggerd</code> 的工具，名为 crasher。如果您在 <code>system/core/debuggerd/</code> 中 <code>mm</code>，则您的路径中会出现 <code>crasher</code> 和 <code>crasher64</code>（您可以借助后者测试 64 位崩溃问题）。根据您提供的命令行参数，crasher 崩溃的方式多种多样。使用 <code>crasher --help</code> 可查看当前支持的选择。</p>
+
+<p>为了介绍崩溃转储中的各个方面，我们来看看以下崩溃转储示例：</p>
+
+<pre class="no-pretty-print">
+*** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***
+Build fingerprint: 'Android/aosp_flounder/flounder:5.1.51/AOSP/enh08201009:eng/test-keys'
+Revision: '0'
+ABI: 'arm'
+pid: 1656, tid: 1656, name: crasher  &gt;&gt;&gt; crasher &lt;&lt;&lt;
+signal 6 (SIGABRT), code -6 (SI_TKILL), fault addr --------
+Abort message: 'some_file.c:123: some_function: assertion "false" failed'
+    r0 00000000  r1 00000678  r2 00000006  r3 f70b6dc8
+    r4 f70b6dd0  r5 f70b6d80  r6 00000002  r7 0000010c
+    r8 ffffffed  r9 00000000  sl 00000000  fp ff96ae1c
+    ip 00000006  sp ff96ad18  lr f700ced5  pc f700dc98  cpsr 400b0010
+backtrace:
+    #00 pc 00042c98  /system/lib/libc.so (tgkill+12)
+    #01 pc 00041ed1  /system/lib/libc.so (pthread_kill+32)
+    #02 pc 0001bb87  /system/lib/libc.so (raise+10)
+    #03 pc 00018cad  /system/lib/libc.so (__libc_android_abort+34)
+    #04 pc 000168e8  /system/lib/libc.so (abort+4)
+    #05 pc 0001a78f  /system/lib/libc.so (__libc_fatal+16)
+    #06 pc 00018d35  /system/lib/libc.so (__assert2+20)
+    #07 pc 00000f21  /system/xbin/crasher
+    #08 pc 00016795  /system/lib/libc.so (__libc_init+44)
+    #09 pc 00000abc  /system/xbin/crasher
+Tombstone written to: /data/tombstones/tombstone_06
+</pre>
+
+<pre class="no-pretty-print">*** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***</pre>
+
+<p>如果您要搜索原生代码崩溃问题的日志，则带有空格的星号行很有帮助。字符串“*** ***”很少出现在日志中，除了在原生代码崩溃问题开始的时候。</p>
+
+<pre class="no-pretty-print">
+Build fingerprint:
+'Android/aosp_flounder/flounder:5.1.51/AOSP/enh08201009:eng/test-keys'
+</pre>
+
+<p>您可以通过指纹准确识别崩溃问题发生的版本号。这与 <code>ro.build.fingerprint</code> 系统属性完全相同。</p>
+
+<pre class="no-pretty-print">
+Revision: '0'
+</pre>
+
+<p>revision 指的是硬件，而不是软件。通常情况下不使用 revision，但使用 revision 有助于您自动忽略由不良硬件导致的已知错误。这与 <code>ro.revision</code> 系统属性完全相同。</p>
+
+<pre class="no-pretty-print">
+ABI: 'arm'
+</pre>
+
+<p>ABI 是 arm、arm64、mips、mips64、x86 或 x86-64 之一。这对上面提到的 <code>stack</code> 脚本最有用，这样它就知道要使用的工具链。</p>
+
+<pre class="no-pretty-print">
+pid: 1656, tid: 1656, name: crasher &gt;&gt;&gt; crasher &lt;&lt;&lt;
+</pre>
+
+<p>此行可标识崩溃进程中的特定线程。在这种情况下，它是进程的主线程，因此进程 ID 和线程 ID 一致。第一个名称是线程名称，在 &gt;&gt;&gt; 和 &lt;&lt;&lt; 中间的名称是进程名称。对于应用，进程名称通常是完全限定的文件包名称（如 com.facebook.katana），这在提交错误或尝试在 Google Play 中查找相应应用时很有用。在查找崩溃问题之前的相关日志行方面，pid 和 tid 也很有用。</p>
+
+<pre class="no-pretty-print">
+signal 6 (SIGABRT), code -6 (SI_TKILL), fault addr --------
+</pre>
+
+<p>您可从该行得知接收的信号 (SIGABRT) 以及有关如何接收该信号的更多信息 (SI_TKILL)。<code>debuggerd</code> 报告的信号是 SIGABRT、SIGBUS、SIGFPE、SIGILL、SIGSEGV 和 SIGTRAP。信号专用的代码因特定信号而异。</p>
+
+<pre class="no-pretty-print">
+Abort message: 'some_file.c:123: some_function: assertion "false" failed'
+</pre>
+
+<p>并非所有崩溃问题都会有中止消息行，但发生中止时，会出现该消息行。这是从此 pid/tid 的最后一行严重 logcat 输出中自动收集而来的，而在有意中止的情况下，这可以解释该程序自行终止的原因。</p>
+
+<pre class="no-pretty-print">
+r0 00000000 r1 00000678 r2 00000006 r3 f70b6dc8
+r4 f70b6dd0 r5 f70b6d80 r6 00000002 r7 0000010c
+r8 ffffffed r9 00000000 sl 00000000 fp ff96ae1c
+ip 00000006 sp ff96ad18 lr f700ced5 pc f700dc98 cpsr 400b0010
+</pre>
+
+<p>寄存器转储显示收到信号时 CPU 寄存器的内容。（本区段在各 ABI 之间变化很大。）这些内容的有用程度取决于确切的崩溃问题。</p><p>
+
+</p><pre class="no-pretty-print">
+backtrace:
+    #00 pc 00042c98 /system/lib/libc.so (tgkill+12)
+    #01 pc 00041ed1 /system/lib/libc.so (pthread_kill+32)
+    #02 pc 0001bb87 /system/lib/libc.so (raise+10)
+    #03 pc 00018cad /system/lib/libc.so (__libc_android_abort+34)
+    #04 pc 000168e8 /system/lib/libc.so (abort+4)
+    #05 pc 0001a78f /system/lib/libc.so (__libc_fatal+16)
+    #06 pc 00018d35 /system/lib/libc.so (__assert2+20)
+    #07 pc 00000f21 /system/xbin/crasher
+    #08 pc 00016795 /system/lib/libc.so (__libc_init+44)
+    #09 pc 00000abc /system/xbin/crasher
+</pre>
+
+<p>您可以通过回溯得知崩溃问题发生时我们所处的代码位置。第一列是帧号（与 gdb 的样式一致，其中最底下的帧是 0）。PC 值与共享库的位置（而非绝对地址）相关。下一列是映射区域的名称（通常是共享库或可执行文件，但可能不适用于经过 JIT 编译的代码）。最后，如果有符号，则会显示与 PC 值对应的符号以及到该符号的偏移量（以字节为单位）。您可以结合使用此符号和 <code>objdump(1)</code> 来找到相应的编译器指令。</p>
+
+<h2 id="tombstones">Tombstone</h2>
+
+<pre class="no-pretty-print">
+Tombstone written to: /data/tombstones/tombstone_06
+</pre>
+
+<p>您可由此得知 <code>debuggerd</code> 写入额外信息的位置。
+<code>debuggerd</code> 会保留最多 10 个 tombstone，从编号 00 至 09 循环并根据需要覆盖现有 tombstone。</p>
+
+<p>Tombstone 包含与崩溃转储相同的信息，还包含一些其他信息。例如，它包含所有线程的回溯（不仅仅是崩溃线程）、浮点寄存器、寄存器中地址周围的原始堆栈转储和内存转储。<i></i>最有用的是，它还包含完整的内存映射（类似于 <code>/proc/<i>pid</i>/maps</code>）。以下是 32 位 ARM 进程崩溃的注释示例：</p>
+
+<pre class="no-pretty-print">
+memory map: (fault address prefixed with ---&gt;)
+---&gt;ab15f000-ab162fff r-x 0 4000 /system/xbin/crasher (BuildId:
+b9527db01b5cf8f5402f899f64b9b121)
+</pre>
+
+<p>这里需要注意两点。第一点是该行带有前缀“---&gt;”。当您的崩溃问题不仅仅是 Null 指针解引用时，这些映射最有用。如果故障地址较小，则其很可能是 Null 指针解引用的某个变体。否则，通过查看故障地址周围的映射，您通常可以了解发生的问题。通过查看映射可识别的一些可能存在的问题包括：</p>
+
+<ul>
+<li>读/写延伸到内存块末尾之外。</li>
+<li>在内存块开始之前读/写。</li>
+<li>尝试执行非代码内容。</li>
+<li>在堆栈末尾之外运行。</li>
+<li>尝试写入代码（如上例所述）。</li>
+</ul>
+
+<p>需要注意的第二点是，可执行文件和共享库文件将在 Android M 和更高版本中显示 BuildId（如果有），因此您可以确切地看到崩溃代码的版本。（从 Android M 开始，平台二进制文件默认包含 BuildId。NDK r12 和更高版本还会自动将 <code>-Wl,--build-id</code> 传递到链接器。）</p><p>
+
+</p><pre class="no-pretty-print">
+ab163000-ab163fff r--      3000      1000  /system/xbin/crasher
+ab164000-ab164fff rw-         0      1000
+f6c80000-f6d7ffff rw-         0    100000  [anon:libc_malloc]
+</pre>
+
+<p>在 Android 上，该堆不一定是单个区域。堆区域将被标记为 <code>[anon:libc_malloc]</code>。</p>
+
+<pre class="no-pretty-print">
+f6d82000-f6da1fff r--         0     20000  /dev/__properties__/u:object_r:logd_prop:s0
+f6da2000-f6dc1fff r--         0     20000  /dev/__properties__/u:object_r:default_prop:s0
+f6dc2000-f6de1fff r--         0     20000  /dev/__properties__/u:object_r:logd_prop:s0
+f6de2000-f6de5fff r-x         0      4000  /system/lib/libnetd_client.so (BuildId: 08020aa06ed48cf9f6971861abf06c9d)
+f6de6000-f6de6fff r--      3000      1000  /system/lib/libnetd_client.so
+f6de7000-f6de7fff rw-      4000      1000  /system/lib/libnetd_client.so
+f6dec000-f6e74fff r-x         0     89000  /system/lib/libc++.so (BuildId: 8f1f2be4b37d7067d366543fafececa2) (load base 0x2000)
+f6e75000-f6e75fff ---         0      1000
+f6e76000-f6e79fff r--     89000      4000  /system/lib/libc++.so
+f6e7a000-f6e7afff rw-     8d000      1000  /system/lib/libc++.so
+f6e7b000-f6e7bfff rw-         0      1000  [anon:.bss]
+f6e7c000-f6efdfff r-x         0     82000  /system/lib/libc.so (BuildId: d189b369d1aafe11feb7014d411bb9c3)
+f6efe000-f6f01fff r--     81000      4000  /system/lib/libc.so
+f6f02000-f6f03fff rw-     85000      2000  /system/lib/libc.so
+f6f04000-f6f04fff rw-         0      1000  [anon:.bss]
+f6f05000-f6f05fff r--         0      1000  [anon:.bss]
+f6f06000-f6f0bfff rw-         0      6000  [anon:.bss]
+f6f0c000-f6f21fff r-x         0     16000  /system/lib/libcutils.so (BuildId: d6d68a419dadd645ca852cd339f89741)
+f6f22000-f6f22fff r--     15000      1000  /system/lib/libcutils.so
+f6f23000-f6f23fff rw-     16000      1000  /system/lib/libcutils.so
+f6f24000-f6f31fff r-x         0      e000  /system/lib/liblog.so (BuildId: e4d30918d1b1028a1ba23d2ab72536fc)
+f6f32000-f6f32fff r--      d000      1000  /system/lib/liblog.so
+f6f33000-f6f33fff rw-      e000      1000  /system/lib/liblog.so
+</pre>
+
+<p>通常，共享库会有 3 个相邻条目。一个是可读且可执行条目（代码），一个是只读条目（只读数据），还有一个是读写条目（可变数据）。第一列显示映射的地址范围，第二列显示权限（采用常规 Unix <code>ls(1)</code> 样式），第三列显示到文件的偏移量（十六进制），第四列显示区域大小（十六进制），第五列显示文件（或其他区域名称）。</p>
+
+<pre class="no-pretty-print">
+f6f34000-f6f53fff r-x         0     20000  /system/lib/libm.so (BuildId: 76ba45dcd9247e60227200976a02c69b)
+f6f54000-f6f54fff ---         0      1000
+f6f55000-f6f55fff r--     20000      1000  /system/lib/libm.so
+f6f56000-f6f56fff rw-     21000      1000  /system/lib/libm.so
+f6f58000-f6f58fff rw-         0      1000
+f6f59000-f6f78fff r--         0     20000  /dev/__properties__/u:object_r:default_prop:s0
+f6f79000-f6f98fff r--         0     20000  /dev/__properties__/properties_serial
+f6f99000-f6f99fff rw-         0      1000  [anon:linker_alloc_vector]
+f6f9a000-f6f9afff r--         0      1000  [anon:atexit handlers]
+f6f9b000-f6fbafff r--         0     20000  /dev/__properties__/properties_serial
+f6fbb000-f6fbbfff rw-         0      1000  [anon:linker_alloc_vector]
+f6fbc000-f6fbcfff rw-         0      1000  [anon:linker_alloc_small_objects]
+f6fbd000-f6fbdfff rw-         0      1000  [anon:linker_alloc_vector]
+f6fbe000-f6fbffff rw-         0      2000  [anon:linker_alloc]
+f6fc0000-f6fc0fff r--         0      1000  [anon:linker_alloc]
+f6fc1000-f6fc1fff rw-         0      1000  [anon:linker_alloc_lob]
+f6fc2000-f6fc2fff r--         0      1000  [anon:linker_alloc]
+f6fc3000-f6fc3fff rw-         0      1000  [anon:linker_alloc_vector]
+f6fc4000-f6fc4fff rw-         0      1000  [anon:linker_alloc_small_objects]
+f6fc5000-f6fc5fff rw-         0      1000  [anon:linker_alloc_vector]
+f6fc6000-f6fc6fff rw-         0      1000  [anon:linker_alloc_small_objects]
+f6fc7000-f6fc7fff rw-         0      1000  [anon:arc4random _rsx structure]
+f6fc8000-f6fc8fff rw-         0      1000  [anon:arc4random _rs structure]
+f6fc9000-f6fc9fff r--         0      1000  [anon:atexit handlers]
+f6fca000-f6fcafff ---         0      1000  [anon:thread signal stack guard page]
+</pre>
+
+<p>请注意，从 Android 5.0 (Lollipop) 开始，C 库会对其大部分匿名映射区域命名，因此神秘区域越来越少。
+</p>
+
+<pre class="no-pretty-print">
+f6fcb000-f6fccfff rw- 0 2000 [stack:5081]
+</pre>
+
+<p>名为 <code>[stack:<i>tid</i>]</code> 的区域是指定线程的堆栈。
+</p>
+
+<pre class="no-pretty-print">
+f6fcd000-f702afff r-x         0     5e000  /system/bin/linker (BuildId: 84f1316198deee0591c8ac7f158f28b7)
+f702b000-f702cfff r--     5d000      2000  /system/bin/linker
+f702d000-f702dfff rw-     5f000      1000  /system/bin/linker
+f702e000-f702ffff rw-         0      2000
+f7030000-f7030fff r--         0      1000
+f7031000-f7032fff rw-         0      2000
+ffcd7000-ffcf7fff rw-         0     21000
+ffff0000-ffff0fff r-x         0      1000  [vectors]
+</pre>
+
+<p>您能否看到 <code>[vector]</code> 或 <code>[vdso]</code> 取决于架构。ARM 使用 [vector]，而所有其他架构使用 <a href="http://man7.org/linux/man-pages/man7/vdso.7.html">[vdso]</a>。</p>
+
+</body></html>

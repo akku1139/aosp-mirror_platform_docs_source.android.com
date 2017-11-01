@@ -1,0 +1,315 @@
+<html devsite><head>
+    <title>DTO 语法</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>设备树源 (DTS) 格式是设备树的文本表示形式。设备树编译器 (DTC) 可将这种格式处理为二进制设备树，这是 Linux 内核要求的形式。</p>
+
+<h2 id="reference">使用引用</h2>
+
+<p><a href="https://github.com/pantoniou/dtc" class="external">DTC</a>（设备树编译器 + 叠加补丁程序）项目在 <a href="https://android.googlesource.com/platform/external/dtc/+/refs/heads/master/Documentation/dts-format.txt" class="external">dtc-format.txt</a>
+和 <a href="https://android.googlesource.com/platform/external/dtc/+/refs/heads/master/Documentation/manual.txt" class="external">manual.txt</a> 中说明了 DTS 格式。DTO 格式和规则在 <a href="https://android.googlesource.com/platform/external/dtc/+/refs/heads/master/Documentation/dt-object-internal.txt" class="external">dt-object-internal.txt</a> 中有相关说明。这些文档描述了如何使用叠加 DT 中的节点 <code>fragment@x</code> 和语法 <code>__overlay__</code> 来更新主 DT。例如：</p>
+<pre class="prettyprint">
+/ {
+  fragment@0 {
+    target = &lt;&amp;some_node&gt;;
+      __overlay__ {
+        some_prop = "okay";
+        ...
+      };
+  };
+};
+</pre>
+
+<p>不过，Google 强烈建议您<strong>不要</strong>使用 <code>fragment@x</code> 和语法 <code>__overlay__</code>，而是使用引用语法。例如：</p>
+<pre class="prettyprint">
+&amp;some_node {
+  some_prop = "okay";
+  ...
+};
+</pre>
+
+<p><code>dtc</code> 会将引用语法编译成与使用语法 <code>__overlay__</code> 所生成的上述对象相同的对象。此语法不强制您对片段进行编号，让您能够轻松地读取和写入叠加 DTS。如果您的 <code>dtc</code> 不支持此语法糖，请使用 <a href="https://android.googlesource.com/platform/external/dtc" class="external">AOSP 中的 dtc
+</a>。</p>
+
+<h2 id="labels">使用标签</h2>
+<p>为了允许在编译时不编译针对节点的未定义引用，叠加 DT <code>.dts</code> 文件必须在其头文件中具有标签 <code>/plugin/</code>。例如：</p>
+
+<pre class="prettyprint">
+/dts-v1/;
+/plugin/;
+</pre>
+
+<p>在这里，您可以使用引用来定位要叠加的节点，该引用是以和符号 (＆) 作为前缀的绝对节点路径。例如，对于主 DT 中的 <code>node@0</code>：</p>
+
+<table>
+<tbody><tr>
+<th width="50%">在主 DT 中定义标签...</th>
+<th>...然后使用标签。</th>
+</tr>
+
+<tr>
+<td>
+<pre class="prettyprint">
+
+[my_main_dt.dts]
+
+/dts-v1/;
+
+/ {
+  my_node: node@0 {
+    status = "disabled";
+
+    my_child: child@0 {
+      value = &lt;0xffffffff&gt;;
+    };
+  };
+};
+</pre>
+</td>
+
+<td class="alt">
+<pre class="prettyprint">
+
+[my_overlay_dt.dts]
+
+/dts-v1/;
+/plugin/;
+
+&amp;my_node {
+  status = "okay";
+};
+
+&amp;my_child {
+  value = &lt;0x1&gt;;
+};
+</pre>
+</td>
+</tr>
+</tbody></table>
+
+<h2 id="override">叠加</h2>
+<p>如果引用目标属性存在于主 DT 中，则在 DTO 之后被叠加；否则，系统会对其进行附加。例如：</p>
+
+<table>
+<tbody><tr>
+<th width="33%">main.dts</th>
+<th width="33%">overlay.dts</th>
+<th>合并结果</th>
+</tr>
+
+<tr>
+<td>
+<pre class="prettyprint">
+
+[my_main_dt.dts]
+
+/dts-v1/;
+
+/ {
+  compatible = "corp,foo";
+
+  my_node: node@0 {
+    status = "disabled";
+  };
+};
+</pre>
+</td>
+
+<td class="alt">
+<pre class="prettyprint">
+
+[my_overlay_dt.dts]
+
+/dts-v1/;
+/plugin/;
+
+&amp;my_node {
+  status = "okay";
+};
+</pre>
+</td>
+
+<td>
+<pre class="prettyprint">
+
+/dts-v1/;
+
+/ {
+  compatible = "corp,foo";
+
+  ...
+
+  node@0 {
+    linux,phandle = &lt;0x1&gt;;
+    phandle = &lt;0x1&gt;;
+    status = "okay";
+  };
+};
+</pre>
+</td>
+</tr>
+</tbody></table>
+
+<h2 id="append">附加</h2>
+<p>如果引用目标属性不存在于主 DT 中，则在 DTO 之后被附加。例如：</p>
+
+<table>
+<tbody><tr>
+<th width="33%">main.dts</th>
+<th width="33%">overlay.dts</th>
+<th>合并结果</th>
+</tr>
+
+<tr>
+<td>
+<pre class="prettyprint">
+
+[my_main_dt.dts]
+
+/dts-v1/;
+
+/ {
+  compatible = "corp,foo";
+
+  my_node: node@0 {
+    status = "okay";
+  };
+};
+</pre>
+</td>
+
+<td class="alt">
+<pre class="prettyprint">
+
+[my_overlay_dt.dts]
+
+/dts-v1/;
+/plugin/;
+
+&amp;my_node {
+  new_prop = "bar";
+};
+</pre>
+</td>
+
+<td>
+<pre class="prettyprint">
+
+/dts-v1/;
+
+/ {
+  compatible = "corp,foo";
+
+  ...
+
+  node@0 {
+    linux,phandle = &lt;0x1&gt;;
+    phandle = &lt;0x1&gt;;
+    status = "okay";
+    new_prop = "bar";
+  };
+};
+</pre>
+</td>
+</tr>
+</tbody></table>
+
+<h2 id="child">子节点</h2>
+<p>子节点语法示例：</p>
+
+<table>
+<tbody><tr>
+<th width="33%">main.dts</th>
+<th width="33%">overlay.dts</th>
+<th>合并结果</th>
+</tr>
+
+<tr>
+<td>
+<pre class="prettyprint">
+
+[my_main_dt.dts]
+
+/dts-v1/;
+
+/ {
+  compatible = "corp,foo";
+
+  my_nodes: nodes {
+    compatible = "corp,bar";
+
+    node@0 {
+      status = "disabled";
+    };
+  };
+};
+</pre>
+</td>
+
+<td class="alt">
+<pre class="prettyprint">
+
+[my_overlay_dt.dts]
+
+/dts-v1/;
+/plugin/;
+
+&amp;my_nodes {
+  new_prop1 = "abc";
+
+  node@0 {
+    status = "okay";
+    new_prop2 = "xyz";
+  };
+};
+</pre>
+</td>
+
+<td>
+<pre class="prettyprint">
+
+/dts-v1/;
+
+/ {
+  compatible = "corp,foo";
+
+  ...
+
+  nodes {
+    linux,phandle = &lt;0x1&gt;;
+    phandle = &lt;0x1&gt;;
+    compatible = "corp,bar";
+    new_prop1 = "abc";
+
+    node@0 {
+      linux,phandle = &lt;0x2&gt;;
+      phandle = &lt;0x2&gt;;
+      status = "okay";
+      new_prop2 = "xyz";
+    };
+  };
+};
+</pre>
+</td>
+</tr>
+</tbody></table>
+
+</body></html>

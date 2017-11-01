@@ -1,0 +1,108 @@
+<html devsite><head>
+    <title>OTA 更新</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>在实际应用中的 Android 设备可以接收和安装系统和应用软件的无线 (OTA) 更新。设备可在特殊的恢复分区中使用软件解压缩下载的更新包并将其应用于系统的其余部分。</p>
+<p>本节介绍这些软件包的结构，并提供用于构建软件包的工具。它适用于希望将 OTA 更新系统用于新的 Android 设备以及正在构建更新软件包以用于已发布设备的开发人员。OTA 更新旨在升级基础操作系统和系统分区上安装的只读应用；这些更新不会影响用户从 Google Play 安装的应用。<i></i>
+</p>
+<p>本节介绍 Android 5.x 版本中的 OTA 系统。有关从旧版本移植 OTA 相关代码的帮助信息，请参阅<a href="#migrating">从以往版本中迁移</a>。
+</p>
+
+<h2 id="android-device-layout">Android 设备布局</h2>
+<p>Android 设备上的闪存空间通常包含以下分区。</p>
+
+<dl>
+<dt>引导</dt>
+<dd>包含 Linux 内核和最小的根文件系统（加载到 RAM 磁盘）。它装载了系统和其它分区，并启动位于系统分区上的运行时。</dd>
+<dt>系统</dt>
+<dd>包含在 Android 开源项目 (AOSP) 上提供源代码的系统应用和库。在正常操作期间，此分区被装载为只读分区；其内容仅在 OTA 更新期间更改。</dd>
+<dt>供应商</dt>
+<dd>包含在 Android 开源项目 (AOSP) 上未提供源代码的系统应用和库。<em></em>在正常操作期间，此分区被装载为只读分区；其内容仅在 OTA 更新期间更改。</dd>
+<dt>用户数据</dt>
+<dd>存储由用户安装的应用所保存的数据等。OTA 更新过程通常不会触及该分区。</dd>
+<dt>缓存</dt>
+<dd>几个应用使用的临时保留区域（访问此分区需要使用特殊的应用权限），用于存储下载的 OTA 更新包。其他程序也可使用该空间，但是此类文件可能会随时消失。安装某些 OTA 更新包可能会导致此分区被完全擦除。</dd>
+<dt>恢复</dt>
+<dd>包含第二个完整的 Linux 系统，其中包括一个内核和特殊的恢复二进制文件（该文件可读取一个软件包并使用其内容来更新其他分区。）</dd>
+<dt>其他</dt>
+<dd>执行恢复操作时使用的微小分区，可在应用 OTA 更新包并重新启动设备时，隐藏某些进程的信息。</dd></dl>
+
+<h2 id="life-ota-update">OTA 更新过程</h2>
+<p>典型 OTA 更新包含以下步骤：</p>
+<ol>
+<li>设备会与 OTA 服务器进行定期确认，并被告知是否有更新可用，包括更新软件包的 URL 和向用户显示的描述字符串。</li>
+<li>将更新下载到缓存或数据分区，并根据 <code>/system/etc/security/otacerts.zip</code> 中的证书验证加密签名。系统提示用户安装更新。</li>
+<li>设备重新启动进入恢复模式，引导恢复分区中的内核和系统启动，而非引导分区中的内核。</li>
+<li>恢复分区的二进制文件由 init 启动。它会在 <code>/cache/recovery/command</code> 中寻找将其指向下载软件包的命令行参数。
+</li>
+<li>恢复操作会根据 <code>/res/keys</code> （包含在恢复分区中的 RAM 磁盘的一部分）中的公钥来验证软件包的加密签名。</li>
+<li>从软件包中提取数据，并根据需要使用该数据更新引导、系统和/或供应商分区。系统分区上其中一个新文件包含新恢复分区内容。</li>
+<li>设备正常重启。<ol style="list-style-type:lower-alpha">
+<li>加载最新更新的引导分区，在最新更新的系统分区中装载并开始执行二进制文件。</li>
+<li>作为正常启动的一部分，系统会根据所需内容（预先存储为 <code>/system</code> 中的一个文件）检查恢复分区的内容。二者内容不同，所以恢复分区会被所需内容重新刷写。（在后续引导中，恢复分区已经包含新内容，因此无需重新刷写。）</li>
+</ol></li>
+</ol>
+<p>系统更新完成！</p>
+
+<h2 id="migrating">从更早版本迁移</h2>
+
+<p>当从 Android 2.3/3.0/4.0 版本进行迁移时，主要变化是将设备专属的功能从一组具有预定义名称的 C 函数转换为 C++ 对象。下表列出了用途大致相同的旧函数和新方法：</p>
+
+<table>
+<tbody>
+<tr>
+<th>C 函数</th>
+<th>C ++ 方法</th>
+</tr>
+<tr>
+<td>device_recovery_start()</td>
+<td>Device::RecoveryStart()</td>
+</tr>
+<tr>
+<td>device_toggle_display()<br />
+device_reboot_now()<br />
+</td>
+<td>RecoveryUI::CheckKey()<br />
+(also RecoveryUI::IsKeyPressed())<br />
+</td>
+</tr>
+<tr>
+<td>device_handle_key()</td>
+<td>Device::HandleMenuKey()</td>
+</tr>
+<tr>
+<td>device_perform_action()</td>
+<td>Device::InvokeMenuItem()</td>
+</tr>
+<tr>
+<td>device_wipe_data()</td>
+<td>Device::WipeData()</td>
+</tr>
+<tr>
+<td>device_ui_init()</td>
+<td>ScreenRecoveryUI::Init()</td>
+</tr>
+</tbody>
+</table>
+
+<p>将旧函数转化为新方法应尽量简单直观。不要忘记添加新的 <code>make_device()</code> 函数来创建并返回新设备子类的实例。</p>
+
+</body></html>

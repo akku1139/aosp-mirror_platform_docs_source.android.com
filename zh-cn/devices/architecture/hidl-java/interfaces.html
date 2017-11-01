@@ -1,0 +1,128 @@
+<html devsite><head>
+    <title>接口方法和错误</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>本部分详细介绍了接口方法和错误。</p>
+
+<h2 id="void">Void 方法</h2>
+<p>不返回结果的方法将转换为返回 <code>void</code> 的 Java 方法。例如，HIDL 声明：</p>
+
+<pre class="prettyprint">
+doThisWith(float param);
+</pre>
+
+<p>…会变为：</p>
+
+<pre class="prettyprint">
+void doThisWith(float param);
+</pre>
+
+<h2 id="single-result">单结果方法</h2>
+<p>返回单个结果的方法将转换为同样返回单个结果的 Java 等效方法。例如，以下方法：</p>
+
+<pre class="prettyprint">
+doQuiteABit(int32_t a, int64_t b,
+            float c, double d) generates (double something);
+</pre>
+
+<p>…会变为：</p>
+
+<pre class="prettyprint">
+double doQuiteABit(int a, long b, float c, double d);
+</pre>
+
+<h2 id="multiple-result">多结果方法</h2>
+<p>对于返回多个结果的每个方法，系统都会生成一个回调类，在其 <code>onValues</code> 方法中提供所有结果。
+该回调会用作此方法的附加参数。例如，以下方法：</p>
+
+<pre class="prettyprint">
+oneProducesTwoThings(SomeEnum x) generates (double a, double b);
+</pre>
+
+<p>…会变为：</p>
+
+<pre class="prettyprint">
+public interface oneProducesTwoThingsCallback {
+    public void onValues(double a, double b);
+}
+void oneProducesTwoThings(byte x, oneProducesTwoThingsCallback cb);
+</pre>
+
+<p><code>oneProducesTwoThings()</code> 的调用者通常使用匿名内部类或 lambda 在本地实现回调：</p>
+
+<pre class="prettyprint">
+someInstanceOfFoo.oneProducesTwoThings(
+         5 /* x */,
+         new IFoo.oneProducesTwoThingsCallback() {
+          @Override
+          void onValues(double a, double b) {
+             // do something interesting with a and b.
+             ...
+          }});
+</pre>
+
+<p>或：</p>
+
+<pre class="prettyprint">
+someInstanceOfFoo.oneProducesTwoThings(5 /* x */,
+    (a, b) -&gt; a &gt; 3.0 ? f(a, b) : g(a, b)));
+</pre>
+
+<p>您还可以定义一个类以用作回调…</p>
+
+<pre class="prettyprint">
+class MyCallback implements oneProducesTwoThingsCallback {
+  public void onValues(double a, double b) {
+    // do something interesting with a and b.
+  }
+}
+</pre>
+
+<p>…并传递 <code>MyCallback</code> 的一个实例作为 <code>oneProducesTwoThings()</code> 的第三个参数。</p>
+
+<h2 id="errors">传输错误和死亡通知接收方</h2>
+<p>由于服务实现可以在不同的进程中运行，在某些情况下，即使实现接口的进程已死亡，客户端也可以保持活动状态。
+调用死亡进程中托管的接口对象会失败并返回传输错误（调用的方法抛出的运行时异常）。可以通过调用 <code>I&lt;InterfaceName&gt;.getService()</code> 以请求服务的新实例，从此类故障中恢复。不过，仅当崩溃的进程已重新启动且已向 servicemanager 重新注册其服务时，这种方法才有效（对 HAL 实现而言通常如此）。</p>
+
+<p>接口的客户端也可以注册一个死亡通知接收方，以便在服务终止时收到通知。<em></em>但如果在服务刚终止时发出调用，则仍然可能发生传输错误。要在检索的 <code>IFoo</code> 接口上注册此类通知，客户端可以执行以下操作：</p>
+
+<pre class="prettyprint">
+foo.linkToDeath(recipient, 1481 /* cookie */);
+</pre>
+
+<p><code>recipient</code> 参数必须是由 HIDL 提供的 <code>HwBinder.DeathRecipient</code> 接口的实现。该接口包含在托管接口的进程终止时调用的单个方法 <code>serviceDied()</code>。</p>
+
+<pre class="prettyprint">
+final class DeathRecipient implements HwBinder.DeathRecipient {
+    @Override
+    public void serviceDied(long cookie) {
+        // Deal with service going away
+    }
+}
+</pre>
+
+<p><code>cookie</code> 参数包含使用 <code>linkToDeath()</code> 调用传递的 Cookie。在注册死亡通知接收方之后，也可以使用以下命令取消注册：</p>
+
+<pre class="prettyprint">
+foo.unlinkToDeath(recipient);
+</pre>
+
+</body></html>

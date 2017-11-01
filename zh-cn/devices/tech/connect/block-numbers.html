@@ -1,0 +1,184 @@
+<html devsite><head>
+    <title>实现电话号码屏蔽功能</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>
+电话是一种开放的通信渠道，任何人都可以随时向任何电话号码致电或者发送短信，因此 Android 用户需要能够轻松屏蔽骚扰电话和短信。
+</p>
+
+<p>
+在 Android N 推出之前，Android 用户只能依靠下载的应用来限制来自骚扰电话号码的来电和短信。但是，由于没有适当的 API 来屏蔽来电和短信，这些应用大部分要么达不到预期效果，要么用户体验不佳。
+</p>
+
+<p>
+一些制造商可能会提供他们自己的开箱即用型屏蔽解决方案，但是如果用户更换设备，由于缺乏互用性，他们的屏蔽列表可能会完全丢失。最后，即便用户采用了提供此类功能的拨号应用和短信客户端，他们可能仍需在每个应用中执行屏蔽操作，才能有效屏蔽来电和短信。
+</p>
+
+<h2 id="features">功能</h2>
+
+<p>
+Android 7.0 版本引入了 <code>BlockedNumberProvider</code> 内容提供程序，该程序可以存储用户指定的无法通过电话通讯（通话、短信、彩信）与他们联系的电话号码列表。系统会参考屏蔽列表中的号码，限制来自这些号码的来电和短信。Android 7.0 不仅会显示屏蔽号码列表，还可让用户添加和删除号码。
+</p>
+
+<p>
+此外，借助号码屏蔽功能，系统能够与平台上的相关应用协同工作，有助于保护用户并为用户提供便捷体验。默认拨号器、默认短信客户端、UICC 授权应用以及与系统具有相同签名的应用都可以直接对屏蔽列表执行读写操作。由于屏蔽号码存储在系统中，无论用户使用哪种拨号或短信应用，这些号码始终会被屏蔽。最后，用户可在任何制造商的任何新设备中恢复屏蔽号码列表。
+</p>
+
+<ul>
+<li>确保用户可以使用开箱即用的屏蔽功能，并且在切换应用或更换新手机时不会丢失屏蔽列表。系统中所有相关应用均可共享同一个列表，为用户提供最流畅的体验。
+</li><li>应用开发者无需自行开发功能来管理屏蔽列表、来电和短信。他们只需使用平台提供的功能即可。
+</li><li>用户选择的默认拨号器/短信应用可以直接对提供程序执行读写操作。其他应用可以使用 <code>createManageBlockedNumbersIntent()</code> 启动屏蔽列表管理界面。
+</li><li>原始设备制造商 (OEM) 可以利用平台提供的功能来实现开箱即用型屏蔽功能。OEM 可以放心，当用户从其他 OEM 的设备切换到当前设备时，他们将拥有更好的入门体验，因为屏蔽列表也将转移到当前设备。
+</li><li>如果运营商有自己的拨号器或即时通讯应用，他们可以重复使用平台功能，从而让用户继续使用屏蔽列表。他们可以放心，即使用户使用新设备，在新设备中仍可使用屏蔽列表。最后，所有运营商授权应用都可以读取该屏蔽列表，因此，如果运营商希望基于该屏蔽列表向用户提供更强大的额外屏蔽功能，那么现在他们可以基于此功能来实现。</li></ul>
+
+<h2 id="data-flow">数据流</h2>
+
+<img src="images/block-numbers-flow.png" alt="屏蔽号码数据流" id="block-numbers-flow"/>
+<p class="img-caption">
+  <strong>图 1.</strong> 屏蔽电话号码数据流</p>
+
+<h2 id="examples-and-source">示例和源代码</h2>
+
+<p>
+以下是使用号码屏蔽新功能的调用示例：
+</p>
+
+<h3 id="launch-from-app">从应用启动屏蔽号码管理程序</h3>
+
+<pre>
+Context.startActivity(telecomManager.createManageBlockedNumbersIntent(), null);
+</pre>
+
+<h3 id="query-blocked-numbers">查询屏蔽号码</h3>
+
+<pre>
+Cursor c = getContentResolver().query(BlockedNumbers.CONTENT_URI,
+         new String[]{BlockedNumbers.COLUMN_ID,
+         BlockedNumbers.COLUMN_ORIGINAL_NUMBER,
+         BlockedNumbers.COLUMN_E164_NUMBER}, null, null, null);
+</pre>
+
+<h3 id="put-blocked-number">添加屏蔽号码</h3>
+
+<pre>
+ContentValues values = new ContentValues();
+values.put(BlockedNumbers.COLUMN_ORIGINAL_NUMBER, "1234567890");
+Uri uri = getContentResolver().insert(BlockedNumbers.CONTENT_URI, values);
+</pre>
+
+<h3 id="delete-blocked-number">删除屏蔽号码</h3>
+
+<pre>
+ContentValues values = new ContentValues();
+values.put(BlockedNumbers.COLUMN_ORIGINAL_NUMBER, "1234567890");
+Uri uri = getContentResolver().insert(BlockedNumbers.CONTENT_URI, values);
+getContentResolver().delete(uri, null, null);
+</pre>
+
+<h2 id="implementation">实现</h2>
+
+<p>
+以下是使用号码屏蔽功能前必须完成的高级任务：
+</p>
+
+<ul>
+<li>OEM 通过使用 <code>BlockedNumberProvider</code> 在其设备上实现呼叫/短信限制功能
+</li><li>如果运营商有拨号器或即时通讯应用，请使用 <code>BlockedNumberProvider</code> 实现呼叫/短信限制功能
+</li><li>第三方拨号器和即时通讯应用供应商使用 <code>BlockedNumberProvider</code> 实现屏蔽功能</li>
+</ul>
+
+<h3 id="recommendations-for-oems">面向 OEM 的建议</h3>
+
+<p>
+如果设备之前从未配备任何其他呼叫/短信限制功能，请在所有此类设备上使用 Android 开源项目 (AOSP) 中的号码屏蔽功能。建议支持合理的屏蔽入口点，如从通话记录中或短信会话中屏蔽号码。
+</p>
+
+<p>
+如果设备之前配备了呼叫/短信限制功能，请调整该功能，以便所有严格匹配的屏蔽电话号码都存储在 <code>BlockedNumberProvider,</code> 中，并且围绕提供程序的行为满足 Android 兼容性定义文档 (CDD) 中针对此功能的要求。<em></em>
+</p>
+
+<p>
+只要满足 CDD 中有关屏蔽严格匹配的电话号码的要求，便可以通过自定义提供程序和自定义界面/控件来实现其他高级功能。建议将其他功能标记为“高级”功能，以避免与基本号码屏蔽功能相混淆。
+</p>
+
+<h3 id="apis">API</h3>
+
+<p>以下是使用的 API：</p>
+<ul>
+<li><code><a href="http://developer.android.com/reference/android/telecom/TelecomManager.html">TelecomManager</a>
+API</code>
+  <ul>
+ <li><code>Intent createManageBlockedNumbersIntent()</code>
+  </li></ul>
+</li>
+<li><code><a href="http://developer.android.com/reference/android/telephony/CarrierConfigManager.html">Carrier
+Config</a></code>
+  <ul>
+ <li><code>KEY_DURATION_BLOCKING_DISABLED_AFTER_EMERGENCY_INT</code>
+  </li></ul>
+</li>
+<li>请参考 <code>BlockedNumberContract</code>
+  <ul>
+ <li>由 <code><a href="https://developer.android.com/reference/android/provider/BlockedNumberContract.html">BlockedNumberContract</a></code> 提供的 API</li>
+ <li><code>boolean isBlocked(Context context, String phoneNumber)</code></li>
+ <li><code>int unblock(Context context, String phoneNumber)</code></li>
+ <li><code>boolean canCurrentUserBlockNumbers(Context context)</code></li>
+  </ul>
+ </li>
+</ul>
+
+<h3 id="user-interface">界面</h3>
+<p>
+AOSP 中提供的 BlockedNumbersActivity.java 界面可以按原样使用。只要符合相关 CDD 要求，设备实现人员也可以实现自己的界面版本。
+</p>
+
+<p>
+请注意，要使用 <code>BlockedNumberProvider</code> 来实现屏蔽列表恢复功能，可能需要合作伙伴的 PC 备份和恢复应用。有关 AOSP 中提供的屏蔽号码界面，请参见下图。
+</p>
+
+<img src="images/block-numbers-ui.png" alt="屏蔽号码界面" width="665" id="block-numbers-ui"/>
+<p class="img-caption">
+  <strong>图 2.</strong> 屏蔽电话号码界面</p>
+
+<h2 id="validation">验证</h2>
+
+<p>
+实现人员可以通过运行以下 CTS 测试来确保其功能版本能够按预期运转：
+</p>
+
+<pre>
+android.provider.cts.BlockedNumberContractTest
+com.android.cts.numberblocking.hostside.NumberBlockingTest
+android.telecom.cts.ExtendedInCallServiceTest#testIncomingCallFromBlockedNumber_IsRejected
+android.telephony.cts.SmsManagerTest#testSmsBlocking
+</pre>
+
+<p>
+在运行 <code>$ adb root</code> 之后，可以使用 <code>adb</code> 命令来操作 <code>BlockedNumberProvider</code>。例如：
+</p>
+<pre>
+$ adb root
+$ adb shell content query --uri content://com.android.blockednumber/blocked
+$ adb shell content insert --uri / content://com.android.blockednumber/blocked --bind / original_number:s:'6501002000'
+$ adb shell content delete --uri / content://com.android.blockednumber/blocked/1
+</pre>
+
+</body></html>

@@ -1,0 +1,400 @@
+<html devsite><head>
+    <title>Dalvik 可执行指令格式</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>本页面列出了 Dalvik 可执行格式和 Dalvik 字节码使用的指令格式。本页面需要结合<a href="dalvik-bytecode.html">字节码参考文档</a>使用。</p>
+
+<h2 id="bitwise">按位描述</h2>
+
+<p>格式表的第一列列出了格式的按位布局。它由一个或多个空格分隔的“单词”组成，每个单词描述一个 16 位代码单元。单词中的每个字符代表四位，从高位往低位读取，并使用竖线 (“<code>|</code>”) 分隔以方便阅读。从“<code>A</code>”开始的大写字母用于表示格式中的字段，这些字段随后由语法列做进一步定义。“<code>op</code>”一词用于表示格式内八位操作码的位置。带斜划的零（“<code>Ø</code>”）用于表示所有在指示位置的位必须为零。</p>
+
+<p>一般而言，在一个代码单元内，字母的顺序为，较早的代码单元对应的字母在前，后期的代码单元对应的字母在后，按照从低阶到高阶排序。但是，这种一般规则存在一些例外情况，主要是为了让含义相似的部分在不同的指令格式中使用相同的命名。格式说明中对这些情况进行了明确的描述。</p>
+
+<p>例如，“<code>B|A|<i>op</i> CCCC</code>”格式表示其包含两个 16 位代码单元。第一个单词包括低 8 位中的操作码和高 8 位中的两个四位值；第二个单词由单个 16 位值组成。</p>
+
+<h2 id="format-ids">格式 ID</h2>
+
+<p>格式表中的第二列表示格式的短标识符，用于在其他文档和代码中识别该格式。</p>
+
+<p>大多数格式 ID 包含三个字符：前两个是十进制数，最后一个是字母。第一个十进制数表示格式中 16 位代码单元的数量。第二个十进制数表示格式包含的最大寄存器数量（使用最大值是因为某些格式可容纳的寄存器数量为可变值），特殊标识“<code>r</code>”表示已对寄存器的数量范围进行编码。最后一个字母以半助记符的形式表示该格式编码的任何其他数据类型。例如，“<code>21t</code>”格式的长度为 2，包含一个寄存器引用，另外还有一个分支目标。</p>
+
+<p>建议使用的静态链接格式有一个额外的“<code>s</code>”后缀，因此加上后缀一共是四个字符。同样，建议使用的“内联”链接格式也有一个额外的“<code>i</code>”后缀。（在这种情况下，内联链接与静态链接类似，但它与机器实现具有更直接的联系。）最后，几个建议使用的奇怪格式（例如，“<code>20bc</code>”）包含两个数据块，它们均体现在格式 ID 中。</p>
+
+<p>类型代码字母的完整列表如下。请注意，由于格式上的差异，部分形式的大小可能有所不同：</p>
+
+<table class="letters">
+<thead>
+<tr>
+  <th>助记符</th>
+  <th>位数</th>
+  <th>含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>b</td>
+  <td>8</td>
+  <td>有符号立即数（<b>字节</b>）</td>
+</tr>
+<tr>
+  <td>c</td>
+  <td>16、32</td>
+  <td><b>常量</b>池索引</td>
+</tr>
+<tr>
+  <td>f</td>
+  <td>16</td>
+  <td><b>接口</b>常量（仅对静态链接格式有效）</td>
+</tr>
+<tr>
+  <td>h</td>
+  <td>16</td>
+  <td>有符号立即数<b></b>（32 位或 64 位数的高值位，低值位为 <code>0</code>）
+  </td>
+</tr>
+<tr>
+  <td>i</td>
+  <td>32</td>
+  <td>有符号立即数（<b>整型</b>）或 32 位浮点数</td>
+</tr>
+<tr>
+  <td>l</td>
+  <td>64</td>
+  <td>有符号立即数（<b>长整型</b>）或 64 位双精度浮点数</td>
+</tr>
+<tr>
+  <td>m</td>
+  <td>16</td>
+  <td><b>方法</b>常量（仅对静态链接格式有效）</td>
+</tr>
+<tr>
+  <td>n</td>
+  <td>4</td>
+  <td>有符号立即数（<b>半字节</b>）</td>
+</tr>
+<tr>
+  <td>s</td>
+  <td>16</td>
+  <td>有符号立即数（<b>短整型</b>）</td>
+</tr>
+<tr>
+  <td>t</td>
+  <td>8、16、32</td>
+  <td>分支<b>目标</b></td>
+</tr>
+<tr>
+  <td>x</td>
+  <td>0</td>
+  <td>无额外数据</td>
+</tr>
+</tbody>
+</table>
+
+<h2 id="syntax">语法</h2>
+
+<p>格式表的第三列指出了指令中所使用的人类可识别的语法。每个指令以命名的操作码开始，后面可选择使用一个或多个参数，并且参数之间用逗号分隔。</p>
+
+<p>当参数指第一列中的某个字段时，该字段的字母将在语法中出现，并在字段中每四位重复一次。例如，第一列中标记为“<code>BB</code>”的八位字段在语法列中也将标记为“<code>BB</code>”。</p>
+
+<p>命名寄存器的参数形式为“<code>v<i>X</i></code>”。选择“<code>v</code>”而不是更常用的“<code>r</code>”作为前缀，这样可避免与实现 Dalvik 可执行格式的（非虚拟）架构（其寄存器使用“<code>r</code>”作为前缀）出现冲突。（也就是说，我们可以直截了当地同时讨论虚拟和实际寄存器。）</p>
+
+<p>表示字面值的参数的形式为“<code>#+<i>X</i></code>”。有些格式在表示字面量时，仅具有字面量的高位（无 0 位）；对于这种类型的量，仅在语法表示时会明确写出后面的 0，但是在按位描述中这些 0 会被省略。</p>
+
+<p>表明相对指令地址偏移量的参数形式为“<code>+<i>X</i></code>”。</p>
+
+<p>表示字面量常量池索引的参数形式为“<code><i>kind</i>@<i>X</i></code>”，其中“<code><i>kind</i></code>”表示正在引用的常量池。每个使用此类格式的操作码明确地表示只允许使用一种常量；请查看操作码参考，找出对应关系。常量池的种类包括“<code>string</code>”（字符串池索引）、“<code>type</code>”（类型池索引）、“<code>field</code>”（字段池索引）、“<code>meth</code>”（方法池索引）和“<code>site</code>”（调用点索引）。</p>
+
+<p>此外还可使用一些建议的可选形式，它们与常量池索引的表示类似，表示预链接的偏移量或索引。可以使用两种类型的建议的预链接值：vtable 偏移（表示为“<code>vtaboff</code>”）和字段偏移（表示为“<code>fieldoff</code>”）。</p>
+
+<p>如果格式值并非明确地包含在语法中，而是选择使用某种变体，则每个变体都以“<code>[<i>X</i>=<i>N</i>]</code>”（例如，“<code>[A=2]</code>”）为前缀来表示对应关系。</p>
+
+<h2 id="formats">格式</h2>
+
+<table class="format">
+<thead>
+<tr>
+  <th>格式</th>
+  <th>ID</th>
+  <th>语法</th>
+  <th>包含的重要操作码</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td><i>无</i></td>
+  <td>00x</td>
+  <td><i><code>N/A</code></i></td>
+  <td><i>用于未使用操作码的伪格式；建议用作断点操作码的标称格式</i></td>
+</tr>
+<tr>
+  <td>ØØ|<i>op</i></td>
+  <td>10x</td>
+  <td><i><code>op</code></i></td>
+  <td> </td>
+</tr>
+<tr>
+  <td rowspan="2">B|A|<i>op</i></td>
+  <td>12x</td>
+  <td><i><code>op</code></i> vA, vB</td>
+  <td> </td>
+</tr>
+<tr>
+  <td>11n</td>
+  <td><i><code>op</code></i> vA, #+B</td>
+  <td> </td>
+</tr>
+<tr>
+  <td rowspan="2">AA|<i>op</i></td>
+  <td>11x</td>
+  <td><i><code>op</code></i> vAA</td>
+  <td> </td>
+</tr>
+<tr>
+  <td>10t</td>
+  <td><i><code>op</code></i> +AA</td>
+  <td>goto</td>
+</tr>
+<tr>
+  <td>ØØ|<i>op</i> AAAA</td>
+  <td>20t</td>
+  <td><i><code>op</code></i> +AAAA</td>
+  <td>goto/16</td>
+</tr>
+<tr>
+  <td>AA|<i>op</i> BBBB</td>
+  <td>20bc</td>
+  <td><i><code>op</code></i> AA, kind@BBBB</td>
+  <td><i>静态确定验证错误的建议格式；其中，A 表示错误类型，B 表示适当类型的表索引（例如，出现“不存在这种方法”错误时的方法引用）</i></td>
+</tr>
+<tr>
+  <td rowspan="5">AA|<i>op</i> BBBB</td>
+  <td>22x</td>
+  <td><i><code>op</code></i> vAA, vBBBB</td>
+  <td> </td>
+</tr>
+<tr>
+  <td>21t</td>
+  <td><i><code>op</code></i> vAA, +BBBB</td>
+  <td> </td>
+</tr>
+<tr>
+  <td>21s</td>
+  <td><i><code>op</code></i> vAA, #+BBBB</td>
+  <td> </td>
+</tr>
+<tr>
+  <td>21h</td>
+  <td><i><code>op</code></i> vAA, #+BBBB0000<br />
+    <i><code>op</code></i> vAA, #+BBBB000000000000
+  </td>
+  <td> </td>
+</tr>
+<tr>
+  <td>21c</td>
+  <td><i><code>op</code></i> vAA, type@BBBB<br />
+    <i><code>op</code></i> vAA, field@BBBB<br />
+    <i><code>op</code></i> vAA, string@BBBB
+  </td>
+  <td>check-cast<br />
+    const-class<br />
+    const-string
+  </td>
+</tr>
+<tr>
+  <td rowspan="2">AA|<i>op</i> CC|BB</td>
+  <td>23x</td>
+  <td><i><code>op</code></i> vAA, vBB, vCC</td>
+  <td> </td>
+</tr>
+<tr>
+  <td>22b</td>
+  <td><i><code>op</code></i> vAA, vBB, #+CC</td>
+  <td> </td>
+</tr>
+<tr>
+  <td rowspan="4">B|A|<i>op</i> CCCC</td>
+  <td>22t</td>
+  <td><i><code>op</code></i> vA, vB, +CCCC</td>
+  <td> </td>
+</tr>
+<tr>
+  <td>22s</td>
+  <td><i><code>op</code></i> vA, vB, #+CCCC</td>
+  <td> </td>
+</tr>
+<tr>
+  <td>22c</td>
+  <td><i><code>op</code></i> vA, vB, type@CCCC<br />
+    <i><code>op</code></i> vA, vB, field@CCCC
+  </td>
+  <td>instance-of</td>
+</tr>
+<tr>
+  <td>22cs</td>
+  <td><i><code>op</code></i> vA, vB, fieldoff@CCCC</td>
+  <td><i>22c 格式的静态链接字段访问指令的建议格式</i>
+  </td>
+</tr>
+<tr>
+  <td>ØØ|<i>op</i> AAAA<sub>lo</sub> AAAA<sub>hi</sub></td>
+  <td>30t</td>
+  <td><i><code>op</code></i> +AAAAAAAA</td>
+  <td>goto/32</td>
+</tr>
+<tr>
+  <td>ØØ|<i>op</i> AAAA BBBB</td>
+  <td>32x</td>
+  <td><i><code>op</code></i> vAAAA, vBBBB</td>
+  <td> </td>
+</tr>
+<tr>
+  <td rowspan="3">AA|<i>op</i> BBBB<sub>lo</sub> BBBB<sub>hi</sub></td>
+  <td>31i</td>
+  <td><i><code>op</code></i> vAA, #+BBBBBBBB</td>
+  <td> </td>
+</tr>
+<tr>
+  <td>31t</td>
+  <td><i><code>op</code></i> vAA, +BBBBBBBB</td>
+  <td> </td>
+</tr>
+<tr>
+  <td>31c</td>
+  <td><i><code>op</code></i> vAA, string@BBBBBBBB</td>
+  <td>const-string/jumbo</td>
+</tr>
+<tr>
+  <td rowspan="3">A|G|<i>op</i> BBBB F|E|D|C</td>
+  <td>35c</td>
+  <td><i>[<code>A=5</code>] <code>op</code></i> {vC, vD, vE, vF, vG},
+    meth@BBBB<br />
+    <i>[<code>A=5</code>] <code>op</code></i> {vC, vD, vE, vF, vG},
+    site@BBBB<br />
+    <i>[<code>A=5</code>] <code>op</code></i> {vC, vD, vE, vF, vG},
+    type@BBBB<br />
+    <i>[<code>A=4</code>] <code>op</code></i> {vC, vD, vE, vF},
+    <i><code>kind</code></i>@BBBB<br />
+    <i>[<code>A=3</code>] <code>op</code></i> {vC, vD, vE},
+    <i><code>kind</code></i>@BBBB<br />
+    <i>[<code>A=2</code>] <code>op</code></i> {vC, vD},
+    <i><code>kind</code></i>@BBBB<br />
+    <i>[<code>A=1</code>] <code>op</code></i> {vC},
+    <i><code>kind</code></i>@BBBB<br />
+    <i>[<code>A=0</code>] <code>op</code></i> {},
+    <i><code>kind</code></i>@BBBB<br />
+    <p><i>此处的特殊字母选择反映出其目的在于使计数和引用索引的标签与 3rc 格式中的标签一样。</i></p>
+  </td>
+  <td> </td>
+</tr>
+<tr>
+  <td>35ms</td>
+  <td><i>[<code>A=5</code>] <code>op</code></i> {vC, vD, vE, vF, vG},
+    vtaboff@BBBB<br />
+    <i>[<code>A=4</code>] <code>op</code></i> {vC, vD, vE, vF},
+    vtaboff@BBBB<br />
+    <i>[<code>A=3</code>] <code>op</code></i> {vC, vD, vE},
+    vtaboff@BBBB<br />
+    <i>[<code>A=2</code>] <code>op</code></i> {vC, vD},
+    vtaboff@BBBB<br />
+    <i>[<code>A=1</code>] <code>op</code></i> {vC},
+    vtaboff@BBBB<br />
+    <p><i>此处的特殊字母选择反映出其目的在于使计数和引用索引的的标签与 3rms 格式中的标签一样。</i></p>
+  </td>
+  <td><i>35c 格式的静态链接 <code>invoke-virtual</code> 和 <code>invoke-super</code> 指令的建议格式</i>
+  </td>
+</tr>
+<tr>
+  <td>35mi</td>
+  <td><i>[<code>A=5</code>] <code>op</code></i> {vC, vD, vE, vF, vG},
+    inline@BBBB<br />
+    <i>[<code>A=4</code>] <code>op</code></i> {vC, vD, vE, vF},
+    inline@BBBB<br />
+    <i>[<code>A=3</code>] <code>op</code></i> {vC, vD, vE},
+    inline@BBBB<br />
+    <i>[<code>A=2</code>] <code>op</code></i> {vC, vD},
+    inline@BBBB<br />
+    <i>[<code>A=1</code>] <code>op</code></i> {vC},
+    inline@BBBB<br />
+    <p><i>此处的特殊字母选择反映出其目的在于使计数和引用索引的标签与 3rmi 格式中的标签一样。</i></p>
+  </td>
+  <td><i>35c 格式内联链接 <code>invoke-static</code> 和 <code>invoke-virtual</code> 指令的建议格式</i>
+  </td>
+</tr>
+<tr>
+  <td rowspan="3">AA|<i>op</i> BBBB CCCC</td>
+  <td>3rc</td>
+  <td><i><code>op</code></i> {vCCCC .. vNNNN}, meth@BBBB<br />
+    <i><code>op</code></i> {vCCCC .. vNNNN}, site@BBBB<br />
+    <i><code>op</code></i> {vCCCC .. vNNNN}, type@BBBB<br />
+    <p><i>其中 <code>NNNN = CCCC+AA-1</code>，即 <code>A</code> 确定计数 <code>0..255</code>，<code>C</code> 确定第一个寄存器</i></p>
+  </td>
+  <td> </td>
+</tr>
+<tr>
+  <td>3rms</td>
+  <td><i><code>op</code></i> {vCCCC .. vNNNN}, vtaboff@BBBB<br />
+    <p><i>其中 <code>NNNN = CCCC+AA-1</code>，即 <code>A</code> 确定计数 <code>0..255</code>，<code>C</code> 确定第一个寄存器</i></p>
+  </td>
+  <td><i><code>3rc</code> 格式的静态链接 <code>invoke-virtual</code> 和 <code>invoke-super</code> 指令的建议格式
+</i>
+  </td>
+</tr>
+<tr>
+  <td>3rmi</td>
+  <td><i><code>op</code></i> {vCCCC .. vNNNN}, inline@BBBB<br />
+    <p><i>其中 <code>NNNN = CCCC+AA-1</code>，即 <code>A</code> 确定计数 <code>0..255</code>，<code>C</code> 确定第一个寄存器</i></p>
+  </td>
+  <td><i>3rc 格式的内联链接 <code>invoke-static</code> 和 <code>invoke-virtual</code> 指令的建议格式</i>
+  </td>
+</tr>
+<tr>
+  <td>A|G|<i>op</i> BBBB F|E|D|C HHHH
+  </td><td>45cc</td>
+  <td>
+    <i>[<code>A=5</code>] <code>op</code></i> {vC, vD, vE, vF, vG}, meth@BBBB, proto@HHHH<br />
+    <i>[<code>A=4</code>] <code>op</code></i> {vC, vD, vE, vF}, meth@BBBB, proto@HHHH<br />
+    <i>[<code>A=3</code>] <code>op</code></i> {vC, vD, vE}, meth@BBBB, proto@HHHH<br />
+    <i>[<code>A=2</code>] <code>op</code></i> {vC, vD}, meth@BBBB, proto@HHHH<br />
+    <i>[<code>A=1</code>] <code>op</code></i> {vC}, meth@BBBB, proto@HHHH
+  </td>
+  <td>invoke-polymorphic
+  </td>
+</tr>
+<tr>
+  <td>AA|<i>op</i> BBBB CCCC HHHH
+  </td><td>4rcc</td>
+  <td>
+    <code>op&gt;</code> {vCCCC .. vNNNN}, meth@BBBB, proto@HHHH
+    <p><i>其中 <code>NNNN = CCCC+AA-1</code>，即 <code>A</code> 确定计数 <code>0..255</code>，<code>C</code> 确定第一个寄存器</i></p>
+  </td>
+  <td>invoke-polymorphic/range
+  </td>
+</tr>
+<tr>
+  <td>AA|<i>op</i> BBBB<sub>lo</sub> BBBB BBBB BBBB<sub>hi</sub></td>
+  <td>51l</td>
+  <td><i><code>op</code></i> vAA, #+BBBBBBBBBBBBBBBB</td>
+  <td>const-wide</td>
+</tr>
+</tbody>
+</table>
+
+</body></html>

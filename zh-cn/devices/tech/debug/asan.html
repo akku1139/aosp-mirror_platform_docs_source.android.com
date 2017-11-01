@@ -1,0 +1,172 @@
+<html devsite><head>
+    <title>AddressSanitizer</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>AddressSanitizer (ASan) 是一种基于编译器的快速检测工具，用于检测原生代码中的内存错误。它与 Valgrind（Memcheck 工具）相差无几，不同之处在于，ASan：</p>
+
+<ul>
+  <li>+ 检测堆栈和全局对象是否有溢出</li><li>- 不检测未初始化的读取和内存泄露</li><li>+ 速度更快（Valgrind 的 20-100x 与其相比，慢 2-3 倍）</li><li>+ 内存占用空间较少</li></ul>
+
+<p>本文档介绍了如何使用 AddressSanitizer 构建和运行 Android 平台的组成部分。如果您希望利用 AddressSanitizer 构建独立的（即 SDK/NDK）应用，请改为参阅 <a href="https://github.com/google/sanitizers/wiki/AddressSanitizerOnAndroid">AddressSanitizerOnAndroid</a> 公共项目网站。</p>
+
+<p>AddressSanitizer 包括一个编译器 (<code>external/clang</code>) 和一个运行时库 (<code>external/compiler-rt/lib/asan</code>)。</p>
+
+<p class="note"><strong>注意</strong>：请立即使用当前的 master 分支获取对 <a href="#sanitize_target">SANITIZE_TARGET</a> 功能的访问权限，并获取利用 AddressSanitizer 构建整个 Android 平台的能力。否则，您将只能使用 <code>LOCAL_SANITIZE</code>。</p>
+
+<h2 id="building_with_clang">使用 Clang 构建</h2>
+
+<p>要构建使用 ASan 进行测试的二进制文件，第一步是要确保您的代码是使用 Clang 进行构建的。默认情况下，系统会在 master 分支上完成这一步骤，因此您无需执行任何操作。如果您认为自己要测试的模块是使用 GCC 构建的，则可以向构建规则中添加 <code>LOCAL_CLANG:=true</code>，从而切换至 Clang。Clang 可以发现 GCC 遗漏的代码错误。</p>
+
+<h2 id="building_executables_with_addresssanitizer">使用 AddressSanitizer 构建可执行文件</h2>
+
+<p>将 <code>LOCAL_SANITIZE:=address</code> 添加到可执行文件的构建规则中。</p>
+
+<pre>
+LOCAL_SANITIZE:=address
+</pre>
+
+<p>检测到错误时，ASan 会向标准输出文件和 <code>logcat</code> 发送一份详细报告，然后让相应进程崩溃。</p>
+
+<h2 id="building_shared_libraries_with_addresssanitizer">使用 AddressSanitizer 构建共享库</h2>
+
+<p>根据 ASan 的工作原理，未采用 ASan 构建的可执行文件将无法使用采用 ASan 构建的库。</p>
+
+<p class="note">注意：如果 ASan 库加载到错误的进程，则在运行时，您会看到开头为 <code>_asan</code> 或 <code>_sanitizer</code> 的未解决错误符号信息。</p>
+
+<p>要清理多个可执行文件（并非所有这些可执行文件都是使用 ASan 构建的）使用的共享库，您需要获取该库的 2 个副本。要获取副本，建议您针对相应的模块向 <code>Android.mk</code> 中添加以下内容：</p>
+
+<pre>
+LOCAL_SANITIZE:=address
+LOCAL_MODULE_RELATIVE_PATH := asan
+</pre>
+
+<p>这样一来，系统会将库放置到 <code>/system/lib/asan</code>（而非 <code>/system/lib</code>）中。然后，使用以下方法运行您的可执行文件：<code>LD_LIBRARY_PATH=/system/lib/asan</code></p>
+
+<p>对于系统守护程序，将以下内容添加到 <code>/init.rc</code> 或 <code>/init.$device$.rc</code> 的相应部分。</p>
+
+<pre>
+setenv LD_LIBRARY_PATH /system/lib/asan
+</pre>
+
+<p class="warning"><strong>警告</strong>：<code>LOCAL_MODULE_RELATIVE_PATH</code> 设置会将您的库<strong>移动</strong>至 <code>/system/lib/asan</code>，这意味着，如果从头开始重写并重新构建，则会导致库从 <code>/system/lib</code> 中缺失，且很可能会产生无法启动的映像。这是当前构建系统存在的一个令人遗憾的限制。不要重写；而是进行 <code>make -j $N</code> 和 <code>adb
+sync</code>。</p>
+
+<p>当通过读取 <code>/proc/$PID/maps</code> 显示相应进程时，验证其使用的是否为来自 <code>/system/lib/asan</code> 的库。如果不是，您可能需要停用 SELinux，如下所示：</p>
+
+<pre>
+$ adb root
+$ adb shell setenforce 0
+# restart the process with adb shell kill $PID
+# if it is a system service, or may be adb shell stop; adb shell start.
+</pre>
+
+<h2 id="better_stack_traces">更出色的堆栈跟踪</h2>
+
+<p>AddressSanitizer 使用基于框架指针的快速展开程序，针对程序中的每个内存分配和取消分配事件记录堆栈跟踪。大部分 Android 平台都未使用框架指针进行构建。因此，您通常仅会获得 1 个或 2 个有意义的框架。要解决此问题，请使用 ASan（推荐）或以下方法重新构建库：</p>
+
+<pre>
+LOCAL_CFLAGS:=-fno-omit-frame-pointer
+LOCAL_ARM_MODE:=arm
+</pre>
+
+<p>或者在进程环境中设置 <code>ASAN_OPTIONS=fast_unwind_on_malloc=0</code>。后者可能对 CPU 要求极高，具体取决于负载。</p>
+
+<h2 id="symbolization">符号化</h2>
+
+<p>最初，ASan 报告中包含对二进制文件和共享库中的偏移量的引用。您可以通过以下两种方法获取源文件和行信息：</p>
+
+<ul>
+  <li>确保 <code>/system/bin</code> 中有 llvm-symbolizer 二进制文件。Llvm-symbolizer 在 <code>third_party/llvm/tools/llvm-symbolizer</code> 的源文件中构建 </li><li>通过 <code>external/compiler-rt/lib/asan/scripts/symbolize.py</code> 脚本过滤报告。
+</li></ul>
+
+<p>由于可以使用主机上的符号化库，因此第二种方法可以提供更多数据（即 file:line 位置）。</p>
+
+<h2 id="addresssanitizer_in_the_apps">应用中的 AddressSanitizer</h2>
+
+<p>AddressSanitizer 无法了解 Java 代码的情况，但可以检测 JNI 库中的错误。为此，您需要使用 ASan 构建可执行文件，在此情况下是 <code>/system/bin/app_process(<em>32|64</em></code>)。这样一来，便可以同时启用设备上所有应用中的 ASan，这会给设备带来一点压力，但 2GB RAM 设备可以从容处理任何情况。</p>
+
+<p>向 <code>frameworks/base/cmds/app_process</code> 中的 app_process 构建规则添加常规 <code>LOCAL_SANITIZE:=address</code>。暂时忽略同一文件中的 <code>app_process__asan</code> 目标（如果当您阅读该文档时仍存在于文件中）。修改 <code>system/core/rootdir/init.zygote(<em>32|64</em>).rc</code> 中的 Zygote 记录，以添加以下行：</p>
+
+<pre>
+setenv LD_LIBRARY_PATH /system/lib/asan:/system/lib
+setenv ASAN_OPTIONS
+allow_user_segv_handler=true
+</pre>
+
+<p>构建，进行 adb 同步，fastboot 刷写启动，然后重新启动。</p>
+
+<h2 id="using_the_wrap_property">使用 wrap 属性</h2>
+
+<p>上一部分中的方法将 AddressSanitizer 放置到了系统的每个应用中（实际上是放置到了 Zygote 进程的每个子级元素中）。可以仅运行一个（或几个）具有 ASan 的应用，从而占用部分内存空间，使应用启动速度变慢。</p>
+
+<p>为实现这一目标，您可以借助“wrap”属性（用于在 Valgrind 下运行应用的同一属性）启动应用。下面是在 ASan 下运行 Gmail 应用的示例：</p>
+
+<pre>
+$ adb root
+$ adb shell setenforce 0  # disable SELinux
+$ adb shell setprop wrap.com.google.android.gm "asanwrapper"
+</pre>
+
+<p>在这种情况下，asanwrapper 会将 <code>/system/bin/app_process</code> 重写至 <code>/system/bin/asan/app_process</code>（使用 AddressSanitizer 构建）。此外，它还会在动态库搜索路径的开头处添加 <code>/system/lib/asan</code>。这样一来，借助 asanwrapper 运行应用时，与 <code>/system/lib</code> 中的普通库相比，系统更倾向于使用 <code>/system/lib/asan</code> 中用 ASan 进行测试的库。</p>
+
+<p>同样，如果发现错误，应用会崩溃，且系统会将报告记录到日志中。</p>
+
+<h2 id="sanitize_target">SANITIZE_TARGET</h2>
+
+<p>master 分支支持立即使用 AddressSanitizer 构建整个 Android 平台。</p>
+
+<p>在同一构建树中运行以下命令。</p>
+
+<pre>
+$ make -j42
+$ SANITIZE_TARGET=address make -j42
+</pre>
+
+<p>在此模式下，<code>userdata.img</code> 中包含其他库，必须也刷写到设备上。请使用以下命令行：</p>
+
+<pre>
+$ fastboot flash userdata &amp;&amp; fastboot flashall
+</pre>
+
+<p>写入时，现今的 Nexus 和 Pixel 设备会启动到该模式中的界面。</p>
+
+<p>其工作原理是构建两组共享库：<code>/system/lib</code> 中的常规库（第一次 make 调用），<code>/data/asan/lib</code> 中使用 ASan 进行测试的库（第二次 make 调用）。第二次构建中的可执行文件会覆盖第一次构建中的可执行文件。通过使用 PT_INTERP 中的“/system/bin/linker_asan”，使用 ASan 进行测试的可执行文件会获得一个不同的库搜索路径，该路径会在 <code>/system/lib</code> 前添加 <code>/data/asan/lib</code>。</p>
+
+<p>如果 <code>$SANITIZE_TARGET</code> 值已更改，则构建系统会重写中间对象目录。这样一来，系统便会强制重新构建所有目标，同时保留 <code>/system/lib</code> 下已安装的二进制文件。</p>
+
+<p>以下目标不能使用 ASan 进行构建：</p>
+
+<ul>
+  <li>静态关联的可执行文件。
+  </li><li><code>LOCAL_CLANG:=false</code> 目标</li><li>不会针对 <code>SANITIZE_TARGET=address</code> 进行 ASan 操作的 <code>LOCAL_SANITIZE:=false</code>
+</li></ul>
+
+<p>在 SANITIZE_TARGET 构建中，系统会跳过此类可执行文件，且会将第一次 make 调用中的版本留在 <code>/system/bin</code> 中。</p>
+
+<p>此类库只是未使用 ASan 进行构建，但它们仍然可以包含一些来自自己依赖的静态库的 ASan 代码。</p>
+
+<h2 id="supporting_documentation">支持文档</h2>
+
+<p><a href="https://github.com/google/sanitizers/wiki/AddressSanitizerOnAndroid">AddressSanitizerOnAndroid</a> 公共项目网站</p>
+<p><a href="https://www.chromium.org/developers/testing/addresssanitizer">AddressSanitizer 和 Chromium</a></p>
+<p><a href="https://github.com/google/sanitizers">其他 Google 清理程序</a></p>
+
+</body></html>

@@ -1,0 +1,262 @@
+<html devsite><head>
+    <title>HDMI-CEC 控制服务</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<h2 id="intro">简介</h2>
+
+<p>高清多媒体接口消费类电子产品控制 (HDMI-CEC) 标准允许多媒体消费类商品相互通信和交换信息。HDMI-CEC 支持很多功能（如遥控直通和系统音频控制），但最受欢迎的功能之一是单键播放。单键播放功能可以让媒体来源设备打开电视并自动切换其输入端口，因此您无需寻找电视遥控器，即可从 Chromecast 切换到蓝光播放器。</p>
+
+<p>大多数制造商都已采用 HDMI-CEC，因此它们的设备能够与其他公司的设备配合使用。不过，由于各个制造商实现 HDMI-CEC 标准的方式不同，因此设备之间并不总是可以实现顺畅协作，而且支持的功能也因设备而异。由于存在这种差异，消费者并不能放心地假定两个声称支持 CEC 的产品是完全兼容的。</p>
+
+<h2 id="solution">解决方法</h2>
+
+<p>随着 Android 电视输入框架 (TIF) 的推出，HDMI-CEC 可以将所有连接的设备汇集在一起，并最大限度地减少兼容性问题。Android 已经创建了一项名为 <code>HdmiControlService</code> 的系统服务来帮助缓解此类难题。</p>
+
+<p>通过提供 <code>HdmiControlService</code> 作为 Android 生态系统的一部分，Android 希望提供：</p>
+
+<ul>
+  <li>一个面向所有制造商的 HDMI-CEC 标准实现方案，以降低设备的不兼容性。以前，制造商必须开发自己的 HDMI-CEC 实现方案或使用第三方解决方案。</li>
+  <li>一项针对市场上已有的众多 HDMI-CEC 设备进行测试后反响良好的服务。Android 对从产品中发现的兼容性问题进行了认真而细致的研究，并从深谙该技术的设备实现人员处收集了实用的建议。CEC 服务旨在保持标准与对该标准做出的修改之间的良好平衡，以便它可以用于用户已经在使用的产品。</li>
+</ul>
+
+<h2 id="overall_design">整体设计</h2>
+
+<p><code>HdmiControlService</code> 与系统的其余部分（电视输入框架 (TIF)、音频服务和电源服务等）连接，以实现该标准指定的各种功能。</p>
+
+<p>以下示意图描绘了从自定义 CEC 控制器到更简单的 HDMI-CEC 硬件抽象层 (HAL) 实现的转换。</p>
+
+<img src="images/HDMI_Control_Service.png" alt="展示 HDMI-CEC 在 Android 5.0 之前和之后的版本中的实现方式的示意图"/>
+
+<p class="img-caption"><strong>图 1.</strong>  HDMI 控制服务替换</p>
+
+<h2 id="implementation">实现</h2>
+
+<p>请参阅以下示意图，详细了解 HDMI 控制服务。</p>
+
+<img src="images/HDMI_Control_Service_Flow.png" alt="展示 HDMI 控制服务详情的图片"/>
+
+<p class="img-caption"><strong>图 2.</strong>  HDMI 控制服务详情</p>
+
+<p>以下是正确的 Android HDMI-CEC 实现的关键因素：</p>
+
+<ul>
+  <li>管理器类 <code>HdmiControlManager</code> 向特权应用提供 API。TV Input Manager 服务和音频服务等系统服务可以直接获取该服务。</li>
+  <li>该服务旨在允许托管多种类型的逻辑设备。</li>
+  <li>HDMI-CEC 通过硬件抽象层 (HAL) 与硬件连接，以简化对设备之间协议和信号传输机制的差异的处理。设备制造商可以利用 HAL 定义来实现 HAL 层。</li>
+</ul>
+
+<p class="note"><strong>注意</strong>：设备制造商应将以下行添加到 <code>device.mk</code> 中的 <code>PRODUCT_COPY_FILES</code> 内。</p>
+
+<pre>
+PRODUCT_COPY_FILES += \
+frameworks/native/data/etc/android.hardware.hdmi.cec.xml:system/etc/permissions/android.hardware.hdmi.cec.xml
+</pre>
+
+<p>设备制造商需要在 <code>device.mk</code> 中设置 <code>ro.hdmi.device_type</code> 以使 <code>HdmiControlService</code> 正常工作，具体取决于您的设备是 HDMI 接收设备还是 HDMI 源设备。</p>
+
+<p>对于机顶盒 (OTT) 等 HDMI 源设备，请采用如下设置：</p>
+
+<pre>
+PRODUCT_PROPERTY_OVERRIDES += ro.hdmi.device_type=<strong>4</strong>
+</pre>
+
+<p>对于平板电视等 HDMI 接收设备，请采用如下设置：</p>
+
+<pre>
+PRODUCT_PROPERTY_OVERRIDES += ro.hdmi.device_type=<strong>0</strong></pre>
+<p></p>
+
+<ul>
+  <li>设备制造商提供的专有 CEC 控制器不能与 <code>HdmiControlService</code> 同时使用。必须将其停用或移除。在需要处理特定于制造商的命令时通常会用到此类控制器。应通过对该服务进行扩展/修改，将特定于制造商的命令处理程序合并到该服务中。上述工作由设备制造商负责，且并非由 Android 指定。请注意，针对特定于制造商的命令对该服务做出的任何更改均不得干扰标准命令的处理方式，否则将导致设备与 Android 不兼容。</li>
+  <li>对 HDMI-CEC 服务的访问受 <code>SignatureOrSystem</code> 保护级别的保护。只有系统组件或 <code>/system/priv-app</code> 中的应用才能访问该服务。这是为了防止该服务被恶意应用滥用。</li>
+</ul>
+
+<p>Android 支持类型 <code>TV/Display(0)</code> 和 <code>playback device(4)</code>，它们可向显示器发出单键播放命令。目前不支持其他类型（调谐器和录制器）。</p>
+
+<h2 id="hdmi-cec_hal_definition">HDMI-CEC HAL 定义</h2>
+
+<p>为使该服务发挥作用，必须按照 Android 提供的定义来实现 HDMI-CEC HAL。HDMI-CEC HAL 会抽象化硬件级别的差异，并通过 API 将原始操作（分配/读取/写入等）提供给上层。</p>
+
+<p>设备制造商必须支持的 API 调用如下：</p>
+
+<h3 id="tx_rx_events">TX/RX/事件</h3>
+<ul>
+  <li><code>send_message</code></li>
+  <li><code>register_event_callback</code></li>
+</ul>
+
+<h3 id="info">信息</h3>
+<ul>
+  <li><code>get_physical_address</code></li>
+  <li><code>get_version</code></li>
+  <li><code>get_vendor_id</code></li>
+  <li><code>get_port_info</code></li>
+</ul>
+
+<h3 id="logical_address">逻辑地址</h3>
+<ul>
+  <li><code>add_logical_address</code></li>
+  <li><code>clear_logical_address</code></li>
+</ul>
+
+<h3 id="status">状态</h3>
+<ul>
+  <li><code>is_connected set_option</code></li>
+  <li><code>set_audio_return_channel</code></li>
+</ul>
+
+<p>以下是关于 API 的 HDMI-CEC HAL 定义的摘录：</p>
+
+<pre>
+#ifndef ANDROID_INCLUDE_HARDWARE_HDMI_CEC_H
+#define ANDROID_INCLUDE_HARDWARE_HDMI_CEC_H
+
+...
+
+/*
+ * HDMI-CEC HAL interface definition.
+ */
+typedef struct hdmi_cec_device {
+    /**
+     * Common methods of the HDMI-CEC device.  This *must* be the first member of
+     * hdmi_cec_device as users of this structure will cast a hw_device_t to hdmi_cec_device
+     * pointer in contexts where it's known the hw_device_t references a hdmi_cec_device.
+     */
+    struct hw_device_t common;
+
+    /*
+     * (*add_logical_address)() passes the logical address that will be used
+     * in this system.
+     *
+     * HAL may use it to configure the hardware so that the CEC commands addressed
+     * the given logical address can be filtered in. This method can be called
+     * as many times as necessary in order to support multiple logical devices.
+     * addr should be in the range of valid logical addresses for the call
+     * to succeed.
+     *
+     * Returns 0 on success or -errno on error.
+     */
+    int (*add_logical_address)(const struct hdmi_cec_device* dev, cec_logical_address_t addr);
+
+    /*
+     * (*clear_logical_address)() tells HAL to reset all the logical addresses.
+     *
+     * It is used when the system doesn't need to process CEC command any more,
+     * hence to tell HAL to stop receiving commands from the CEC bus, and change
+     * the state back to the beginning.
+     */
+    void (*clear_logical_address)(const struct hdmi_cec_device* dev);
+
+    /*
+     * (*get_physical_address)() returns the CEC physical address. The
+     * address is written to addr.
+     *
+     * The physical address depends on the topology of the network formed
+     * by connected HDMI devices. It is therefore likely to change if the cable
+     * is plugged off and on again. It is advised to call get_physical_address
+     * to get the updated address when hot plug event takes place.
+     *
+     * Returns 0 on success or -errno on error.
+     */
+    int (*get_physical_address)(const struct hdmi_cec_device* dev, uint16_t* addr);
+
+    /*
+     * (*send_message)() transmits HDMI-CEC message to other HDMI device.
+     *
+     * The method should be designed to return in a certain amount of time not
+     * hanging forever, which can happen if CEC signal line is pulled low for
+     * some reason. HAL implementation should take the situation into account
+     * so as not to wait forever for the message to get sent out.
+     *
+     * It should try retransmission at least once as specified in the standard.
+     *
+     * Returns error code. See HDMI_RESULT_SUCCESS, HDMI_RESULT_NACK, and
+     * HDMI_RESULT_BUSY.
+     */
+    int (*send_message)(const struct hdmi_cec_device* dev, const cec_message_t*);
+
+    /*
+     * (*register_event_callback)() registers a callback that HDMI-CEC HAL
+     * can later use for incoming CEC messages or internal HDMI events.
+     * When calling from C++, use the argument arg to pass the calling object.
+     * It will be passed back when the callback is invoked so that the context
+     * can be retrieved.
+     */
+    void (*register_event_callback)(const struct hdmi_cec_device* dev,
+            event_callback_t callback, void* arg);
+
+    /*
+     * (*get_version)() returns the CEC version supported by underlying hardware.
+     */
+    void (*get_version)(const struct hdmi_cec_device* dev, int* version);
+
+    /*
+     * (*get_vendor_id)() returns the identifier of the vendor. It is
+     * the 24-bit unique company ID obtained from the IEEE Registration
+     * Authority Committee (RAC).
+     */
+    void (*get_vendor_id)(const struct hdmi_cec_device* dev, uint32_t* vendor_id);
+
+    /*
+     * (*get_port_info)() returns the hdmi port information of underlying hardware.
+     * info is the list of HDMI port information, and 'total' is the number of
+     * HDMI ports in the system.
+     */
+    void (*get_port_info)(const struct hdmi_cec_device* dev,
+            struct hdmi_port_info* list[], int* total);
+
+    /*
+     * (*set_option)() passes flags controlling the way HDMI-CEC service works down
+     * to HAL implementation. Those flags will be used in case the feature needs
+     * update in HAL itself, firmware or microcontroller.
+     */
+    void (*set_option)(const struct hdmi_cec_device* dev, int flag, int value);
+
+    /*
+     * (*set_audio_return_channel)() configures ARC circuit in the hardware logic
+     * to start or stop the feature. Flag can be either 1 to start the feature
+     * or 0 to stop it.
+     *
+     * Returns 0 on success or -errno on error.
+     */
+    void (*set_audio_return_channel)(const struct hdmi_cec_device* dev, int flag);
+
+    /*
+     * (*is_connected)() returns the connection status of the specified port.
+     * Returns HDMI_CONNECTED if a device is connected, otherwise HDMI_NOT_CONNECTED.
+     * The HAL should watch for +5V power signal to determine the status.
+     */
+    int (*is_connected)(const struct hdmi_cec_device* dev, int port);
+
+    /* Reserved for future use to maximum 16 functions. Must be NULL. */
+    void* reserved[16 - 11];
+} hdmi_cec_device_t;
+
+#endif /* ANDROID_INCLUDE_HARDWARE_HDMI_CEC_H */
+</pre>
+
+<p>借助 API，该服务可以利用硬件资源来发送/接收 HDMI-CEC 命令、配置必要的设置，并（可选）与底层平台（将在 Android 系统处于待机模式时负责 CEC 控制）上的微处理器进行通信。</p>
+
+<h2 id="testing">测试</h2>
+
+<p>设备制造商必须使用自己的工具测试 HDMI-CEC HAL 的 API，以确保它们可以提供预期的功能。</p>
+
+</body></html>

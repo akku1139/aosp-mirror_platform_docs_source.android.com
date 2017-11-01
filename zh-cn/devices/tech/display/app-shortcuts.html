@@ -1,0 +1,133 @@
+<html devsite><head>
+    <title>应用快捷方式</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>
+Android 7.1.1 版本允许开发人员定义应用内特定操作的快捷方式，这些快捷方式可以显示在启动器中。这些<a href="https://developer.android.com/guide/topics/ui/shortcuts.html">应用快捷方式</a>可让用户在应用中快速启动常用或推荐的任务。
+</p>
+
+<h2 id="overview">概览</h2>
+
+<p>
+每个快捷方式都会引用一个 intent，这些 intent 在用户选择相应快捷方式时会在应用中启动特定操作。可作为应用快捷方式的操作示例包括：</p>
+
+<ul>
+  <li>在地图应用中将用户导航到特定位置
+  </li><li>在通讯应用中向朋友发送消息
+  </li><li>在媒体应用中播放下一集电视节目
+  </li><li>在游戏应用中加载上一个存档点</li></ul>
+
+<h2 id="examples-and-source">示例和源代码</h2>
+
+<p>您可以在以下文件中找到此功能的主要实现方式：</p>
+
+<pre>frameworks/base/services/core/java/com/android/server/policy/ShortcutManager.java
+frameworks/base/services/core/java/com/android/server/pm/ShortcutPackage.java
+frameworks/base/services/core/java/com/android/server/pm/ShortcutUser.java
+frameworks/base/services/core/java/com/android/server/pm/ShortcutPackageInfo.java
+frameworks/base/services/core/java/com/android/server/pm/ShortcutLauncher.java
+frameworks/base/services/core/java/com/android/server/pm/ShortcutParser.java
+frameworks/base/services/core/java/com/android/server/pm/ShortcutService.java
+frameworks/base/services/core/java/com/android/server/pm/LauncherAppsService.java
+frameworks/base/services/core/java/com/android/server/pm/ShortcutPackageItem.java
+frameworks/base/core/java/com/android/server/backup/ShortcutBackupHelper.java
+frameworks/base/core/java/android/content/pm/ShortcutManager.java
+frameworks/base/core/java/android/content/pm/ShortcutServiceInternal.java
+frameworks/base/core/java/android/content/pm/ShortcutInfo.java
+frameworks/base/core/java/android/content/pm/LauncherApps.java
+</pre>
+
+<p>
+以下文件可提供支持功能（在 <code>ShortcutManager.java</code> 中称为隐藏 API）：</p>
+
+<pre>
+packages/apps/Settings/src/com/android/settings/DevelopmentSettings.java
+frameworks/base/packages/SystemUI/src/com/android/systemui/statusbar/policy/RemoteInputView.java
+</pre>
+
+<p>
+另外，Android 开放源代码项目启动器版本 3 支持以下快捷方式：
+</p>
+
+<pre>
+packages/apps/Launcher3/
+</pre>
+
+<p>
+最后，有关公共 Javadoc，请查看以下文件：
+</p>
+
+<pre>frameworks/base/core/java/android/content/pm/ShortcutManager.java
+frameworks/base/core/java/android/content/pm/ShortcutInfo.java
+frameworks/base/core/java/android/content/pm/LauncherApps.java
+</pre>
+
+<h2 id="implementation">实现</h2>
+
+<p>
+AOSP Launcher3 已经支持使用快捷方式。如果合作伙伴有自己的启动器，该启动器也应该支持使用快捷方式。
+</p>
+
+<ul>
+  <li>当用户在应用图标上执行某个手势（例如长按）时，启动器应显示与每个启动器活动图标相关联的动态和静态快捷方式。<br />
+快捷方式排序顺序在“快捷方式显示顺序”部分的 ShorctutManager Javadoc 中进行定义。例如，首先显示静态快捷方式，然后显示动态快捷方式。各组内的快捷方式按升序排列。
+  </li><li>用户应能够拖动每个动态/静态快捷方式，并将其“固定”到主屏幕。
+  </li><li>应备份和还原已经固定的快捷方式。（有关详细信息，请参阅 ShortcutManager 的 javadoc）</li><li>在通知中进行“内嵌回复”应在内部调用 ShortcutManager.onApplicationActive。
+</li></ul>
+
+<p>
+另外，一些 Google 移动服务 (GMS) 应用也有快捷方式。OEM 启动器应该显示这些应用的快捷方式，最好还能支持“<a href="https://support.google.com/nexus/answer/6118421">固定</a>”功能（或创建快捷方式图标）。
+</p>
+
+<p>
+要详细了解如何通过与框架交互以执行上述操作，请参阅 Launcher3 源代码。
+</p>
+
+<h2 id="validation">验证</h2>
+
+<p>
+使用以下 Android 兼容性测试套件 (CTS) 测试来确保您的功能（ShortcutManager 和 LauncherApps）版本可以正常运行：</p>
+
+<pre>
+cts/tests/tests/shortcutmanager/
+cts/hostsidetests/shortcuts/
+</pre>
+
+<p>
+请在以下位置查找用于实现 AOSP 的单元测试：</p>
+
+<pre>frameworks/base/services/tests/servicestests/
+</pre>
+
+<p>
+其中包括：</p>
+
+<pre>src/com/android/server/pm/ShortcutManagerTest*.java
+</pre>
+<p>
+您还可以针对快捷方式管理器采用 CTS Verifier 测试：
+</p>
+
+<pre>
+cts/apps/CtsVerifier/src/com/android/cts/verifier/notifications/ShortcutThrottlingResetActivity.java
+</pre>
+
+</body></html>

@@ -1,0 +1,132 @@
+<html devsite><head>
+    <title>测量音频延迟</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>本页面介绍了测量输入和输出延迟的常用方法。
+</p>
+
+<h2 id="measuringOutput">测量输出延迟</h2>
+
+<p>有多种技术可用于测量输出延迟，这些技术的准确度和运行难易程度各不相同，具体情况如下所述。此外，要查看示例测试环境，请参阅<a href="testing_circuit.html">测试电路</a>。
+</p>
+
+<h3 id="ledTest">LED 和示波器测试</h3>
+<p>该测试测量与设备的 LED 指示灯相关的延迟。如果您的正式版设备未安装 LED，您可以将 LED 安装在原型设备上。为了提高在电路外露的原型设备上测试时的准确度，请直接将一个示波器探头连接到 LED，以绕开光传感器，从而避免光传感器产生的延迟。
+  </p>
+
+<p>如果您无法在正式版或原型设备上安装 LED，请尝试以下解决方法：</p>
+
+<ul>
+  <li>出于同一目的使用通用输入/输出 (GPIO) 引脚。</li>
+  <li>使用 JTAG 或其他调试端口。</li>
+  <li>使用屏幕背光。这种方法可能存在风险，因为背光可能具有无法忽略的延迟，并且可能导致延迟读数不准确。
+  </li>
+</ul>
+
+<p>要进行该测试，请执行以下操作：</p>
+
+<ol>
+  <li>运行一个定期使 LED 闪烁并同时输出音频的应用。
+  <p class="note"><strong>注意</strong>：要获得实用的结果，请务必在测试应用中使用正确的 API，以便运用快速音频输出路径。有关背景信息，请参阅<a href="latency_design.html">降低延迟的设计</a>。</p>
+  </li>
+  <li>在 LED 旁边放置一个光传感器。</li>
+  <li>将双通道示波器的探头连接到有线耳机插孔（线路输出）和光传感器。</li>
+  <li>使用示波器测量观察的线路输出信号与光传感器信号之间的时间差。</li>
+</ol>
+
+  <p>假设 LED 延迟和光传感器延迟均为零，上述时间差就是近似的音频输出延迟。通常情况下，LED 和光传感器各有大约 1 毫秒或更短的相对较低延迟，此延迟低到可以忽略。</p>
+
+<h2 id="measuringRoundTrip">测量往返延迟</h2>
+
+<p>
+  <a href="http://en.wikipedia.org/wiki/Round-trip_delay_time">往返延迟</a>是输出延迟和输入延迟的总和。
+</p>
+
+<h3 id="larsenTest">拉尔森测试</h3>
+<p>最简单的延迟测试之一是音频反馈（拉尔森效应）测试。该测试通过测定脉冲响应循环的时间来粗略衡量合并的输出和输入延迟。由于该测试的性质，它本身对于进行详细的分析并不是很有用，但对于校准其他测试以及确定上限来说会比较实用。</p>
+
+<p>要进行该测试，请执行以下操作：</p>
+<ol>
+  <li>运行从麦克风捕获音频并立即通过扬声器播放捕获的数据的应用。</li>
+  <li>在外部发出一个声音，例如在麦克风旁边轻击铅笔。该噪音会生成一个反馈循环。或者，测试人员也可以使用软件将脉冲注入循环中。</li>
+  <li>测量反馈脉冲之间的时间间隔，以得出输出延迟、输入延迟和应用开销的总和。</li>
+</ol>
+
+  <p>该方法不会分解组件时间，在输出延迟和输入延迟彼此独立的情况下，这一点非常重要。因此，单独测量精确的输出延迟或输入延迟值时，不建议使用该方法，但在确定粗略的估算值时，该方法可能有用。</p>
+
+  <p>设备上的扬声器的输出延迟可能明显高于耳机连接器的输出延迟。这是因为扬声器有校正和保护机制。
+  </p>
+
+<p>我们已经在 <a href="https://android.googlesource.com/platform/frameworks/wilhelm/+/master/tests/examples/slesTestFeedback.cpp">slesTestFeedback.cpp</a> 中发布了一个示例实现。它是一个命令行应用，使用平台构建环境构建而成；但是对其他环境来说，直接采用相关代码也应该很简单。此外，您还需要 <code>audio_utils</code> 库中的<a href="avoiding_pi.html#nonBlockingAlgorithms">非阻塞</a> FIFO 代码。
+</p>
+
+<h3 id="loopback">音频环回软件狗</h3>
+
+<p><a href="loopback.html">Dr. Rick O'Rang 音频环回软件狗</a>可用于测量耳机连接器的往返延迟，非常方便。下图演示了向循环中注入一次脉冲然后使反馈循环振荡的结果。振荡的周期就是往返延迟。此处并未指定具体设备、软件版本和测试条件。因此，不应对显示的结果进行外推。
+</p>
+
+<img src="images/round_trip.png" alt="往返测量" id="figure1"/>
+<p class="img-caption">
+  <strong>图 1.</strong>  往返测量</p>
+
+<p>您可能需要拔出 USB 数据线以减少噪音，并调整音量以获得稳定的振荡。
+</p>
+
+<h2 id="measuringInput">测量输入延迟</h2>
+
+<p>与输出延迟相比，输入延迟的测量难度较大。以下测试方案可能有助于测量此类延迟。
+</p>
+
+<p>一种方案是先使用 LED 和示波器方法确定输出延迟，然后使用音频反馈（拉尔森）测试来确定输出延迟和输入延迟的总和。这两个测量值之间的差值就是输入延迟。
+</p>
+
+<p>另一种方案是在原型设备上使用 GPIO 引脚。在外部，向设备提供音频信号的同时脉冲输入 GPIO 信号。运行一个应用，比较 GPIO 信号和音频数据在到达时间上的差异。
+</p>
+
+<h2 id="reducing">降低延迟</h2>
+
+<p>要实现较低的音频延迟，则在整个系统中从调度、中断处理、电源管理和设备驱动程序设计，都需要特别注意。您的目标是防止平台的任何部分阻塞 <code>SCHED_FIFO</code> 音频线程的时间超过几毫秒。通过采用这类系统性方案，您可以降低音频延迟，顺便获得更加可预测的整体性能。
+</p>
+
+ <p>通常只有在特定条件下或只有在转换时，才可以检测到音频欠载（如果确有发生）。您可以通过启动新的应用以及在各种显示之间快速滚动，尝试增加系统负载。但请注意，某些测试条件的负载过大，会超出设计目标。例如，生成错误报告会使系统负载大量增加，因而在这种情况下发生欠载可以接受。
+</p>
+
+<p>测试欠载时，请执行以下操作：</p>
+  <ul>
+  <li>在应用处理器后配置任意 DSP，以尽量避免增加延迟。</li>
+  <li>在不同的条件下运行测试，例如开启或关闭屏幕、插入或拔出 USB、开启或关闭 WLAN、开启或关闭蓝牙、开启或关闭电话和数据网络。</li>
+  <li>选择您非常熟悉的相对安静的音乐，这类音乐中的欠载比较容易听出来。</li>
+  <li>使用有线耳机，以实现更高的灵敏度。</li>
+  <li>安排休息时间，这样您不会有“耳朵疲劳”的感觉。</li>
+  </ul>
+
+<p>在您找出发生欠载的根本原因后，请减少缓冲区计数和大小，以便充分利用它。如果在分析欠载并解决欠载问题之前就急于减少缓冲区计数和大小，只会适得其反。<i></i>
+</p>
+
+<h3 id="tools">工具</h3>
+<p>
+  <code>systrace</code> 是一款出色的通用工具，用于诊断系统级别性能故障。
+</p>
+
+<p><code>dumpsys media.audio_flinger</code> 的输出中还包含一个称为“simple moving statistics”（简单的移动统计信息）的实用部分，其中包含每个混音和 I/O 周期如何随时间变化的摘要。理想情况下，所有的时间测量值都应该等于平均值或标称周期时间。如果您看到极小的最小值或极大的最大值，则表示存在问题，有可能是调度延迟过高或中断停用时间过长。输出的尾部部分特别有用，因为它突出显示了 +/- 3 标准偏差之外的变化。<i></i>
+</p>
+
+</body></html>

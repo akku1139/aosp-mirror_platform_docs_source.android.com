@@ -1,0 +1,107 @@
+<html devsite>
+  <head>
+    <title>Rescue Party</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>
+Many users heavily depend on their phones and require a working device at all
+time. However, sometimes devices end up in reboot loops, which cause users to
+file support tickets or warranty inquiries. This process is frustrating for
+users and expensive for device manufacturers and carriers.
+</p>
+<p>
+Android 8.0 includes a feature that sends out a "rescue party" when it notices
+core system components stuck in crash loops. Rescue Party then escalates through
+a series of actions to recover the device. As a last resort, Rescue Party
+reboots the device into recovery mode and prompts the user to perform a factory
+reset.
+</p>
+<p>
+These rescue features are not required by the <a href="/compatibility/android-cdd">Android
+Compatibility Definition Document</a>, but may still be useful to reduce support cases.
+</p>
+
+<h2 id="implementation">Implementation</h2>
+<p>
+Rescue Party is enabled by default in Android 8.0, and the implementation lives in
+<code>/services/core/java/com/android/server/RescueParty.java</code>.
+Rescue Party receives information about boot and crash events and starts if:
+</p>
+<ul>
+  <li>The system_server restarts more than 5 times in 5 minutes.</li>
+  <li>A persistent system app crashes more than 5 times in 30 seconds.</li>
+</ul>
+<p>
+When one of these situations is detected, Rescue Party escalates to the next
+rescue level, processes the task associated with that level, and lets the device
+proceed to see if it recovers. Each level is progressively more aggressive in
+what it clears or resets. The final level prompts the user to factory reset the
+device.
+</p>
+<p>
+No special hardware support is required to support Rescue Party. If implemented,
+a device's recovery system must respond to the
+<code>--prompt_and_wipe_data</code> command and devices must
+surface a way for users to confirm any destruction of user data before
+proceeding. The recovery system should also give the user the option of
+attempting to boot their device again.
+</p>
+<p>
+Because each rescue level can add up to 5 minutes before a device is operable
+again, device manufacturers should not add custom rescue levels. Increased time
+with an inoperable device makes users more likely to initiate a support or
+warranty inquiry instead of self-recovering their device.
+</p>
+<h2 id="validation">Validation</h2>
+<p>
+All rescue events are suppressed when the device has an active USB data
+connection because that's a strong signal that someone is debugging the device.
+</p>
+<p>
+To override this suppression, run:
+</p>
+
+
+<pre class="devsite-terminal devsite-click-to-copy">adb shell setprop persist.sys.enable_rescue 1</pre>
+<p>
+From there, you can trigger a system or UI crash loop.
+</p>
+<p>
+To trigger a low-level <code>system_server</code> crash loop, run:
+</p>
+
+
+<pre class="devsite-terminal devsite-click-to-copy">adb shell setprop debug.crash_system 1</pre>
+<p>
+To trigger a mid-level SystemUI crash loop, run:
+</p>
+
+
+<pre class="devsite-terminal devsite-click-to-copy">adb shell setprop debug.crash_sysui 1</pre>
+<p>
+Both crash loops initiate the rescue logic. All rescue operations are also
+logged to the persistent PackageManager logs stored at
+<code>/data/system/uiderrors.txt</code> for later inspection and debugging.
+These persistent logs are also included in every bug report under the "Package
+warning messages" section.
+</p>
+</body>
+</html>

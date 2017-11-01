@@ -1,0 +1,89 @@
+<html devsite><head>
+    <title>蓝牙</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<img style="float: right; margin: 0px 15px 15px 15px;" src="images/ape_fwk_hal_bluetooth.png" alt="Android 蓝牙 HAL 图标"/>
+
+<p>Android 提供了一个默认蓝牙堆栈，该堆栈具有以下两个层级：实现核心蓝牙功能的蓝牙嵌入式系统 (BTE) 以及与 Android 框架应用通信的蓝牙应用层 (BTA)。</p>
+
+<p>要充分利用 Android 5.0 中添加的<a href="http://developer.android.com/about/versions/android-5.0.html#BluetoothBroadcasting">蓝牙低功耗 API</a>，您应实现 <a href="Android-6.0-Bluetooth-HCI-Reqs.pdf">Android 6.0 蓝牙 HCI 要求</a>。该文档最初是作为 <a href="Android-5.0-Bluetooth-HCI-Reqs.pdf">Android 5.0 蓝牙 HCI 要求</a>编写而成。</p>
+
+<h2 id="architecture">架构</h2>
+<p>蓝牙系统服务通过 JNI 与蓝牙堆栈进行通信，并通过 Binder IPC 与应用通信。系统服务向开发者提供了对各种蓝牙配置文件的访问权限。下图显示了蓝牙堆栈的常规结构：</p>
+
+<img src="images/ape_fwk_bluetooth.png" alt="Android 蓝牙架构" id="figure1"/>
+<p class="img-caption">
+  <strong>图 1.</strong> 蓝牙架构</p>
+
+<dl>
+  <dt>应用框架</dt>
+  <dd>处于应用框架级别的是应用代码，它利用 <a href="http://developer.android.com/reference/android/bluetooth/package-summary.html">android.bluetooth</a> API 与蓝牙硬件进行交互。此代码在内部通过 Binder IPC 机制调用蓝牙进程。</dd>
+
+  <dt>蓝牙系统服务</dt>
+  <dd>蓝牙系统服务（位于 <code>packages/apps/Bluetooth</code> 中）被打包为 Android 应用，并在 Android 框架层实现蓝牙服务和配置文件。该应用通过 JNI 调用 HAL 层。</dd>
+
+  <dt>JNI</dt>
+  <dd>与 <a href="http://developer.android.com/reference/android/bluetooth/package-summary.html">android.bluetooth</a> 相关联的 JNI 代码位于 <code>packages/apps/Bluetooth/jni</code> 中。当发生特定蓝牙操作时（例如发现设备时），JNI 代码会调用 HAL 层并从 HAL 接收回调。</dd>
+
+  <dt>HAL</dt>
+  <dd>硬件抽象层定义了 <a href="http://developer.android.com/reference/android/bluetooth/package-summary.html">android.bluetooth</a> API 和蓝牙进程会调用的标准接口，并且您必须实现该接口才能使蓝牙硬件正常工作。蓝牙 HAL 的头文件是 <code>hardware/libhardware/include/hardware/bluetooth.h</code>。另外，请查看所有 <code>hardware/libhardware/include/hardware/bt_*.h</code> 文件。
+  </dd>
+
+    <dt>蓝牙堆栈</dt>
+  <dd>系统为您提供了默认蓝牙堆栈（位于 <code>system/bt</code> 中）。该堆栈会实现常规蓝牙 HAL，并通过扩展程序和更改配置对其进行自定义。
+  </dd>
+
+    <dt>供应商扩展程序</dt>
+  <dd>要添加自定义扩展程序和用于跟踪的 HCI 层，您可以创建一个 libbt-vendor 模块并指定这些组件。
+  </dd>
+
+  </dl>
+
+<h2 id="implementing">实现 HAL</h2>
+<p>蓝牙 HAL 位于 <code>/hardware/libhardware/include/hardware/bluetooth.h</code> 中。因此，<code>bluetooth.h</code> 文件包含蓝牙堆栈的基本接口，并且您必须实现其功能。</p>
+
+<p>特定于配置文件的文件位于同一目录中。有关详情，请参阅 <a href="/reference/hal/dir_6b11132f1a015b03f2670f21bef1d871.html">HAL 文件参考</a>。</p>
+
+<p>以下是与配置文件相关的文件的<strong>部分</strong>列表。有关<strong>完整列表</strong>，请参阅 <code>/hardware/libhardware/include/hardware/</code> 目录：</p>
+
+<ul>
+  <li><code>bt_av.h</code>：包含 A2DP 配置文件的接口定义。</li>
+  <li><code>bt_gatt.h</code>、<code>bt_gatt_client.h</code> 和 <code>bt_gatt_server.h</code>：包含 GATT 配置文件的接口定义。</li>
+  <li><code>bt_hf.h</code>：包含 HFP 配置文件的接口定义。</li>
+  <li><code>bt_hh.h</code>：包含 HID 主机配置文件的接口定义。</li>
+  <li><code>bt_hl.h</code>：包含 HDP 配置文件的接口定义。</li>
+  <li><code>bt_mce.h</code>：包含 MAP 配置文件的接口定义。</li>
+  <li><code>bt_pan.h</code>：包含 PAN 配置文件的接口定义。</li>
+  <li><code>bt_rc.h</code>：包含 AVRCP 配置文件的接口定义。</li>
+  <li><code>bt_sock.h</code>：包含 RFCOMM 套接字的接口定义。</li>
+</ul>
+
+<p>请记住，您的蓝牙实现不限于 HAL 中提供的功能和配置文件。您可以在 <code>system/bt</code> 目录中找到蓝牙堆栈中的默认实现，该堆栈实现了默认的 HAL 以及其他功能和自定义设置。</p>
+
+<h2 id="customizing">自定义原生蓝牙堆栈</h2>
+<p>如果您使用的是默认蓝牙堆栈，但想要进行一些自定义设置，则可以执行以下操作：</p>
+<ul>
+	<li>自定义蓝牙配置文件 - 如果要添加没有由 Android 提供的 HAL 接口的蓝牙配置文件，则必须提供 SDK 插件下载方式，以使配置文件可供应用开发者使用，使这些 API 在蓝牙系统-&gt;进程应用 (<code>packages/apps/Bluetooth</code>) 间可用，并将它们添加到默认堆栈 (<code>system/bt</code>)。</li>
+	<li>自定义供应商扩展程序和配置更改 - 您可以通过创建 <code>libbt-vendor</code> 模块来添加内容，例如额外的 AT 命令或特定于设备的配置更改。有关示例，请参阅 <code>/hardware/broadcom/libbt</code> 目录。</li>
+	<li>主机控制器接口 (HCI) - 您可以通过创建一个主要用于调试跟踪的 <code>libbt-hci</code> 模块来提供自己的 HCI。有关示例，请参阅 <code>external/bluetooth/hci</code> 目录。</li>
+</ul>
+
+</body></html>

@@ -1,0 +1,232 @@
+<html devsite><head>
+    <title>按键布局文件</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>按键布局文件（<code>.kl</code> 文件）将 Linux 按键代码和坐标轴代码映射到 Android 按键代码和坐标轴代码，并指定相关的策略标记。设备专属按键布局文件：</p>
+<ul>
+<li>对具有按键（包括音量、电源和耳机媒体按键等特殊按键）的内部（内置）输入设备而言是必要文件。<em></em></li>
+<li>对其他输入设备而言是可选文件，而对特殊用途的键盘和操纵杆而言则是推荐文件。<em></em><em></em></li>
+</ul>
+<p>如果没有可用的设备专属按键布局文件，则系统将改选默认文件。</p>
+
+<h2 id="location">位置</h2>
+<p>按键布局文件由 USB 供应商、产品（可能还包括版本）ID 或输入设备名称来确定位置。系统会按顺序查阅以下路径：</p>
+<ul>
+<li><code>/system/usr/keylayout/Vendor_XXXX_Product_XXXX_Version_XXXX.kl</code></li>
+<li><code>/system/usr/keylayout/Vendor_XXXX_Product_XXXX.kl</code></li>
+<li><code>/system/usr/keylayout/DEVICE_NAME.kl</code></li>
+<li><code>/data/system/devices/keylayout/Vendor_XXXX_Product_XXXX_Version_XXXX.kl</code></li>
+<li><code>/data/system/devices/keylayout/Vendor_XXXX_Product_XXXX.kl</code></li>
+<li><code>/data/system/devices/keylayout/DEVICE_NAME.kl</code></li>
+<li><code>/system/usr/keylayout/Generic.kl</code></li>
+<li><code>/data/system/devices/keylayout/Generic.kl</code></li>
+</ul>
+<p>当构建包含设备名称的文件路径时，设备名称中除“0-9”、“a-z”、“A-Z”、“-”或“_”之外的所有字符将替换为“_”。</p>
+
+<h2 id="generic-key-layout-file">常规按键布局文件</h2>
+<p>系统提供了一个特殊的内置常规按键布局文件，名为 <code>Generic.kl</code>。此按键布局旨在支持各种标准外部键盘和操纵杆。<strong>请勿修改常规按键布局！</strong></p>
+
+<h2 id="syntax">语法</h2>
+<p>按键布局文件是由按键或坐标轴声明和标记组成的纯文本文件。</p>
+
+<h3 id="key-declarations">按键声明</h3>
+<p>按键声明包含关键字 <code>key</code>（后跟一个 Linux 按键代码编号和 Android 按键代码名称），或该关键字的用途（后跟 HID 用途和 Android 按键代码名称）。HID 用途由 32 位整数表示，其中高 16 位表示 HID 用途页面，低 16 位表示 HID 用途 ID。任何一项声明都可以后跟一组由空格分隔的可选策略标记。</p>
+<pre class="devsite-click-to-copy">
+key 1     ESCAPE
+key 114   VOLUME_DOWN
+key 16    Q                 VIRTUAL
+key usage 0x0c006F          BRIGHTNESS_UP
+</pre>
+<p>可识别以下策略标记：</p>
+<ul>
+<li><code>FUNCTION</code>：按键应解读为如同也按下了 FUNCTION 键。</li>
+<li><code>GESTURE</code>：按键由用户手势（例如手掌摸触摸屏）生成。</li>
+<li><code>VIRTUAL</code>：按键是与主触摸屏相邻的虚拟软键（电容式按钮）。这会导致启用特殊的去抖动逻辑（请参阅下文）。</li>
+</ul>
+
+<h3 id="axis-declarations">坐标轴声明</h3>
+<p>每个坐标轴声明都包含关键字 <code>axis</code>，后跟一个 Linux 坐标轴代码编号和限定符，用于控制坐标轴（包括至少一个 Android 坐标轴代码名称）的行为。</p>
+
+<h4 id="basic-axes">基本坐标轴</h4>
+<p>基本坐标轴仅会将 Linux 坐标轴代码映射到 Android 坐标轴代码名称。以下声明将 <code>ABS_X</code>（由 <code>0x00</code> 表示）映射到 <code>AXIS_X</code>（由 <code>X</code> 表示）。</p>
+<pre class="devsite-click-to-copy">
+axis 0x00 X
+</pre>
+<p>在上述示例中，如果 <code>ABS_X</code> 值为 <code>5</code>，则 <code>AXIS_X</code> 设置为 <code>5</code>。</p>
+
+<h4 id="split-axes">分轴</h4>
+<p>分轴将一个 Linux 坐标轴代码映射到两个 Android 坐标轴代码名称，以便小于或大于阈值的值在映射时可以分割到两个不同的坐标轴。当设备报告的单个物理轴对两个不同的互斥逻辑轴进行编码时，此映射非常有用。</p>
+<p>当 <code>ABS_Y</code> 轴的值（由 <code>0x01</code> 表示）小于 <code>0x7f</code> 时，以下声明会将其映射到 <code>AXIS_GAS</code>；当该值大于 <code>0x7f</code> 时，则会将其映射到 <code>AXIS_BRAKE</code>。</p>
+<pre class="devsite-click-to-copy">
+axis 0x01 split 0x7f GAS BRAKE</pre>
+<p>在上述示例中，如果 <code>ABS_Y</code> 的值为 <code>0x7d</code>，则 <code>AXIS_GAS</code> 设为 <code>2</code> (<code>0x7f - 0x7d</code>)，并且 <code>AXIS_BRAKE</code> 设为 <code>0</code>。相反，如果 <code>ABS_Y</code> 的值为 <code>0x83</code>，则 <code>AXIS_GAS</code> 设为 <code>0</code>，并且 <code>AXIS_BRAKE</code> 设为 <code>4</code> (<code>0x83 - 0x7f</code>)。最后，如果 <code>ABS_Y</code> 的值等于 <code>0x7f</code> 的分值，则 <code>AXIS_GAS</code> 和 <code>AXIS_BRAKE</code> 均设为 <code>0</code>。</p>
+
+<h4 id="inverted-axes">反转坐标轴</h4>
+<p>反转坐标轴会反转坐标轴值的符号。以下声明将 <code>ABS_RZ</code>（由 <code>0x05</code> 表示）映射到 <code>AXIS_BRAKE</code>（由 <code>BRAKE</code> 表示），并通过求补来反转输出。</p>
+<pre class="devsite-click-to-copy">
+axis 0x05 invert BRAKE
+</pre>
+<p>在上述示例中，如果 <code>ABS_RZ</code> 的值为 <code>2</code>，则 <code>AXIS_BRAKE</code> 设置为 <code>-2</code>。</p>
+
+<h4 id="center-flat-position-option">中心平面位置选项</h4>
+<p>中心平面位置是坐标轴的中间位置，例如，当方向键处于其范围的正中间位置且用户未触摸它时。</p>
+<p>Linux 输入协议为输入设备驱动程序提供了一种方法来指定操纵杆坐标轴的中心平面位置，但并不是所有驱动程序都这样做，其中一些提供的值并不正确。要解决此问题，坐标轴声明可后跟 <code>flat</code> 选项，以指定该坐标轴的中心平面位置的值。</p>
+<pre class="devsite-click-to-copy">
+axis 0x03 Z flat 4096
+</pre>
+<p>在上述示例中，中心平面位置设置为 <code>4096</code>。
+</p>
+
+<h3 id="comments">注释</h3>
+<p>注释行以“#”开头，并持续到这一行的结束位置：</p>
+<pre class="devsite-click-to-copy">
+# A comment!
+</pre>
+<p>空白行会被忽略。</p>
+
+<h3 id="examples">示例</h3>
+
+<h4 id="keyboard">键盘</h4>
+<pre class="devsite-click-to-copy">
+# This is an example of a key layout file for a keyboard.
+
+key 1     ESCAPE
+key 2     1
+key 3     2
+key 4     3
+key 5     4
+key 6     5
+key 7     6
+key 8     7
+key 9     8
+key 10    9
+key 11    0
+key 12    MINUS
+key 13    EQUALS
+key 14    DEL
+
+# etc...
+</pre>
+
+<h4 id="system-controls">系统控件</h4>
+<pre class="devsite-click-to-copy">
+# This is an example of a key layout file for basic system controls,
+# such as volume and power keys which are typically implemented as GPIO pins
+# the device decodes into key presses.
+
+key 114   VOLUME_DOWN
+key 115   VOLUME_UP
+key 116   POWER
+</pre>
+
+<h4 id="capacitive-buttons">电容式按钮</h4>
+<pre class="devsite-click-to-copy">
+# This is an example of a key layout file for a touch device with capacitive buttons.
+
+key 139    MENU           VIRTUAL
+key 102    HOME           VIRTUAL
+key 158    BACK           VIRTUAL
+key 217    SEARCH         VIRTUAL
+</pre>
+
+<h4 id="headset-jack-media-controls">耳机插孔媒体控件</h4>
+<pre class="devsite-click-to-copy">
+# This is an example of a key layout file for headset mounted media controls.
+# A typical headset jack interface might have special control wires or detect known
+# resistive loads as corresponding to media functions or volume controls.
+# This file assumes that the driver decodes these signals and reports media
+# controls as key presses.
+
+key 163   MEDIA_NEXT
+key 165   MEDIA_PREVIOUS
+key 226   HEADSETHOOK
+</pre>
+
+<h4 id="joystick">操纵杆</h4>
+<pre class="devsite-click-to-copy">
+# This is an example of a key layout file for a joystick.
+
+# These are the buttons that the joystick supports, represented as keys.
+key 304   BUTTON_A
+key 305   BUTTON_B
+key 307   BUTTON_X
+key 308   BUTTON_Y
+key 310   BUTTON_L1
+key 311   BUTTON_R1
+key 314   BUTTON_SELECT
+key 315   BUTTON_START
+key 316   BUTTON_MODE
+key 317   BUTTON_THUMBL
+key 318   BUTTON_THUMBR
+
+# Left and right stick.
+# The reported value for flat is 128 in a range of -32767 to 32768, which is absurd.
+# This confuses applications that rely on the flat value because the joystick
+# actually settles in a flat range of +/- 4096 or so. We override it here.
+axis 0x00 X flat 4096
+axis 0x01 Y flat 4096
+axis 0x03 Z flat 4096
+axis 0x04 RZ flat 4096
+
+# Triggers.
+axis 0x02 LTRIGGER
+axis 0x05 RTRIGGER
+
+# Hat.
+axis 0x10 HAT_X
+axis 0x11 HAT_Y
+</pre>
+
+<h2 id="virtual-soft-keys">虚拟软键</h2>
+<p>在下列使用情形中，输入系统提供了特殊的功能来实现虚拟软键：</p>
+<ol>
+<li>如果虚拟软键以图形方式显示在屏幕上（例如在 Galaxy Nexus 上），则它们将由系统界面包中的导航栏组件实现。由于要在系统的高层中实现图形虚拟软键，因此不涉及按键布局文件，以下信息将不适用。</li>
+<li>如果虚拟软键作为属于主触摸屏一部分的扩展可触摸区域进行实现（例如在 Nexus One 上），则输入系统会使用虚拟按键映射文件将 X/Y 触摸坐标转换为 Linux 按键代码，然后使用按键布局文件将 Linux 按键代码转换为 Android 按键代码（有关虚拟按键映射文件的详细信息，请参阅<a href="touch-devices.html">触摸设备</a>）。触摸屏输入设备的按键布局文件必须指定相应的按键映射并使每个按键都包含 <code>VIRTUAL</code> 标记。</li>
+<li>如果虚拟软键作为独立于主触摸屏的电容式按钮进行实现（例如在 Nexus S 上），则内核设备驱动程序或固件负责将触摸转换为 Linux 按键代码，然后输入系统使用按键布局文件将其转换为 Android 按键代码。电容式按钮输入设备的按键布局文件必须指定相应的按键映射并使每个按键都包含 <code>VIRTUAL</code> 标记。</li>
+</ol>
+<p>如果虚拟软键位于触摸屏内或离触摸屏很近，则当用户在屏幕底部附近触摸或在屏幕上从上往下或从下往上滑动手指时，容易不小心按到按钮。为了避免出现这种情况，输入系统会应用一个短暂的去抖动，以便在最近触摸触摸屏之后的短时间内忽略虚拟软键按压（该延迟称为“虚拟键安静时间”）。<em></em></p>
+<p>要启用虚拟软键去抖动，请执行以下操作：</p>
+<ol>
+<li>为触摸屏或电容式按钮输入设备提供按键布局文件，并为每个按键设置 <code>VIRTUAL</code> 标记。
+<pre class="devsite-click-to-copy">
+key 139    MENU           VIRTUAL
+key 102    HOME           VIRTUAL
+key 158    BACK           VIRTUAL
+key 217    SEARCH         VIRTUAL
+</pre>
+</li>
+<li>在框架 <code>config.xml</code> 资源的资源叠加层中设置虚拟按键安静时间的值。
+<pre class="devsite-click-to-copy">
+&lt;!-- Specifies the amount of time to disable virtual keys after the screen
+is touched to filter out accidental virtual key presses due to swiping gestures
+or taps near the edge of the display. May be 0 to disable the feature.
+It is recommended that this value be no more than 250 ms.
+This feature should be disabled for most devices. --&gt;
+
+&lt;integer name="config_virtualKeyQuietTimeMillis"&gt;250&lt;/integer&gt;
+</pre>
+</li>
+</ol>
+
+<h2 id="validation">验证</h2>
+<p>您应使用<a href="validate-keymaps.html">验证按键映射</a>工具验证您的按键布局文件。</p>
+
+</body></html>

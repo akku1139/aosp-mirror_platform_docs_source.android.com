@@ -1,0 +1,177 @@
+<html devsite><head>
+    <title>汽车</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<img style="float: right; margin: 0px 15px 15px 15px;" src="images/ape_fwk_hal_vehicle.png" alt="Android 车载 HAL 图标"/>
+
+<p>借助各种总线拓扑，很多汽车子系统都可以实现互连以及与车载信息娱乐 (IVI) 系统的连接。不同的制造商提供的确切总线类型和协议之间有很大差异（甚至同一品牌的不同车型之间也是如此），例如控制器区域网络 (CAN) 总线、局域互联网络 (LIN) 总线、面向媒体的系统传输 (MOST) 总线以及汽车级以太网和 TCP/IP 网络（如 BroadR-Reach）。
+</p>
+<p>Android Automotive 的硬件抽象层 (HAL) 可为 Android 框架提供一致的接口，无论物理传输层如何。此车载 HAL 是开发 Android Automotive 实现的接口。</p>
+<p>系统集成商可以将特定于功能的平台 HAL 接口（如 HVAC）与特定于技术的网络接口（如 CAN 总线）连接，以实现车载 HAL 模块。典型的实现可能包括运行专有实时操作系统 (RTOS) 的专用微控制器单元 (MCU)，以用于 CAN 总线访问或类似操作，该微控制器单元可通过串行链路连接到运行 Android Automotive 的 CPU。除了专用的 MCU，还可以将总线访问作为虚拟 CPU 来实现。只要实现符合车载 HAL 的接口要求，每个合作伙伴都可以选择适合硬件的架构。</p>
+
+<h2 id="arch">架构</h2>
+<p>车载 HAL 是汽车与车辆网络服务之间的接口定义：</p>
+
+<img src="images/vehicle_hal_arch.png" alt="Android 车载 HAL 架构"/>
+<p class="img-caption"><strong>图 1</strong>. 车载 HAL 与 Android Automotive 架构</p>
+
+<ul>
+<li><strong>Car API</strong>：包含 CarHvacManager、CarSensorManager 和 CarCameraManager 等 API。如需详细了解所有受支持的 API，请参阅 <code>/platform/packages/services/Car/car-lib</code>。</li>
+<li><strong>CarService</strong>：位于 <code>/platform/packages/services/Car/</code>。</li>
+<li><strong>VehicleNetworkService</strong>：通过内置安全机制控制车载 HAL。仅限访问系统组件（第三方应用等非系统组件需使用 Car API）。原始设备制造商 (OEM) 可以通过 <code>vns_policy.xml</code> 和 <code>vendor_vns_policy.xml</code> 控制访问权限。位于 <code>/platform/packages/services/Car/vehicle_network_service/</code>；有关访问车辆网络的库，请参阅 <code>/platform/packages/services/Car/libvehiclenetwork/</code>。</li>
+<li><strong>车载 HAL</strong>：定义 OEM 可以实现的属性且包含属性元数据的接口（例如，属性是否为 int，允许使用哪些更改模式）。位于 <code>hardware/libhardware/include/hardware/vehicle.h</code>。有关基本参考实现，请参阅 <code>hardware/libhardware/modules/vehicle/</code>。</li>
+</ul>
+
+<h2 id="prop">车辆属性</h2>
+<p>车载 HAL 接口基于访问（读取、写入、订阅）属性，这是特定函数的抽象表示。属性可以是只读、只写（用于将信息传递到车载 HAL 级别），或者读取和写入。对大多数属性的支持都是可选的。</p>
+<p>每个属性都由 int32 键唯一标识，且具有预定义的类型 (<code>value_type</code>)：</p>
+
+<ul>
+<li><code>INT32</code>（和数组）、<code>INT64</code>、<code>BOOLEAN</code>、<code>FLOAT</code>（和数组）、字符串、字节。</li>
+<li>区域类型除了值之外还有区域。</li>
+</ul>
+
+<h3 id-="zone_type">区域类型</h3>
+<p>车载 HAL 定义了 3 种区域类型：</p>
+<ul>
+<li><code>vehicle_zone</code>：基于排的区域。</li>
+<li><code>vehicle_seat</code>：基于座位的区域。</li>
+<li><code>vehicle_window</code>：基于窗户的区域。</li>
+</ul>
+<p>每个区域属性都应使用预定义的区域类型。如有必要，您可以为每个属性使用自定义区域类型（有关详情，请参阅<a href="#prop_custom">处理自定义属性</a>）。</p>
+
+<h3 id="prop_config">配置属性</h3>
+<p>使用 <code>vehicle_prop_config_t</code> 为每个属性提供配置信息。具体信息包括：</p>
+<ul>
+<li><code>access</code>（r、w、rw）</li>
+<li><code>change_mode</code>（表示监视属性的方式：变化模式还是连续模式）</li>
+<li><code>min_value</code>（int32、float、int64）、<code>max_value</code>（int32、float、int64）</li>
+<li><code>min_sample_rate</code>、<code>max_sample_rate</code></li>
+<li><code>permission_model</code></li>
+<li><code>prop</code>（属性 ID、int）</li>
+<li><code>value_type</code></li>
+<li><code>zone_flags</code>（将受支持的区域表示为位标记）</li>
+</ul>
+<p>此外，某些属性具有表示功能的具体配置标记。</p>
+
+<h2 id="interfaces">HAL 接口</h2>
+<p>车载 HAL 使用以下接口：</p>
+<ul>
+<li><code>vehicle_prop_config_t const *(*list_properties)(..., int*
+num_properties)</code>。列出车载 HAL 所支持的所有属性的配置。车辆网络服务仅使用受支持的属性。
+</li>
+<li><code>(*get)(..., vehicle_prop_value_t *data)</code>。读取属性的当前值。对于区域属性，每个区域都可能具有不同的值。</li>
+<li><code>(*set)(..., const vehicle_prop_value_t *data)</code>。为属性写入一个值。写入结果按每个属性进行定义。</li>
+<li><code>(*subscribe)(..., int32_t prop, float sample_rate, int32_t
+zones)</code>。<ul>
+<li>开始监视属性值的变化。对于区域属性，订阅适用于请求的区域。Zones = 0 用于请求所有受支持的区域。
+</li>
+<li>车载 HAL 应该在属性值发生变化（即变化类型）或出现常量间隔（即连续类型）时调用单独的回调。</li></ul></li>
+<li><code>(*release_memory_from_get)(struct vehicle_hw_device* device,
+vehicle_prop_value_t *data)</code>。释放从 get 调用分配的内存。</li></ul>
+
+<p>车载 HAL 使用以下回调接口：</p>
+<ul>
+<li><code>(*vehicle_event_callback_fn)(const vehicle_prop_value_t
+*event_data)</code>。通知车辆属性值的变化。应只针对已订阅属性执行。</li>
+<li><code>(*vehicle_error_callback_fn)(int32_t error_code, int32_t property,
+int32_t operation).</code> 返回全局车载 HAL 级别错误或每个属性的错误。全局错误会导致 HAL 重新启动，这可能导致包括应用在内的其他组件重新启动。</li>
+</ul>
+
+<h2 id="zone_prop">处理区域属性</h2>
+<p>区域属性相当于多个属性的集合，其中每个子属性都可由指定的区域值访问。</p>
+<ul>
+<li>区域属性的 <code>get</code> 调用始终包含请求中的区域，因此，只应返回所请求区域的当前值。</li>
+<li>区域属性的 <code>set</code> 调用始终包含请求中的区域，因此，只应更改所请求的区域。</li>
+<li><code>subscribe</code> 调用包括所有已订阅区域的标记。不应报告来自未订阅区域的事件。</li>
+</ul>
+
+<h3 id="get">Get 调用</h3>
+<p>在初始化期间，由于尚未收到匹配的车辆网络消息，属性的值可能不可用。在这种情况下，<code>get</code> 调用应该返回 <code>-EAGAIN</code>。某些属性（如 HVAC）具有独立的电源开/关属性。这种属性的 <code>get</code> 的调用（关机时）应返回特殊值 <code>(VEHICLE_INT_OUT_OF_RANGE_OFF/VEHICLE_FLOAT_OUT_OF_RANGE_OFF)</code>，而不是返回错误。</p>
+<p>此外，某些属性（如 HVAC 温度）可以用某个值来表示其处于最大功率模式，而不是特定的温度值。在这种情况下，请使用特殊值表示这种状态。</p>
+<ul>
+<li>VEHICLE_INT_OUT_OF_RANGE_MAX/MIN</li>
+<li>VEHICLE_FLOAT_OUT_OF_RANGE_MAX/MIN</li>
+</ul>
+
+<p>示例：获取 HVAC 温度</p>
+<img src="images/vehicle_hvac_get.png" alt="车载 HAL get HVAC 的示例"/>
+<p class="img-caption"><strong>图 2</strong>. 获取 HVAC 温度（CS = CarService、VNS = VehicleNetworkService、VHAL = 车载 HAL）</p>
+
+<h3 id="set">Set 调用</h3>
+<p><code>set</code> 调用属于异步操作，涉及进行所请求更改之后的事件通知。在典型的操作中，<code>set</code> 调用会导致在车辆网络中发出更改请求。拥有该属性的电子控制单元 (ECU) 执行更改后，更新后的值通过车辆网络返回，而车载 HAL 会将更新后的值作为事件发送给车辆网络服务 (VNS)。</p>
+<p>某些 <code>set</code> 调用可能要求准备好初始数据，而这些数据在初始化期间可能尚不可用。在这种情况下，<code>set</code> 调用应该返回 <code>-EAGAIN</code>。某些具有独立的电源开/关的属性应在属性关闭且无法设置时返回 <code>-ESHUTDOWN</code>。</p>
+<p>在 <code>set</code> 生效之前，<code>get</code> 不一定会返回所设置的值。例外情况是更改模式为 <code>VEHICLE_PROP_CHANGE_MODE_ON_SET.</code> 的属性。此属性仅在被 Android 之外的外部组件（如 <code>VEHICLE_PROPERTY_UNIX_TIME</code> 等时钟属性）设置时才通知更改。</p>
+
+<p>示例：设置 HVAC 温度</p>
+<img src="images/vehicle_hvac_set.png" alt="车载 HAL set HVAC 的示例"/>
+<p class="img-caption"><strong>图 3</strong>. 设置 HVAC 温度（CD = CarService、VNS = VehicleNetworkService、VHAL = 车载 HAL）</p>
+
+<h2 id="prop_custom">处理自定义属性</h2>
+<p>为了满足合作伙伴的特定需求，车载 HAL 允许使用针对系统应用的自定义属性。在使用自定义属性时，请遵循以下指南：</p>
+<ul>
+<li>键值应该在 [<code>VEHICLE_PROPERTY_CUSTOM_START,
+VEHICLE_PROPERTY_CUSTOM_END</code>] 范围内。其他范围会预留以供将来的扩展功能使用；使用这种范围可能会导致将来的 Android 版本中出现冲突。</li>
+<li>仅使用定义的 <code>value_type</code>。BYTES 类型允许传递原始数据，因此，在大多数情况下是足够的。通过自定义属性频繁发送大数据可能会减缓整个车辆网络的访问速度，因此，在添加大量需要 HAL 处理的数据时要小心谨慎。</li>
+<li>将访问策略添加到 <code>vendor_vns_policy.xml</code>（否则所有访问都将被拒）。</li>
+<li>通过 <code>VendorExtensionManager</code>（适用于 Java 组件）或 Vehicle Network Service API（适用于本机）访问。请勿修改其他汽车 API，因为这样做可能会在将来导致兼容性问题。</li>
+</ul>
+
+<h2 id="prop_hvac">处理 HVAC 属性</h2>
+<p>您可以使用车载 HAL 控制 HVAC，具体方法是设置与 HVAC 相关的属性。大多数 HVAC 属性都是区域属性，但也有一些非区域（全局）属性。定义的示例属性包括：</p>
+<ul>
+<li><code>VEHICLE_PROPERTY_HVAC_TEMPERATURE_SET</code>（按每个区域设置温度）。</li>
+<li><code>VEHICLE_PROPERTY_HVAC_RECIRC_ON</code>（按每个区域控制再循环）。</li>
+</ul>
+<p>有关 HVAC 属性的完整列表，请在 <code>vehicle.h</code> 中搜索 <code>VEHICLE_PROPERTY_HVAC_*</code>。</p>
+
+<h2 id="prop_sensor">处理传感器属性</h2>
+<p>车载 HAL 传感器属性表示真实的传感器数据或策略信息，如驾驶状态。某些传感器信息（如驾驶状态和日间/夜间模式）不限制任何应用的访问，因为这些数据是构建安全车载应用所必需的。其他传感器信息（如车辆速度）更为敏感，需要用户可以管理的特定权限。</p>
+<p>支持的传感器属性包括：</p>
+<ul>
+<li><code>DRIVING_STATUS</code>（应该支持）：表示在当前驾驶状态下允许的操作。此信息用于在驾驶过程中屏蔽不安全的应用。</li>
+<li><code>NIGHT_MODE</code>（应该支持）：确定日间/夜间显示模式。</li>
+<li><code>GEAR_SELECTION/CURRENT_GEAR</code>：驾驶员选择的挡位与实际挡位。</li>
+<li><code>VEHICLE_SPEED</code>：车速。受权限保护。</li>
+<li><code>ODOMETER</code>：当前里程表读数。受权限保护。
+</li>
+<li><code>FUEL_LEVEL</code>：当前油位 (%)。</li>
+<li><code>FUEL_LEVEL_LOW</code>：油位是否较低（布尔值）。</li>
+</ul>
+
+<h2 id="security">安全性</h2>
+<p>车载 HAL 支持 3 个级别的数据访问安全性：</p>
+<ul>
+<li>仅限系统（由 <code>vns_policy.xml</code> 控制）</li>
+<li>允许拥有权限的应用访问（通过汽车服务）</li>
+<li>无需任何权限即可访问（通过汽车服务）</li>
+</ul>
+<p>仅允许部分系统组件直接访问车辆属性，而车辆网络服务是把关程序。大多数应用需通过汽车服务的额外把关（例如，只有系统应用可以控制 HVAC，因为这需要仅授予系统应用的系统权限）。</p>
+
+<h2 id="validation">验证</h2>
+<p>AOSP 包含以下用于开发过程的测试资源：</p>
+<ul>
+<li><code>hardware/libhardware/tests/vehicle/vehicle-hal-tool.c</code>：加载车载 HAL 并执行简单操作的命令行原生工具，有助于在开发的早期阶段让系统正常运行。</li>
+<li><code>packages/services/Car/tests/carservice_test/</code>：包含使用模拟车载 HAL 属性进行的汽车服务测试。每个属性的预期行为都会在测试中实现，这是了解预期行为的绝佳起点。</li>
+<li><code>hardware/libhardware/modules/vehicle/</code>：基本参考实现。</li>
+</ul>
+
+</body></html>

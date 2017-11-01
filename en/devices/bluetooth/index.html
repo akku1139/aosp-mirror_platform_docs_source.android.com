@@ -1,0 +1,212 @@
+<html devsite>
+  <head>
+    <title>Bluetooth</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+    <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License"); you may
+      not use this file except in compliance with the License.  You may obtain a
+      copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+      WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+      License for the specific language governing permissions and limitations
+      under the License.
+    -->
+    <img style="float: right; margin: 0px 15px 15px 15px;"
+    src="/devices/bluetooth/images/ape_fwk_hal_bluetooth.png" alt="Android Bluetooth HAL icon"/>
+
+    <p>
+    Android provides a default Bluetooth stack that supports both Classic Bluetooth
+    and Bluetooth Low Energy. Using Bluetooth, Android devices can create personal
+    area networks to send and receive data with nearby Bluetooth devices.
+    </p>
+
+    <p>
+    In Android 4.3 and later, the Android Bluetooth stack provides the ability to
+    implement Bluetooth Low Energy (BLE). To fully leverage the BLE APIs, follow
+    the <a
+      href="/devices/bluetooth/hci_requirements.html">Android
+      Bluetooth HCI Requirements</a>.
+    Android devices with a qualified chipset can implement either Classic
+    Bluetooth or both Classic Bluetooth and BLE. BLE is not backwards compatible
+    with older Bluetooth chipsets.
+    </p>
+
+    <p>
+    In Android 8.0, the native Bluetooth stack is fully qualified for Bluetooth 5.
+    To use available Bluetooth 5 features, the device needs to have a Bluetooth 5
+    qualified chipset.
+    </p>
+
+    <aside class="note"><strong>Note</strong>: The largest change in the native
+    Bluetooth stack between Android 8.0 and previous versions is the use of
+    <a href="/devices/architecture/treble.html">Treble</a>. Vendor implementations in
+    Android 8.0 must use HIDL instead of <code>libbt-vendor</code>.</aside>
+
+    <h2 id="architecture-android-80">Android 8.0 architecture</h2>
+
+      <p>
+      A Bluetooth application communicates with the Bluetooth process through
+      Binder. The Bluetooth process uses JNI to communicate with the Bluetooth stack
+      and provides developers with access to various Bluetooth profiles. This
+      diagram shows the general structure of the Bluetooth stack:
+      </p>
+
+      <img src="/devices/bluetooth/images/fluoride_architecture.png"
+      alt="Android 8.0 Bluetooth architecture" id="figure1"/>
+      <p class="img-caption">
+      <strong>Figure 1.</strong> Android 8.0 Bluetooth architecture
+      </p>
+
+      <dl>
+        <dt>Application framework</dt>
+        <dd>
+        At the application framework level is application code,
+        which uses the <a
+          href="http://developer.android.com/reference/android/bluetooth/package-summary.html">
+          android.bluetooth</a>
+        APIs to interact with the Bluetooth hardware. Internally, this code calls
+        the Bluetooth process through the Binder IPC mechanism.
+        </dd>
+
+        <dt>Bluetooth system service</dt>
+        <dd>
+        The Bluetooth system service, located in <code>packages/apps/Bluetooth</code>,
+        is packaged as an Android app and implements the Bluetooth services
+        and profiles at the Android framework layer. This app calls into the native
+        Bluetooth stack via JNI.
+        </dd>
+
+        <dt>JNI</dt>
+        <dd>
+        The JNI code associated with android.bluetooth is located in
+        <code>packages/apps/Bluetooth/jni</code>. The JNI code calls into the
+        Bluetooth stack when certain Bluetooth operations occur, such as when
+        devices are discovered.
+        </dd>
+
+        <dt>Bluetooth stack</dt>
+        <dd>
+        The default Bluetooth stack is provided in AOSP and is located in
+        <code>system/bt</code>. The stack implements the generic Bluetooth HAL and
+        customizes it with extensions and configuration changes.
+        </dd>
+
+        <dt>Vendor implementation</dt>
+        <dd>
+        Vendor devices interact with the Bluetooth stack using the Hardware Interface
+        Design Language (HIDL).
+        </dd>
+      </dl>
+
+      <h3 id="hidl">HIDL</h3>
+      <p>
+      <a href="/devices/architecture/hidl.html">HIDL</a>
+      defines the interface between the Bluetooth stack and the vendor
+      implementation. To generate the Bluetooth HIDL files, pass the Bluetooth
+      interface files into the HIDL generation tool. The interface files are located
+      in <code>hardware/interfaces/bluetooth</code>.
+      </p>
+
+      <h3 id="bluetooth-stack-development">Bluetooth stack development</h3>
+      <p>
+      The Android 8.0 Bluetooth stack is a fully qualified Bluetooth stack. The
+      qualification listing is on the Bluetooth SIG website under <a
+        href="https://www.bluetooth.org/tpg/QLI_viewQDL.cfm?qid=35890">QDID 97584</a>.
+      </p>
+
+      <p>
+      The core Bluetooth stack resides in
+      <code><a
+          href="https://android.googlesource.com/platform/system/bt/+/master">
+          system/bt</a></code>.
+      Development happens in AOSP, and contributions are welcome.
+      </p>
+
+    <h2 id="architecture-android-7x-and-earlier">Android 7.x and earlier
+      architecture</h2>
+      <p>A Bluetooth system service communicates with the Bluetooth stack
+      through JNI and with applications through Binder IPC. The system service
+      provides developers with access to various Bluetooth profiles. This
+      diagram shows the general structure of the Bluetooth stack:
+      </p>
+
+      <img src="/devices/bluetooth/images/ape_fwk_bluetooth.png"
+      alt="Android Bluetooth architecture" id="figure2" />
+      <p class="img-caption">
+      <strong>Figure 2.</strong> Android 7.x and earlier Bluetooth architecture
+      </p>
+
+      <dl>
+        <dt>Application framework</dt>
+        <dd>At the application framework level is application code, which
+         utilizes the <a
+           href="http://developer.android.com/reference/android/bluetooth/package-summary.html">
+           android.bluetooth</a>
+         APIs to interact with the Bluetooth hardware. Internally, this code
+         calls the
+         Bluetooth process through the Binder IPC mechanism.
+        </dd>
+
+        <dt>Bluetooth system service</dt>
+        <dd>The Bluetooth system service, located in
+        <code>packages/apps/Bluetooth</code>, is packaged as an Android app and
+        implements the Bluetooth service and profiles at the Android framework layer.
+        This app calls into the HAL layer via JNI.
+        </dd>
+
+        <dt>JNI</dt>
+        <dd>The JNI code associated with <a
+          href="http://developer.android.com/reference/android/bluetooth/package-summary.html">
+          android.bluetooth</a>
+        is located in <code>packages/apps/Bluetooth/jni</code>. The JNI code calls
+        into the HAL layer and receives callbacks from the HAL when certain Bluetooth
+        operations occur, such as when devices are discovered.
+        </dd>
+
+        <dt>HAL</dt>
+        <dd>The hardware abstraction layer defines the standard interface that
+          the <a
+            href="http://developer.android.com/reference/android/bluetooth/package-summary.html">
+            android.bluetooth</a>
+          APIs and Bluetooth process call into and that you must implement to have
+          your Bluetooth hardware function correctly. The header file for the Bluetooth
+          HAL is <code>hardware/libhardware/include/hardware/bluetooth.h</code>.
+          Additionally, review all of the
+          <code>hardware/libhardware/include/hardware/bt_*.h</code> files.
+        </dd>
+
+        <dt>Bluetooth stack</dt>
+        <dd>The default Bluetooth stack is provided for you and is located in
+        <code>system/bt</code>. The stack implements the generic Bluetooth HAL
+        and customizes it with extensions and configuration changes.
+        </dd>
+
+        <dt>Vendor extensions</dt>
+        <dd>To add custom extensions and an HCI layer for tracing, you can create a
+        libbt-vendor module and specify these components.
+        </dd>
+
+      </dl>
+
+      <h3 id="implementing-the-hal">Implementing the HAL</h3>
+        <p>The Bluetooth HAL is located in
+        <code>/hardware/libhardware/include/hardware/bluetooth.h</code>.
+        The <code>bluetooth.h</code> file contains the basic interface for the
+        Bluetooth stack, and you must implement its functions.</p>
+
+        <p>Profile-specific files are located in the same directory. For details, see
+        the <a href="/reference/hal/dir_6b11132f1a015b03f2670f21bef1d871.html">
+          HAL File Reference</a>.
+        </p>
+
+  </body>
+</html>

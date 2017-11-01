@@ -1,0 +1,50 @@
+<html devsite><head>
+    <title>传统存储设备</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<img style="float: right; margin: 0px 15px 15px 15px;" src="images/ape_fwk_hal_extstor.png" alt="Android 外部存储设备 HAL 图标"/>
+
+<p>Android 支持采用传统存储的设备，它被定义为具有不可变 POSIX 权限类和模式且不区分大小写的文件系统。传统存储设备的概念包括模拟和便携式存储设备。便携式存储设备指的是系统未<a href="/devices/storage/adoptable.html">合并</a>的任何外部存储设备，因此，未经格式化、加密或绑定到特定设备。由于传统的外部存储设备对存储的数据提供最低限度的保护，因此系统代码不应将敏感数据存储到外部存储设备中。具体来说，只能将配置和日志文件存储到可为其提供妥善保护的内部存储设备中。</p>
+
+<h2 id="multi-user-external-storage">多用户外部存储设备</h2>
+<p>从 Android 4.2 开始，设备可以支持多用户，且外部存储设备必须满足以下限制条件：</p>
+<ul>
+<li>每个用户都必须有各自的独立主要外部存储设备，且不得访问其他用户的主要外部存储设备。</li>
+<li><code>/sdcard</code> 路径必须根据运行进程的用户身份解析到特定于该用户的正确主要外部存储设备。</li>
+<li><code>Android/obb</code> 目录中较大的 OBB 文件的存储可作为优化在多个用户之间共享。</li>
+<li>次要外部存储设备不得让应用写入内容，除非在特定于软件包的目录中获得合成的权限。</li>
+</ul>
+<p>此功能的默认平台实现利用 Linux 内核命名空间，为每个 Zygote 所派生的进程创建独立的装载表，然后使用绑定装载向私有命名空间提供特定于用户的正确主要外部存储设备。</p>
+<p>启动时，系统会在 <code>EMULATED_STORAGE_SOURCE</code>（隐藏于应用中）装载一个模拟的外部存储设备 FUSE 守护进程。在 Zygote 派生之后，它会将特定于用户的相应子目录从 FUSE 守护进程下绑定装载到 <code>EMULATED_STORAGE_TARGET</code>，以便外部存储设备路径正确解析应用。由于应用缺少其他用户存储的可访问装载点，它们只能供启动的用户访问存储设备。</p>
+<p>该实现还使用共享的子树内核功能将装载事件从默认的根命名空间传播到应用命名空间中，从而确保 ASEC 容器和 OBB 装载等功能继续正常运行。它通过将 rootfs 装载为共享模式，然后在每个 Zygote 命名空间都创建好后重新将其装载为从属模式来实现。</p>
+
+<h2 id="multiple-external-storage-devices">多个外部存储设备</h2>
+<p>从 Android 4.4 开始，多个外部存储设备通过 <code>Context.getExternalFilesDirs()</code>、<code>Context.getExternalCacheDirs()</code> 和 <code>Context.getObbDirs()</code> 提供给开发者。</p>
+<p></p>通过这些 API 提供的外部存储设备必须是设备的半永久部件（如电池盒中的 SD 卡插槽）。开发者希望存储在这些位置的数据可供长期使用。因此，瞬态存储设备（如 USB 大容量存储驱动器）不应通过这些 API 提供。<p></p>
+<p><code>WRITE_EXTERNAL_STORAGE</code> 权限必须仅向在设备上的主要外部存储设备授予写入权限。不允许应用写入次要外部存储设备，除非在特定于软件包的目录中获得合成的权限。以这种方式限制写入可确保系统在应用被卸载时将文件清理干净。</p>
+
+<h2 id="support_usb_media">USB 媒体支持</h2>
+
+<p>Android 6.0 支持只需短时间内连接到设备的便携式存储设备，如 U 盘。当用户插入新的便携式设备时，该平台会显示一条通知，以让用户复制或管理相应设备上的内容。</p>
+
+<p>在 Android 6.0 中，任何未合并的设备均被视为便携式设备。由于便携式存储设备只能短时间连接到设备，因此 Android 平台会避免执行媒体扫描之类的繁重操作。第三方应用必须通过<a href="https://developer.android.com/guide/topics/providers/document-provider.html">存储访问框架</a>与便携式存储设备中的文件进行交互；出于隐私和安全考虑，明确禁止直接访问。</p>
+
+</body></html>

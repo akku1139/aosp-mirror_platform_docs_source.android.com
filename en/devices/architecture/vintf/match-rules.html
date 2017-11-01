@@ -1,0 +1,366 @@
+<html devsite>
+  <head>
+    <title>Matching Rules</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>The two pairs of compatibility matrices and manifests are meant to be
+reconciled at <a href="/devices/tech/ota/index.html">OTA</a> time to verify the
+framework and vendor implementation can work with each other. This verification
+is successful upon a match between the framework compatibility matrix and the
+device manifest, as well as between the framework manifest and the device
+compatibility matrix. The following sections detail matching rules used by
+various components.</p>
+
+<h2 id="hals">HAL matches</h2>
+<p>The HAL-match rule identifies the versions of <code>hal</code> elements in a
+manifest file that are considered supported by the owner of the corresponding
+compatibility matrix.</p>
+<ul>
+<li>Multiple <code>version</code> elements are concatenated with
+<strong>OR</strong> (see camera example below).</li>
+<li>Multiple <code>&lt;hal&gt;</code> elements with the same name are
+concatenated with <strong>AND</strong>.</li>
+</ul>
+
+<h4><strong>Example</strong>: Successful HAL match for Camera module</h4>
+<p>For a HAL at version 2.5, the match rule is as follows:</p>
+
+<table>
+  <tr>
+   <th>Matrix</th>
+   <th>Matching Manifest</th>
+  </tr>
+  <tr>
+   <td><code>2.5</code></td>
+   <td>2.5-2.∞. Shorthand for 2.5-5.</td>
+  </tr>
+  <tr>
+   <td><code>2.5-7</code></td>
+   <td>2.5-2.∞. Indicates the following:
+   <br>
+   <ul>
+   <li>2.5 is the minimum required version, meaning a manifest providing HAL
+   2.0-2.4 is not compatible.</li>
+   <li>2.7 is the maximum version that could be requested, meaning the owner of
+   the compatibility matrix (framework or device) will not request versions
+   beyond 2.7. The owner of the matching manifest can still serve version 2.10
+   (as an example) when 2.7 is requested. The compatibility-matrix owner knows
+   only that the requested service is compatible with API version 2.7.</li>
+   <li>-7 is informational only and does not affect the OTA update process.</li>
+   </ul>
+   Thus, a device with a HAL at version 2.10 in its manifest file remains
+   compatible with a framework that states <code>camera:</code>
+   <code>2.5-7</code> in its compatibility matrix.</td>
+  </tr>
+</table>
+
+<h4><strong>Example:</strong> Successful HAL match for DRM module</h4>
+<p>The framework compatibility matrix states the following version information
+for DRM HAL:</p>
+
+<pre class="prettyprint">&lt;hal>
+    &lt;name>android.hardware.drm
+    &lt;version>1.0&lt;/version>
+    &lt;version>3.1-2&lt;/version>
+    &lt;interface>
+        &lt;name>IDrmFactory&lt;/name>
+        &lt;instance>default&lt;/instance>
+        &lt;instance>specific&lt;/instance>
+    &lt;/interface>
+&lt;/hal>
+&lt;hal>
+    &lt;name>android.hardware.drm
+    &lt;version>2.0&lt;/version>
+    &lt;interface>
+        &lt;name>ICryptoFactory&lt;/name>
+        &lt;instance>default&lt;/instance>
+    &lt;/interface>
+&lt;/hal>
+</pre>
+
+<p>A vendor must implement ONE of the following HALs:</p>
+
+<pre>
+android.hardware.drm@1.x::IDrmFactory/default          //where x >= 0
+android.hardware.drm@1.x::IDrmFactory/specific         //where x >= 0
+</pre>
+
+OR
+
+<pre>
+android.hardware.drm@3.y::IDrmFactory/default          //where y >= 1
+android.hardware.drm@3.y::IDrmFactory/specific         //where y >= 1
+</pre>
+
+<p>... AND must also implement this HAL:</p>
+
+<pre>
+android.hardware.drm@2.z::ICryptoFactory/default       //where z >= 0
+</pre>
+
+<h2 id="kernel">Kernel matches</h2>
+<p>The <code>&lt;kernel&gt;</code> section of the framework compatibility matrix
+describes the framework's requirements of the Linux kernel on the device. This
+information is meant to be matched at OTA time against the
+<a href="/devices/architecture/vintf/objects.html#runtime-collectible-information">information</a>
+about the kernel that gets reported by the device's VINTF object.</p>
+
+<p>A matrix can include multiple <code>&lt;kernel&gt;</code> sections, each with
+a different <code>version</code> attribute using the format:</p>
+
+<pre class="prettyprint">${ver}.${major_rev}.${kernel_minor_rev}</pre>
+
+<p>The OTA considers only the <code>&lt;kernel&gt;</code> section with the same
+<code>${ver}</code> and <code>${major_rev}</code> as the device kernel (i.e.,
+<code>version="${ver}.${major_rev}.${matrix_minor_rev}")</code>; other sections
+are ignored. In addition, the minor revision from the kernel must be a value
+from the compatibility matrix (<code>${kernel_minor_rev} >=
+${matrix_minor_rev}</code>;). If no <code>&lt;kernel&gt;</code> section meets
+these requirements, it is a non-match.</p>
+
+<p>If the <code>&lt;kernel&gt;</code> section does match, the process continues
+by attempting to match <code>config</code> elements against
+<code>/proc/config.gz</code>. For each config element in the compatibility
+matrix, it looks up <code>/proc/config.gz</code> to see if the config is
+present. When a config item is set to <code>n</code> in the compatibility
+matrix for the matching <code>&lt;kernel&gt;</code> section, it must be absent
+from <code>/proc/config.gz</code>. Finally, a config item not in the
+compatibility matrix may or may not be present in <code>/proc/config.gz</code>.
+</p>
+
+<p>Examples of matches:</p>
+<ul>
+<li><code>&lt;value type="string"&gt;bar&lt;/value&gt;</code> matches
+<code>"bar"</code>. Quotes are omitted in the compatibility matrix but present
+in <code>/proc/config.gz</code>.</li>
+<li><code>&lt;value type="int"&gt;4096&lt;/value&gt;</code> matches
+<code>4096</code> or <code>0x1000</code> or <code>0X1000</code>.</li>
+<li><code>&lt;value type="int"&gt;0x1000&lt;/value&gt;</code> matches
+<code>4096</code> or <code>0x1000</code> or <code>0X1000</code>.</li>
+<li><code>&lt;value type="int"&gt;0X1000&lt;/value&gt;</code> matches
+<code>4096</code> or <code>0x1000</code> or <code>0X1000</code>.</li>
+<li><code>&lt;value type="tristate"&gt;y&lt;/value&gt;</code> matches
+<code>y</code>.</li>
+<li><code>&lt;value type="tristate"&gt;m&lt;/value&gt;</code> matches
+<code>m</code>.</li>
+<li><code>&lt;value type="tristate"&gt;n&lt;/value&gt;</code> means the config
+item must NOT exist in <code>/proc/config.gz</code>.</li>
+<li><code>&lt;value type="range"&gt;1-0x3&lt;/value&gt;</code> matches
+<code>1</code>, <code>2</code>, or <code>3</code>, or hexadecimal equivalent.
+</li>
+</ul>
+
+<h4><strong>Example:</strong> Successful kernel match</h4>
+<p>A framework compatibility matrix has the following kernel information:</p>
+
+<pre class="prettyprint">
+&lt;kernel version=&quot;3.18.51&quot;&gt;
+   &lt;config&gt;
+      &lt;key&gt;CONFIG_TRI&lt;/key&gt;
+      &lt;value type=&quot;tristate&quot;&gt;y&lt;/value&gt;
+   &lt;/config&gt;
+   &lt;config&gt;
+      &lt;key&gt;CONFIG_NOEXIST&lt;/key&gt;
+      &lt;value type=&quot;tristate&quot;&gt;n&lt;/value&gt;
+   &lt;/config&gt;
+   &lt;config&gt;
+      &lt;key&gt;CONFIG_DEC&lt;/key&gt;
+      &lt;value type=&quot;int&quot;&gt;4096&lt;/value&gt;
+   &lt;/config&gt;
+   &lt;config&gt;
+      &lt;key&gt;CONFIG_HEX&lt;/key&gt;
+      &lt;value type=&quot;int&quot;&gt;0XDEAD&lt;/value&gt;
+   &lt;/config&gt;
+   &lt;config&gt;
+      &lt;key&gt;CONFIG_STR&lt;/key&gt;
+      &lt;value type=&quot;string&quot;&gt;str&lt;/value&gt;
+   &lt;/config&gt;
+   &lt;config&gt;
+      &lt;key&gt;CONFIG_EMPTY&lt;/key&gt;
+      &lt;value type=&quot;string&quot;&gt;&lt;/value&gt;
+   &lt;/config&gt;
+&lt;/kernel&gt;
+</pre>
+
+<p>The kernel version is matched first. If a device in <code>uname()</code>
+reports:</p>
+<ul>
+<li>3.10.73 (no match to matrix unless there is a separate kernel section
+with <code>&lt;kernel version="3.10.x"&gt;</code> where <code>x <= 73</code>)
+</li>
+<li>3.18.50 (no match to matrix, smaller than <code>version</code>)</li>
+<li>3.18.51 (match to matrix)</li>
+<li>3.18.52 (match to matrix)</li>
+<li>4.1.22 (no match to matrix unless there is a separate kernel section
+with <code>&lt;kernel version="4.1.x"&gt;</code> where <code>x <= 22</code>)
+</li>
+</ul>
+
+<p>After the appropriate <code>&lt;kernel&gt;</code> section is selected, for
+each <code>&lt;config&gt;</code> item with value other than <code>n</code>, we
+expect the corresponding entry to be present in <code>/proc/config.gz</code>;
+for each <code>&lt;config&gt;</code> item with value <code>n</code>, we expect
+the corresponding entry to not be present in <code>/proc/config.gz</code>. We
+expect the content of <code>&lt;value&gt;</code> to exactly match the text after
+the equal sign (including quotes), up to the newline character or
+<code>#</code>, with leading and trailing whitespace truncated.</p>
+
+<p>The following kernel configuration is an example of a successful match:</p>
+
+<pre class="prettyprint">
+# comments don't matter
+CONFIG_TRI=y
+# CONFIG_NOEXIST should not exist
+CONFIG_DEC = 4096 # trailing comments and whitespaces are fine
+CONFIG_HEX=57005  # 0XDEAD == 57005
+CONFIG_STR="str"
+CONFIG_EMPTY=""   # empty string must have quotes
+CONFIG_EXTRA="extra config items are fine too"
+</pre>
+
+<p>The following kernel configuration is an example of an unsuccessful match:</p>
+
+<pre class="prettyprint">
+CONFIG_TRI="y"   # mismatch: quotes
+CONFIG_NOEXIST=y # mismatch: CONFIG_NOEXIST exists
+CONFIG_HEX=0x0   # mismatch; value doesn't match
+CONFIG_DEC=""    # mismatch; type mismatch (expect int)
+CONFIG_EMPTY=1   # mismatch; expects ""
+# mismatch: CONFIG_STR is missing
+</pre>
+
+<h2 id="se-policy">SE policy matches</h2>
+<p>SE policy requires the following matches:</p>
+<ul>
+<li><code>&lt;sepolicy-version&gt;</code> defines a closed range of minor
+versions for every major version. The sepolicy version reported by the device
+must fall within one of these ranges to be compatible with the framework. Match
+rules are similar to HAL versions; it is a match if the sepolicy version is
+higher or equal to the minimum version for the range. The maximum version is
+purely informational.</li>
+<li><code>&lt;kernel-sepolicy-version&gt;</code> i.e. policydb version. Must
+exactly match the <code>security_policyvers()</code> reported by the device.
+</li>
+</ul>
+
+<h4><strong>Example:</strong> Successful SE policy match</h4>
+<p>The framework compatibility matrix states the following sepolicy information:
+</p>
+
+<pre class="prettyprint">
+    &lt;sepolicy>
+        &lt;kernel-sepolicy-version>30&lt;/kernel-sepolicy-version>
+        &lt;sepolicy-version>25.0&lt;/sepolicy-version>
+        &lt;sepolicy-version>26.0-3&lt;/sepolicy-version>
+    &lt;/sepolicy>
+</pre>
+
+<p>On the device:</p>
+<ul>
+<li>The value returned by <code>security_policyvers()</code> must exactly equal
+30. Otherwise it is not a match.</li>
+<li>SE Policy version must be one of 25.0-∞ or 26.0-∞. Otherwise it is not a
+match. (The "<code>-3</code>" after "<code>26.0</code>" is purely
+informational.)</li>
+</ul>
+
+<h2 id="avb-version">AVB version matches</h2>
+<p>The AVB version contains a MAJOR version and MINOR version, with the format
+as MAJOR.MINOR (e.g., 1.0, 2.1). For details, refer to
+<a href="https://android.googlesource.com/platform/external/avb/#Versioning-and-compatibility" class="external">Versioning
+and Compatibility</a>. AVB version has the following system properties:</p>
+<ul>
+<li><code>ro.boot.vbmeta.avb_version</code> is the <code>libavb</code> version
+in bootloader</li>
+<li><code>ro.boot.avb_version</code> is the <code>libavb</code> version in
+Android OS (<code>init/fs_mgr</code>)</li>
+</ul>
+
+<p>The system property appears only when the corresponding libavb has been used
+to verify AVB metadata (and returns OK). It is absent if a verification failure
+occurred (or no verification occurred at all).</p>
+
+<p>A compatibility match compares the following:</p>
+<ul>
+<li>sysprop <code>ro.boot.vbmeta.avb_version</code> with
+<code>avb.vbmeta-version</code> from framework compatibility matrix;
+ <ul>
+ <li><code>ro.boot.vbmeta.avb_version.MAJOR == avb.vbmeta-version.MAJOR</code></li>
+ <li><code>ro.boot.vbmeta.avb_version.MINOR >= avb.vbmeta-version.MINOR</code></li>
+ </ul>
+</li>
+<li>sysprop <code>ro.boot.avb_version</code> with
+<code>avb.vbmeta-version</code> from framework compatibility matrix.
+ <ul>
+ <li><code>ro.boot.avb_version.MAJOR == avb.vbmeta-version.MAJOR</code></li>
+ <li><code>ro.boot.avb_version.MINOR >= avb.vbmeta-version.MINOR</code></li>
+ </ul>
+</li>
+</ul>
+
+<p>The bootloader or Android OS might contain two copies of <code>libavb</code>
+libraries, each with a different MAJOR version for upgrade devices and launch
+devices. In this case, the same <em>unsigned</em> system image can be shared but
+the final <em>signed</em> system images are different (with different
+<code>avb.vbmeta-version</code>):</p>
+
+<img src="../images/treble_vintf_avb_o_p.png">
+<figcaption><strong>Figure 1. </strong>AVB version matches (<code>/system</code>
+is P, all other partitions are O).</figcaption>
+<br>
+<br>
+<img src="../images/treble_vintf_avb_p.png">
+<figcaption><strong>Figure 2.</strong> AVB version matches (all partitions are
+P).</figcaption>
+
+<h4><strong>Example:</strong> Successful AVB version match</h4>
+<p>The framework compatibility matrix states the following AVB information:</p>
+
+<pre class="prettyprint">
+&lt;avb>
+    &lt;vbmeta-version>2.1&lt;/vbmeta-version>
+&lt;/avb>
+</pre>
+
+<p>On the device:</p>
+
+<pre class="prettyprint">
+ro.boot.avb_version              == 1.0 &amp;&amp;
+ro.boot.vbmeta.avb_version       == 2.1 <font style="font-family: Roboto, Arial, Helvetica, sans-serif; background-color: red; color: white">&nbsp;mismatch&nbsp;</font>
+</pre>
+
+<pre class="prettyprint">
+ro.boot.avb_version              == 2.1 &amp;&amp;
+ro.boot.vbmeta.avb_version       == 3.0 <font style="font-family: Roboto, Arial, Helvetica, sans-serif; background-color: red; color: white">&nbsp;mismatch&nbsp;</font>
+</pre>
+
+<pre class="prettyprint">
+ro.boot.avb_version              == 2.1 &amp;&amp;
+ro.boot.vbmeta.avb_version       == 2.3 <font style="font-family: Roboto, Arial, Helvetica, sans-serif; background-color: green; color: white">&nbsp;match&nbsp;</font>
+</pre>
+
+<pre class="prettyprint">
+ro.boot.avb_version              == 2.3 &amp;&amp;
+ro.boot.vbmeta.avb_version       == 2.1 <font style="font-family: Roboto, Arial, Helvetica, sans-serif; background-color: green; color: white">&nbsp;match&nbsp;</font>
+</pre>
+
+  </body>
+</html>
