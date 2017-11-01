@@ -1,0 +1,422 @@
+<html devsite><head>
+    <title>A/B（无缝）系统更新</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>A/B 系统更新，也称为无缝更新，用于确保可运行的启动系统在<a href="/devices/tech/ota/index.html">无线 (OTA) 更新</a>期间能够保留在磁盘上。这样可以降低更新之后设备无法启动的可能性，也就是说，用户需要将设备送到维修/保修中心进行更换和刷机的情况将有所减少。
+</p>
+
+<p>用户在 OTA 期间可以继续使用设备。在更新过程中，仅当设备重新启动到更新后的磁盘分区时，会发生一次宕机情况。即使 OTA 失败，设备也仍然可以使用，因为它会启动到 OTA 之前的磁盘分区。您可以再次尝试下载 OTA。建议仅针对新设备通过 OTA 实现 A/B 系统更新。
+</p>
+
+<p>A/B 系统更新将影响：</p>
+
+<ul>
+  <li>与引导加载程序的交互</li>
+  <li>分区选项</li>
+  <li>构建流程</li>
+  <li>OTA 更新软件包的生成</li>
+</ul>
+
+<p>现有的 <a href="/security/verifiedboot/dm-verity.html">dm-verity</a> 功能可确保设备会启动未损坏的映像。如果设备因糟糕的 OTA 或 dm-verity 问题而无法启动，则可以重新启动到原来的映像。
+</p>
+
+<p>A/B 系统之所以非常强大，是因为任何错误（如 I/O 错误）都只能影响<strong>未使用的</strong>分区集，并且可以进行重试。由于 I/O 负载被特意控制在较低水平，以免影响用户体验，因此此类错误不太可能会发生。
+</p>
+
+<p>OTA 更新可以在系统运行时进行，而不会打断用户，更新的内容包括重新启动后进行的应用优化。此外，缓存分区不再用于存储 OTA 更新软件包；无需调整缓存分区的大小。
+</p>
+
+<h2 id="overview">概览</h2>
+
+<p>A/B 系统更新使用称为 <code>update_engine</code> 的后台守护进程以及两组分区。这两组分区称为插槽，通常为插槽 A 和插槽 B。系统从其中一个插槽（“当前插槽”）运行，但运行的系统不会访问“未使用的”插槽中的分区（用于正常操作）。<em></em><em></em><em></em>
+</p>
+
+<p>此功能的目标是将未使用的插槽保留为后备插槽，从而使更新具有抗故障性。如果更新期间或更新后立即出现错误，则系统可以回滚至原来的插槽并继续正常运行。为实现这一目标，“当前”插槽所使用的所有分区（包括只有一个副本的分区）都不应作为 OTA 更新的一部分进行更新。<em></em>
+</p>
+
+<p>每个插槽都有“可启动”属性，该属性会声明相应插槽是否包含设备可以从中启动的正确系统。<em></em>系统运行时，当前插槽肯定可以启动，但是另一个插槽中可能包含旧（仍然正确）版本的系统，也可能包含较新版本或无效的数据。无论当前插槽是哪一个，都有一个插槽是活动插槽或首选插槽。<em></em><em></em>下次启动时，引导加载程序将从活动插槽中启动。最后，每个插槽都有由用户空间设置的“成功”属性，该属性只有在相应插槽也可以启动时才具有相关性。<em></em>
+</p>
+
+<p>成功的插槽应该能够自行启动、运行和更新。未标记为成功的可启动插槽（尝试从其启动几次之后）应由引导加载程序标记为不可启动，包括将活动插槽更改为其他可启动插槽（通常更改为在尝试启动到新的活动插槽之前运行的插槽）。界面的具体详细信息在 <code><a class="external-link" target="_blank" href="https://android.googlesource.com/platform/hardware/libhardware/+/master/include/hardware/boot_control.h">boot_control.h</a></code> 中进行了定义。
+</p>
+
+<h3 id="bootloader-state-examples">引导加载程序状态示例</h3>
+
+<p><code>update_engine</code>（以及其他可能的守护进程）使用 <code>boot_control</code> HAL 指示引导加载程序从何处启动。以下是常见的示例情景及其相关的状态：</p>
+
+<ul>
+  <li>
+    <strong>正常情况</strong>：系统正在从其当前插槽（插槽 A 或插槽 B）运行。目前为止尚未应用任何更新。系统的当前插槽是可启动、成功且活动的插槽。
+  </li>
+  <li>
+    <strong>正在更新</strong>：系统正在从插槽 B 运行，因此，插槽 B 是可启动、成功且活动的插槽。由于插槽 A 中的内容正在更新，但是尚未完成，因此插槽 A 标记为不可启动。在此状态下，应继续从插槽 B 重新启动。</li>
+  <li>
+    <strong>已应用更新，正在等待重新启动</strong>：系统正在从插槽 B 运行，插槽 B 的状态为可启动且成功，但是插槽 A 过去标记为活动（因此现在标记为可启动）。插槽 A 尚未被标记为成功，引导加载程序应该尝试从插槽 A 启动几次。
+  </li>
+  <li>
+    <strong>系统重新启动到新的更新</strong>：系统首次从插槽 A 运行，插槽 B 的状态仍为可启动且成功，而插槽 A 仅可启动，且仍然处于活动但不成功的状态。在进行几次检查之后，用户空间守护进程应将插槽 A 标记为成功。
+  </li>
+</ul>
+
+<h3 id="update-engine-features">更新引擎功能</h3>
+
+<p>守护进程 <code>update_engine</code> 在后台运行，并会使系统做好启动到已更新的新版本的准备。守护进程 <code>update_engine</code> 本身不会参与到启动流程中，且更新期间可以执行的操作会受到限制。守护进程 <code>update_engine</code> 可以执行以下操作：</p>
+
+<ul>
+  <li>根据 OTA 软件包的指示，从当前插槽 A/B 分区读取数据，然后向未使用的插槽 A/B 分区中写入数据</li>
+  <li>在预定义的工作流程中调用 <code>boot_control</code> 界面</li>
+  <li>根据 OTA 软件包的指示，在将数据写入所有未使用的插槽分区之后，从新分区运行安装后的程序<em></em><em></em></li>
+</ul>
+
+<p>下文对安装后的步骤进行了详细介绍。注意，守护进程 <code>update_engine</code> 受 <a href="/security/selinux/">SELinux</a> 策略及当前插槽中的功能限制；在系统启动到新版本之前，这些策略和功能无法更新。<em></em>要实现稳健性目标，更新流程不应执行以下操作：</p>
+
+<ul>
+  <li>修改分区表</li>
+  <li>修改当前插槽中分区的内容</li>
+  <li>修改恢复出厂设置时无法擦除的非 A/B 分区的内容</li>
+</ul>
+
+<h2 id="life-of-an-a-b-update">A/B 更新过程</h2>
+
+<p>当 OTA 软件包（在代码中称为有效负荷）可供下载时，更新流程便开始了。<em></em>设备中的策略可能会基于电池电量、用户活动、是否连接到充电器或其他策略延迟有效负荷的下载和应用。不过，由于更新在后台运行，因此用户可能不知道更新正在进行，而且更新流程可能随时会由于策略或意外重新启动而被中断。
+</p>
+
+<p>有效负荷可用后更新流程中的步骤将如下所示：</p>
+
+<p>
+  <strong>第 1 步</strong>：通过 <code>markBootSuccessful()</code> 将当前插槽（或“源插槽”）标记为成功（如果尚未标记）。
+</p>
+
+<p>
+  <strong>第 2 步</strong>：通过调用函数 <code>setSlotAsUnbootable()</code> 将未使用的插槽（或“目标插槽”）标记为不可启动。
+</p>
+
+<p>在更新开始时，当前插槽会始终标记为成功，以防引导加载程序回退至未使用的插槽（很快将有无效数据）。如果系统已可以开始应用更新，即使其他主要组件已受损（如崩溃循环中的界面），当前插槽也会标记为成功，因为可以通过推送新软件来修复这些主要问题。
+</p>
+
+<p>更新有效负荷是不透明的 Blob，其中包含更新到新版本的相应指令。更新有效负荷主要由两部分组成：元数据以及与指令相关的额外数据。元数据相对较小，其中包含在目标插槽上生成和验证新版本的操作的列表。例如，某个操作可能会解压缩特定 Blob 并将其写入目标分区中的特定块，或者从源分区读取数据、向其应用二进制补丁程序，然后写入目标分区中的特定块。与操作相关联的额外数据并未包含在元数据中，此类数据在更新有效负荷中所占比重较大，其中将包含这些示例中的已压缩 Blob 或二进制补丁程序。
+</p>
+
+<p>
+  <strong>第 3 步</strong>：下载有效负荷元数据。
+</p>
+
+<p>
+  <strong>第 4 步</strong>：对于元数据中定义的每项操作，将按顺序发生以下行为：关联的数据（如果有）下载到内存中、操作得到应用、关联的内存被舍弃。
+</p>
+
+<p>这两个步骤占用了大部分更新时间，因为它们涉及写入和下载大量数据，并且可能会因策略或重新启动等原因而中断。
+</p>
+
+<p>
+  <strong>第 5 步</strong>：针对预期哈希重新读取并验证整个分区。
+</p>
+
+<p>
+  <strong>第 6 步</strong>：运行安装后步骤（如果有）。
+</p>
+
+<p>如果在执行任一步骤的过程中出现错误，则更新失败，系统可能会通过其他有效负荷重新尝试更新。如果上述所有步骤均成功完成，则更新成功，系统会执行最后一个步骤。
+</p>
+
+<p>
+  <strong>第 7 步</strong>：通过调用 <code>setActiveBootSlot()</code> 将未使用的插槽标记为活动。<em></em>
+</p>
+
+<p>将未使用的插槽标记为活动并不意味着它会完成启动。如果它未读取到成功的状态，引导加载程序或系统本身可以将插槽的活动状态切换回来。
+</p>
+
+<h3 id="post-install-step">安装后的步骤</h3>
+
+<p>安装后的步骤包括从“新更新”版本中运行仍在原来版本中运行的程序。如果此步骤已在 OTA 软件包中定义，则为强制性步骤，且程序必须返回退出代码 <code>0</code>，否则更新失败。
+</p>
+
+<p>对于其中已定义安装后步骤的每个分区，<code>update_engine</code> 会将新分区装载到特定位置，并执行与装载的分区对应的 OTA 中指定的程序。例如，如果安装后程序在相应系统分区中定义为 <code>usr/bin/postinstall</code>，则系统会将此来自未使用插槽的分区装载到一个固定位置（如 <code>/postinstall_mount</code> 中），然后执行 <code>/postinstall_mount/usr/bin/postinstall</code> 命令。注意，要使此步骤生效，需要满足以下条件：</p>
+
+<ul>
+  <li>旧内核需要能够装载新的文件系统格式。文件系统类型不能更改，除非旧内核中有为其提供的支持（包括使用 SquashFS 等压缩文件系统时所用的压缩算法等详细信息）。
+  </li>
+  <li>旧内核需要了解新分区的安装后程序格式。如果使用的是 ELF 二进制文件，则该文件应该与旧内核兼容（例如，如果弃用 32 位版本架构，并改为使用 64 位版本架构，则 64 位的新程序应该可以在旧版 32 位内核上运行）。此外，库将会从旧系统映像而非新系统映像加载，除非加载程序 (<code>ld</code>) 收到使用其他路径或构建静态二进制文件的指令。
+  </li>
+  <li>新的安装后程序将受到旧系统中定义的 SELinux 策略的限制。
+  </li>
+</ul>
+
+<p>一种示例情况是，将 Shell 脚本用作安装后程序（由旧系统中顶部带有 <code>#!</code> 标记的 Shell 二进制文件解析）， 然后从新环境设置库路径，用于执行更复杂的二进制安装后程序。
+</p>
+
+<p>另一种示例情况是，从专用的较小分区执行安装后步骤，以便主系统分区中的文件系统格式可以得到更新，同时不会产生向后兼容问题或引发 stepping-stone 更新，这样一来，用户便可以从出厂映像直接更新到最新版本。
+</p>
+
+<p>根据 SELinux 策略，安装后步骤适用于在指定设备上执行设计所需的任务或其他需要尽可能完成的任务：更新支持 A/B 的固件或引导加载程序、为新版本准备部分数据库的副本等等。该步骤不适用于重新启动之前的一次性错误修复（此类修复需要无法预见的权限）。
+</p>
+
+<p>所选的安装后程序在 <code>postinstall</code> SELinux 环境中运行。新装载的分区中的所有文件都将使用 <code>postinstall_file</code> 进行标记，无论它们在重新启动到新系统后的属性如何，都是如此。对新系统中 SELinux 属性实施的更改不会影响安装后步骤。如果安装后的程序需要额外的权限，则必须将这些权限添加到安装后的环境中。
+</p>
+
+<h2 id="implementation">实现</h2>
+
+<p>希望实现该功能的 OEM 和 SoC 供应商必须向其引导加载程序中添加以下支持：</p>
+
+<ul>
+  <li>将<a href="#kernel-command-line-arguments">正确参数</a>传递给内核</li>
+  <li>实现 <code>boot_control</code> HAL (<a class="external-link nowrap" target="_blank" href="https://android.googlesource.com/platform/hardware/libhardware/+/master/include/hardware/boot_control.h">https://android.googlesource.com/platform/hardware/libhardware/+/master/include/hardware/boot_control.h</a>)</li>
+  <li>实现状态机，如图 1 所示：</li>
+</ul>
+
+<img src="images/ab-updates-state-machine.png"/>
+
+<p class="img-caption"><strong>图 1. </strong> 引导加载程序状态机</p>
+
+<p>可使用 <a class="external-link" target="_blank" href="https://android.googlesource.com/platform/system/extras/+/master/bootctl/"><code>bootctl</code></a> 实用工具测试启动控件 HAL。
+</p>
+
+<p>已针对 Brillo 实施了一些测试：</p>
+
+<ul>
+  <li>
+    <a class="external-link nowrap" target="_blank" href="https://android.googlesource.com/platform/system/extras/+/refs/heads/master/tests/bootloader/">https://android.googlesource.com/platform/system/extras/+/refs/heads/master/tests/bootloader/</a>
+  </li>
+  <li>
+    <a class="external-link nowrap" target="_blank" href="https://chromium.googlesource.com/chromiumos/third_party/autotest/+/master/server/site_tests/brillo_BootLoader/brillo_BootLoader.py">https://chromium.googlesource.com/chromiumos/third_party/autotest/+/master/server/site_tests/brillo_BootLoader/brillo_BootLoader.py</a>
+  </li>
+</ul>
+
+<h3 id="kernel-patches">内核补丁程序</h3>
+
+<ul>
+  <li>
+    <a class="external-link nowrap" target="_blank" href="https://android-review.googlesource.com/#/c/158491/">https://android-review.googlesource.com/#/c/158491/</a>
+  </li>
+  <li>
+    <a class="external-link nowrap" target="_blank" href="https://android-review.googlesource.com/#/q/status:merged+project:kernel/common+branch:android-3.18+topic:A_B_Changes_3.18">https://android-review.googlesource.com/#/q/status:merged+project:kernel/common+branch:android-3.18+topic:A_B_Changes_3.18</a>
+  </li>
+</ul>
+
+<h3 id="kernel-command-line-arguments">内核命令行参数</h3>
+
+<p>内核命令行参数<strong>必须</strong>包含以下额外参数：</p>
+
+<pre>skip_initramfs rootwait ro init=/init root="/dev/dm-0 dm=system none ro,0 1 \
+  android-verity &lt;public-key-id&gt; &lt;path-to-system-partition&gt;"
+</pre>
+
+<p>值 <code>&lt;public-key-id&gt;</code> 是用于验证 verity 表签名的公钥 ID（请参阅 <a href="/security/verifiedboot/dm-verity.html">dm-verity</a>）。
+</p>
+
+<h4>要将包含相应公钥的 .X509 证书添加到系统密钥环，请执行以下操作：</h4>
+
+<ol>
+  <li>将设置为 <code>.der</code> 格式的 .X509 证书复制到 <code>kernel</code> 的根目录。您可以使用以下 <code>openssl</code> 命令将证书格式从 <code>.pem</code> 转换为 <code>.der</code>（如果 .X509 证书采用 <code>.pem</code> 格式）：<pre>openssl x509 -in &lt;x509-pem-certificate&gt; -outform der -out &lt;x509-der-certificate&gt;</pre>
+  </li>
+  <li>复制到内核版本根目录后，构建 <code>zImage</code> 以将该证书添加为系统密钥环的一部分。您可以通过以下 <code>procfs</code> 条目（需要启用 <code>KEYS_CONFIG_DEBUG_PROC_KEYS</code>）验证该步骤：<pre>angler:/# cat /proc/keys
+
+1c8a217e I------     1 perm 1f010000     0     0 asymmetri
+Android: 7e4333f9bba00adfe0ede979e28ed1920492b40f: X509.RSA 0492b40f []
+2d454e3e I------     1 perm 1f030000     0     0 keyring
+.system_keyring: 1/4</pre>
+  </li>
+</ol>
+
+<p>如果 .X509 证书添加成功，则表示系统密钥环中存在相应公钥。突出显示部分表示公钥 ID。</p>
+
+<p>下一步是将空格替换为“#”，并将其作为 <code>&lt;public-key-id&gt;</code> 在内核命令行中传递。例如，在上述示例中，以下证书在 <code>&lt;public-key-id&gt;</code> 的位置传递：<code>Android:#7e4333f9bba00adfe0ede979e28ed1920492b40f</code>
+</p>
+
+<h3 id="recovery">恢复</h3>
+
+<p>恢复 RAM 磁盘现已包含在 <code>boot.img</code> 文件中。进入恢复模式时，引导加载程序<strong>无法</strong>在内核命令行中添加 <code>skip_initramfs</code> 选项。
+</p>
+
+<h3 id="build-variables">构建变量</h3>
+
+<h5>必须针对 A/B 目标定义以下变量：</h5>
+
+<ul>
+  <li><code>AB_OTA_UPDATER := true</code></li>
+  <li>
+    <code>AB_OTA_PARTITIONS := \</code><br />
+    <code>  boot \</code><br />
+    <code>  system \</code><br />
+    <code>  vendor</code><br />以及通过 <code>update_engine</code> 更新的其他分区（无线装置、引导加载程序等）。
+  </li>
+  <li>
+    <code>BOARD_BUILD_SYSTEM_ROOT_IMAGE := true</code>
+  </li>
+  <li><code>TARGET_NO_RECOVERY := true</code></li>
+  <li>
+    <code>BOARD_USES_RECOVERY_AS_BOOT := true</code>
+  </li>
+  <li>
+    <code>PRODUCT_PACKAGES += \</code><br />
+    <code>  update_engine \</code><br />
+    <code>  update_verifier</code>
+  </li>
+</ul>
+
+<h5>（可选）针对调试版本定义以下变量：</h5>
+
+<ul>
+  <li>
+    <code>PRODUCT_PACKAGES_DEBUG += update_engine_client</code>
+  </li>
+</ul>
+
+<h5>无法针对 A/B 目标定义以下变量：</h5>
+
+<ul>
+  <li><code>BOARD_RECOVERYIMAGE_PARTITION_SIZE</code></li>
+  <li><code>BOARD_CACHEIMAGE_PARTITION_SIZE</code></li>
+  <li><code>BOARD_CACHEIMAGE_FILE_SYSTEM_TYPE</code></li>
+</ul>
+
+<h3 id="partitions">分区</h3>
+
+<ul>
+  <li>A/B 设备不需要恢复分区或缓存分区，因为 Android 已不再使用这些分区。数据分区现在用于存储下载的 OTA 软件包，而恢复映像代码位于启动分区。
+  </li>
+  <li>A/B 化的所有分区应命名如下（插槽始终被命名为 <code>a</code>、<code>b</code> 等）：<code>boot_a</code>、<code>boot_b</code>、<code>system_a</code>、<code>system_b</code>、<code>vendor_a</code>、<code>vendor_b</code>。
+  </li>
+</ul>
+
+<h3 id="fstab">Fstab</h3>
+
+<p>参数 <code>slotselect</code> <strong>必须</strong>位于 A/B 化分区的行中。例如：</p>
+
+<pre>&lt;path-to-block-device&gt;/vendor  /vendor  ext4  ro
+wait,verify=&lt;path-to-block-device&gt;/metadata,slotselect</pre>
+
+<p>请注意，不应选择名称为 <code>vendor</code> 的分区，而应选择分区 <code>vendor_a</code> 或 <code>vendor_b</code> 并将其装载到 <code>/vendor</code> 装载点上。
+</p>
+
+<h3 id="kernel-slot-arguments">内核插槽参数</h3>
+
+<p>应通过特定的 DT 节点 (<code>/firmware/android/slot_suffix</code>) 或 <code>androidboot.slot_suffix</code> 命令行参数传递当前插槽后缀。
+</p>
+
+<p>或者，如果引导加载程序实现 fastboot，则应支持以下命令和变量：</p>
+
+<h4>命令</h4>
+<ul>
+  <li>
+    <code>set_active &lt;slot&gt;</code> - 将当前活动插槽设置为指定插槽。此外，还必须清除该插槽的不可启动标记，并将重试计数重置为默认值。
+  </li>
+</ul>
+
+<h4>变量</h4>
+<ul>
+  <li>
+    <code>has-slot:&lt;partition-base-name-without-suffix&gt;</code> - 如果指定分区支持插槽，则返回“yes”，否则，返回“no”。
+  </li>
+  <li>
+    <code>current-slot</code> - 返回接下来将从中启动的插槽后缀。
+  </li>
+  <li>
+    <code>slot-count</code> - 返回一个表示可用插槽数量的整数。目前支持两个插槽，因此，该值为 <code>2</code>。
+  </li>
+  <li>
+    <code>slot-successful:&lt;slot-suffix&gt;</code> - 如果指定插槽已标记为成功启动，则返回“yes”，否则，返回“no”。
+  </li>
+  <li>
+    <code>slot-unbootable:&lt;slot-suffix&gt;</code> - 如果指定插槽标记为不可启动，则返回“yes”，否则，返回“no”。
+  </li>
+  <li>
+    <code>slot-retry-count:<slot suffix></slot></code> - 可以尝试启动指定插槽的剩余重试次数。
+  </li>
+  <li>这些变量都应显示在 <code>fastboot getvar all</code> 下
+  </li>
+</ul>
+
+<h3 id="ota-package-generation">生成 OTA 软件包</h3>
+
+<p><a href="/devices/tech/ota/tools.html">OTA 软件包工具</a>遵循与非 A/B 设备一样的命令。<code>target_files.zip</code> 文件必须通过为 A/B 目标定义版本变量生成。OTA 软件包工具会自动识别并生成格式适用于 A/B 更新程序的软件包。
+</p>
+
+<p>例如，使用以下命令生成完整 OTA：</p>
+
+<pre>./build/tools/releasetools/ota_from_target_files \
+  dist_output/tardis-target_files.zip ota_update.zip
+</pre>
+
+<p>或者生成增量 OTA：</p>
+
+<pre>./build/tools/releasetools/ota_from_target_files \
+  -i PREVIOUS-tardis-target_files.zip \
+  dist_output/tardis-target_files.zip incremental_ota_update.zip
+</pre>
+
+<h2 id="configuration">配置</h2>
+
+<h3 id="config-partitions">分区</h3>
+
+<p>更新引擎可以更新同一磁盘中定义的任何一对 A/B 分区。
+</p>
+
+<p>一对分区有一个公共前缀（例如 <code>system</code> 或 <code>boot</code>）及按插槽划分的后缀（例如 <code>_a</code>）。有效负荷生成器为其定义更新的分区列表由 <code>AB_OTA_PARTITIONS</code> make 变量配置。例如，如果磁盘中有一对分区 <code>bootloader_a</code> 和 <code>booloader_b</code>（<code>_a</code> 和 <code>_b</code> 为插槽后缀），则可以通过在产品或单板配置中指定以下变量来更新这些分区：</p>
+
+<pre>AB_OTA_PARTITIONS := \
+  boot \
+  system \
+  bootloader
+</pre>
+
+<p>由更新引擎更新的所有分区不得由系统的其余部分修改。在增量更新期间，来自当前插槽的二进制数据将用于在新插槽中生成数据。<em></em>任何修改都可能导致新插槽数据在更新过程中无法通过验证，从而导致更新失败。
+</p>
+
+<h3 id="post-install">安装后</h3>
+
+<p>对于每个已更新的分区，都可以使用一组键值对配置不同的安装后步骤。
+</p>
+
+<p>要在新映像中运行位于 <code>/system/usr/bin/postinst</code> 的程序，请指定与系统分区中相应文件系统的根目录对应的路径。例如，<code>usr/bin/postinst</code> 的对应路径为 <code>system/usr/bin/postinst</code>（如果未使用 RAM 磁盘）。此外，请指定要传递到 <code>mount(2)</code> 系统调用的文件系统类型。将以下内容添加到产品或设备的 <code>.mk</code> 文件（如果适用）：</p>
+
+<pre>AB_OTA_POSTINSTALL_CONFIG += \
+  RUN_POSTINSTALL_system=true \
+  POSTINSTALL_PATH_system=usr/bin/postinst \
+  FILESYSTEM_TYPE_system=ext4
+</pre>
+
+<h3 id="compilation">后台中的应用编译</h3>
+
+<p>要在 A/B 更新的后台编译应用，需要对产品的设备配置（位于产品的 device.mk 中）进行以下两项补充：</p>
+
+<ol>
+  <li>向版本中添加原生组件。这样可以确保编译脚本和二进制文件能够编译并添加到系统映像中。
+  <pre>
+  # A/B OTA dexopt package
+  PRODUCT_PACKAGES += otapreopt_script
+</pre>
+  </li>
+  <li>将编译脚本与 <code>update_engine</code> 相关联，以便它可以作为安装后步骤运行。
+  <pre>
+  # A/B OTA dexopt update_engine hookup
+  AB_OTA_POSTINSTALL_CONFIG += \
+    RUN_POSTINSTALL_system=true \
+    POSTINSTALL_PATH_system=system/bin/otapreopt_script \
+    FILESYSTEM_TYPE_system=ext4 \
+    POSTINSTALL_OPTIONAL_system=true
+  </pre>
+  </li>
+</ol>
+
+<p>请参阅 <a href="/devices/tech/dalvik/configure.html#other_odex">DEX_PREOPT 文件的首次启动安装</a>，以将预选文件安装到未使用的第二个系统分区中。</p>
+
+</body></html>

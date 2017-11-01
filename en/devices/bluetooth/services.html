@@ -1,0 +1,463 @@
+<html devsite>
+  <head>
+    <title>Bluetooth Services</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+    <p>
+      Over Bluetooth, devices can transmit data that can be used for
+      interactive services such as audio, messaging, and telephony. The
+      Bluetooth profiles used for different services can be found in
+      <code><a href="https://android.googlesource.com/platform/hardware/libhardware/+/master/include/hardware">
+        hardware/libhardware/include/hardware/</a></code>.
+    </p>
+
+    <h2 id="audio">Audio</h2>
+
+      <aside class="note"><strong>Note</strong>: Currently only
+        Classic Bluetooth supports any type of audio streaming.
+      </aside>
+
+      <p>
+        A Bluetooth connection lets users stream audio on Bluetooth-enabled
+        devices. For most audio use cases, the Android device is the source,
+        and the rendering device, such as a speaker or a headset, is the sink.
+      </p>
+
+      <h3 id="absolute-volume-control">Absolute volume control</h3>
+
+        <p>
+          In Android 6.0 and later, the Android Bluetooth stack lets a
+          source set an absolute volume, giving users accurate control over
+          audio volume. The source device sends un-attenuated audio and volume
+          information to the sink. The sink then amplifies the audio according
+          to the volume information, so users hear accurate playback volume.
+        </p>
+
+        <p>
+          The source device can also register volume notifications. When
+          volume changes are made with controls on the sink, the sink sends a
+          notification to the source. This lets the source accurately display
+          volume information on a user interface.
+        </p>
+
+        <p>
+          Absolute volume control is on by default. To disable absolute
+          volume control, users can go to <strong>Settings</strong> &gt;
+          <strong>System</strong> &gt; <strong>Developer options</strong>
+          and select the toggle for <strong>Disable absolute volume</strong>.
+        </p>
+
+        <h3 id="advanced-audio-codecs">Advanced audio codecs</h3>
+
+          <p>
+            In Android 8.0, devices that use the Advanced Audio Distribution
+            Profile (A2DP) can support additional audio codecs. The Bluetooth
+            stack supports audio codec negotiation for when devices connect to
+            a remote audio sink. This negotiation selects the best codec
+            supported by both the sender and the sink to provide high-quality
+            audio. After selection, all audio is routed through the selected
+            encoder and then sent to the sink.
+          </p>
+
+          <h4 id="implementation">Implementation</h4>
+
+            <p>
+              Devices running Android 8.0 that support A2DP automatically
+              gain the additional codec support. Device manufacturers may need
+              to obtain separate licenses and binary blobs for some
+              proprietary audio codecs. In addition to SBC, Android 8.0
+              supports the following codecs:
+            </p>
+
+            <ul>
+              <li>AAC</li>
+              <li>aptX</li>
+              <li>aptX HD</li>
+              <li>LDAC</li>
+            </ul>
+
+            <p>
+              Device manufacturers can choose which codecs their devices
+              attempt to use first. Set the codec priorities by changing the
+              following values in <code><a href="https://android.googlesource.com/platform/packages/apps/Bluetooth/+/master/res/values/config.xml">
+              res/values/config.xml</a></code>:
+            </p>
+
+<pre class="prettyprint">
+  &lt;!-- Configuring priorities of A2DP source codecs. Larger value means
+          higher priority. Value -1 means the codec is disabled.
+          Value 0 is reserved and should not be used here. Enabled codecs
+          should have priorities in the interval [1, 999999], and each
+          priority value should be unique. --&gt;
+        &lt;integer name="a2dp_source_codec_priority_sbc"&gt;1001&lt;/integer&gt;
+        &lt;integer name="a2dp_source_codec_priority_aac"&gt;2001&lt;/integer&gt;
+        &lt;integer name="a2dp_source_codec_priority_aptx"&gt;3001&lt;/integer&gt;
+        &lt;integer name="a2dp_source_codec_priority_aptx_hd"&gt;4001&lt;/integer&gt;
+        &lt;integer name="a2dp_source_codec_priority_ldac"&gt;5001&lt;/integer&gt;
+      </pre>
+
+        <h4 id="ldac-certification">LDAC certification</h4>
+
+          <p>
+            The Android Open Source Project includes Sony's LDAC codec, so a
+            separate license or blob is not needed for it. To integrate the
+            LDAC codec into your device, register with Sony and follow the
+            <a href="https://www.sony.net/Products/LDAC/aosp/">
+              LDAC certification process</a>.
+          </p>
+
+          <p>
+            The LDAC certification website has documentation about LDAC,
+            such as specification and operation handbooks. The LDAC site also
+            provides validation and interoperability tests for mobile and
+            tablet devices. Send passing test results to Sony to complete LDAC
+            certification.
+          </p>
+
+        <h4 id="ui-features">UI features</h4>
+
+          <p>
+            Along with additional codec support, Android 8.0 provides a
+            user-facing setting to disable high-definition (HD) Bluetooth
+            audio codecs.
+          </p>
+
+          <ol>
+            <li>Navigate to <strong>Settings</strong> &gt;
+              <strong>Connected devices</strong> &gt;
+              <strong>Bluetooth</strong>.</li>
+            <li>Tap on the gear icon next to the sink you want to disable codecs for.</li>
+            <li>Uncheck the <strong>HD Audio</strong> checkbox.</li>
+          </ol>
+
+          <p>
+            Device manufacturers that customize Settings should implement a
+            way for users to disable HD codecs.
+          </p>
+
+    <h2 id="messaging">Messaging</h2>
+
+      <p>
+        Messaging over Bluetooth lets users read, browse, and compose SMS
+        messages from a remote device. This capability is often used when
+        connecting a phone to an in-vehicle infotainment system.
+      </p>
+
+      <aside class="note"><strong>Note</strong>: Bluetooth messaging services
+        currently only support SMS. Email and instant messages are not
+        supported.
+      </aside>
+
+    <h2 id="telephony">Telephony</h2>
+
+      <p>
+        Bluetooth telephony services lets users stream calls and sync
+        contacts from a phone to another Bluetooth device. These features are
+        often used for hands-free calls when driving.
+      </p>
+
+      <p>
+        In Android 8.0, Bluetooth supports in-band ringtone. When a phone
+        connected over Bluetooth receives an incoming call, the ringtone will
+        play on the sink. Enable in-band ringtone in <strong>Settings</strong>
+        &gt; <strong>System</strong> &gt; <strong>Developer options</strong> by
+        selecting the toggle for <strong>Enable in-band ringing</strong>.
+      </p>
+
+    <h2>Bluetooth features</h2>
+      <p> To implement the Bluetooth services, the Bluetooth stack supports a
+        variety of profiles and features.
+    </p>
+
+      <h3 id="bluetooth-profiles">Bluetooth profiles</h3>
+
+        <p>
+          These profiles are available for Bluetooth:
+        </p>
+
+        <table>
+          <tr>
+            <th colspan="2" >Feature</th>
+            <th colspan="5" >Android version</th>
+          </tr>
+          <tr>
+            <th>Name</th>
+            <th>Description</th>
+            <th>6.0</th>
+            <th>7.0</th>
+            <th>7.1</th>
+            <th>7.1.2</th>
+            <th>8.0</th>
+          </tr>
+          <tr>
+            <td><strong>SAP</strong></td>
+            <td>SIM Access Profile</td>
+            <td>1.1</td>
+            <td>1.1</td>
+            <td>1.1</td>
+            <td>1.1</td>
+            <td>1.1</td>
+          </tr>
+          <tr>
+            <td><strong>MAP</strong></td>
+            <td>Message Access Profile for SMS</td>
+            <td>1.2</td>
+            <td>1.2</td>
+            <td>1.2</td>
+            <td>1.2</td>
+            <td>1.2</td>
+          </tr>
+          <tr>
+            <td><strong>OPP</strong></td>
+            <td>Object Push Profile</td>
+            <td>1.1</td>
+            <td>1.1</td>
+            <td>1.1</td>
+            <td>1.1</td>
+            <td>1.2</td>
+          </tr>
+          <tr>
+            <td><strong>OBEX over L2CAP</strong></td>
+            <td>OBject EXchange over Logical Link Control and Adaptation
+              Protocol</td>
+            <td>Yes</td>
+            <td>Yes</td>
+            <td>Yes</td>
+            <td>Yes</td>
+            <td>Yes</td>
+          </tr>
+          <tr>
+            <td><strong>HFP Audio Gateway</strong></td>
+            <td>Hands-Free Profile</td>
+            <td>1.6</td>
+            <td>1.6</td>
+            <td>1.7</td>
+            <td>1.7</td>
+            <td>1.7</td>
+          </tr>
+          <tr>
+            <td><strong>HSP</strong></td>
+            <td>Headset Profile</td>
+            <td>1.2</td>
+            <td>1.2</td>
+            <td>1.2</td>
+            <td>1.2</td>
+            <td>1.2</td>
+          </tr>
+          <tr>
+            <td><strong>A2DP</strong></td>
+            <td>Advanced Audio Distribution Profile</td>
+            <td>1.2</td>
+            <td>1.2</td>
+            <td>1.2</td>
+            <td>1.2</td>
+            <td>1.2</td>
+          </tr>
+          <tr>
+            <td><strong>AVRCP</strong></td>
+            <td>Audio/Video Remote Control Profile</td>
+            <td>1.3</td>
+            <td>1.3</td>
+            <td>1.3</td>
+            <td>1.3</td>
+            <td>1.4</td>
+          </tr>
+          <tr>
+            <td><strong>HID</strong></td>
+            <td>Human Interface Device Profile</td>
+            <td>1.0</td>
+            <td>1.0</td>
+            <td>1.0</td>
+            <td>1.0</td>
+            <td>1.0</td>
+          </tr>
+          <tr>
+            <td><strong>PBAP</strong></td>
+            <td>Phone Book Access Profile</td>
+            <td>1.1.1</td>
+            <td>1.1.1</td>
+            <td>1.1.1</td>
+            <td>1.1.1</td>
+            <td>1.2</td>
+          </tr>
+          <tr>
+            <td><strong>HDP</strong></td>
+            <td>Health Device Profile</td>
+            <td>1.0</td>
+            <td>1.0</td>
+            <td>1.1</td>
+            <td>1.1</td>
+            <td>1.1</td>
+          </tr>
+          <tr>
+            <td><strong>SPP</strong></td>
+            <td>Serial Port Profile</td>
+            <td>1.2</td>
+            <td>1.2</td>
+            <td>1.2</td>
+            <td>1.2</td>
+            <td>1.2</td>
+          </tr>
+          <tr>
+            <td><strong>PAN / BNEP</strong></td>
+            <td>Personal Area Networking Profile / Bluetooth Network
+              Encapsulation Protocol</td>
+            <td>1.0</td>
+            <td>1.0</td>
+            <td>1.0</td>
+            <td>1.0</td>
+            <td>1.0</td>
+          </tr>
+          <tr>
+            <td><strong>DIP</strong></td>
+            <td>Device ID Profile</td>
+            <td>1.3</td>
+            <td>1.3</td>
+            <td>1.3</td>
+            <td>1.3</td>
+            <td>1.3</td>
+          </tr>
+          <tr>
+            <td><strong>HOGP 1.0</strong></td>
+            <td>HID over GATT</td>
+            <td>Yes</td>
+            <td>Yes</td>
+            <td>Yes</td>
+            <td>Yes</td>
+            <td>Yes</td>
+          </tr>
+          <tr>
+            <td><strong>HD Audio</strong><sup id="fnref1"><a href="#fn1"
+              rel="footnote">1</a></sup></td>
+            <td>See "Advanced audio codecs" above</td>
+            <td>No</td>
+            <td>No</td>
+            <td>No</td>
+            <td>No</td>
+            <td>Yes</td>
+          </tr>
+        </table>
+
+        <p>
+          <sup id="fn1">1</sup> Implementing HD Audio depends on device
+          capabilities, both on the source and the sink.
+        </p>
+
+      <h3 id="bluetooth-low-energy-features">Bluetooth Low Energy features</h3>
+
+        <p>
+          These features are available for BLE:
+        </p>
+
+        <table>
+          <tr>
+            <th>Feature</th>
+            <th colspan="5" >Android version</th>
+          </tr>
+          <tr>
+            <th>Name</th>
+            <th>6.0</th>
+            <th>7.0</th>
+            <th>7.1</th>
+            <th>7.1.2</th>
+            <th>8.0</th>
+          </tr>
+          <tr>
+            <td><strong>BR/EDR secure connections</strong></td>
+            <td>4.1</td>
+            <td>4.1</td>
+            <td>4.1</td>
+            <td>4.1</td>
+            <td>5.0</td>
+          </tr>
+          <tr>
+            <td><strong>LE Privacy</strong></td>
+            <td>4.2</td>
+            <td>4.2</td>
+            <td>4.2</td>
+            <td>4.2</td>
+            <td>5.0</td>
+          </tr>
+          <tr>
+            <td><strong>LE secure connections</strong></td>
+            <td>4.2</td>
+            <td>4.2</td>
+            <td>4.2</td>
+            <td>4.2</td>
+            <td>5.0</td>
+          </tr>
+          <tr>
+            <td><strong>Data Packet Extensions</strong></td>
+            <td>4.2</td>
+            <td>4.2</td>
+            <td>4.2</td>
+            <td>4.2</td>
+            <td>5.0</td>
+          </tr>
+          <tr>
+            <td><strong>32-bit UUIDs</strong></td>
+            <td>Yes</td>
+            <td>Yes</td>
+            <td>Yes</td>
+            <td>Yes</td>
+            <td>Yes</td>
+          </tr>
+          <tr>
+            <td><strong>Dual Mode LE Central/Peripheral</strong></td>
+            <td>Yes</td>
+            <td>Yes</td>
+            <td>Yes</td>
+            <td>Yes</td>
+            <td>Yes</td>
+          </tr>
+          <tr>
+            <td><strong>LE Peripheral Mode</strong></td>
+            <td>Yes</td>
+            <td>Yes</td>
+            <td>Yes</td>
+            <td>Yes</td>
+            <td>Yes</td>
+          </tr>
+          <tr>
+            <td><strong>Google HCI Requirements</strong></td>
+            <td>Yes</td>
+            <td>Yes</td>
+            <td>Yes</td>
+            <td>Yes</td>
+            <td>Yes</td>
+          </tr>
+          <tr>
+            <td><strong>LE Connection-Oriented Channels</strong></td>
+            <td>No</td>
+            <td>No</td>
+            <td>No</td>
+            <td>No</td>
+            <td>Yes<sup id="fnref2"><a href="#fn2" rel="footnote">2</a></sup>
+            </td>
+          </tr>
+        </table>
+
+        <p>
+          <sup id="fn2">2</sup> Implementing LE Connection-Oriented Channels
+          depends on device capabilities, both on the source and the sink.
+        </p>
+  </body>
+</html>

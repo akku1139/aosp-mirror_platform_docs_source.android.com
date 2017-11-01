@@ -1,0 +1,115 @@
+<html devsite>
+  <head>
+    <title>Task Snapshots</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<h2 id="introduction">Introduction</h2>
+
+<p>
+<em>Task Snapshots</em> is infrastructure introduced in Android O that combines
+screenshots for <em>Recents Thumbnails</em> as well as <em>Saved Surfaces</em>
+from Window Manager. Recents Thumbnails represent the last state of a task in
+the Recents view.
+</p>
+
+<p>
+When an activity went into a stopped state, Window Manager didn't destroy the
+surfaces of the activity as long as that activity was on the top of the task. If
+this activity had to be shown again, Window Manager was able to start the
+animation without waiting for the activity to finish drawing its first frame, as
+it was able to use this Saved Surface.
+</p>
+<h2 id="architecture">Architecture</h2
+>
+
+<p>
+The two concepts of Recents Thumbnails and Saved Surfaces are unified with Task
+Snapshots. When a task goes into background, Window Manager places a screenshot
+of this task into a GraphicBuffer. As long as the application of the top
+activity of the task stays in memory, this GraphicBuffer will be retained in
+memory. Now, when the same activity is brought to the front again, Window
+Manager will create a starting window (TaskSnapshotSurface), and attach the
+GraphicBuffer without copying any memory to the buffer queue of the starting
+window. As soon as the activity has drawn its first frame, the Task Snapshot
+starting window will fade out smoothly like regular splash screens.
+</p>
+
+<p>
+The same GraphicBuffer is also sent over Binder to SystemUI to be used to draw
+the preview state of a task in the Recents view. Since this is just a reference
+to a buffer, sending it over binder expends few resources. When the
+GraphicBuffer arrives at SystemUI, it is wrapped into a hardware Bitmap and then
+drawn onto the screen without any memory uploading to the graphics memory.
+</p>
+
+<h2 id="benefits">Benefits</h2>
+
+<p>
+There are three main benefits to this new architecture:
+</p>
+
+<ul>
+<li>If the task snapshot is used as a starting window, there is a nice crossfade
+between the snapshot and the real content.</li>
+<li>When the task snapshot is drawn in SystemUI, it can be done so without any
+copying. Previously the bitmap had to be copied into Ashmem, then into graphics
+memory. Since this method stores the snapshot directly in graphics memory, no
+copying is needed.</li>
+<li>The state you see in Recents always matches the state you'll first see when
+reopening the app. Having the same buffer here also saves a lot of memory.
+That's why Recents is now able to show these images at full resolution.
+Previously, it was down sampled by 64% to save memory.</li>
+</ul>
+
+<h2 id="implementation">Implementation</h2>
+
+<p>
+This feature exists entirely in the Android platform. No integration is
+required, and customization is not supported. Device manufacturers may, however,
+disable the Task Snapshots feature entirely.
+</p>
+
+<p>
+To disable this feature, modify this function:
+</p>
+
+<pre class="prettyprint">
+frameworks/base/services/core/java/com/android/server/wm/TaskSnapshotController.java#215
+</pre>
+
+<p>
+Note that if the feature is disabled, the Recents view will not show any
+thumbnails whatsoever. This feature is automatically disabled on low-RAM
+devices.
+</p>
+
+<h2 id="examples-and-source">Examples and source</h2>
+
+<p>
+Find the rest of the code for this feature within the TaskSnapshot* files in:
+</p>
+
+<pre class="prettyprint">
+frameworks/base/+/master/services/core/java/com/android/server/wm/
+</pre>
+
+</body>
+</html>

@@ -1,0 +1,308 @@
+<html devsite><head>
+    <title>编译测试程序</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>相关人员在设计测试框架时考虑到了可移植性。仅有的强制性要求是针对 I/O、线程和套接字的全面 C++ 支持和标准系统库。</p>
+
+<h2 id="cmake_build_system">CMake 编译系统</h2>
+
+<p>deqp 来源具有适用于 CMake 的编译脚本，这是编译测试程序的首选工具。</p>
+
+<p>CMake 是一个开放源代码编译系统，支持多种平台和工具链。CMake 从与目标无关的配置文件生成原生 Makefile 或 IDE 项目文件。要详细了解 CMake，请参阅 <a href="http://www.cmake.org/cmake/help/documentation.html">CMake</a> 文档。</p>
+
+<p>CMake 支持且建议在源代码树之外进行编译，也就是说，您应该始终在源代码树之外的独立编译目录中创建 Makefile 或项目文件。CMake 没有任何类型的“distclean”目标，因此，您必须手动移除 CMake 生成的任何文件。</p>
+
+<p>配置选项通过 <code>-D<var>OPTION_NAME</var>=<var>VALUE</var></code> 语法提供给 CMake。deqp 的一些常用选项如下所示。</p>
+
+<table>
+ <tbody><tr>
+   <th>配置选项</th>
+   <th>说明</th>
+ </tr>
+
+ <tr>
+    <td><code>DEQP_TARGET</code></td>
+<td><p>目标名称，例如“android”</p>
+<p>deqp CMake 脚本将包含文件 <code>targets/<var>DEQP_TARGET</var>/<var>DEQP_TARGET</var>.cmake</code>，这里应该可以找到特定于目标的编译选项。</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>CMAKE_TOOLCHAIN_FILE</code></td>
+<td><p>CMake 工具链文件的路径。用于交叉编译。</p></td>
+ </tr>
+ <tr>
+    <td><code>CMAKE_BUILD_TYPE</code></td>
+<td><p>Makefile 目标的编译类型。有效值为“Debug”和“Release”</p>
+<p>注意，解释和默认类型取决于目标编译系统。如需了解详情，请参阅 CMake 文档。</p>
+</td>
+ </tr>
+</tbody></table>
+
+<h2 id="creating_target_build_file">创建目标编译文件</h2>
+
+<p>针对新目标的 deqp 编译系统使用目标编译文件进行配置。目标编译文件可定义该平台支持哪些功能以及需要哪些库或其他包含路径。目标文件名遵循 <code>targets/<var>NAME</var>/<var>NAME</var>.cmake</code> 格式，且目标的选择会用到 <code>DEQP_TARGET</code> 编译参数。</p>
+
+<p>目标文件中的文件路径与基本的 <code>deqp</code> 目录（而非 <code>targets/<var>NAME</var></code> 目录）相关。目标编译文件可以设置以下标准变量。</p>
+
+<table>
+ <tbody><tr>
+   <th>变量</th>
+   <th>说明</th>
+ </tr>
+ <tr>
+    <td><code>
+DEQP_TARGET_NAME</code></td>
+<td><p>目标名称（将包含在测试日志中）</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+DEQP_SUPPORT_GLES2</code></td>
+<td><p>是否支持 GLES2（默认值：OFF）</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+DEQP_GLES2_LIBRARIES</code></td>
+<td><p>GLES2 库（如果不受支持或使用的是动态加载，则留空）</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+DEQP_SUPPORT_GLES3</code></td>
+<td><p>是否支持 GLES3.x（默认值：OFF）</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+DEQP_GLES3_LIBRARIES</code></td>
+<td><p>GLES3.x 库（如果不受支持或使用的是动态加载，则留空）</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+DEQP_SUPPORT_VG</code></td>
+<td><p>是否支持 OpenVG（默认值：OFF）</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+DEQP_OPENVG_LIBRARIES</code></td>
+<td><p>OpenVG 库（如果不受支持或使用的是动态加载，则留空）</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+DEQP_SUPPORT_EGL</code></td>
+<td><p>是否支持 EGL（默认值：OFF）</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+DEQP_EGL_LIBRARIES</code></td>
+<td><p>EGL 库（如果不受支持或使用的是动态加载，则留空）</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+DEQP_PLATFORM_LIBRARIES</code></td>
+<td><p>进行链接所需的特定于平台的附加库</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+DEQP_PLATFORM_COPY_LIBRARIES</code></td>
+<td><p>复制到每个测试二进制文件编译目录的库列表。可用于复制运行测试所需但不在默认搜索路径中的库。</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+TCUTIL_PLATFORM_SRCS</code></td>
+<td><p>平台端口来源列表。默认来源取决于功能和操作系统。</p>
+
+<p><strong>注意</strong>：路径相对于 <code>framework/platform</code></p>
+</td>
+ </tr>
+</tbody></table>
+
+<p>目标编译文件可以使用 <code>include_directories()</code> 和 <code>link_directories()</code> CMake 函数添加其他包含或链接路径。</p>
+
+<h2 id="win32_build">Win32 编译</h2>
+
+<p>为 Windows 编译 deqp 模块最简单的方法是使用 CMake 编译系统。您需要使用 CMake 2.6.12 或更高版本以及 Microsoft Visual C/C++ 编译器。deqp 已通过 Visual Studio 2013 测试。</p>
+
+<p>可以使用以下命令生成 Visual Studio 项目文件：</p>
+
+<pre class="devsite-terminal devsite-click-to-copy">
+cmake path\to\src\deqp -G "Visual Studio 12"
+</pre>
+
+<p>选择“Visual Studio VERSION Win64”作为编译生成器可制作 64 位版本：<var></var></p>
+
+<pre class="devsite-terminal devsite-click-to-copy">
+cmake path\to\src\deqp -G "Visual Studio 12 Win64"
+</pre>
+
+<p>您还可以通过 <code>-G "NMake Makefiles"</code> 选项和编译类型（<code>-DCMAKE_BUILD_TYPE="Debug"</code> 或 <code>"Release"</code>）生成 NMake Makefile。</p>
+
+<h3 id="rendering_context_creation">渲染上下文的创建</h3>
+
+<p>渲染上下文可通过 WGL 或 Windows 上的 EGL 进行创建。</p>
+
+<h4 id="wgl_support">WGL 支持</h4>
+
+<p>所有 Win32 二进制文件都支持使用 WGL 创建 GL 上下文，因为它只需要标准库。使用 <code>--deqp-gl-context-type=wgl</code> 命令行参数可选择 WGL 上下文。在 WGL 模式下，deqp 使用 <code>WGL_EXT_create_context_es_profile</code> 扩展程序创建 OpenGL ES 上下文。经过测试，该程序可与 NVIDIA 和 Intel 的最新驱动程序配合使用。AMD 驱动程序不支持所需的扩展程序。</p>
+
+<h4 id="egl_support">EGL 支持</h4>
+
+<p>如果 DEQP_SUPPORT_EGL 的状态为“ON”（这是大多数目标中的默认状态），则通过动态加载为 Windows 上的 EGL 构建 deqp。接下来，如果主机有可用的 EGL 库，则可以通过命令行参数 <code>--deqp-gl-context-type=egl</code> 对其运行测试。</p>
+
+<h2 id="android_build">Android 编译</h2>
+
+<p>Android 编译使用 CMake 编译脚本来编译原生测试代码。Java 部分（即测试执行服务器和测试应用存根）使用标准的 Android 编译工具进行编译。</p>
+
+<p>要使用提供的编译脚本编译 Android 的 deqp 测试程序，您需要：</p>
+
+<ul>
+  <li>最新版本的 <a href="http://developer.android.com/tools/sdk/ndk/index.html">Android NDK</a>；<code>android/scripts/common.py</code> 文件列有所需的版本
+  </li><li>Android 独立 SDK（已安装 API 13、SDK 工具、SDK 平台工具和 SDK 编译工具<a href="http://developer.android.com/sdk/index.html#Other">软件包</a>）
+  </li><li><a href="http://ant.apache.org/bindownload.cgi">Apache Ant 1.9.4</a>（Java 代码编译所需）
+  </li><li><a href="http://www.cmake.org/download/">CMake 2.8.12</a> 或更高版本
+  </li><li><a href="https://www.python.org/downloads/">Python 2.6</a> 或更高版本（2.x 系列）；不支持 Python 3.x
+  </li><li>对于 Windows：<code>PATH</code> 中的 NMake 或 JOM
+  <ul>
+    <li><a href="http://qt-project.org/wiki/jom">JOM</a> 的编译速度更快
+  </li></ul>
+  </li><li>可选：Linux 上还支持 Ninja make
+</li></ul>
+
+<p>Ant 和 SDK 二进制文件的位置取决于具有特定覆盖默认值的 PATH 环境变量。具体逻辑由 <code>android/scripts/common.py</code> 控制。</p>
+
+<p>NDK 目录必须为 <code>~/android-ndk-<var>VERSION</var></code> 或 <code>C:/android/android-ndk-<var>VERSION</var></code>，或者通过 <code>ANDROID_NDK_PATH</code> 环境变量进行定义。</p>
+
+<p>Deqp 设备组件、测试执行服务和测试程序均通过执行 <code>android/scripts/build.py</code> 脚本进行编译。最终 .apk 在 <code>android/package/bin</code> 中创建，并可通过 <code>install.py</code> 脚本进行安装。如果使用<a href="port-tests.html#test_execution_service">命令行执行程序</a>，则可以在设备上通过 ADB 使用 <code>launch.py</code> 脚本启动 ExecService。这些脚本可以从任何目录执行。</p>
+
+<h2 id="linux_build">Linux 编译</h2>
+
+<p>通过使用 CMake 生成 Makefile，可以编译适用于 Linux 的测试二进制文件和命令行实用工具。其中有多个预定义的编译目标对 Linux 编译很有帮助。</p>
+
+<table>
+ <tbody><tr>
+   <th>编译目标</th>
+   <th>说明</th>
+ </tr>
+
+ <tr>
+    <td><code>default</code></td>
+<td><p>默认目标；使用 CMake 平台自省来确定是否支持各种 API。</p>
+</td>
+ </tr>
+
+<tr>
+    <td><code>
+x11_glx</code></td>
+<td><p>使用 GLX 创建 OpenGL (ES) 上下文。</p>
+</td>
+ </tr>
+
+<tr>
+    <td><code>
+x11_egl</code></td>
+<td><p>使用 EGL 创建 OpenGL (ES) 上下文。</p>
+</td>
+ </tr>
+
+ <tr>
+    <td><code>
+x11_egl_glx</code></td>
+<td><p>同时支持带有 X11 的 GLX 和 EGL。</p>
+</td>
+ </tr>
+</tbody></table>
+
+<p>始终使用 <code>-DCMAKE_BUILD_TYPE=&lt;Debug|Release&gt;</code> 来定义编译类型。<code>Release</code> 是一个很实用的默认值。如果没有该值，则默认创建未优化的编译版本。</p>
+
+<p><code>-DCMAKE_C_FLAGS</code> 和 <code>-DCMAKE_CXX_FLAGS</code> 命令行参数可用于将额外的参数传递给编译器。例如，可以通过分别设置 <code>-DCMAKE_C(XX)_FLAGS="-m32"</code> 或 <code>"-m64"</code> 来实现 32 位 或 64 位编译。如果未指定，则使用工具链原生架构（通常会为 64 位工具链生成 64 位版本）。</p>
+
+<p><code>-DCMAKE_LIBRARY_PATH</code> 和 <code>-DCMAKE_INCLUDE_PATH</code> 参数可用于 CMake，为 CMake 提供额外的库或包含搜索路径。</p>
+
+<p>用于针对自定义位置中的驱动程序头文件和库执行 32 位调试编译的完整命令行示例如下：</p>
+
+<pre class="devsite-click-to-copy">
+<code class="devsite-terminal">cmake &lt;path to src&gt;/deqp -DDEQP_TARGET=x11_egl -DCMAKE_C_FLAGS="-m32"
+-DCMAKE_CXX_FLAGS="-m32" -DCMAKE_BUILD_TYPE=Debug
+-DCMAKE_LIBRARY_PATH="<var>PATH_TO_DRIVER</var>/lib"
+-DCMAKE_INCLUDE_PATH="<var>PATH_TO_DRIVER</var>/inc"</code>
+<code class="devsite-terminal">make -j4</code>
+</pre>
+
+<h2 id="cross-compiling">交叉编译</h2>
+
+<p>使用 CMake 工具链文件可实现交叉编译。工具链文件可指定要使用的编译器，以及用于库和标头的自定义搜索路径。一些适用于常见场景的工具链文件包含在 <code>framework/delibs/cmake</code> 目录下的发布包中。</p>
+
+<p>除了标准的 CMake 变量之外，工具链文件还可以设置以下特定于 deqp 的变量。CMake 通常可以正确检测 <code>DE_OS</code>、<code>DE_COMPILER</code> 和 <code>DE_PTR_SIZE</code>，但 <code>DE_CPU</code> 必须由工具链文件设置。</p>
+
+<table>
+ <tbody><tr>
+   <th>变量</th>
+   <th>说明</th>
+ </tr>
+ <tr>
+   <td><code>
+DE_OS</code></td>
+   <td><p>操作系统。支持的值包括：<code>DE_OS_WIN32, DE_OS_UNIX, DE_OS_WINCE, DE_OS_OSX, DE_OS_ANDROID, DE_OS_SYMBIAN, DE_OS_IOS</code></p>
+   </td>
+ </tr>
+ <tr>
+    <td><code>
+DE_COMPILER</code></td>
+<td><p>编译器类型。支持的值包括：<code>DE_COMPILER_GCC, DE_COMPILER_MSC, DE_COMPILER_CLANG</code></p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+DE_CPU</code></td>
+<td><p>CPU 类型。支持的值包括：<code>DE_CPU_ARM, DE_CPU_X86</code>。</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+DE_PTR_SIZE</code></td>
+<td><p>平台上的 sizeof(void*)。支持的值包括：4 和 8</p>
+</td>
+ </tr>
+</tbody></table>
+
+<p>使用 <code>CMAKE_TOOLCHAIN_FILE</code> 编译参数可选择工具链文件。例如，以下代码将使用适用于 ARM/Linux 的 CodeSourcery 交叉编译器为编译创建 Makefile：</p>
+
+<pre class="devsite-terminal devsite-click-to-copy">
+cmake <var>PATH_TO_SRC</var>/deqp –DDEQP_BUILD_TYPE="Release"
+–DCMAKE_TOOLCHAIN_FILE=<var>PATH_TO_SRC</var>/delibs/cmake/toolchain-arm-cs.cmake
+–DARM_CC_BASE=<var>PATH_TO_CC_DIRECTORY</var>
+</pre>
+
+<h2 id="run-time_linking_of_gles_and_egl_libraries">GLES 和 EGL 库的运行时链接</h2>
+
+<p>deqp 在链接时期间不需要正在测试的 API 接入点。测试代码始终通过函数指针访问 API。这样接入点便可以在运行时动态加载，或者平台端口也可以在链接时提供接入点。</p>
+
+<p>如果在编译设置中启用了对 API 的支持且未提供链接库，则 deqp 将在运行时加载所需的接入点。如果需要静态链接，请在 <code>DEQP_&lt;API&gt;_LIBRARIES</code> 编译配置变量中提供所需的链接库。</p>
+
+</body></html>

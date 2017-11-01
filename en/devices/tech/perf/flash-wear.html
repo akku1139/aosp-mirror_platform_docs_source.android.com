@@ -1,0 +1,175 @@
+<html devsite>
+  <head>
+    <title>Flash Wear Management in Android Automotive</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>
+Android Automotive internal storage uses an Embedded MultiMediaCard (eMMC) with
+thousands of erase/write cycles; if the eMMC fails, the system can become
+unusable. As vehicles have long lifespans (typically 10+ years), the eMMC must
+be extremely reliable. This page describes eMMC behavior and how OEMs can
+lower the risk of a failing eMMC (and thus avoid failed Android Automotive
+systems).
+</p>
+
+<h2 id="emmc-behavior">eMMC behavior</h2>
+
+<p>
+eMMC devices use wear leveling techniques to work around erase/write limitations
+by arranging data and distributing writes evenly across the system (so no single
+block fails due to intensive writes). The estimated life of eMMC depends on:
+</p>
+
+<ul>
+<li><strong>Amount of writes</strong>. On phones, the amount of data written to
+internal storage can be more than 10GB per day. On Automotive implementations, we don't
+have real world data on how much data will be written due to limited
+applications. However, when users are streaming high quality music and using
+navigation, we observe 50MB data written to eMMC every minute. In the future, we
+may have other types of write-intensive apps, such as dashboard camera
+applications that continuously record and store videos. In addition, some cars
+will be shared vehicles used multiple hours everyday. For these reasons and
+others, we expect Android Automotive implementations to have more eMMC writes
+than a phone.</li>
+<li><strong>Write patterns</strong>. Writes and erasures are done in blocks.
+Writing data frequently in small chunks wears the eMMC faster than writing the
+same amount of data less frequently and in larger chunks.</li>
+<li><strong>Available size of eMMC</strong>. Larger storage size means the wear
+leveling algorithm can spread the writes across larger number of blocks.
+<li>Wear leveling techniques.</li>
+<li><strong>Environmental factors</strong>. Examples include an operating
+temperature range of usually -20 ~ 85 Celsius; temperature beyond this range
+could further shorten the lifespan of the eMMC.</li>
+</ul>
+
+<p>
+For an eMMC with 16GB usable space and 3k erase/write cycles, we estimate the
+following:
+</p>
+<table>
+  <tr>
+   <th>Daily writes
+   </th>
+   <td>16GB
+   </td>
+   <td>32GB
+   </td>
+  </tr>
+  <tr>
+   <th>Estimated life time
+   </th>
+   <td>10 years
+   </td>
+   <td>5 years
+   </td>
+  </tr>
+</table>
+
+<p>
+However, the system would stop functioning properly long before the eMMc
+completely wears out as the usable storage size decreases, and the eMMC may have
+an even shorter lifespan depending on the leveling techniques and the write
+patterns used. In addition, this estimate does not consider the effects of
+misbehaved or malicious apps, which could attack Automotive systems by writing
+large blocks of junk data to eMMC without special permissions.
+</p>
+
+<p>
+To detect the possible eMMC failure before it actually happens, proper storage
+health monitoring should be built in as part of the overall system health
+monitoring
+</p>
+
+<h2 id="implementation">Implementation</h2>
+
+<p>
+Android O supports features that enable OEMs to protect and monitor the
+internal storage of Android Automotive and prolong its lifespan.
+</p>
+
+<h3 id="restricting-third-party-apps">Restricting third-party apps</h3>
+
+<p>
+To protect the internal storage of Android Automotive system, Android O enables
+OEMs to configure whether third-party apps can be installed on internal storage
+(apps can write only to the partition on which they were installed). To
+configure, set the following configuration in the resource overlay:
+</p>
+
+<pre
+class="prettyprint notranslate">&lt;bool name="config_allow3rdPartyAppOnInternal">false&lt;/bool>
+</pre>
+
+<h3 id="reducing-flash-wear">Reducing flash wear</h3>
+
+<p>
+OEMs concerned about flash wear on internal storage can also add an SD card that
+is fast enough to be used as adopted storage. The SD card has the following
+behavior:
+</p>
+
+<ul>
+<li>When adopted, the SD card will be encrypted and is safe for storing app
+data.</li>
+<li>SD card slot must be in a safe location (users are not expected to remove
+the SD card frequently).</li>
+<li>SD card cannot be used for transferring data between Automotive systems and
+a computer.</li>
+<li>Ejecting the SD card will not affect a running system. However, it should
+not be removed unless it needs to be replaced.</li>
+</ul>
+
+<p>
+To ensure second-party applications (those built by car app developers) can be
+installed on SD card if the car mandates, car app developers must include
+<code>android:<a
+href="https://developer.android.com/guide/topics/manifest/manifest-element.html#install">installLocation</a>=["auto"
+| "preferExternal"] </code>in the app's manifest file.
+</p>
+
+<p>
+If the car does not allow third-party apps to be installed on internal storage
+(as described in <a href="#restricting-third-party-apps">Restricting third-party
+apps</a>), without this flag (or if the <code><a
+href="https://developer.android.com/guide/topics/manifest/manifest-element.html#install">installLocation</a>=internalOnly</code>
+setting is configured), app installation will fail.
+</p>
+
+<h3 id="getting-disk-metrics-with-storaged">Getting disk metrics with
+storaged</h3>
+
+<p>
+Android O introduces <em>storaged</em>, a new system service that samples and
+publishes disk and eMMc metrics such as information about overall disk usage,
+eMMC lifetime estimation, and per application disk I/O stats. OEMs can use this
+information to warn users when the internal storage begins to fail or when
+specific applications are performing too many disk I/Os. For details, refer to <a
+href="/devices/tech/debug/storaged">Implementing storaged</a>.
+</p>
+
+<h2 id="validation">Validation</h2>
+
+<p>
+This feature is tested in the <code>PackageManager</code> tests.
+</p>
+
+</body>
+</html>

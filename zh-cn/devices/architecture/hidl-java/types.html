@@ -1,0 +1,137 @@
+<html devsite><head>
+    <title>数据类型</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>给定一个 HIDL 接口文件，Java HIDL 后端会生成 Java 接口、存根和代理代码。它支持所有标量 HIDL 类型（[<code>u</code>]<code>int</code>{<code>8,16,32,64}_t, float, double,</code> 及 <code>enum</code>），以及受支持 HIDL 类型的字符串、接口、结构类型、数组和矢量。Java HIDL 后端<strong>不支持联合类型、原生句柄、共享内存和 fmq 类型</strong>。</p>
+
+<p>由于 Java 运行时本身不支持未签名整数的概念，所有未签名类型（以及基于这些类型的枚举）都会被自动视为其已签名的等效项，也就是说，<code>uint32_t</code> 在 Java 接口中会变为 <code>int</code>。不进行任何值转换；Java 端的实现人员必须将已签名值当做未签名值来使用。</p>
+
+<h2 id="enum">枚举</h2>
+<p>枚举不会生成 Java 枚举类，而是转换为包含各个枚举用例的静态常量定义的内部类。如果枚举类派生自其他枚举类，则会沿用后者的存储类型。
+基于未签名整数类型的枚举将重写为其已签名的等效项。</p>
+
+<p>例如，一个类型为 <code>uint8_t</code> 的 <code>SomeBaseEnum</code>：</p>
+
+<pre class="prettyprint">
+enum SomeBaseEnum : uint8_t { foo = 3 };
+enum SomeEnum : SomeBaseEnum {
+    quux = 33,
+    goober = 127
+};
+</pre>
+
+<p>…会变为：</p>
+
+<pre class="prettyprint">
+public final class SomeBaseEnum { public static final byte foo = 3; }
+public final class SomeEnum {
+    public static final byte foo = 3;
+    public static final byte quux = 33;
+    public static final byte goober = 127;
+}
+</pre>
+
+<p>且：</p>
+
+<pre class="prettyprint">
+enum SomeEnum : uint8_t {
+    FIRST_CASE = 10,
+    SECOND_CASE = 192
+};
+</pre>
+
+<p>…重写为：</p>
+
+<pre class="prettyprint">
+public final class SomeEnum {
+    static public final byte FIRST_CASE  = 10;  // no change
+    static public final byte SECOND_CASE = -64;
+}
+</pre>
+
+<h2 id="string">字符串</h2>
+<p>Java 中的 <code>String</code> 为 utf-8 或 utf-16，但在传输时会转换为 utf-8 作为常见的 HIDL 类型。另外，<code>String</code> 在传入 HIDL 时不能为空。</p>
+
+<h2 id="array-vect">数组和矢量</h2>
+<p>数组会转换为 Java 数组，矢量会转换为 <code>ArrayList&lt;T&gt;</code>，其中 T 是相应的对象类型，可能是封装标量类型，如 <code>vec&lt;int32_t&gt; =&gt;
+ArrayList&lt;Integer&gt;</code>。例如：</p>
+
+<pre class="prettyprint">
+takeAnArray(int32_t[3] array);
+returnAVector() generates (vec&lt;int32_t&gt; result);
+</pre>
+
+<p>…会变为：</p>
+
+<pre class="prettyprint">
+void takeAnArray(int[] array);
+ArrayList&lt;Integer&gt; returnAVector();
+</pre>
+
+<h2 id="struct">结构</h2>
+<p>结构会转换为具有相似布局的 Java 类。例如：</p>
+
+<pre class="prettyprint">
+struct Bar {vec&lt;bool&gt; someBools;
+  };
+  struct Foo {
+   int32_t a;
+   int8_t b;
+   float[10] c;
+   Bar d;
+  };
+</pre>
+
+<p>…会变为：</p>
+
+<pre class="prettyprint">
+class Bar {
+ public final ArrayList&lt;Boolean&gt; someBools = new ArrayList();
+};
+class Foo {
+ public int a;
+ public byte b;
+ public final float[] c = new float[10];
+ public final Bar d = new Bar();
+}
+</pre>
+
+<h2 id="declared">已声明的类型</h2>
+<p>在 <code>types.hal</code> 中声明的每个顶级类型都有自己的 .java 输出文件（根据 Java 要求）。例如，以下 <code>types.hal</code> 文件会导致创建两个额外的文件（Foo.java 和 Bar.java）：</p>
+
+<pre class="prettyprint">
+struct Foo {
+ ...
+};
+
+struct Bar {
+ ...
+
+ struct Baz {
+ };
+
+ ...
+};
+</pre>
+
+<p>Baz 的定义位于 Bar 的静态内部类中（在 Bar.java 内）。</p>
+
+</body></html>

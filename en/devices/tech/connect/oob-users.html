@@ -1,0 +1,170 @@
+<html devsite>
+  <head>
+    <title>Customizing Device Behavior for Out-of-Balance Users</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<h2 id="introduction">Introduction</h2>
+
+<p>Android devices with no data balance allow network traffic through, requiring
+carriers and telcos to implement mitigation protocols. This feature implements a
+generic solution that allows carriers and telcos to indicate when a device has
+run out of balance.</p>
+
+<p>Android platform provides a default carrier app with a default behaviour for
+traffic mitigation based on captive-portal detection signal. It also provides
+carriers and OEMs the opportunity to customize the behaviour with low cost and
+great flexibility.</p>
+
+<h2 id="examples-and-source">Examples and source</h2>
+
+<p>The default carrier app is located at
+<code>platform/frameworks/base/packages/CarrierDefaultApp/</code>.</p>
+
+<h2 id="implementation">Implementation</h2>
+
+<p>The default carrier app is configured to provide a better experience for
+unconfigured carriers out of the box. Carriers can use this default behavior.
+They can also override the default behavior by adding signal-action mappings to
+the carrier config XML file. They can decide not to use the default app and
+instead use UICC privileges with their own standalone carrier app.</p>
+
+<h3 id="implementation-introduction">Implementation introduction</h3>
+
+<h4 id="signals">Signals</h4>
+
+<p>Android framework supports configuring actions to the following parameterized
+signals:</p>
+
+<ul>
+<li><code>TelephonyIntents.ACTION_CARRIER_SIGNAL_REDIRECTED</code>
+<li><code>TelephonyIntents.ACTION_CARRIER_SIGNAL_REQUEST_NETWORK_FAILED</code></li>
+</ul>
+
+<p>These signals are located in
+<code>frameworks/base/telephony/java/com/android/internal/telephony/TelephonyIntents.java</code>.</p>
+
+<h4 id="supported-actions">Supported actions</h4>
+
+<p>The default carrier app defines a set of supported actions that can be mapped to
+supported signals. These are defined in <code>CarrierActionUtils.java</code>:</p>
+
+<pre class="devsite-click-to-copy">
+    public static final int CARRIER_ACTION_ENABLE_METERED_APNS               = 0;
+    public static final int CARRIER_ACTION_DISABLE_METERED_APNS              = 1;
+    public static final int CARRIER_ACTION_DISABLE_RADIO                     = 2;
+    public static final int CARRIER_ACTION_ENABLE_RADIO                      = 3;
+    public static final int CARRIER_ACTION_SHOW_PORTAL_NOTIFICATION          = 4;
+    public static final int CARRIER_ACTION_SHOW_NO_DATA_SERVICE_NOTIFICATION = 5;
+    public static final int CARRIER_ACTION_CANCEL_ALL_NOTIFICATIONS          = 6;
+</pre>
+
+<p class="note"><strong>Note:</strong> If a carrier implements their own standalone app, then
+they can implement support for signals other than those mentioned in this
+section. They can define and configure their own actions as well.</p>
+
+<h3 id="default-signal-action-mappings">Default signal-action mappings</h3>
+
+<p>Configure default actions by following this process:</p>
+
+<ol>
+<li>Define a key for supported signals.
+<p>The default signal to action mappings are defined in <code>CarrierConfigManager.java</code>.
+Each of the supported signals has a key:</p>
+
+<pre class="devsite-click-to-copy">
+public static final String KEY_CARRIER_DEFAULT_ACTIONS_ON_REDIRECTION_STRING_ARRAY = "carrier_default_actions_on_redirection_string_array";
+public static final String KEY_CARRIER_DEFAULT_ACTIONS_ON_DCFAILURE_STRING_ARRAY =
+"carrier_default_actions_on_dcfailure_string_array";
+</pre></li>
+
+<li>Associate default actions to signal keys.
+<p>The default action ids are associated to the signal keys:</p>
+
+<pre class="devsite-click-to-copy">
+sDefaults.putStringArray(KEY_CARRIER_DEFAULT_ACTIONS_ON_REDIRECTION_STRING_ARRAY,                new String[]{
+                "1, 4"
+                //1: CARRIER_ACTION_SHOW_PORTAL_NOTIFICATION
+                //4: CARRIER_ACTION_DISABLE_METERED_APNS
+         });
+</pre>
+
+<p>The telephony framework maps these actions to the corresponding signals.</p>
+</li>
+</ol>
+
+<h3>Overriding default actions </h3>
+
+<p>You can define custom actions for supported signals in the carrier config XML
+file by associating action IDs to the signal keys (defined in
+<code>CarrierConfigManager.java</code>). For example, the following mapping
+disables metered APNs and shows a portal notification on redirection:</p>
+
+<pre class="devsite-click-to-copy">
+&lt;string-array name="carrier_default_actions_on_redirection_string_array" num="2"&gt;
+            &lt;item value="1" /&gt;
+            &lt;item value="4" /&gt;
+&lt;/string-array&gt;
+</pre>
+
+<p>The telephony framework loads these configurations and overrides default
+actions.</p>
+
+<h2 id="validation">Validation</h2>
+
+<p>There are no CTS, CTS Verifier, or GTS tests for this feature.</p>
+
+<p>Use these manual validation tests to validate the feature:</p>
+
+<ol>
+<li>Validate telco's device out-of-balance signal notification.
+<li>Verify traffic redirect throttling during out-of-balance state and Wi-Fi
+off.
+<li>Verify network traffic is turned down and notification UI appears during out
+of balance state.
+<li>Validate voice call/VoLTE function during out-of-balance state.
+<li>Verify video calling is blocked in out-of-balance state.
+<li>With Wi-Fi on, verify user can continue web browsing, and the browsing
+traffic does not turn on network traffic while in the out-of-balance state.
+<li>Validate Wi-Fi, WFC, and Bluetooth functions during out-of-balance state.
+<li>Turn Wi-Fi off. Verify the out-of-balance notification UI, and that ordinary
+browsing traffic is not redirected to the telco registration web site. Verify
+clicking the link in the notification UI brings the browser to the telco
+registration web site.
+<li>Verify that toggling airplane mode does not reset the traffic throttling
+state.
+<li>Verify that swapping an in-service SIM resets the network traffic state.
+<li>Verify that re-inserting the out-of-balance SIM restarts traffic redirection
+and obtains network traffic throttling again.
+<li>Verify that rebooting the phone reactivates redirection and brings back the
+traffic throttle and notification UI.
+<li>Tap on the "captiveportal" notification. Verify a restricted network
+connection is established to allow the user to add credits.
+<li>Verify that SIM balance refill or reactivation causes cellular network
+traffic to recover, and the Telco link and no balance notification to go away.
+<li>Sanity test after data service recovery.
+</ol>
+
+<p>The default app provides a few examples of unit tests and a script to run them
+(see <code>tests/runtest.sh</code>). When you implement a customized version or
+behavior, you should mirror those customizations into dedicated unit tests.</p>
+
+</body>
+</html>

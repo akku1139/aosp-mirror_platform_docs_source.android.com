@@ -1,0 +1,92 @@
+<html devsite><head>
+    <title>ART 和 Dalvik</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>Android Runtime (ART) 是 Android 上的应用和部分系统服务使用的托管运行时。ART 及其前身 Dalvik 最初是专为 Android 项目打造的。作为运行时的 ART 会执行 Dalvik 可执行文件并遵循 Dex 字节码规范。</p>
+
+<p>ART 和 Dalvik 是运行 Dex 字节码的兼容运行时，因此针对 Dalvik 开发的应用也能在 ART 环境中运作。不过，Dalvik 采用的一些技术并不适用于 ART。有关最重要问题的信息，请参阅<a href="http://developer.android.com/guide/practices/verifying-apps-art.html">在 Android Runtime (ART) 上验证应用行为</a>。</p>
+
+<h2 id="features">ART 功能</h2>
+
+<p>以下是 ART 实现的一些主要功能。</p>
+
+<h3 id="AOT_compilation">预先 (AOT) 编译</h3>
+
+<p>ART 推出了预先 (AOT) 编译，可提高应用的性能。ART 还具有比 Dalvik 更严格的安装时验证。</p>
+
+<p>在安装时，ART 使用设备自带的 <strong>dex2oat</strong> 工具来编译应用。该实用工具接受 <a href="http://source.android.com/devices/tech/dalvik/dex-format.html">DEX</a> 文件作为输入，并针对目标设备生成已编译应用的可执行文件。该实用工具应能够毫不费力地编译所有有效的 DEX 文件。但是，一些后处理工具会生成无效文件，Dalvik 可以接受这些文件，但 ART 无法编译这些文件。有关详情，请参阅<a href="http://developer.android.com/guide/practices/verifying-apps-art.html#GC_Migration">解决垃圾回收问题</a>。</p>
+
+<h3 id="Improved_GC">优化的垃圾回收</h3>
+
+<p>垃圾回收 (GC) 可能会损害应用的性能，从而导致显示不稳定、界面响应速度缓慢以及其他问题。ART 通过以下几种方式优化垃圾回收：</p>
+
+<ul>
+  <li>采用一个而非两个 GC 暂停</li>
+  <li>在 GC 保持暂停状态期间并行处理</li>
+  <li>采用总 GC 时间更短的回收器清理最近分配的短时对象这种特殊情况</li>
+  <li>优化了垃圾回收人机工程学，这样能够更加及时地进行并行垃圾回收，这使得 <a href="http://developer.android.com/tools/debugging/debugging-memory.html#LogMessages"><code>GC_FOR_ALLOC</code></a> 事件在典型用例中极为罕见</li>
+  <li>压缩 GC 以减少后台内存使用和碎片</li>
+</ul>
+
+<h3 id="Debugging_Imp">开发和调试优化</h3>
+
+<p>ART 提供了大量功能来优化应用开发和调试。</p>
+
+<h4 id="Sampling_Profiler">支持采样分析器</h4>
+
+<p>一直以来，开发者都使用 <a href=" http://developer.android.com/tools/help/traceview.html">Traceview</a> 工具（旨在跟踪应用执行）作为分析器。虽然 Traceview 可提供有用的信息，但其根据每次方法调用开销得出的 Dalvik 分析结果会出现偏差，而且使用该工具明显会影响运行时性能。</p>
+
+<p>ART 添加了对没有这些限制的专用采样分析器的支持，从而更准确地了解应用执行情况，而不会明显减慢速度。KitKat 版本为 Dalvik 的 Traceview 添加了采样支持。</p>
+
+<h4 id="Debugging_Features">支持更多调试功能</h4>
+
+<p>ART 支持许多新的调试选项，特别是与监控和垃圾回收相关的功能。例如，您可以：</p>
+
+<ul>
+  <li>查看堆栈跟踪中保留了哪些锁，然后跳转到持有锁的线程。</li>
+  <li>询问指定类的当前活动的实例数、请求查看实例，以及查看使对象保持有效状态的参考。</li>
+  <li>过滤特定实例的事件（如断点）。</li>
+  <li>查看方法退出（使用“method-exit”事件）时返回的值。</li>
+  <li>设置字段观察点，以在访问和/或修改特定字段时暂停程序执行。</li>
+</ul>
+
+<h4 id="Crash_Reports">优化了异常和崩溃报告中的诊断详细信息</h4>
+
+<p>当发生运行时异常时，ART 会为您提供尽可能多的上下文和详细信息。ART 会提供 <code><a href="http://developer.android.com/reference/java/lang/ClassCastException.html">java.lang.ClassCastException</a></code>、<code><a href="http://developer.android.com/reference/java/lang/ClassNotFoundException.html">java.lang.ClassNotFoundException</a></code> 和 <code><a href="http://developer.android.com/reference/java/lang/NullPointerException.html">java.lang.NullPointerException</a></code> 的更多异常详细信息。（更高版本的 Dalvik 提供 <code><a href="http://developer.android.com/reference/java/lang/ArrayIndexOutOfBoundsException.html">java.lang.ArrayIndexOutOfBoundsException</a></code> 和 <code><a href="http://developer.android.com/reference/java/lang/ArrayStoreException.html">java.lang.ArrayStoreException</a></code> 的更多异常详细信息，现在包括数组大小和超出范围的偏移量。同样，ART 也提供此类信息。）</p>
+
+<p>例如，<code><a href="http://developer.android.com/reference/java/lang/NullPointerException.html">java.lang.NullPointerException</a></code> 现在显示有关应用尝试处理 null 指针所进行操作（例如应用尝试写入的字段或尝试调用的方法）的信息。一些典型常见示例如下：</p>
+
+<pre class="no-pretty-print">
+java.lang.NullPointerException: Attempt to write to field 'int
+android.accessibilityservice.AccessibilityServiceInfo.flags' on a null object
+reference</pre>
+
+<pre class="no-pretty-print">
+java.lang.NullPointerException: Attempt to invoke virtual method
+'java.lang.String java.lang.Object.toString()' on a null object reference</pre>
+
+<p>ART 还通过纳入 Java 和原生堆栈信息在应用原生代码崩溃报告中提供优化的上下文信息。</p>
+
+<h2 id="Reporting_Problems">报告问题</h2>
+
+<p>如果您遇到任何并非由应用 JNI 问题导致的问题，请访问 <a href="http://b.android.com">http://b.android.com</a>，通过 Android 开放源代码项目问题跟踪器报告这些问题。请包含 <code>"adb bugreport"</code> 和应用在 Google Play 商店中的链接（如果有）。否则，如果可能，请附加可重现该问题的 APK。请注意，这些问题（包括附件）都是公开可见的。</p>
+
+</body></html>

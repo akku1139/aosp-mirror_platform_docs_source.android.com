@@ -1,0 +1,487 @@
+<html devsite><head>
+    <title>3A 模式和状态转换</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>虽然实际的 3A 算法取决于 HAL 实现，但高级状态机的说明由 HAL 接口定义，以支持 HAL 设备和框架就 3A 的当前状态进行通信并触发 3A 事件。</p>
+<p>当设备开启时，所有单独的 3A 状态都必须为 STATE_INACTIVE。流配置不会重置 3A。例如，在整个 configure() 调用期间必须保持焦点锁定。</p>
+<p>要触发 3A 操作，只需在下一个请求的设置中设置相关触发条目，以指示触发开始。例如，若要触发启动自动对焦扫描，便只需将相应请求的 ANDROID_CONTROL_AF_TRIGGER 条目设为 ANDROID_CONTROL_AF_TRIGGER_START；若要触发取消自动对焦扫描，则只需将 ANDROID_CONTROL_AF_TRIGGER 设为 ANDROID_CONTRL_AF_TRIGGER_CANCEL。否则，条目将会不存在或被设为 ANDROID_CONTROL_AF_TRIGGER_IDLE。凡是具有已设为非 IDLE 值的触发条目的请求，都会被视为独立的触发事件。</p>
+<p>在顶层，3A 由 ANDROID_CONTROL_MODE 设置控制。该设置选项包括关闭 3A (ANDROID_CONTROL_MODE_OFF)、正常自动 (AUTO) 模式 (ANDROID_CONTROL_MODE_AUTO) 以及使用场景模式 (ANDROID_CONTROL_USE_SCENE_MODE)：</p>
+<ul>
+  <li>在 OFF 模式下，自动对焦 (AF)、自动曝光 (AE) 和自动白平衡 (AWB) 模式都会有效地关闭，且任何拍摄控件都不会被 3A 例程覆盖。</li>
+  <li>在 AUTO 模式下，AF、AE 和 AWB 模式都会运行各自的独立算法，且具有自己的模式、状态和触发元数据条目，如下一节所示。</li>
+  <li>在 USE_SCENE_MODE 下，必须使用 ANDROID_CONTROL_SCENE_MODE 条目的值来确定 3A 例程的行为。在除 FACE_PRIORITY 以外的 SCENE_MODE 下，HAL 必须将 ANDROID_CONTROL_AE/AWB/AF_MODE 的值替换为它倾向于让所选的 SCENE_MODE 使用的模式。例如，HAL 可能倾向于在 SCENE_MODE_NIGHT 下使用 CONTINUOUS_FOCUS AF 模式。当必须忽略这些场景模式下的场景时，用户可随意选择 AE/AWB/AF_MODE。</li>
+  <li>对于 SCENE_MODE_FACE_PRIORITY，AE/AWB/AFMODE 控件的工作方式与在 ANDROID_CONTROL_MODE_AUTO 模式下相同，但 3A 例程必须偏向测光，并对焦到场景中任何已检测到的人脸上。</li>
+</ul>
+<h2 id="auto-focus">自动对焦设置与结果条目</h2>
+<p>主要元数据条目：<br />ANDROID_CONTROL_AF_MODE：用于选择当前的自动对焦模式的控件。由请求设置中的框架进行设置。<br />AF_MODE_OFF：AF 已停用；框架/应用直接控制镜头位置。<br />AF_MODE_AUTO：单次自动对焦。该模式下镜头不会移动，除非 AF 被触发。<br />AF_MODE_MACRO：单次近距离自动对焦。该模式下镜头不会移动，除非 AF 被触发。<br />AF_MODE_CONTINUOUS_VIDEO：流畅连续对焦，用于录制视频。触发后会立刻将焦点锁定在当前位置。取消后即会恢复连续对焦。<br />AF_MODE_CONTINUOUS_PICTURE：快速连续对焦，用于快门零延迟静像拍摄。待当前处于活动状态的扫描结束后，触发即可锁定焦点。取消后即会恢复连续对焦。<br />AF_MODE_EDOF：高级扩展景深对焦。该模式下没有自动对焦扫描，所以触发或取消均无效。图像由 HAL 自动对焦。<br />ANDROID_CONTROL_AF_STATE：用于描述当前 AF 算法状态的动态元数据，由结果元数据中的 HAL 报告。<br />AF_STATE_INACTIVE：未进行对焦，或算法被重置。镜头未移动。始终处于 MODE_OFF 或 MODE_EDOF 状态。当设备开启时，必须以此状态启动。<br />AF_STATE_PASSIVE_SCAN：连续对焦算法正在扫描理想对焦。镜头正在移动。<br />AF_STATE_PASSIVE_FOCUSED：连续对焦算法认为已良好对焦。镜头未移动。HAL 可能会自发退出此状态。<br />AF_STATE_PASSIVE_UNFOCUSED：连续对焦算法认为未良好对焦。镜头未移动。HAL 可能会自发退出此状态。<br />AF_STATE_ACTIVE_SCAN：用户触发的扫描正在进行中。<br />AF_STATE_FOCUSED_LOCKED：AF 算法认为已对焦。镜头未移动。<br />AF_STATE_NOT_FOCUSED_LOCKED：AF 算法无法对焦。镜头未移动。<br />ANDROID_CONTROL_AFTRIGGER：用于启动自动对焦扫描的控件。具体意义取决于模式和状态。由框架在请求设置中进行设置。<br />AF_TRIGGER_IDLE：当前未触发。<br />AF_TRIGGER_START：触发启动 AF 扫描。扫描效果取决于模式和状态。<br />AF_TRIGGER_CANCEL：取消当前 AF 扫描（如有），并将算法重置为默认值。<br />其他元数据条目：<br />ANDROID_CONTROL_AF_REGIONS：用于选择为确定良好对焦而需使用的视野 (FOV) 区域的控件。该控件适用于所有可扫描对焦的 AF 模式。由请求设置中的框架进行设置。</p>
+<h2 id="auto-exposure">自动曝光设置和结果条目</h2>
+<p>主要元数据条目：<br />ANDROID_CONTROL_AE_MODE：用于选择当前自动曝光模式的控件。由请求设置中的框架进行设置。<br />AE_MODE_OFF：自动曝光已停用；用户控制曝光、增益、帧时长和闪光。<br />AE_MODE_ON：标准自动曝光，闪光灯控制已停用。用户可以将闪光灯设为触发或手电筒模式。<br />AE_MODE_ON_AUTO_FLASH：标准自动曝光，闪光灯听从 HAL 指令开启，以进行预拍摄和静像拍摄。允许用户控制闪光灯的功能已停用。<br />AE_MODE_ON_ALWAYS_FLASH：标准自动曝光，闪光灯始终触发以进行拍摄，并听从 HAL 指令进行预拍摄。允许用户控制闪光灯的功能已停用。<br />AE_MODE_ON_AUTO_FLASH_REDEYE：标准自动曝光，闪光灯听从 HAL 指令进行预拍摄和静像拍摄。在预拍摄序列结束时使用闪光灯，以减轻最终照片中的红眼现象。允许用户控制闪光灯的功能已停用。<br />ANDROID_CONTROL_AE_STATE：描述当前 AE 算法状态的动态元数据，在结果元数据中由 HAL 报告。<br />AE_STATE_INACTIVE：切换模式后的初始 AE 状态。当设备开启时，必须以此状态启动。<br />AE_STATE_SEARCHING：AE 没有聚焦到一个理想值，正在调整曝光参数。<br />AE_STATE_CONVERGED：AE 已经为当前场景找到了理想曝光值，且曝光参数不会变化。HAL 可能会自发退出此状态以寻找更好的解决方案。<br />AE_STATE_LOCKED：AE 已通过 AE_LOCK 控件锁定。曝光值不变。<br />AE_STATE_FLASH_REQUIRED：HAL 已聚焦曝光，但认为需要启动闪光灯以保证照片足够明亮。用于确定是否可使用零快门延迟帧。<br />AE_STATE_PRECAPTURE：HAL 正在处理预拍序列。根据 AE 模式，该模式可能包括开启闪光灯进行测光，或发出闪光脉冲以减轻红眼现象。<br />ANDROID_CONTROL_AE_PRECAPTURE_TRIGGER：用于在拍摄高品质图像之前启动测光序列的控件。由框架在请求设置中进行设置。<br />PRECAPTURE_TRIGGER_IDLE：当前未触发。<br />PRECAPTURE_TRIGGER_START：启动预拍序列。HAL 应使用后续请求进行衡量并达到理想的曝光/白平衡，以便接下来拍摄高分辨率的照片。<br />其他元数据条目：<br />ANDROID_CONTROL_AE_LOCK：用于将 AE 控件锁定到其当前值的控件。<br />ANDROID_CONTROL_AE_EXPOSURE_COMPENSATION：用于调整 AE 算法目标亮度点的控件。<br />ANDROID_CONTROL_AE_TARGET_FPS_RANGE：用于为 AE 算法选择目标帧速率范围的控件。AE 例程无法将帧速率变为超出这些范围的值。<br />ANDROID_CONTROL_AE_REGIONS：用于选择应该用于确定良好曝光水平的 FOV 区域的控件。该控件适用于除 OFF 模式外的所有 AE 模式。</p>
+<h2 id="auto-wb">自动白平衡设置和结果条目</h2>
+<p>主要元数据条目：<br />ANDROID_CONTROL_AWB_MODE：用于选择当前白平衡模式的控件。<br />AWB_MODE_OFF：自动白平衡已停用。用户控制颜色矩阵。<br />AWB_MODE_AUTO：自动白平衡已启用。3A 控制颜色变换，使用的变换方式可能比简单矩阵更复杂。<br />AWB_MODE_INCANDESCENT：适用于室内白炽灯（钨丝）照明的固定白平衡设置，约为 2700K。<br />AWB_MODE_FLUORESCENT：适用于荧光灯照明的固定白平衡设置，约为 5000K。<br />AWB_MODE_WARM_FLUORESCENT：适用于荧光灯照明的固定白平衡设置，约为 3000K。<br />AWB_MODE_DAYLIGHT：适用于日光的固定白平衡设置，约为 5500K。<br />AWB_MODE_CLOUDY_DAYLIGHT：适用于多云日光的固定白平衡设置，约为 6500K。<br />AWB_MODE_TWILIGHT：适用于近日落/日出的固定白平衡设置，约为 15000K。<br />AWB_MODE_SHADE：适用于非阳光直射区域的固定白平衡设置，约为 7500K。<br />ANDROID_CONTROL_AWB_STATE：描述当前 AWB 算法状态的动态元数据，在结果元数据中由 HAL 报告。<br />AWB_STATE_INACTIVE：切换模式后的初始 AWB 状态。当设备开启时，必须以此状态启动。<br />AWB_STATE_SEARCHING：AWB 未聚焦为一个理想值，正在改变颜色调整参数。<br />AWB_STATE_CONVERGED：AWB 已发现适用于当前场景的理想颜色调整值，参数不会更改。HAL 可能会自发退出此状态，以寻找更好的解决方案。<br />AWB_STATE_LOCKED：AWB 已由 AWB_LOCK 控件锁定。颜色调整值不会更改。<br />其他元数据条目：<br />ANDROID_CONTROL_AWB_LOCK：用于将 AWB 颜色调整锁定为当前值的控件。<br />ANDROID_CONTROL_AWB_REGIONS：用于选择应该用于确定良好色彩平衡的 FOV 区域的控件。该模式仅适用于自动白平衡模式。</p>
+<h2 id="state-transition">一般状态机转换说明</h2>
+<p>在 AF、AE 和 AWB 模式之间切换模式始终会将算法状态重置为 INACTIVE 状态。同样，如果 CONTROL_MODE == USE_SCENE_MODE，在 CONTROL_MODE 和 CONTROL_SCENE_MODE 之间切换也会将所有算法状态重置为 INACTIVE 状态。<br />下表列出了各模式的情况。</p>
+<h2 id="af-state">AF 状态机</h2>
+<table>
+  <tbody><tr>
+    <td><strong>模式 = AF_MODE_OFF 或 AF_MODE_EDOF</strong></td>
+    <td></td>
+    <td></td>
+    <td></td>
+  </tr>
+  <tr>
+    <th>状态</th>
+    <th>转换原因</th>
+    <th>新状态</th>
+    <th>备注</th>
+  </tr>
+  <tr>
+    <td>INACTIVE</td>
+    <td></td>
+    <td></td>
+    <td>AF 已停用</td>
+  </tr>
+  <tr>
+    <td><strong>模式 = AF_MODE_AUTO 或 AF_MODE_MACRO</strong></td>
+    <td></td>
+    <td></td>
+    <td></td>
+  </tr>
+  <tr>
+    <th>状态</th>
+    <th>转换原因</th>
+    <th>新状态</th>
+    <th>备注</th>
+  </tr>
+  <tr>
+    <td>INACTIVE</td>
+    <td>AF_TRIGGER</td>
+    <td>ACTIVE_SCAN</td>
+    <td>开始 AF 扫描
+镜头正在移动</td>
+  </tr>
+  <tr>
+    <td>ACTIVE_SCAN</td>
+    <td>AF 扫描已完成</td>
+    <td>FOCUSED_LOCKED</td>
+    <td>若 AF 成功
+镜头现已锁定</td>
+  </tr>
+  <tr>
+    <td>ACTIVE_SCAN</td>
+    <td>AF 扫描已完成</td>
+    <td>NOT_FOCUSED_LOCKED</td>
+    <td>若 AF 成功
+镜头现已锁定</td>
+  </tr>
+  <tr>
+    <td>ACTIVE_SCAN</td>
+    <td>AF_CANCEL</td>
+    <td>INACTIVE</td>
+    <td>取消/重置 AF
+镜头现已锁定</td>
+  </tr>
+  <tr>
+    <td>FOCUSED_LOCKED</td>
+    <td>AF_CANCEL</td>
+    <td>INACTIVE</td>
+    <td>取消/重置 AF</td>
+  </tr>
+  <tr>
+    <td>FOCUSED_LOCKED</td>
+    <td>AF_TRIGGER</td>
+    <td>ACTIVE_SCAN</td>
+    <td>开始新的扫描
+镜头正在移动</td>
+  </tr>
+  <tr>
+    <td>NOT_FOCUSED_LOCKED</td>
+    <td>AF_CANCEL</td>
+    <td>INACTIVE</td>
+    <td>取消/重置 AF</td>
+  </tr>
+  <tr>
+    <td>NOT_FOCUSED_LOCKED</td>
+    <td>AF_TRIGGER</td>
+    <td>ACTIVE_SCAN</td>
+    <td>开始新的扫描
+镜头正在移动</td>
+  </tr>
+  <tr>
+    <td>所有状态</td>
+    <td>模式更改</td>
+    <td>INACTIVE</td>
+    <td></td>
+  </tr>
+  <tr>
+    <td><strong>模式 = AF_MODE_CONTINUOUS_VIDEO</strong></td>
+    <td></td>
+    <td></td>
+    <td></td>
+  </tr>
+  <tr>
+    <th>状态</th>
+    <th>转换原因</th>
+    <th>新状态</th>
+    <th>备注</th>
+  </tr>
+  <tr>
+    <td>INACTIVE</td>
+    <td>HAL 启动新的扫描</td>
+    <td>PASSIVE_SCAN</td>
+    <td>开始 AF 扫描
+镜头正在移动</td>
+  </tr>
+  <tr>
+    <td>INACTIVE</td>
+    <td>AF_TRIGGER</td>
+    <td>NOT_FOCUSED_LOCKED</td>
+    <td>AF 状态查询
+镜头现已锁定</td>
+  </tr>
+  <tr>
+    <td>PASSIVE_SCAN</td>
+    <td>HAL 完成当前扫描</td>
+    <td>PASSIVE_FOCUSED</td>
+    <td>结束 AF 扫描
+镜头现已锁定</td>
+  </tr>
+  <tr>
+    <td>PASSIVE_SCAN</td>
+    <td>AF_TRIGGER</td>
+    <td>FOCUSED_LOCKED</td>
+    <td>若对焦理想，则立即转换
+镜头现已锁定</td>
+  </tr>
+  <tr>
+    <td>PASSIVE_SCAN</td>
+    <td>AF_TRIGGER</td>
+    <td>NOT_FOCUSED_LOCKED</td>
+    <td>若对焦不良，则立即转换
+镜头现已锁定</td>
+  </tr>
+  <tr>
+    <td>PASSIVE_SCAN</td>
+    <td>AF_CANCEL</td>
+    <td>INACTIVE</td>
+    <td>重置镜头位置
+镜头现已锁定</td>
+  </tr>
+  <tr>
+    <td>PASSIVE_FOCUSED</td>
+    <td>HAL 启动新的扫描</td>
+    <td>PASSIVE_SCAN</td>
+    <td>开始 AF 扫描
+镜头正在移动</td>
+  </tr>
+  <tr>
+    <td>PASSIVE_FOCUSED</td>
+    <td>AF_TRIGGER</td>
+    <td>FOCUSED_LOCKED</td>
+    <td>若对焦理想，则立即转换
+镜头现已锁定</td>
+  </tr>
+  <tr>
+    <td>PASSIVE_FOCUSED</td>
+    <td>AF_TRIGGER</td>
+    <td>NOT_FOCUSED_LOCKED</td>
+    <td>若对焦不良，则立即转换
+镜头现已锁定</td>
+  </tr>
+  <tr>
+    <td>FOCUSED_LOCKED</td>
+    <td>AF_TRIGGER</td>
+    <td>FOCUSED_LOCKED</td>
+    <td>无效果</td>
+  </tr>
+  <tr>
+    <td>FOCUSED_LOCKED</td>
+    <td>AF_CANCEL</td>
+    <td>INACTIVE</td>
+    <td>重新启动 AF 扫描</td>
+  </tr>
+  <tr>
+    <td>NOT_FOCUSED_LOCKED</td>
+    <td>AF_TRIGGER</td>
+    <td>NOT_FOCUSED_LOCKED</td>
+    <td>无效果</td>
+  </tr>
+  <tr>
+    <td>NOT_FOCUSED_LOCKED</td>
+    <td>AF_CANCEL</td>
+    <td>INACTIVE</td>
+    <td>重新启动 AF 扫描</td>
+  </tr>
+  <tr>
+    <td><strong>模式 = AF_MODE_CONTINUOUS_PICTURE</strong></td>
+    <td></td>
+    <td></td>
+    <td></td>
+  </tr>
+  <tr>
+    <th>状态</th>
+    <th>转换原因</th>
+    <th>新状态</th>
+    <th>备注</th>
+  </tr>
+  <tr>
+    <td>INACTIVE</td>
+    <td>HAL 启动新的扫描</td>
+    <td>PASSIVE_SCAN</td>
+    <td>开始 AF 扫描
+镜头正在移动</td>
+  </tr>
+  <tr>
+    <td>INACTIVE</td>
+    <td>AF_TRIGGER</td>
+    <td>NOT_FOCUSED_LOCKED</td>
+    <td>AF 状态查询
+镜头现已锁定</td>
+  </tr>
+  <tr>
+    <td>PASSIVE_SCAN</td>
+    <td>HAL 完成当前扫描</td>
+    <td>PASSIVE_FOCUSED</td>
+    <td>结束 AF 扫描
+镜头现已锁定</td>
+  </tr>
+  <tr>
+    <td>PASSIVE_SCAN</td>
+    <td>AF_TRIGGER</td>
+    <td>FOCUSED_LOCKED</td>
+    <td>一旦对焦理想，则进行最终转换
+镜头现已锁定</td>
+  </tr>
+  <tr>
+    <td>PASSIVE_SCAN</td>
+    <td>AF_TRIGGER</td>
+    <td>NOT_FOCUSED_LOCKED</td>
+    <td>若无法对焦，则进行最终转换
+镜头现已锁定</td>
+  </tr>
+  <tr>
+    <td>PASSIVE_SCAN</td>
+    <td>AF_CANCEL</td>
+    <td>INACTIVE</td>
+    <td>重置镜头位置
+镜头现已锁定</td>
+  </tr>
+  <tr>
+    <td>PASSIVE_FOCUSED</td>
+    <td>HAL 启动新的扫描</td>
+    <td>PASSIVE_SCAN</td>
+    <td>开始 AF 扫描
+镜头正在移动</td>
+  </tr>
+  <tr>
+    <td>PASSIVE_FOCUSED</td>
+    <td>AF_TRIGGER</td>
+    <td>FOCUSED_LOCKED</td>
+    <td>若对焦理想，则立即转换
+镜头现已锁定</td>
+  </tr>
+  <tr>
+    <td>PASSIVE_FOCUSED</td>
+    <td>AF_TRIGGER</td>
+    <td>NOT_FOCUSED_LOCKED</td>
+    <td>若对焦不良，则立即转换
+镜头现已锁定</td>
+  </tr>
+  <tr>
+    <td>FOCUSED_LOCKED</td>
+    <td>AF_TRIGGER</td>
+    <td>FOCUSED_LOCKED</td>
+    <td>无效果</td>
+  </tr>
+  <tr>
+    <td>FOCUSED_LOCKED</td>
+    <td>AF_CANCEL</td>
+    <td>INACTIVE</td>
+    <td>重新启动 AF 扫描</td>
+  </tr>
+  <tr>
+    <td>NOT_FOCUSED_LOCKED</td>
+    <td>AF_TRIGGER</td>
+    <td>NOT_FOCUSED_LOCKED</td>
+    <td>无效果</td>
+  </tr>
+  <tr>
+    <td>NOT_FOCUSED_LOCKED</td>
+    <td>AF_CANCEL</td>
+    <td>INACTIVE</td>
+    <td>重新启动 AF 扫描</td>
+  </tr>
+</tbody></table>
+<h2 id="ae-wb">AE 和 AWB 状态机</h2>
+<p>AE 和 AWB 状态机大致上相同。但 AE 具有额外的 FLASH_REQUIRED 和 PRECAPTURE 状态。因此，对于 AWB 状态机，应忽略下表中这两个状态对应的行。</p>
+<table>
+  <tbody><tr>
+    <td><strong>模式 = AE_MODE_OFF/AWB 模式不是 AUTO</strong></td>
+    <td></td>
+    <td></td>
+    <td></td>
+  </tr>
+  <tr>
+    <th>状态</th>
+    <th>转换原因</th>
+    <th>新状态</th>
+    <th>备注</th>
+  </tr>
+  <tr>
+    <td>INACTIVE</td>
+    <td></td>
+    <td></td>
+    <td>AE/AWB 已停用</td>
+  </tr>
+  <tr>
+    <td><strong>模式 = AE_MODE_ON_ * / AWB_MODE_AUTO</strong></td>
+    <td></td>
+    <td></td>
+    <td></td>
+  </tr>
+  <tr>
+    <th>状态</th>
+    <th>转换原因</th>
+    <th>新状态</th>
+    <th>备注</th>
+  </tr>
+  <tr>
+    <td>INACTIVE</td>
+    <td>HAL 启动 AE/AWB 扫描</td>
+    <td>SEARCHING</td>
+    <td></td>
+  </tr>
+  <tr>
+    <td>INACTIVE</td>
+    <td>AE/AWB_LOCK 已开启</td>
+    <td>LOCKED</td>
+    <td>值已锁定</td>
+  </tr>
+  <tr>
+    <td>SEARCHING</td>
+    <td>HAL 完成 AE/AWB 扫描</td>
+    <td>CONVERGED</td>
+    <td>理想值，不作改变</td>
+  </tr>
+  <tr>
+    <td>SEARCHING</td>
+    <td>HAL 完成 AE 扫描</td>
+    <td>FLASH_REQUIRED</td>
+    <td>已聚焦，但无闪光灯导致过暗</td>
+  </tr>
+  <tr>
+    <td>SEARCHING</td>
+    <td>AE/AWB_LOCK 已开启</td>
+    <td>LOCKED</td>
+    <td>值已锁定</td>
+  </tr>
+  <tr>
+    <td>CONVERGED</td>
+    <td>HAL 启动 AE/AWB 扫描</td>
+    <td>SEARCHING</td>
+    <td>值已锁定</td>
+  </tr>
+  <tr>
+    <td>CONVERGED</td>
+    <td>AE/AWB_LOCK 已开启</td>
+    <td>LOCKED</td>
+    <td>值已锁定</td>
+  </tr>
+  <tr>
+    <td>FLASH_REQUIRED</td>
+    <td>HAL 启动 AE/AWB 扫描</td>
+    <td>SEARCHING</td>
+    <td>值已锁定</td>
+  </tr>
+  <tr>
+    <td>FLASH_REQUIRED</td>
+    <td>AE/AWB_LOCK 已开启</td>
+    <td>LOCKED</td>
+    <td>值已锁定</td>
+  </tr>
+  <tr>
+    <td>LOCKED</td>
+    <td>AE/AWB_LOCK 已关闭</td>
+    <td>SEARCHING</td>
+    <td>解锁后值不理想</td>
+  </tr>
+  <tr>
+    <td>LOCKED</td>
+    <td>AE/AWB_LOCK 已关闭</td>
+    <td>CONVERGED</td>
+    <td>解锁后值理想</td>
+  </tr>
+  <tr>
+    <td>LOCKED</td>
+    <td>AE_LOCK 已关闭</td>
+    <td>FLASH_REQUIRED</td>
+    <td>曝光良好但过暗</td>
+  </tr>
+  <tr>
+    <td>所有 AE 状态</td>
+    <td>PRECAPTURE_START</td>
+    <td>PRECAPTURE</td>
+    <td>开始预拍序列</td>
+  </tr>
+  <tr>
+    <td>PRECAPTURE</td>
+    <td>序列完成，AE_LOCK 已关闭</td>
+    <td>CONVERGED</td>
+    <td>高质量拍摄就绪</td>
+  </tr>
+  <tr>
+    <td>PRECAPTURE</td>
+    <td>序列完成，AE_LOCK 已开启</td>
+    <td>LOCKED</td>
+    <td>高质量拍摄就绪</td>
+  </tr>
+</tbody></table>
+<h2 id="manual-control">启用手动控制</h2>
+<p>配置设备 3A 块以实现直接应用控制的过程还涉及到多个控件。</p>
+<p>用于 3A 控制的 HAL 模式的运作方式为：对于每个请求，HAL 都会检查 3A 控制字段的状态。如果启用了任何 3A 例程，则该例程会覆盖与该例程相关的控制变量，然后这些覆盖值会在该拍摄的结果元数据中提供。例如，如果在请求中启用自动曝光，则 HAL 应覆盖请求的曝光、增益和帧时长字段（还可能包括闪光灯字段，具体取决于 AE 模式）。相关控件如下：</p>
+<table>
+  <tbody><tr>
+    <th>控件名称</th>
+    <th>单位</th>
+    <th>备注</th>
+  </tr>
+  <tr>
+    <td>android.control.mode</td>
+    <td>枚举：OFF、AUTO、USE_SCENE_MODE</td>
+    <td>高级 3A 控制。当设为 OFF 时，所有由 HAL 启用的 3A 控件都会被停用。应用必须为拍摄参数本身设置字段。当设为 AUTO 时，android.control.* 中的单个算法控件（例如 android.control.afMode）会生效。当设为 USE_SCENE_MODE 时，android.control.* 中的各控件大都被停用；HAL 根据需要，实现其中的一个场景模式设置（如 ACTION、SUNSET 或 PARTY）。</td>
+  </tr>
+  <tr>
+    <td>android.control.afMode</td>
+    <td>枚举</td>
+    <td>OFF 表示使用 android.lens.focusDistance 手动控制镜头。</td>
+  </tr>
+  <tr>
+    <td>android.control.aeMode</td>
+    <td>枚举</td>
+    <td>OFF 表示使用 android.sensor.exposureTime / .sensitivity / .frameDuration 手动控制曝光/增益/帧时长。</td>
+  </tr>
+  <tr>
+    <td>android.control.awbMode</td>
+    <td>枚举</td>
+    <td>OFF 表示手动控制白平衡。</td>
+  </tr>
+</tbody></table>
+
+</body></html>

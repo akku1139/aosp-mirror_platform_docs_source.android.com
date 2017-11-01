@@ -1,0 +1,127 @@
+<html devsite><head>
+    <title>评估性能</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>在性能方面，有两项用户可见指标：</p>
+
+<ul>
+<li><strong>可预测、可察觉的性能</strong>。界面是否掉帧或始终以 60 帧/秒的帧速率渲染？音频在没有软件工件或弹出的情况下会播放吗？用户在触摸屏幕后要多久显示屏上才会显示相应结果？</li>
+<li><strong>耗时操作所需的时间长短</strong>（如打开应用）。</li>
+</ul>
+
+<p>前者比后者更显而易见。用户通常会注意到卡顿情况，但分辨不出 500 毫秒和 600 毫秒应用启动时间的差别，除非将两台设备并排进行对比。触摸延迟立刻就能被发现，且严重影响用户对设备的印象。</p>
+
+<p>因此，在速度较快的设备中，相较于其他使界面通道保持正常运转所必需的要素，界面通道是最重要的。这意味着，如果不是保持界面流畅运转所必需的任务，都应为界面通道让路。要让界面保持流畅运转，后台同步、通知发送及类似的任务都必须延迟（如果界面任务可以运行的话）。可以牺牲耗时操作（HDR+ 运行时、应用启动等）的性能来保持界面的流畅性。</p>
+
+<h2 id="capacity_vs_jitter">容量和抖动</h2>
+<p>在考虑设备性能时，容量和抖动是两项重要指标。<em></em><em></em></p>
+
+<h3 id="capacity">容量</h3>
+<p>容量是设备在一段时间内拥有的某种资源的总量。这种资源可以是 CPU 资源、GPU 资源、I/O 资源、网络资源、存储设备带宽或其他类似指标。在检测整个系统的性能时，抽取各个组件并假设某单项指标决定着性能将很有帮助（尤其是调试新设备时，因为在新设备上运行的工作负载可能是固定的）。</p>
+
+<p>系统容量因在线计算资源而异。更改 CPU/GPU 频率是改变容量的主要方式，但也有其他方式，如更改在线 CPU 核心数。相应地，系统的容量与耗电量相对应，<strong>更改容量一定会导致耗电量出现类似的变化。</strong></p>
+
+<p>特定时间内所需的容量在绝大多数情况下取决于正在运行的应用。因此，平台几乎不能调整特定工作负载所需的容量，调整所用的方式也仅限于运行时改进（Android 框架、ART、Bionic、GPU 编译器/驱动程序、内核）。</p>
+
+<h3 id="jitter">抖动</h3>
+<p>工作负载所需的容量很容易看出来，抖动却是一个比较模糊的概念。有关抖动是快速系统的一种障碍的介绍，请参阅 <em><a href="http://permalink.lanl.gov/object/tr?what=info:lanl-repo/lareport/LA-UR-03-3116">THE CASE OF THE MISSING SUPERCOMPUTER PERFORMANCE: ACHIEVING OPTIMAL PERFORMANCE ON THE 8,192 PROCESSORS OF ASCl Q</a></em>。（这是一项针对 ASCI Q 超级计算机为何达不到预期性能的调查，同时充分介绍了如何优化大型系统。）</p>
+
+<p>本页使用“抖动”这一术语来介绍 ASCI Q 论文中提到的噪点。<em></em>抖动是一种随机的系统行为，会阻止可察觉任务的运行。通常是必须运行的任务，但可能对在任一特定时间运行没有严格的定时要求。因为抖动具有随机性，所以很难证明某一特定工作负载不存在抖动，也很难证明某已知抖动源是导致某个特定性能问题的原因。诊断抖动原因最常用的工具（如跟踪或日志记录）可能会引入它们自己的抖动。</p>
+
+<p>在实际的 Android 实现中遇到的抖动源包括：</p>
+<ul>
+<li>调度程序延迟</li>
+<li>中断处理程序</li>
+<li>驱动程序代码在抢占或中断被停用的情况下运行时间过长</li>
+<li>运行时间较长的软中断</li>
+<li>锁争用（应用、框架、内核驱动程序、Binder 锁、mmap 锁）</li>
+<li>文件描述符争用，低优先级的线程持有某个文件的锁，以防止高优先级线程运行</li>
+<li>在可能会延迟的工作队列中运行界面关键型代码</li>
+<li>CPU 空闲转换</li>
+<li>记录</li>
+<li>I/O 延迟</li>
+<li>创建不必要的进程（如 CONNECTIVITY_CHANGE 广播）</li>
+<li>释放内存不足所导致的页面缓存颠簸</li>
+</ul>
+
+<p>特定时段内的抖动所需的时间不一定会随着容量的增加而减少。例如，如果驱动程序在等待来自 i2c 总线的读取时使中断处于停用状态，那么无论 CPU 是 384MHz 还是 2GHz，所需要的时间都是固定的。涉及抖动时，增加容量并非提升性能的可行解决方案。因此，<strong>更快的处理器在抖动受限的情况下通常不会提升性能。</strong></p>
+
+<p>最后，与容量不同的是，抖动几乎完全存在于系统供应商的网域中。</p>
+
+<h3 id="memory_consumption">内存消耗</h3>
+<p>一直以来，人们都将性能不佳归因于内存消耗。虽然消耗本身不是性能问题，但是它可能会通过 lowmemorykiller 开销、服务重启和页面缓存颠簸引起抖动。减少内存消耗可以避免导致性能不佳的直接原因，但是还有其他可避免这些原因的具有针对性的改进（如固定框架以防止在不久之后进行的分页过程中将其分出）。</p>
+
+<h2 id="analyze_initial">分析初始设备性能</h2>
+<p>从运行正常但性能不佳的系统开始，并尝试通过查看用户可见的糟糕性能的每个个案来修复系统的行为，这种做法并<strong>非</strong>良策。因为性能不佳通常不易重现（如抖动）或者由应用问题导致，整个系统中可阻止此策略发挥作用的变量非常多。因此，很容易错误地识别原因并做出微小的改进，而错失修复整个系统性能的系统性机会。</p>
+
+<p>相反，在启动新设备时，请使用以下常规方法：</p>
+<ol>
+<li>使系统启动到所有驱动程序运行的界面和一些基本的频率调节器设置（如果更改频率调节器设置，请重复以下所有步骤）。</li>
+<li>确保内核支持 <code>sched_blocked_reason</code> 跟踪点以及显示通道中指示何时将帧发送到显示屏的其他跟踪点。</li>
+<li>在运行轻量级的一致性工作负载（如 <a href="https://android.googlesource.com/platform/frameworks/base.git/+/master/tests/UiBench/">UiBench</a> 或 <a href="#touchlatency">TouchLatency 中的球测试</a>）的同时，对整个界面通道（从通过 IRQ 接收输入到最终的扫描输出）进行长时间的跟踪。</li>
+<li>修复在轻量级的一致性工作负载中检测到的帧丢失。</li>
+<li>重复执行第 3-4 步，直到您可以在零丢帧的情况下一次运行 20 秒以上的时间。</li>
+<li>转向用户可见的其他卡顿源。</li>
+</ol>
+
+<p>您可以在设备启动早期执行的其他简单操作包括：</p>
+
+<ul>
+<li>确保您的内核有 <a href="https://android.googlesource.com/kernel/msm/+/c9f00aa0e25e397533c198a0fcf6246715f99a7b%5E!/">sched_blocked_reason 跟踪点补丁程序</a>。该跟踪点通过 systrace 中的 sched 跟踪类别启用，并在线程进入不间断休眠时提供负责休眠的函数。它对性能分析非常重要，因为不间断休眠是非常常见的抖动指标。</li>
+<li>确保您拥有足够的 GPU 和显示通道的跟踪。在最近的 Qualcomm SOC 上，跟踪点的启用方法是：</li>
+<pre>$ adb shell "echo 1 &gt; /d/tracing/events/kgsl/enable"
+$ adb shell "echo 1 &gt; /d/tracing/events/mdss/enable"</pre>
+
+<p>运行 systrace 时，这些事件将保持启用状态，以便您在 <code>mdss_fb0</code> 部分的跟踪记录中查看有关显示通道 (MDSS) 的其他信息。在 Qualcomm SOC 上，您无法在 systrace 标准视图下看到有关 GPU 的其他信息，只能看到跟踪记录本身所显示的结果（如需了解详情，请参阅<a href="/devices/tech/debug/systrace.html">了解 systrace</a> 一文）。</p>
+
+<p>您希望从这种显示跟踪中了解的是，直接指明某个帧已被发送至显示屏的单个事件。在这里，您可以确定是否成功满足帧时间；如果事件 Xn 的发生时间在事件 Xn-1 发生后的 16.7 毫秒内（假设为 60Hz 的显示屏），您就会知道没有卡顿。<em></em><em></em>如果您的 SOC 不提供这种信号，请与您的供应商联系以进行获取。如果没有明确的帧完成信号，很难调试抖动。</p></ul>
+
+<h3 id="synthetic_benchmarks">使用合成基准</h3>
+<p>合成基准有助于确保设备的基本功能是存在的。不过，将基准视为感知设备性能的代理毫无用处。</p>
+
+<p>根据 SOC 使用体验，SOC 之间的合成基准性能的差异与可察觉的界面性能（丢失帧数、第 99 个百分位帧时间等）中的类似差异不相关。合成基准属于仅限容量的基准；抖动仅可以从基准的批量操作中窃取时间来影响这些基准衡量的性能。因此，合成基准得分在作为用户可察觉的性能的指标时是最不相关的指标。</p>
+
+<p>考虑两种运行可渲染 1000 帧界面的基准 X 的 SOC，并报告总渲染时间（得分越低越好）。</p>
+
+<ul>
+<li>SOC 1 在 10 毫秒内渲染每帧基准 X，得分为 10000。</li>
+<li>SOC 2 在 1 毫秒内渲染 99% 的帧，但是在 100 毫秒内渲染 1% 的帧，得分为 19900，得分明显较好。</li>
+</ul>
+
+<p>如果基准代表实际的界面性能，则 SOC 2 将无法使用。假设刷新率为 60Hz，SOC 2 在每 1.5 秒的操作内将出现一次卡顿帧。与此同时，SOC 1（根据基准 X 得出的较慢的 SOC）将会非常流畅。</p>
+
+<h3 id="bug_reports">使用缺陷报告</h3>
+<p>缺陷报告有时对于性能分析非常有用，但是因为这类报告的内容全面而复杂，因此对调试分散的卡顿问题用处不大。报告可能会提供一些有关系统在特定时间内所执行操作的线索，尤其是卡顿出现在应用转换（会被记录在缺陷报告中）时。缺陷报告还可以指出可能会减少其有效容量的系统大范围出错（如温控调频或内存碎片）的时间。</p>
+
+<h3 id="touchlatency">使用 TouchLatency</h3>
+<p>一些不良行为的示例来自于 TouchLatency（即用于 Pixel 和 Pixel XL 的首选周期性工作负载），可通过 <code>frameworks/base/tests/TouchLatency</code> 找到，具有两种模式：触摸延迟和弹力球（要切换模式，请点击右上角的按钮）。</p>
+
+<p>弹力球测试就跟看上去的一样简单：无论用户输入什么内容，球都会一直在屏幕上弹跳。这通常也是<strong>目前为止</strong>最难完美运行的测试，不过，越接近在没有丢失帧的情况下运行，就说明您的设备越好。弹力球测试很难执行，因为它是以很低的时钟频率运行的琐碎但完全一致的工作负载（此时假设设备配有频率调节器；不过，如果设备是以固定的时钟频率运行，则在首次运行弹力球测试时将 CPU/GPU 降频到接近最小值）。当系统静止且时钟频率降至接近空闲时，每帧所需的 CPU/GPU 时间增加。您可以查看球以及卡顿的对象，还可以在 systrace 中查看丢失的帧。</p>
+
+<p>因为工作负载非常一致，所以在大多数用户可见的工作负载中，您可以在每个丢失的帧期间跟踪系统上正在运行的工作负载（而非界面通道），从而更轻松地确定大多数抖动源。<strong>较低的时钟频率会使任何抖动都更有可能造成帧丢失，从而放大抖动的效果。</strong> 因此，TouchLatency 越接近 60 帧/秒，您在较大的应用中遇到导致分散、难以重现的卡顿的不良系统行为的可能性越小。</p>
+
+<p>由于抖动通常（但不总是）时钟速度不变，请使用以非常低的时钟速度运行的测试来诊断抖动，原因如下：</p>
+<ul>
+<li>并非所有抖动都是时钟速度不变，很多来源仅占用 CPU 时间。</li>
+<li>频率调节器应通过降频获取接近截止时间的平均帧时间，这样运行非界面任务所花费的时间可将其推至掉帧的边缘。</li>
+</ul>
+
+</body></html>

@@ -1,0 +1,323 @@
+<html devsite>
+  <head>
+    <title>Data Types</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>HIDL data declarations generate C++ standard-layout data structures. These
+structures can be placed anywhere that feels natural (on the stack, at file or
+global scope, or on the heap) and can be composed in the same fashion. Client
+code calls HIDL proxy code passing in const references and primitive types,
+while the stub and proxy code hides the details of serialization.</p>
+
+<p class=note><strong>Note:</strong> At no point is developer-written code
+required to explicitly serialize or deserialize data structures.</p>
+
+<p>The table below maps HIDL primitives to C++ data types:</p>
+
+<table>
+<tbody>
+<tr>
+<th><strong>HIDL Type</strong></th>
+<th><strong>C++ Type</strong></th>
+<th><strong>Header/Library</strong></th>
+</tr>
+
+<tr>
+<td><pre>enum</pre></td>
+<td><pre>enum class</pre></td>
+<td></td>
+</tr>
+
+<tr>
+<td><pre>uint8_t..uint64_t</pre></td>
+<td><pre>uint8_t..uint64_t</pre></td>
+<td><pre>&lt;stdint.h&gt;</pre></td>
+</tr>
+
+<tr>
+<td><pre>int8_t..int64_t</pre></td>
+<td><pre>int8_t..int64_t</pre></td>
+<td><pre>&lt;stdint.h&gt;</pre></td>
+</tr>
+
+<tr>
+<td><pre>float</pre></td>
+<td><pre>float</pre></td>
+<td></td>
+</tr>
+
+<tr>
+<td><pre>double</pre></td>
+<td><pre>double</pre></td>
+<td></td>
+</tr>
+
+<tr>
+<td><pre>vec&lt;T&gt;</pre></td>
+<td><pre>hidl_vec&lt;T&gt;</pre></td>
+<td><pre>libhidlbase</pre></td>
+</tr>
+
+<tr>
+<td><pre>T[S1][S2]...[SN]</pre></td>
+<td><pre>T[S1][S2]...[SN]</pre></td>
+<td></td>
+</tr>
+
+<tr>
+<td><pre>string</pre></td>
+<td><pre>hidl_string</pre></td>
+<td><pre>libhidlbase</pre></td>
+</tr>
+
+<tr>
+<td><pre>handle</pre></td>
+<td><pre>hidl_handle</pre></td>
+<td><pre>libhidlbase</pre></td>
+</tr>
+
+<tr>
+<td><pre>opaque</pre></td>
+<td><pre>uint64_t</pre></td>
+<td><pre>&lt;stdint.h&gt;</pre>
+</td>
+</tr>
+
+<tr>
+<td><pre>struct</pre></td>
+<td><pre>struct</pre></td>
+<td></td>
+</tr>
+
+<tr>
+<td><pre>union</pre></td>
+<td><pre>union</pre></td>
+<td></td>
+</tr>
+
+<tr>
+<td><pre>fmq_sync</pre></td>
+<td><pre>MQDescriptorSync</pre></td>
+<td><pre>libhidlbase</pre></td>
+</tr>
+
+<tr>
+<td><pre>fmq_unsync</pre></td>
+<td><pre>MQDescriptorUnsync</pre></td>
+<td><pre>libhidlbase</pre></td>
+</tr>
+
+</tbody>
+</table>
+
+<p>The sections below describe data types in more detail.</p>
+
+<h2 id=enum>enum</h2>
+<p>An enum in HIDL becomes an enum in C++. For example:</p>
+<pre class="prettyprint">
+enum Mode : uint8_t { WRITE = 1 &lt;&lt; 0, READ = 1 &lt;&lt; 1 };
+</pre>
+
+<p>&hellip; becomes:</p>
+<pre class="prettyprint">
+enum class Mode : uint8_t { WRITE = 1, READ = 2 };
+</pre>
+
+<h2 id=bitfield>bitfield&lt;T&gt;</h2>
+<p><code>bitfield&lt;T&gt;</code> (where <code>T</code> is a user-defined enum)
+becomes the underlying type of that enum in C++. In the above example,
+<code>bitfield&lt;Mode&gt;</code> becomes <code>uint8_t</code>.</p>
+
+<h2 id=vect>vec&lt;T&gt;</h2>
+<p>The <code>hidl_vec&lt;T&gt;</code> class template is part of
+<code>libhidlbase</code> and can be used to pass a vector of any HIDL type with
+an arbitrary size. The comparable fixed size container is
+<code>hidl_array</code>. A <code>hidl_vec&lt;T&gt;</code> can also be
+initialized to point to an external data buffer of type <code>T</code>, using
+the <code>hidl_vec::setToExternal()</code> function.</p>
+
+<p>In addition to emitting/inserting the struct appropriately in the generated
+C++ header, the use of <code>vec&lt;T&gt;</code> generates some convenience
+functions to translate to/from <code>std::vector</code> and bare <code>T</code>
+pointers. If the <code>vec&lt;T&gt;</code> is used as a parameter, the function
+using it will be overloaded (two prototypes will be generated) to accept and
+pass both the HIDL struct and a <code>std::vector&lt;T&gt;</code> type for that
+parameter.</p>
+
+<h2 id=arrays>array</h2>
+<p>Constant arrays in hidl are represented by the <code>hidl_array</code> class
+in <code>libhidlbase</code>. A <code>hidl_array&lt;T, S1, S2, &hellip;,
+SN&gt;</code> represents an N dimensional fixed size array
+<code>T[S1][S2]&hellip;[SN]</code>.</p>
+
+<h2 id=string>string</h2>
+<p>The <code>hidl_string</code> class (part of <code>libhidlbase</code>) can be
+used to pass strings over HIDL interfaces and is defined in
+<code>/system/libhidl/base/include/hidl/HidlSupport.h</code>. The first storage
+location in the class is a pointer to its character buffer.</p>
+
+<p><code>hidl_string</code> knows how to convert to and from
+<code>std::string and char*</code> (C-style string) using
+<code>operator=</code>, implicit casts, and <code>.c_str()</code> function.
+HIDL string structs has the appropriate copy constructors and assignment
+operators to:</p>
+
+<ul>
+<li>Load the HIDL string from an <code>std::string</code> or a C string.</li>
+<li>Create a new <code>std::string</code> from a HIDL string.</li>
+</ul>
+
+<p>In addition, HIDL strings have conversion constructors so C strings
+(<code>char *</code>) and C++ strings (<code>std::string</code>) can be used on
+methods that take a HIDL string.</p>
+
+<h2 id=struct>struct</h2>
+<p>A <code>struct</code> in HIDL can contain only fixed-size data types and no
+functions. HIDL struct definitions map directly to standard-layout
+<code>struct</code>s in C++, ensuring that <code>struct</code>s have a
+consistent memory layout. A struct can include HIDL types, including
+<code>handle</code>, <code>string</code>, and <code>vec&lt;T&gt;</code>, that
+point to separate variable-length buffers.</p>
+
+<h2 id=handle>handle</h2>
+
+<p class=warning><strong>WARNING:</strong> Addresses of any kind (even physical
+device addresses) must never be part of a native handle. Passing this
+information between processes is dangerous and makes them susceptible to attack.
+Any values passed between processes must be validated before being used to look
+up allocated memory within a process. Otherwise, bad handles may cause bad
+memory access or memory corruption.</p>
+
+<p>The <code>handle</code> type is represented by the <code>hidl_handle</code>
+structure in C++, which is a simple wrapper around a pointer to a
+<code>const native_handle_t</code> object (this has been present in Android for
+a long time).</p>
+
+<pre>
+typedef struct native_handle
+{
+    int version;        /* sizeof(native_handle_t) */
+    int numFds;         /* number of file descriptors at &amp;data[0] */
+    int numInts;        /* number of ints at &amp;data[numFds] */
+    int data[0];        /* numFds + numInts ints */
+} native_handle_t;
+</pre>
+
+<p>By default, <code>hidl_handle</code> does <strong>not</strong> take ownership
+of the <code>native_handle_t</code> pointer it wraps. It merely exists to safely
+store a pointer to a <code>native_handle_t</code> such that it can be used in
+both 32- and 64-bit processes.</p>
+
+<p>Scenarios in which the <code>hidl_handle</code> does own its enclosed file
+descriptors include:</p>
+<ul>
+<li>Following a call to the <code>setTo(native_handle_t* handle, bool
+shouldOwn)</code> method with the <code>shouldOwn</code> parameter set to
+<code>true</code></li>
+<li>When the <code>hidl_handle</code> object is created by copy construction
+from another <code>hidl_handle</code> object</li>
+<li>When the <code>hidl_handle</code> object is copy-assigned from another
+<code>hidl_handle</code> object</li>
+</ul>
+
+<p><code>hidl_handle</code> provides both implicit and explicit conversions
+to/from <code>native_handle_t* </code>objects. The main use for the
+<code>handle</code> type in HIDL is to pass file descriptors over HIDL
+interfaces. A single file descriptor is therefore represented by a
+<code>native_handle_t</code> with no <code>int</code>s and a single
+<code>fd</code>. If the client and server live in a different process, the RPC
+implementation will automatically take care of the file descriptor to ensure
+both processes can operate on the same file.</p>
+
+<p>Although a file descriptor received in a <code>hidl_handle</code> by a
+process will be valid in that process, it will not persist beyond the receiving
+function (it will be closed once the function returns). A process that wants to
+retain persistent access to the file descriptor must <code>dup()</code> the
+enclosed file descriptors, or copy the entire <code>hidl_handle</code> object.
+</p>
+
+<h2 id=memory>memory</h2>
+<p>The HIDL <code>memory</code> type maps to the <code>hidl_memory</code> class
+in <code>libhidlbase</code>, which represents unmapped shared memory. This is
+the object that must be passed between processes to share memory in HIDL. To
+use shared memory:</p>
+
+<ol>
+<li>Obtain an instance of <code>IAllocator</code> (currently only instance
+"ashmem" is available) and use it to allocate shared memory.</li>
+<li><code>IAllocator::allocate()</code> returns a <code>hidl_memory</code>
+object that can be passed through HIDL RPC and be mapped into a process using
+<code>libhidlmemory</code>'s <code>mapMemory</code> function.</li>
+<li><code>mapMemory</code> returns a reference to an
+<code>sp&lt;IMemory&gt;</code> object that can be used to access the memory.
+(<code>IMemory</code> and <code>IAllocator</code> are defined in
+<code>android.hidl.memory@1.0</code>.)</li>
+</ol>
+
+<p>An instance of <code>IAllocator</code> can be used to allocate memory:</p>
+<pre class="prettyprint">
+#include &lt;android/hidl/allocator/1.0/IAllocator.h&gt;
+#include &lt;android/hidl/memory/1.0/IMemory.h&gt;
+#include &lt;hidlmemory/mapping.h&gt;
+using ::android::hidl::allocator::V1_0::IAllocator;
+using ::android::hidl::memory::V1_0::IMemory;
+using ::android::hardware::hidl_memory;
+....
+  sp&lt;IAllocator&gt; ashmemAllocator = IAllocator::getService("ashmem");
+  ashmemAllocator-&gt;allocate(2048, [&amp;](bool success, const hidl_memory&amp; mem) {
+        if (!success) { /* error */ }
+        // now you can use the hidl_memory object 'mem' or pass it around
+  }));
+</pre>
+
+<p>Actual changes to the memory must be done through an <code>IMemory</code>
+object, either on the side that created <code>mem</code> or on the side that
+receives it over HIDL RPC.</p>
+
+<pre class="prettyprint">
+// Same includes as above
+
+sp&lt;IMemory&gt; memory = mapMemory(mem);
+void* data = memory-&gt;getPointer();
+memory-&gt;update();
+// update memory however you wish after calling update and before calling commit
+data[0] = 42;
+memory-&gt;commit();
+// …
+memory-&gt;update(); // the same memory can be updated multiple times
+// …
+memory-&gt;commit();
+</pre>
+
+<h2 id=interfaces>interface</h2>
+<p>Interfaces can be passed as objects. The word <em>interface</em> can be used
+as syntactic sugar for the type <code>android.hidl.base@1.0::IBase</code>;
+in addition, the current interface and any imported interfaces will be defined
+as a type.</p>
+
+<p>Variables that hold Interfaces should be strong pointers:
+<code>sp&lt;IName&gt;</code>. HIDL functions that take interface parameters
+will convert raw pointers to strong pointers, causing non-intuitive behavior
+(the pointer can be cleared unexpectedly). To avoid problems, always store HIDL
+interfaces as a <code>sp&lt;&gt;</code>.</p>
+
+  </body>
+</html>

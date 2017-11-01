@@ -1,0 +1,229 @@
+<html devsite><head>
+    <title>实现 VSYNC</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>VSYNC 可将某些事件同步到显示设备的刷新周期。应用总是在 VSYNC 边界上开始绘制，而 SurfaceFlinger 总是在 VSYNC 边界上进行合成。这样可以消除卡顿，并提升图形的视觉表现。</p>
+
+<p>Hardware Composer (HWC) 具有一个函数指针，用于指示要为 VSYNC 实现的函数：</p>
+
+<pre class="prettyprint">
+int (waitForVsync*) (int64_t *timestamp)
+</pre>
+
+<p>在发生 VSYNC 并返回实际 VSYNC 的时间戳之前，这个函数会处于阻塞状态。每次发生 VSYNC 时，都必须发送一条消息。客户端会以指定的间隔收到 VSYNC 时间戳，或者以 1 为间隔连续收到 VSYNC 时间戳。您必须实现最大延迟时间为 1 毫秒（建议 0.5 毫秒或更短）的 VSYNC；返回的时间戳必须非常准确。</p>
+
+<h2 id="explicit_synchronization">显式同步</h2>
+
+<p>显式同步是必需的，它提供了一种以同步方式获取和释放 Gralloc 缓冲区的机制。显式同步允许图形缓冲区的生产方和消耗方在完成对缓冲区的处理时发出信号。这允许 Android 异步地将要读取或写入的缓冲区加入队列，并且确定另一个消耗方或生产方当前不需要它们。有关详细信息，请参阅<a href="/devices/graphics/index.html#synchronization_framework">同步框架</a>一文。</p>
+
+<p>显式同步的优点包括设备之间的行为变化较小、调试支持更好，并且测试指标更完善。例如，同步框架输出可以很容易地识别问题区域和根本原因，而集中的 SurfaceFlinger 演示时间戳可以显示何时在系统的正常流程中发生事件。</p>
+
+<p>该通信是通过使用同步栅栏来促进的。在请求用于消耗或生产的缓冲区时，必须使用同步栅栏。同步框架由三个主要构造块组成：<code>sync_timeline</code>、<code>sync_pt</code> 和 <code>sync_fence</code>。</p>
+
+<h3 id="sync_timeline">sync_timeline</h3>
+
+<p><code>sync_timeline</code> 是一个单调递增的时间轴，应为每个驱动程序实例（如 GL 上下文、显示控制器或 2D 位块传送器）实现该时间轴。这本质上是针对提交到特定硬件内核的作业的计数器。它为相关操作的顺序提供了保证，并允许特定于硬件的实现。</p>
+
+<p>sync_timeline 作为仅限 CPU 的参考实现进行提供（称为 <code>sw_sync</code>（软件同步））。如果可能，请使用它而不是 <code>sync_timeline</code>，以节省资源并避免复杂性。如果您没有使用硬件资源，则 <code>sw_sync</code> 应该就够了。</p>
+
+<p>如果必须实现 <code>sync_timeline</code>，请使用 <code>sw_sync</code> 驱动程序作为起点，并遵循以下准则：</p>
+
+<ul>
+<li>为所有驱动程序、时间轴和栅栏指定实用的名称。这可简化调试。</li>
+<li>在时间轴中实现 <code>timeline_value_str</code> 和 <code>pt_value_str</code> 运算符，使调试输出更易于理解。</li>
+<li>如果您希望用户空间库（如 GL 库）可以访问时间轴的私有数据，请实现填充 driver_data 运算符。这能让您获得不可变 sync_fence 和 <code>sync_pts</code> 的相关信息，从而在其基础上构建命令行。</li>
+</ul>
+
+<p>实现 <code>sync_timeline</code> 时，<strong>请勿</strong>：</p>
+
+<ul>
+<li>使其基于任何实际的时间。例如，当一个挂钟到达某个时间点或其他工作可能结束时的时间点。最好创建一个您可以控制的抽象时间轴。</li>
+<li>允许用户空间明确创建栅栏或使其变为有信号量状态。这会导致一个用户通道创建可停止所有功能的拒绝服务攻击。这是因为用户空间不能代表内核做出承诺。</li>
+<li>明确访问 <code>sync_timeline</code>、<code>sync_pt</code> 或 <code>sync_fence</code> 元素，因为 API 应该提供所有必需的函数。</li>
+</ul>
+
+<h3 id="sync_pt">sync_pt</h3>
+
+<p><code>sync_pt</code> 是 sync_timeline 上的单个值或点。点具有三种状态：活动、有信号量和错误。点最初处于活动状态，然后转变为有信号量状态或错误状态。例如，当图像消耗方不再需要缓冲区时，此 sync_point 会处于有信号量状态，以便图像生产方知道可以再次写入缓冲区。</p>
+
+<h3 id="sync_fence">sync_fence</h3>
+
+<p><code>sync_fence</code> 是 <code>sync_pts</code> 的集合，它通常具有不同的 <code>sync_timeline</code> 父项（例如，用于显示控制器和 GPU）。这些是驱动程序和用户空间用来传达依赖关系的主要基元。栅栏是内核在接受已加入队列的工作时给予的承诺，可确保工作在有限的时间内完成。</p>
+
+<p>可让多个消耗方或生产方发出信号，指明它们正在使用一个缓冲区，并允许通过一个函数参数来传达该信息。栅栏由文件描述符提供支持，可以从内核空间传递到用户空间。例如，栅栏可以包含两个 <code>sync_points</code>，它们指示两个单独的图像消耗方何时完成缓冲区读取。当栅栏变为有信号量状态时，图像生产方便知道两个消耗方都已完成消耗。</p>
+
+<p>栅栏（如 <code>sync_pts</code>）最初处于活动状态，然后根据它们的点的状态改变状态。如果所有 <code>sync_pts</code> 都变为有信号量状态，<code>sync_fence</code> 就会变为有信号量状态。如果一个 <code>sync_pt</code> 变为错误状态，则整个 sync_fence 会变为错误状态。</p>
+
+<p>创建栅栏后，<code>sync_fence</code> 中的成员是不可变的。由于 <code>sync_pt</code> 只能在一个栅栏中，因此它是作为副本包含在内。即使两个点具有相同的值，栅栏中也会有两个 <code>sync_pt</code> 副本。为了在栅栏中获得多个点，当来自两个完全不同栅栏的点添加到第三个栅栏时，将进行合并操作。如果其中一个点在原始栅栏中处于有信号量状态，另一个点未处于有信号量状态，那么第三个栅栏也不会处于有信号量状态。</p>
+
+<p>要实现显式同步，请提供以下内容：</p>
+
+<ul>
+<li>为特定硬件实现同步时间轴的内核空间驱动程序。需要感知栅栏的驱动程序通常是访问 Hardware Composer 或与其通信的任何程序。关键文件包括：
+<ul>
+<li>核心实现：
+<ul>
+ <li><code>kernel/common/include/linux/sync.h</code></li>
+ <li><code>kernel/common/drivers/base/sync.c</code></li>
+</ul></li>
+<li><code>sw_sync</code>：
+<ul>
+ <li><code>kernel/common/include/linux/sw_sync.h</code></li>
+ <li><code>kernel/common/drivers/base/sw_sync.c</code></li>
+</ul></li>
+<li><code>kernel/common//Documentation/sync.txt</code> 中的文档。</li>
+<li>与 <code>platform/system/core/libsync</code> 中的内核空间进行通信的库。</li>
+</ul></li>
+<li>支持新同步功能的 Hardware Composer HAL（v1.3 或更高版本）。您必须为 HAL 中的 <code>set()</code> 和 <code>prepare()</code> 函数提供适当的同步栅栏作为参数。</li>
+<li>图形驱动程序中的两个与栅栏相关的 GL 扩展程序（<code>EGL_ANDROID_native_fence_sync</code> 和 <code>EGL_ANDROID_wait_sync</code>）以及栅栏支持。</li>
+</ul>
+
+<p>例如，要使用支持同步函数的 API，您可以开发具有显示设备缓冲区函数的显示设备驱动程序。在同步框架出现之前，此函数会接收 dma-buf，将这些缓冲区放在显示设备上，并在缓冲区可见时阻塞。例如：</p>
+
+<pre class="prettyprint">
+/*
+ * assumes buf is ready to be displayed.  returns when buffer is no longer on
+ * screen.
+ */
+void display_buffer(struct dma_buf *buf);
+</pre>
+
+<p>对于同步框架，API 调用稍微复杂一点。在将缓冲区放在显示设备上时，请将其与指示该缓冲区何时准备就绪的栅栏相关联。您可以让工作排队等候，并在栅栏清除后启动。</p>
+
+<p>这样，不会阻塞任何内容。您会立即返回自己的栅栏，这是对缓冲区何时离开显示设备的保证。让缓冲区排队等候时，内核将列出与同步框架的依赖关系：</p>
+
+<pre class="prettyprint">
+/*
+ * will display buf when fence is signaled.  returns immediately with a fence
+ * that will signal when buf is no longer displayed.
+ */
+struct sync_fence* display_buffer(struct dma_buf *buf, struct sync_fence
+*fence);
+</pre>
+
+<h2 id="sync_integration">同步集成</h2>
+<p>本部分将介绍如何将低级同步框架与 Android 框架的不同部分以及与彼此必须通信的驱动程序进行集成。</p>
+
+<h3 id="integration_conventions">集成规范</h3>
+
+<p>用于图形的 Android HAL 接口会遵循统一的规范，因此当文件描述符通过 HAL 接口传递时，始终会传输文件描述符的所有权。这意味着：</p>
+
+<ul>
+<li>如果您从同步框架收到栅栏文件描述符，就必须将其关闭。</li>
+<li>如果您将栅栏文件描述符返回到同步框架，框架将关闭它。</li>
+<li>要继续使用栅栏文件描述符，您必须复制该描述符。</li>
+</ul>
+
+<p>每当栅栏通过 BufferQueue（例如某个窗口将栅栏传递到 BufferQueue，指明其新内容何时准备就绪）时，该栅栏对象将被重命名。由于内核栅栏支持允许栅栏使用字符串作为名称，因此同步框架使用正在排队的窗口名称和缓冲区索引来命名栅栏（例如 <code>SurfaceView:0</code>）。这有助于进行调试来找出死锁的来源，因为名称会显示在 <code>/d/sync</code> 的输出和错误报告中。</p>
+
+<h3 id="anativewindow_integration">ANativeWindow 集成</h3>
+
+<p>ANativeWindow 是栅栏感知的，而且 <code>dequeueBuffer</code>、<code>queueBuffer</code> 和 <code>cancelBuffer</code> 具有栅栏参数。
+</p>
+
+<h3 id="opengl_es_integration">OpenGL ES 集成</h3>
+
+<p>OpenGL ES 同步集成依赖于两个 EGL 扩展程序：</p>
+
+<ul>
+<li><code>EGL_ANDROID_native_fence_sync</code>。提供一种在 EGLSyncKHR 对象中包装或创建原生 Android 栅栏文件描述符的方法。</li>
+<li><code>EGL_ANDROID_wait_sync</code>。允许 GPU 端停止而不是在 CPU 中停止，使 GPU 等待 EGLSyncKHR。这与 <code>EGL_KHR_wait_sync</code> 扩展程序基本相同（有关详细信息，请参阅相关规范）。</li>
+</ul>
+
+<p>这些扩展程序可以独立使用，并由 libgui 中的编译标记控制。要使用它们，请首先实现 <code>EGL_ANDROID_native_fence_sync</code> 扩展程序以及关联的内核支持。接下来，为驱动程序添加对栅栏的 ANATIONWindow 支持，然后在 libgui 中启用支持以使用 <code>EGL_ANDROID_native_fence_sync</code> 扩展程序。</p>
+
+<p>其次，在驱动程序中启用 <code>EGL_ANDROID_wait_sync</code> 扩展程序，并单独打开它。<code>EGL_ANDROID_native_fence_sync</code> 扩展程序包含完全不同的原生栅栏 EGLSync 对象类型，因此适用于现有 EGLSync 对象类型的扩展程序不一定适用于 <code>EGL_ANDROID_native_fence</code> 对象，以避免不必要的交互。</p>
+
+<p>EGL_ANDROID_native_fence_sync 扩展程序使用相应的原生栅栏文件描述符属性，该属性只能在创建时设置，不能从现有同步对象直接向前查询。该属性可以设置为以下两种模式之一：</p>
+
+<ul>
+<li><em></em>有效的栅栏文件描述符。在 EGLSyncKHR 对象中包装现有的原生 Android 栅栏文件描述符。</li>
+<li><em></em>-1。从 EGLSyncKHR 对象创建原生 Android 栅栏文件描述符。</li>
+</ul>
+
+<p>DupNativeFenceFD 函数调用用于从原生 Android 栅栏文件描述符中提取 EGLSyncKHR 对象。这与查询已设置的属性具有相同的结果，但遵守由收件人关闭栅栏的规范（因此是重复操作）。最后，清除 EGLSync 对象应该会关闭内部栅栏属性。</p>
+
+<h3 id="hardware_composer_integration">Hardware Composer 集成</h3>
+
+<p>Hardware Composer 可处理三种类型的同步栅栏：</p>
+
+<ul>
+<li><em></em>获取栅栏。每层一个，在调用 <code>HWC::set</code> 之前设置。当 Hardware Composer 可以读取缓冲区时，该栅栏会变为有信号量状态。</li>
+<li><em></em>释放栅栏。每层一个，在 <code>HWC::set</code> 中由驱动程序填充。当 Hardware Composer 完成对缓冲区的读取时，该栅栏会变为有信号量状态，以便框架可以再次开始将该缓冲区用于特定层。</li>
+<li><em></em>退出栅栏。整个框架一个，每次调用 <code>HWC::set</code> 时由驱动程序填充。HWC::set 操作会覆盖所有的层，并且当所有层的 HWC::set 操作完成时会变成有信号量状态并通知框架。当在屏幕上进行下一设置操作时，退出栅栏将变为有信号量状态。</li>
+</ul>
+
+<p>退出栅栏可用于确定每个帧在屏幕上的显示时长。这有助于识别延迟的位置和来源，例如卡顿的动画。</p>
+
+<h2 id="vsync_offset">VSYNC 偏移</h2>
+
+<p>应用和 SurfaceFlinger 渲染循环应同步到硬件 VSYNC。在 VSYNC 事件中，显示设备开始显示帧 N，而 SurfaceFlinger 开始为帧 N+1 合成窗口。应用处理等待的输入并生成帧 N+2。</p>
+
+<p>与 VSYNC 同步会实现一致的延迟时间。它可以减少应用和 SurfaceFlinger 中的错误，以及相位内外显示设备之间的漂移。但是，这要假定应用和 SurfaceFlinger 的每帧时间没有很大变化。尽管如此，延迟至少为两帧。</p>
+
+<p>为了解决此问题，您可以通过使应用和合成信号与硬件 VSYNC 相关，从而利用 VSYNC 偏移减少输入设备到显示设备的延迟。这是有可能的，因为应用加合成通常需要不到 33 毫秒的时间。</p>
+
+<p>VSYNC 偏移的结果是具有相同周期和偏移相位的三个信号：</p>
+
+<ul>
+<li><code>HW_VSYNC_0</code>。显示设备开始显示下一帧。</li>
+<li><code>VSYNC</code>。应用读取输入内容并生成下一帧。</li>
+<li><code>SF VSYNC</code>。SurfaceFlinger 开始为下一帧进行合成。</li>
+</ul>
+
+<p>通过 VSYNC 偏移，SurfaceFlinger 接收缓冲区并合成帧，而应用处理输入内容并渲染帧，所有这些操作都在一个时间段内完成。</p>
+
+<p class="note"><strong>注意</strong>：VSYNC 偏移会缩短可用于应用和合成的时间，因此增加了出错几率。</p>
+
+<h3 id="dispsync">DispSync</h3>
+
+<p>DispSync 维护显示设备基于硬件的周期性 VSYNC 事件的模型，并使用该模型在硬件 VSYNC 事件的特定相位偏移处执行周期性回调。</p>
+
+<p>DispSync 实质上是一个软件锁相回路 (PLL)，它可以生成由 Choreographer 和 SurfaceFlinger 使用的 VSYNC 和 SF VSYNC 信号，即使没有来自硬件 VSYNC 的偏移也是如此。</p>
+
+<img src="images/dispsync.png" alt="DispSync 流程"/>
+
+<p class="img-caption"><strong>图 1.</strong> DispSync 流程</p>
+
+<p>DispSync 具有以下特点：</p>
+
+<ul>
+<li><em></em>参考。HW_VSYNC_0。</li>
+<li><em></em>输出。VSYNC 和 SF VSYNC。</li>
+<li><em></em>反馈。来自 Hardware Composer 的退出栅栏有信号量状态时间戳。
+</li>
+</ul>
+
+<h3 id="vsync_retire_offset">VSYNC/退出偏移</h3>
+
+<p>退出栅栏的有信号量状态时间戳必须与 HW VSYNC 相符，即使在不使用偏移相位的设备上也是如此。否则，实际造成的错误会严重得多。智能面板通常有一个增量：退出栅栏是对显示设备内存进行直接内存访问 (DMA) 的终点，但是实际的显示切换和 HW VSYNC 会晚一段时间。</p>
+
+<p><code>PRESENT_TIME_OFFSET_FROM_VSYNC_NS</code> 在设备的 BoardConfig.mk Makefile 中设置。它基于显示控制器和面板特性。从退出栅栏时间戳到 HW VSYNC 信号的时间是以纳秒为单位进行测量。</p>
+
+<h3 id="vsync_and_sf_vsync_offsets">VSYNC 和 SF_VSYNC 偏移</h3>
+
+<p><code>VSYNC_EVENT_PHASE_OFFSET_NS</code> 和 <code>SF_VSYNC_EVENT_PHASE_OFFSET_NS</code> 是在高负载用例的基础上进行保守设置，例如在窗口转换期间进行部分 GPU 合成或 Chrome 滚动显示包含动画的网页。这些偏移允许较长的应用渲染时间和较长的 GPU 合成时间。</p>
+
+<p>超过一两毫秒的延迟时间是非常明显的。我们建议集成彻底的自动化错误测试，以便在不显著增加错误计数的前提下最大限度减少延迟时间。</p>
+
+<p class="note"><strong>注意：</strong>这些偏移同样在设备的 BoardConfig.mk 文件中配置。两个设置都是 HW_VSYNC_0 之后以纳秒为单位的偏移，默认值为零（如未设置的话），也可以为负值。</p>
+
+</body></html>

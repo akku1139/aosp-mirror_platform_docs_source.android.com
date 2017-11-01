@@ -1,0 +1,125 @@
+<html devsite><head>
+    <title>HAL 版本弃用</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>在 Android L 版本中，我们将停止对某些传感器 HAL 版本的支持，仅支持 <code>SENSORS_DEVICE_API_VERSION_1_0
+</code> 和 <code>SENSORS_DEVICE_API_VERSION_1_3</code> 版本。</p>
+
+<p>在后面的版本中，我们也可能会停止对 1_0 的支持。</p>
+
+<p>1_0 没有批处理的概念。如果条件允许，所有使用 1_0 的设备都应升级到 1_3。</p>
+
+<p>1_1 和 1_2 都没有充分定义批处理概念，并且不再受支持</p>
+
+<p>目前使用 1_1 或 1_2 的所有设备都必须升级到 1_3。</p>
+
+<p>在 1_3 中，我们简化了批处理的概念并引入了唤醒传感器。</p>
+
+<p>要升级到 1_3，请按照下文所列更改执行操作。</p>
+
+<h2>实现 batch 函数</h2>
+
+<p>即使您没有实施批处理（您的硬件没有 FIFO），您也必须实现 <code>batch</code> 函数。<code>batch</code> 用于设置指定传感器的采样周期和最大报告延迟时间。它可以取代 <code>setDelay</code>。<code>setDelay</code> 将不再得到调用。</p>
+
+<p>如果您不实施批处理，则可以利用提供的 <code>sampling_period_ns</code> 参数通过仅调用现有的 <code>setDelay</code> 函数来实现 <code>batch</code>。</p>
+
+<h2>实现 Flush 函数</h2>
+
+<p>即使不实施批处理，也必须实现 <code>flush</code> 函数。</p>
+
+<p>如果不实施批处理，则 <code>flush</code> 必须生成一个 <code>META_DATA_FLUSH_COMPLETE</code> 事件并返回 0（成功）。</p>
+
+<h2>更改 sensors_poll_device_t.common.version</h2>
+
+<pre class="prettyprint">
+your_poll_device.common.version = SENSORS_DEVICE_API_VERSION_1_3
+</pre>
+
+<h2>在传感器定义中添加新字段</h2>
+
+<p>定义每个传感器时，除了以下常规 <a href="/devices/sensors/hal-interface.html#sensor_t">sensor_t</a> 字段外：</p>
+
+<pre class="prettyprint">
+.name =       "My magnetic field Sensor",
+.vendor =     "My company",
+.version
+=    1,
+.handle =     mag_handle,
+.type =       SENSOR_TYPE_MAGNETIC_FIELD,
+.maxRange =   200.0f,
+.resolution = CONVERT_M,
+.power =      5.0f,
+.minDelay =
+ 16667,
+</pre>
+
+<p>您还必须设置在 1_0 和 1_3 之间定义的新字段：</p>
+
+<pre class="prettyprint">
+.fifoReservedEventCount = 0,
+.fifoMaxEventCount =   0,
+.stringType =         0,
+.requiredPermission = 0,
+.maxDelay =      200000
+.flags =
+SENSOR_FLAG_CONTINUOUS_MODE,
+</pre>
+
+<p><em></em>fifoReservedEventCount：如果不实施批处理，请将此字段设置为 0。</p>
+
+<p><em></em>fifoMaxEventCount：如果不实施批处理，请将此字段设置为 0。</p>
+
+<p><em></em>stringType：针对所有官方 Android 传感器（在 sensors.h 中定义的传感器），请将此字段设置为 0，因为该值会被框架覆盖。对于非官方传感器，请参阅 <a href="/devices/sensors/hal-interface.html#sensor_t">sensor_t</a>，详细了解如何对其进行设置。</p>
+
+<p><em></em>requiredPermission：这是应用访问传感器所必备的权限。通常情况下，您可以针对所有传感器将此字段设置为 0；但对于类型为 <code>HEART_RATE</code> 的传感器，则必须将此字段设置为 <code>SENSOR_PERMISSION_BODY_SENSORS.</code></p>
+
+<p><em></em>maxDelay：这个值很重要，您将需要根据传感器及其驱动程序的功能对此字段进行设置。</p>
+
+<p>仅对连续 (continuous) 和中断 (on-change) 模式下的传感器定义此值。此值是两个传感器事件之间的延迟时间，其中传感器事件对应传感器支持的最低频率。当通过 <code>batch</code> 函数请求较低的频率时，将以该频率生成事件。框架或应用可以用它来预测批处理 FIFO 可能存满的时间。如果此值设置不正确，CTS 将失败。对于单次 (one-shot) 和特殊 (special) 报告模式下的传感器，请将 <code>maxDelay</code> 设置为 0。</p>
+
+<p>对于连续模式下的传感器，请将此字段设置为允许的最大采样周期（以微秒为单位）。</p>
+
+<p>以下内容适用于 <code>period_ns</code>、<code>maxDelay</code> 和 <code>minDelay</code>：</p>
+<ul>
+<li><code>period_ns</code> 以纳秒为单位，而 <code>maxDelay</code>/<code>minDelay</code> 以微秒为单位。</li>
+<li><code>maxDelay</code> 应始终是 32 位的带符号整数。仅出于二进制兼容性原因，才允许在 64 位架构上将其声明为 64 位整数。</li>
+</ul>
+
+<p><em></em>flags：该字段会定义传感器的报告模式以及传感器是否为唤醒传感器。</p>
+
+<p>如果您不实施批处理，只是从 1.0 升级到 1.3，请将此字段设置为：</p>
+
+<p><code>SENSOR_FLAG_WAKE_UP | SENSOR_FLAG_ONE_SHOT_MODE</code> - <a href="/devices/sensors/report-modes.html#one-shot">单次 (one-shot) </a>模式下的传感器</p>
+
+<p><code>SENSOR_FLAG_CONTINUOUS_MODE</code> - <a href="/devices/sensors/report-modes.html#continuous">连续 (continuous)</a> 模式下的传感器；<code>SENSOR_FLAG_ON_CHANGE_MODE</code> - <a href="/devices/sensors/report-modes.html#on-change">中断 (on-change) </a>模式下的传感器（<a href="#proximity">近程</a>传感器除外）；<code>SENSOR_FLAG_SPECIAL_REPORTING_MODE</code> - <a href="/devices/sensors/report-modes.html#special">特殊 (special) </a>报告模式下的传感器（<a href="/devices/sensors/sensor-types.html#tilt_detector">倾斜检测器</a>传感器除外）。</p>
+
+<p><code>SENSOR_FLAG_WAKE_UP | SENSOR_FLAG_ON_CHANGE_MODE</code> - <a href="/devices/sensors/sensor-types.html#proximity">近程</a>传感器和 Android 官方<a href="/devices/sensors/sensor-types.html#tilt_detector">倾斜检测器</a>传感器。</p>
+
+<h2>从 1_1 或 1_2 升级时的注意事项</h2>
+<ul>
+  <li>现在，即使是不支持批处理的传感器，<code>batch</code> 函数几乎也总能成功，而且不受超时参数值的影响。可能导致 <code>batch </code> 函数失败的情形仅包括：内部错误、<code>sensor_handle,</code> 不良、<code>sampling_period_ns </code>值为负或 <code>max_report_latency_ns</code> 值为负。
+  </li><li>传感器是否支持批处理取决于它是否具有大于 0 的 <code>fifoMaxEventCount </code>。（在以前的版本中，它是以 <code>batch()</code> 的返回值为依据。）
+  </li><li>支持批处理的传感器在以前的版本中始终处于“批处理模式”：即使 <code>max_report_latency_ns</code> 参数为 0，仍必须对传感器进行批处理操作，这意味着当 SoC 进入挂起模式时，事件必须存储在 FIFO 中。
+  </li><li>将不再使用 <code>batch</code> 函数的 <code>flags </code> 参数。<code>DRY_RUN</code> 和 <code>WAKE_UPON_FIFO_FULL</code> 两者都已弃用，将永远不会被传递给 <code>batch</code> 函数。
+  </li><li>批处理超时参数现称为 <code>max_report_latency</code> 参数。
+</li></ul>
+
+</body></html>

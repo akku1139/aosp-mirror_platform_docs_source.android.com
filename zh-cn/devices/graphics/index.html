@@ -1,0 +1,117 @@
+<html devsite><head>
+    <title>图形</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<img style="float: right; margin: 0px 15px 15px 15px;" src="images/ape_fwk_hal_graphics.png" alt="Android 图形 HAL 图标"/>
+
+<p>Android 框架提供了各种用于 2D 和 3D 图形渲染的 API，可与制造商的图形驱动程序实现方法交互，因此，务必充分了解这些 API 如何在更高的级别工作。本页介绍了在其上构建这些驱动程序的图形硬件抽象层 (HAL)。</p>
+
+<p>应用开发者可通过两种方式将图像绘制到屏幕上：使用 Canvas 或 OpenGL。有关 Android 图形组件的详细说明，请参阅<a href="/devices/graphics/architecture.html">系统级图形架构</a>。</p>
+
+<p><a href="http://developer.android.com/reference/android/graphics/Canvas.html">android.graphics.Canvas</a> 是一个 2D 图形 API，并且是在开发者人群中最流行的图形 API。Canvas 运算会在 Android 中绘制所有原生和自定义 <a href="http://developer.android.com/reference/android/view/View.html">android.view.View</a>。在 Android 中，Canvas API 通过一个名为 OpenGLRenderer 的绘制库实现硬件加速，该绘制库将 Canvas 运算转换为 OpenGL 运算，以便它们可以在 GPU 上执行。</p>
+
+<p>从 Android 4.0 开始，硬件加速的 Canvas 默认情况下处于启用状态。因此，支持 OpenGL ES 2.0 的硬件 GPU 对于 Android 4.0 及更高版本的设备来说是强制要求。有关硬件加速绘制路径的工作原理及其行为与软件绘制路径行为之间的差异的说明，请参阅<a href="https://developer.android.com/guide/topics/graphics/hardware-accel.html">硬件加速指南</a>。</p>
+
+<p>除了 Canvas，开发者渲染图形的另一个主要方式是使用 OpenGL ES 直接渲染到 Surface。Android 在 <a href="http://developer.android.com/reference/android/opengl/package-summary.html">Android.opengl</a> 包中提供了 OpenGL ES 接口，开发者可以使用这些接口通过 SDK 或 <a href="https://developer.android.com/tools/sdk/ndk/index.html">Android NDK</a> 中提供的原生 API 调用其 GL 实现。</p>
+
+<p>Android 实现人员可以使用 <a href="testing.html">drawElements 质量计划</a>（也称为 deqp）来测试 OpenGL ES 功能。</p>
+
+<h2 id="android_graphics_components">Android 图形组件</h2>
+
+<p>无论开发者使用什么渲染 API，一切内容都会渲染到“Surface”。Surface 表示缓冲队列中的生产方，而缓冲队列通常会被 SurfaceFlinger 消耗。在 Android 平台上创建的每个窗口都由 Surface 提供支持。所有被渲染的可见 Surface 都被 SurfaceFlinger 合成到显示部分。</p>
+
+<p>下图显示了关键组件如何协同工作：</p>
+
+<img src="images/ape_fwk_graphics.png" alt="图像渲染组件"/>
+
+<p class="img-caption"><strong>图 1.</strong> Surface 如何被渲染</p>
+
+<p>主要组件如下所述：</p>
+
+<h3 id="image_stream_producers">图像流生产方</h3>
+
+<p>图像流生产方可以是生成图形缓冲区以供消耗的任何内容。例如 OpenGL ES、Canvas 2D 和 mediaserver 视频解码器。</p>
+
+<h3 id="image_stream_consumers">图像流消耗方</h3>
+
+<p>图像流的最常见消耗方是 SurfaceFlinger，该系统服务会消耗当前可见的 Surface，并使用窗口管理器中提供的信息将它们合成到显示部分。SurfaceFlinger 是可以修改显示部分内容的唯一服务。SurfaceFlinger 使用 OpenGL 和 Hardware Composer 来合成一组 Surface。</p>
+
+<p>其他 OpenGL ES 应用也可以消耗图像流，例如相机应用会消耗相机预览图像流。非 GL 应用也可以是消耗方，例如 ImageReader 类。</p>
+
+<h3 id="window_manager">窗口管理器</h3>
+
+<p>控制窗口的 Android 系统服务，它是视图容器。窗口总是由 Surface 提供支持。该服务会监督生命周期、输入和聚焦事件、屏幕方向、转换、动画、位置、变形、Z-Order 以及窗口的其他许多方面。窗口管理器会将所有窗口元数据发送到 SurfaceFlinger，以便 SurfaceFlinger 可以使用该数据在显示部分合成 Surface。</p>
+
+<h3 id="hardware_composer">硬件混合渲染器</h3>
+
+<p>显示子系统的硬件抽象实现。SurfaceFlinger 可以将某些合成工作委托给 Hardware Composer，以分担 OpenGL 和 GPU 上的工作量。SurfaceFlinger 只是充当另一个 OpenGL ES 客户端。因此，在 SurfaceFlinger 将一个或两个缓冲区合成到第三个缓冲区中的过程中，它会使用 OpenGL ES。这样使合成的功耗比通过 GPU 执行所有计算更低。</p>
+
+<p><a href="/devices/graphics/architecture.html#hwcomposer">Hardware Composer HAL</a> 则进行另一半的工作，并且是所有 Android 图形渲染的核心。Hardware Composer 必须支持事件，其中之一是 VSYNC（另一个是支持即插即用 HDMI 的热插拔）。</p>
+
+<h3 id="gralloc">Gralloc</h3>
+
+<p>需要使用图形内存分配器 (Gralloc) 来分配图像生产方请求的内存。有关详情，请参阅 <a href="/devices/graphics/architecture.html#gralloc_HAL">Gralloc HAL</a>。</p>
+
+<h2 id="data_flow">数据流</h2>
+
+<p>有关 Android 图形管道的描述，请参见下图：</p>
+
+<img src="images/graphics_pipeline.png" alt="图形数据流"/>
+
+<p class="img-caption"><strong>图 2.</strong> 流经 Android 的图形数据流</p>
+
+<p>左侧的对象是生成图形缓冲区的渲染器，如主屏幕、状态栏和系统界面。SurfaceFlinger 是合成器，而硬件混合渲染器是制作器。</p>
+
+<h3 id="bufferqueue">BufferQueue</h3>
+
+<p>BufferQueues 是 Android 图形组件之间的粘合剂。它们是一对队列，可以调解缓冲区从生产方到消耗方的固定周期。一旦生产方移交其缓冲区，SurfaceFlinger 便会负责将所有内容合成到显示部分。</p>
+
+<p>有关 BufferQueue 通信过程，请参见下图。</p>
+
+<img src="images/bufferqueue.png" alt="BufferQueue 通信过程"/>
+
+<p class="img-caption"><strong>图 3.</strong> BufferQueue 通信过程</p>
+
+<p>BufferQueue 包含将图像流生产方与图像流消耗方结合在一起的逻辑。图像生产方的一些示例包括由相机 HAL 或 OpenGL ES 游戏生成的相机预览。图像消耗方的一些示例包括 SurfaceFlinger 或显示 OpenGL ES 流的另一个应用，如显示相机取景器的相机应用。</p>
+
+<p>BufferQueue 是将缓冲区池与队列相结合的数据结构，它使用 Binder IPC 在进程之间传递缓冲区。生产方接口，或者您传递给想要生成图形缓冲区的某个人的内容，即是 IGraphicBufferProducer（<a href="http://developer.android.com/reference/android/graphics/SurfaceTexture.html">SurfaceTexture</a> 的一部分）。BufferQueue 通常用于渲染到 Surface，并且与 GL 消耗方及其他任务一起消耗内容。BufferQueue 可以在三种不同的模式下运行：</p>
+
+<p><em></em>类同步模式 - 默认情况下，BufferQueue 在类同步模式下运行，在该模式下，从生产方进入的每个缓冲区都在消耗方那退出。在此模式下不会舍弃任何缓冲区。如果生产方速度太快，创建缓冲区的速度比消耗缓冲区的速度更快，它将阻塞并等待可用的缓冲区。</p>
+
+<p><em></em>非阻塞模式 - BufferQueue 还可以在非阻塞模式下运行，在此类情况下，它会生成错误，而不是等待缓冲区。在此模式下也不会舍弃缓冲区。这有助于避免可能不了解图形框架的复杂依赖项的应用软件出现潜在死锁现象。</p>
+
+<p><em></em>舍弃模式 - 最后，BufferQueue 可以配置为丢弃旧缓冲区，而不是生成错误或进行等待。例如，如果对纹理视图执行 GL 渲染并尽快绘制，则必须丢弃缓冲区。</p>
+
+<p>为了执行这项工作的大部分环节，SurfaceFlinger 就像另一个 OpenGL ES 客户端一样工作。例如，当 SurfaceFlinger 正在积极地将一个缓冲区或两个缓冲区合成到第三个缓冲区中时，它使用的是 OpenGL ES。</p>
+
+<p>Hardware Composer HAL 执行另一半工作。该 HAL 充当所有 Android 图形渲染的中心点。</p>
+
+<h3 id="synchronization_framework">同步框架</h3>
+
+<p>由于 Android 图形不提供显式并行性，因此供应商一直都是在自己的驱动程序中实现自己的隐式同步。但是，Android 图形同步框架不再需要这么做。有关实现说明，请参阅<a href="/devices/graphics/implement-vsync.html#explicit_synchronization">显式同步</a>部分。</p>
+
+<p>同步框架明确描述了系统中不同异步操作之间的依赖关系。框架提供了一个简单 API，使组件在缓冲区被释放时发出信号。它还允许在从内核到用户空间的驱动程序之间以及用户空间进程本身之间传递同步基元。</p>
+
+<p>例如，应用可以将要在 GPU 中执行的工作加入队列。然后，GPU 开始绘制该图像。尽管图像尚未被绘制到内存中，但缓冲区指针仍然可以与指示 GPU 工作何时完成的栅栏一起传递到窗口合成器。然后，窗口合成器可以提前开始处理，并将工作移交给显示控制器。通过这种方式，CPU 工作可以提前完成。GPU 完成后，显示控制器就可以立即显示图像。</p>
+
+<p>同步框架还允许实现人员在自己的硬件组件中利用同步资源。最后，框架使实现人员可以查看图形管道，以帮助进行调试。</p>
+
+</body></html>

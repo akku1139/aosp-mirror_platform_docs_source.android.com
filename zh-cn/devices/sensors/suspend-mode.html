@@ -1,0 +1,37 @@
+<html devsite><head>
+    <title>挂起模式</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<h2 id="soc_power_states">SoC 电源状态</h2>
+<p>系统芯片 (SoC) 的电源状态包括：开启、空闲和挂起。“开启”表示 SoC 正在运行。“空闲”表示一种中等耗电模式，在该模式下，SoC 已接通电源但不执行任何任务。“挂起”表示 SoC 未通电的低功耗模式。该模式下的设备功耗通常是“开启”模式的 1/100。</p>
+<h2 id="non-wake-up_sensors">非唤醒传感器</h2>
+<p>非唤醒传感器是不阻止 SoC 进入挂起模式，也不会将 SoC 唤醒以报告数据的传感器。尤其是，不允许驱动程序持有唤醒锁定。如果应用要在屏幕关闭时从非唤醒传感器那接收事件，则其有责任保留部分唤醒锁定。当 SoC 处于挂起模式时，传感器必须继续工作并生成事件，这些事件会放入硬件 FIFO 中。（有关详情，请参阅<a href="batching.html">批处理</a>。）当 SoC 唤醒时，FIFO 中的事件将传送到应用。如果 FIFO 太小而无法存储所有事件，则较旧的事件将丢失；最旧的数据将被删除以容纳最新的数据。在不存在 FIFO 的极端情况下，在 SoC 处于挂起模式时生成的所有事件都将丢失。一个例外情况是来自每个变化模式传感器的最新事件：最后一个事件<a href="batching.html#precautions_to_take_when_batching_non-wake-up_on-change_sensors">必须保存</a>在 FIFO 之外，以使其不会丢失。</p>
+<p>一旦 SoC 退出挂起模式，就会报告来自 FIFO 的所有事件，并且操作将恢复正常。</p>
+<p>使用非唤醒传感器的应用要么应持有唤醒锁定以确保系统不会挂起，在不需要传感器时取消注册传感器，要么会在 SoC 处于挂起模式期间丢失事件。</p>
+<h2 id="wake-up_sensors">唤醒传感器</h2>
+<p>与非唤醒传感器相反，唤醒传感器会确保其数据在传输时不依赖于 SoC 状态。当 SoC 唤醒时，唤醒传感器的行为就像非唤醒传感器。当 SoC 休眠时，唤醒传感器必须唤醒 SoC 以发送事件。它们仍必须让 SoC 进入挂起模式，但是当需要报告事件时，还必须唤醒 SoC。也就是说，在达到最大报告延迟时间或硬件 FIFO 已满之前，传感器必须唤醒 SoC 并传送事件。有关详情，请参阅<a href="batching.html">批处理</a>。</p>
+<p>为确保应用有时间在 SoC 返回休眠状态之前接收事件，每次报告事件时，驱动程序必须持有“超时唤醒锁定”200 毫秒。<em>也就是说，在唤醒中断后的 200 毫秒内，不允许 SoC 返回休眠状态。</em> 此要求将在未来的 Android 版本中消失，在此之前，我们需要该超时唤醒锁定。</p>
+<h2 id="how_to_define_wake-up_and_non-wake-up_sensors">如何定义唤醒和非唤醒传感器？</h2>
+<p>在 KitKat 及更早版本中，某个传感器是唤醒传感器还是非唤醒传感器由传感器类型确定：除<a href="sensor-types.html#proximity">近程</a>传感器和<a href="sensor-types.html#significant_motion">大幅度动作检测器</a>之外，大多数传感器都是非唤醒传感器。</p>
+<p>从 L 版本开始，给定传感器是否为唤醒传感器由传感器定义中的标记指定。大多数传感器均可由同一传感器的唤醒和非唤醒变体对来定义，在这种情况下，它们必须表现为两个独立的传感器，且彼此不进行交互。有关详情，请参阅<a href="interaction.html">交互性</a>。</p>
+<p>除非在传感器类型定义中另行指定，否则建议为<a href="sensor-types.html">传感器</a>类型中列出的每种传感器类型实现一个唤醒传感器和一个非唤醒传感器。在每个传感器类型定义中，查看 <code>SensorManager.getDefaultSensor(sensorType)</code> 将返回什么样的传感器（唤醒还是非唤醒）。它是大多数应用将使用的传感器。</p>
+
+</body></html>

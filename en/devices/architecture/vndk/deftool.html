@@ -1,0 +1,433 @@
+<html devsite>
+  <head>
+    <title>VNDK Definition Tool</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+
+<p>
+The VNDK definition tool helps vendors migrate their source tree to an Android O
+environment. This tool scans binary files in the system and vendor images then
+resolves dependencies. Based on the module dependency graph, the tool can also
+detect violations to VNDK concepts and provide insight/suggestions for moving
+modules between partitions. If an AOSP system image is specified, the VNDK
+definition tool can compare your system image with the AOSP system image and
+determine the extended libraries.
+</p>
+<p>
+This section covers three frequently used commands for the VNDK definition tool:
+</p>
+<ul>
+<li><code>vndk</code>. Compute VNDK_SP_LIBRARIES, VNDK_SP_EXT_LIBRARIES, and
+EXTRA_VENDOR_LIBRARIES for build system workaround in Android O.</li>
+<li><code>check-dep</code>. Check the violating module dependencies from vendor
+modules to non-eligible framework shared libraries.</li>
+<li><code>deps</code>. Print the dependencies between the shared libraries and
+executables.</li>
+</ul>
+
+<p>For more details on advanced command usage, refer to
+<a href="https://android.googlesource.com/platform/development/+/master/vndk/tools/definition-tool/README.md" class="external">README.md</a>
+file in the VNDK Definition Tool repository.</p>
+
+<h2 id="vndk">vndk</h2>
+<p>The <code>vndk</code> subcommand loads the shared libraries and executables
+from the system partition and vendor partitions, then resolves module
+dependencies to determine the libraries that must be copied to
+<code>/system/lib[64]/vndk-sp</code> and <code>/vendor/lib[64]</code>. Options
+for the <code>vndk</code> subcommand include:</p>
+
+<table>
+  <tr>
+   <th>Option</th>
+   <th>Description</th>
+  </tr>
+  <tr>
+   <td><code>--system</code>
+   </td>
+   <td>Point to a directory containing the files that will reside in the system
+partition.
+   </td>
+  </tr>
+  <tr>
+   <td><code>--vendor</code>
+   </td>
+   <td>Point to a directory containing the files that will reside in a vendor
+partition.
+   </td>
+  </tr>
+  <tr>
+   <td><code>--aosp-system</code>
+   </td>
+   <td>Point to a directory containing the files that will reside in the AOSP
+system image.
+   </td>
+  </tr>
+  <tr>
+   <td><code>--load-extra-deps</code>
+   </td>
+   <td>Point to a file that describes the implicit dependencies, such as
+<code>dlopen()</code>.
+   </td>
+  </tr>
+</table>
+
+<p>For example, to compute the VNDK library sets, run the following
+<code>vndk</code> subcommand:</p>
+
+<pre class="prettyprint">
+<code class="devsite-terminal">./vndk_definition_tool.py vndk \</code>
+    --system ${ANDROID_PRODUCT_OUT}/system \
+    --vendor ${ANDROID_PRODUCT_OUT}/vendor \
+    --aosp-system ${ANDROID_PRODUCT_OUT}/../generic_arm64_ab/system\
+    --load-extra-deps dlopen.dep
+</pre>
+
+<p>Specify extra dependencies with a simple file format. Each line represents a
+relationship, with the file before the colon depending on the file after the
+colon. For example:</p>
+
+<pre class="prettyprint">/system/lib/libart.so: /system/lib/libart-compiler.so</pre>
+
+<p>This line lets the VNDK definition tool know that <code>libart.so</code>
+depends on <code>libart-compiler.so</code>.
+</p>
+
+<h3 id="installation-destination">Installation destination</h3>
+<p>VNDK definition tool lists libraries and corresponding install directories
+for the following categories:</p>
+
+<table>
+  <tr>
+   <th>Category</th>
+   <th>Directory</th>
+  </tr>
+  <tr>
+   <td>vndk_sp
+   </td>
+   <td>Must install to <code>/system/lib[64]/vndk-sp</code>
+   </td>
+  </tr>
+  <tr>
+   <td>vndk_sp_ext
+   </td>
+   <td>Must install to <code>/vendor/lib[64]/vndk-sp</code>
+   </td>
+  </tr>
+  <tr>
+   <td>extra_vendor_libs
+   </td>
+   <td>Must install to <code>/vendor/lib[64]</code>
+   </td>
+  </tr>
+</table>
+
+<h3 id="build-system-templates">Build system templates</h3>
+<p>After gathering outputs from VNDK definition tool, a vendor can create an
+<code>Android.mk</code> and fill in <code>VNDK_SP_LIBRARIES</code>,
+<code>VNDK_SP_EXT_LIBRARIES</code> and <code>EXTRA_VENDOR_LIBRARIES</code> to
+automate the process to copy libraries to the designated installation
+destination.</p>
+
+<pre class="prettyprint">ifneq ($(filter $(YOUR_DEVICE_NAME),$(TARGET_DEVICE)),)
+VNDK_SP_LIBRARIES := ##_VNDK_SP_##
+VNDK_SP_EXT_LIBRARIES := ##_VNDK_SP_EXT_##
+EXTRA_VENDOR_LIBRARIES := ##_EXTRA_VENDOR_LIBS_##
+
+#-------------------------------------------------------------------------------
+# VNDK Modules
+#-------------------------------------------------------------------------------
+LOCAL_PATH := $(call my-dir)
+
+define define-vndk-lib
+include $$(CLEAR_VARS)
+LOCAL_MODULE := $1.$2
+LOCAL_MODULE_CLASS := SHARED_LIBRARIES
+LOCAL_PREBUILT_MODULE_FILE := $$(TARGET_OUT_INTERMEDIATE_LIBRARIES)/$1.so
+LOCAL_STRIP_MODULE := false
+LOCAL_MULTILIB := first
+LOCAL_MODULE_TAGS := optional
+LOCAL_INSTALLED_MODULE_STEM := $1.so
+LOCAL_MODULE_SUFFIX := .so
+LOCAL_MODULE_RELATIVE_PATH := $3
+LOCAL_VENDOR_MODULE := $4
+include $$(BUILD_PREBUILT)
+
+ifneq ($$(TARGET_2ND_ARCH),)
+ifneq ($$(TARGET_TRANSLATE_2ND_ARCH),true)
+include $$(CLEAR_VARS)
+LOCAL_MODULE := $1.$2
+LOCAL_MODULE_CLASS := SHARED_LIBRARIES
+LOCAL_PREBUILT_MODULE_FILE := $$($$(TARGET_2ND_ARCH_VAR_PREFIX)TARGET_OUT_INTERMEDIATE_LIBRARIES)/$1.so
+LOCAL_STRIP_MODULE := false
+LOCAL_MULTILIB := 32
+LOCAL_MODULE_TAGS := optional
+LOCAL_INSTALLED_MODULE_STEM := $1.so
+LOCAL_MODULE_SUFFIX := .so
+LOCAL_MODULE_RELATIVE_PATH := $3
+LOCAL_VENDOR_MODULE := $4
+include $$(BUILD_PREBUILT)
+endif  # TARGET_TRANSLATE_2ND_ARCH is not true
+endif  # TARGET_2ND_ARCH is not empty
+endef
+
+$(foreach lib,$(VNDK_SP_LIBRARIES),\
+    $(eval $(call define-vndk-lib,$(lib),vndk-sp-gen,vndk-sp,)))
+$(foreach lib,$(VNDK_SP_EXT_LIBRARIES),\
+    $(eval $(call define-vndk-lib,$(lib),vndk-sp-ext-gen,vndk-sp,true)))
+$(foreach lib,$(EXTRA_VENDOR_LIBRARIES),\
+    $(eval $(call define-vndk-lib,$(lib),vndk-ext-gen,,true)))
+
+
+#-------------------------------------------------------------------------------
+# Phony Package
+#-------------------------------------------------------------------------------
+
+include $(CLEAR_VARS)
+LOCAL_MODULE := $(YOUR_DEVICE_NAME)-vndk
+LOCAL_MODULE_TAGS := optional
+LOCAL_REQUIRED_MODULES := \
+    $(addsuffix .vndk-sp-gen,$(VNDK_SP_LIBRARIES)) \
+    $(addsuffix .vndk-sp-ext-gen,$(VNDK_SP_EXT_LIBRARIES)) \
+    $(addsuffix .vndk-ext-gen,$(EXTRA_VENDOR_LIBRARIES))
+include $(BUILD_PHONY_PACKAGE)
+
+endif  # ifneq ($(filter $(YOUR_DEVICE_NAME),$(TARGET_DEVICE)),)
+</pre>
+
+<h2 id="check-dep">check-dep</h2>
+<p>The <code>check-dep</code> subcommand scans vendor modules and checks their
+dependencies. If it detects violations, it prints the violating dependant
+library and symbol usages:</p>
+
+<pre class="prettyprint">
+<code class="devsite-terminal">./vndk_definition_tool.py check-dep \</code>
+    --system ${ANDROID_PRODUCT_OUT}/system \
+    --vendor ${ANDROID_PRODUCT_OUT}/vendor \
+    --tag-file eligible-list.csv \
+    --module-info ${ANDROID_PRODUCT_OUT}/module-info.json \
+    1> check_dep.txt \
+    2> check_dep_err.txt
+</pre>
+
+<p>For example, the following sample output shows a violating dependency from
+<code>libRS_internal.so</code> to <code>libmediandk.so</code>:</p>
+
+<pre class="prettyprint">
+/system/lib/libRS_internal.so
+        MODULE_PATH: frameworks/rs
+        /system/lib/libmediandk.so
+                AImageReader_acquireNextImage
+                AImageReader_delete
+                AImageReader_getWindow
+                AImageReader_new
+                AImageReader_setImageListener
+</pre>
+
+<p>Options for the <code>check-dep</code> subcommand include:</p>
+
+<table>
+  <tr>
+   <th style="width:25%">Option</th>
+   <th>Description</th>
+  </tr>
+  <tr>
+   <td><code>--tag-file</code>
+   </td>
+   <td>Must refer to an eligible library tag file (described below), which is a
+Google-provided spreadsheet that described categories of framework shared
+libraries.
+   </td>
+  </tr>
+  <tr>
+   <td><code>--module-info</code>
+   </td>
+   <td>Points to the <code>module-info.json</code> generated by Android build
+system. It helps the VNDK definition tool associate binary modules with source
+code.
+   </td>
+  </tr>
+</table>
+
+<h3 id="eligible-library-tag-file">Eligible library tag file</h3>
+<p>Google provides an eligible VNDK spreadsheet (e.g.
+<code>eligible-list.csv</code>) that tags the framework shared libraries that
+can be used by vendor modules:</p>
+
+<table>
+  <tr>
+   <th style="width:25%">Tag</th>
+   <th>Description</th>
+  </tr>
+  <tr>
+   <td>LL-NDK</td>
+   <td>Low-level NDK libraries that can be used by both framework and vendor
+modules.</td>
+  </tr>
+  <tr>
+   <td>LL-NDK-Indirect</td>
+   <td>Private dependencies of LL-NDK libraries. Vendor modules must not access
+these libraries directly.</td>
+  </tr>
+  <tr>
+   <td>SP-NDK</td>
+   <td>Same-process NDK libraries that can be used by both framework and vendor
+modules.</td>
+  </tr>
+  <tr>
+   <td>SP-NDK-Indirect</td>
+   <td>Private dependencies of SP-NDK libraries. Vendor modules must not access
+these libraries directly.</td>
+  </tr>
+  <tr>
+   <td>VNDK-SP</td>
+   <td>SP-HAL framework shared libraries dependencies.</td>
+  </tr>
+  <tr>
+   <td>VNDK-SP-Indirect</td>
+   <td>VNDK-SP dependencies that are not directly accessible to SP-HAL, but can
+be accessed by other vendor modules (except SP-HAL and SP-HAL-Dep)</td>
+  </tr>
+  <tr>
+   <td>VNDK-SP-Indirect-Private</td>
+   <td>VNDK-SP dependencies that are not directly accessible to all vendor
+modules.</td>
+  </tr>
+  <tr>
+   <td>VNDK</td>
+   <td>Framework shared libraries that are available to vendor modules (except
+SP-HAL and SP-HAL-Dep).</td>
+  </tr>
+  <tr>
+   <td>FWK-ONLY</td>
+   <td>Framework-only shared libraries that must not be accessed by vendor
+modules (neither directly nor indirectly).</td>
+  </tr>
+  <tr>
+   <td>FWK-ONLY-RS</td>
+   <td>Framework-only shared libraries that must not be accessed by vendor
+modules (except for RS usages).</td>
+  </tr>
+</table>
+
+<p>The following table describes tags used for vendor shared libraries:</p>
+
+<table>
+  <tr>
+   <th style="width:25%">Tag</th>
+   <th>Description</th>
+  </tr>
+  <tr>
+   <td>SP-HAL</td>
+   <td>Same-process HAL implementation shared libraries.</td>
+  </tr>
+  <tr>
+   <td>SP-HAL-Dep</td>
+   <td>SP-HAL vendor shared libraries dependencies (a.k.a. SP-HAL dependencies
+excluding LL-NDK, SP-NDK, and VNDK-SP)</td>
+  </tr>
+  <tr>
+   <td>VND-ONLY</td>
+   <td>Framework-invisible shared libraries that must not be accessed by
+framework modules. The copied extended VNDK libraries will be tagged as VND-ONLY
+as well.</td>
+  </tr>
+</table>
+
+<p>Relationships between tags:</p>
+
+<img src="../images/treble_vndk_design.png">
+<figcaption><strong>Figure 1.</strong> Relationships between tags.</figcaption>
+
+<h2 id="deps">deps</h2>
+<p>To debug the library dependencies, the <code>deps</code> subcommand prints
+the module dependencies:</p>
+
+<pre class="prettyprint">
+<code class="devsite-terminal">./vndk_definition_tool.py deps \</code>
+    --system ${ANDROID_PRODUCT_OUT}/system \
+    --vendor ${ANDROID_PRODUCT_OUT}/vendor
+</pre>
+
+<p>The output consists of multiple lines. The line without a tab character
+starts a new section. The line with a tab character depends on the preceding
+section. For example:</p>
+
+<pre class="prettyprint">
+/system/lib/ld-android.so
+/system/lib/libc.so
+        /system/lib/libdl.so
+</pre>
+
+<p>This output shows that <code>ld-android.so</code> does not have a dependency
+and <code>libc.so</code> depends on <code>libdl.so</code>.</p>
+
+<p>When specifying the <code>--revert</code> option, <code>deps</code>
+subcommand prints the <strong>usages of libraries</strong> (reversed
+dependencies):</p>
+
+<pre class="prettyprint">
+<code class="devsite-terminal">./vndk_definition_tool.py deps \</code>
+    --revert \
+    --system ${ANDROID_PRODUCT_OUT}/system \
+    --vendor ${ANDROID_PRODUCT_OUT}/vendor</pre>
+
+<p>For example:</p>
+
+<pre class="prettyprint">
+/system/lib/ld-android.so
+        /system/lib/libdl.so
+        </pre>
+
+<p>This output shows that <code>ld-android.so</code> is used by
+<code>libdl.so</code>, or in other words, <code>libdl.so</code> depends on
+<code>ld-android.so</code>. In addition, this output shows that
+<code>libdl.so</code> is the sole user of <code>ld-android.so</code>.</p>
+
+<p>When specifying the <code>--symbol</code> option, the <code>deps</code>
+subcommand prints the symbols being used:</p>
+
+<pre class="prettyprint">
+<code class="devsite-terminal">./vndk_definition_tool.py deps \</code>
+    --symbol \
+    --system ${ANDROID_PRODUCT_OUT}/system \
+    --vendor ${ANDROID_PRODUCT_OUT}/vendor
+    </pre>
+
+<p>For example:</p>
+
+<pre class="prettyprint">
+/system/lib/libc.so
+        /system/lib/libdl.so
+                android_get_application_target_sdk_version
+                dl_unwind_find_exidx
+                dlclose
+                dlerror
+                dlopen
+                dlsym
+</pre>
+
+<p>This output shows that <code>libc.so</code> depends on 6 functions exported
+from <code>libdl.so</code>. If both the <code>--symbol</code> option and
+<code>--revert</code> option are specified, the symbols used by the user
+will be printed.</p>
+
+  </body>
+</html>

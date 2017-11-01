@@ -1,0 +1,156 @@
+<html devsite><head>
+    <title>实现 Hardware Composer HAL</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>Hardware Composer HAL (HWC) 由 SurfaceFlinger 用来将 Surface 合成到屏幕。HWC 可以抽象出叠加层和 2D 位块传送器等对象，有助于分载通常使用 OpenGL 完成的一些工作。</p>
+
+<p>Android 7.0 包含新版本的 HWC (HWC2)，由 SurfaceFlinger 用来与专门的窗口合成硬件进行通信。SurfaceFlinger 包含使用 3D 图形处理器 (GPU) 执行窗口合成任务的备用路径，但由于以下几个原因，此路径并不理想：</p>
+
+<ul>
+  <li>通常，GPU 未针对此用例进行过优化，因此能耗可能要大于执行合成所需的能耗。</li>
+  <li>每次 SurfaceFlinger 使用 GPU 进行合成时，应用都无法使用处理器进行自我渲染，因此应尽可能使用专门的硬件而不是 GPU 进行合成。</li>
+</ul>
+
+<h2 id="guidance">常规准则</h2>
+
+<p>由于 Hardware Composer 抽象层后的物理显示设备硬件可因设备而异，因此很难就具体功能提供建议。一般来说，请遵循以下准则：</p>
+
+<ul>
+  <li>HWC 应至少支持 4 个叠加层（状态栏、系统栏、应用和壁纸/背景）。</li>
+  <li>层可以大于屏幕，因此 HWC 应能处理大于显示屏的层（例如壁纸）。</li>
+  <li>应同时支持预乘每像素 Alpha 混合和每平面 Alpha 混合。</li>
+  <li>HWC 应能消耗 GPU、相机和视频解码器生成的相同缓冲区，因此支持以下某些属性很有帮助：
+  <ul>
+    <li>RGBA 打包顺序</li>
+    <li>YUV 格式</li>
+    <li>平铺、重排和步幅属性</li>
+  </ul>
+  </li><li>为了支持受保护的内容，必须提供受保护视频播放的硬件路径。</li>
+  </ul>
+
+<p>常规建议是首先实现非运行的 HWC；在结构完成后，实现一个简单的算法，以将合成委托给 HWC（例如，仅将前 3 个或前 4 个 Surface 委托给 HWC 的叠加硬件）。</p>
+
+<p>专注于优化，例如智能地选择要发送到叠加硬件的 Surface，以最大限度提高从 GPU 移除的负载。另一种优化是检测屏幕是否正在更新；如果不是，则将合成委托给 OpenGL 而不是 HWC，以节省电量。当屏幕再次更新时，继续将合成分载到 HWC。</p>
+
+<p>为常见用例做准备，如：</p>
+
+<ul>
+  <li>纵向和横向模式下的全屏游戏</li>
+  <li>带有字幕和播放控件的全屏视频</li>
+  <li>主屏幕（合成状态栏、系统栏、应用窗口和动态壁纸）</li>
+  <li>受保护的视频播放</li>
+  <li>多显示设备支持</li>
+</ul>
+
+<p>这些用例应针对常规可预测的用途，而不是很少遇到的边缘用例（否则，优化将收效甚微）。实现必须平衡动画流畅性和交互延迟时间这两个相互矛盾的目标。</p>
+
+<h2 id="interface_activities">HWC2 接口 Activity</h2>
+
+<p>HWC2 提供了几个基元（层、显示设备）来表示合成工作及其与显示设备硬件的交互。</p>
+<p>层是合成的最重要单元；每个层都有一组属性，用于定义它与其他层的交互方式。<em></em>包括的属性类别如下：</p>
+
+<ul>
+<li><strong>定位</strong>。定义层在其显示设备上的显示位置。包括层边缘的位置及其相对于其他层的 Z 顺序（指示该层在其他层之前还是之后）等信息。<em></em></li>
+<li><strong>内容</strong>。定义应如何在定位属性定义的边界内呈现层上显示的内容。包括诸如剪裁（用来扩展内容的一部分以填充层的边界）和转换（用来显示旋转或翻转的内容）等信息。</li>
+<li><strong>合成</strong>。定义层应如何与其他层合成。包括混合模式和用于 <a href="https://en.wikipedia.org/wiki/Alpha_compositing#Alpha_blending">Alpha 合成</a>的全层 Alpha 值等信息。</li>
+<li><strong>优化</strong>。提供对于正确合成层并非绝对必要但可由 HWC 设备用来优化合成执行方式的信息。包括层的可见区域以及层的哪个部分自上一帧以来已经更新等信息。</li>
+</ul>
+
+<p>显示设备是合成的另一个重要单元。<em></em>每个层只能在一个显示设备上呈现。系统可以具有多个显示设备，并且在正常系统操作期间可以添加或删除显示设备。该添加/删除可以应 HWC 设备的请求（通常是响应插入设备或从设备中移除的外部显示设备，这称为热插拔<em></em>），或者应客户端的请求进行，这允许创建虚拟显示设备，其内容会渲染到离屏缓冲区（而不是物理显示设备）。<em></em></p>
+<p>HWC2 提供相应函数来确定给定显示设备的属性，在不同配置（例如 4k 或 1080p 分辨率）和颜色模式（例如原生颜色或真正的 SRGB）之间切换，以及打开、关闭显示设备或将其切换到低功率模式（如果支持）。</p>
+<p>除了层和显示设备之外，HWC2 还提供对硬件垂直同步 (VSYNC) 信号的控制，以及对于客户端的回调，用于通知它何时发生 vsync 事件。</p>
+
+<h3 id="func_pointers">函数指针</h3>
+<p>在本部分和 HWC2 标头注释中，HWC 接口函数由 lowerCamelCase 名称引用，这些名称并未作为命名的字段实际存在于接口中。相反，几乎每个函数都是通过使用 <code>hwc2_device_t</code> 提供的 <code>getFunction</code> 请求函数指针来进行加载。例如，函数 <code>createLayer</code> 是一个 <code>HWC2_PFN_CREATE_LAYER</code> 类型的函数指针，当枚举值 <code>HWC2_FUNCTION_CREATE_LAYER</code> 传递到 <code>getFunction</code> 中时便会返回该指针。</p>
+<p>有关函数的详细文档（包括每个 HWC2 实现所需的函数），请参见 <a href="https://android.googlesource.com/platform/hardware/libhardware/+/master/include/hardware/hwcomposer2.h">HWC2 标头</a>。</p>
+
+<h3 id="layer_display_handles">层和显示设备句柄</h3>
+<p>层和显示设备由不透明的句柄操纵。</p>
+<p>当 SurfaceFlinger 想要创建新层时，它会调用 <code>createLayer</code> 函数，然后返回一个 <code>hwc2_layer_t</code> 类型的不透明句柄。在此之后，SurfaceFlinger 每次想要修改该层的属性时，都会将该 <code>hwc2_layer_t</code> 值以及进行修改所需的任何其他信息传递给相应的修改函数。<code>hwc2_layer_t</code> 类型句柄的大小足以容纳一个指针或一个索引，并且 SurfaceFlinger 会将其视为不透明，从而为 HWC 实现人员提供最大的灵活性。</p>
+<p>以上大部分内容也适用于显示设备句柄，尽管根据句柄是热插拔（其中句柄通过热插拔回调传递）还是应客户端请求作为虚拟显示设备（句柄从 <code>createVirtualDisplay</code> 返回），会以不同的方式创建句柄。</p>
+
+<h2 id="display_comp_ops">显示设备合成操作</h2>
+<p>如果 SurfaceFlinger 具有可合成的新内容，则会唤醒，且每个硬件 vsync 唤醒一次。该新内容可以是来自应用的新图像缓冲区，也可以只是一个或多个层的属性更改。当 SurfaceFlinger 唤醒时，会执行以下步骤：</p>
+
+<ol>
+<li>应用事务（如果存在）。包括由窗口管理器指定的层的属性更改，但不包括层的内容更改（例如来自应用的图形缓冲区）。</li>
+<li>如果存在新的图形缓冲区，则将其锁定（从它们各自的应用获取其句柄）。</li>
+<li>如果步骤 1 或 2 导致显示内容更改，则执行新的合成（如下所述）。</li>
+</ol>
+
+<p>步骤 1 和 2 有一些细微差别（如延迟的事务和演示时间戳），这些内容不在本节讨论范围之内。但是，步骤 3 涉及 HWC 接口，下面将详细说明。</p>
+<p>在合成过程开始时，SurfaceFlinger 将创建和销毁层或修改层状态（如适用）。SurfaceFlinger 还将使用诸如 <code>setLayerBuffer</code> 或 <code>setLayerColor</code> 等调用，用层的当前内容来更新层。更新所有层之后，SurfaceFlinger 将调用 <code>validateDisplay</code>，以告诉设备检查各个层的状态，并确定如何进行合成。尽管在某些情况下可能会强制由客户端进行合成，但在默认情况下，SurfaceFlinger 通常会尝试配置每个层，以使其由设备进行合成。</p>
+<p>SurfaceFlinger 在调用 <code>validateDisplay</code> 之后，会继续调用 <code>getChangedCompositionTypes</code>，以查看设备是否需要在执行实际合成之前更改任何层的合成类型。SurfaceFlinger 可以选择：</p>
+
+<ul>
+<li>更改部分层合成类型并重新验证显示设备。</li>
+</ul>
+
+<em><strong>或</strong></em>
+
+<ul>
+<li>调用 <code>acceptDisplayChanges</code>，其效果等同于按照设备请求更改合成类型，并重新验证而不再次实际调用 <code>validateDisplay</code>。</li>
+</ul>
+
+<p>在实践中，SurfaceFlinger 始终采用后一种选择（调用 <code>acceptDisplayChanges</code>），尽管这一点将来可能会改变。</p>
+<p>目前，该行为会根据是否将任何层标记为进行客户端合成而有所不同。如果已将任何（或所有）层标记为进行客户端合成，SurfaceFlinger 现在会将所有这些层合成到客户端目标缓冲区中。该缓冲区将通过 <code>setClientTarget</code> 调用提供给设备，以便可以直接在屏幕上显示，或者进一步与未标记为进行客户端合成的层合成。如果没有将任何层标记为进行客户端合成，则会跳过客户端合成步骤。</p>
+<p>最后，在验证所有状态并且执行客户端合成（如果需要）后，SurfaceFlinger 将会调用 <code>presentDisplay</code>。这会提示 HWC 设备完成合成过程并显示最终结果。</p>
+
+<h2 id="multiple_displays">Android 7.0 中的多个显示设备</h2>
+<p>尽管 HWC2 接口非常灵活，能够支持系统中存在多个显示设备，但 Android 框架的其他部分尚不具备这样的灵活性。在设计要在 Android 7.0 上使用的 HWC2 实现时，还存在一些 HWC 定义本身并不存在的额外限制：
+</p>
+
+<ul>
+<li>假定只有一个主显示设备；也就是说，存在一个物理显示设备，该显示设备将在设备初始化期间（特别是在注册热插拔回调之后）立即热插拔。<em></em></li>
+<li>在设备的正常操作期间，除了主显示设备之外，仅可热插拔一个外部显示设备。<em></em></li>
+</ul>
+
+<p>尽管上述 SurfaceFlinger 操作按显示设备执行（最终目标是能够相互独立地合成多个显示），但当前会对所有活动的显示设备依序执行这些操作，即使只更新了一个显示设备的内容也不例外。</p>
+<p>例如，如果只更新了外部显示设备，则顺序为：</p>
+
+<pre class="devsite-click-to-copy">
+// Update state for internal display
+// Update state for external display
+validateDisplay(&lt;internal display&gt;)
+validateDisplay(&lt;external display&gt;)
+presentDisplay(&lt;internal display&gt;)
+presentDisplay(&lt;external display&gt;)
+</pre>
+
+<h2 id="sync_fences">同步栅栏</h2>
+<p>同步栅栏是 Android 图形系统的关键部分。栅栏允许 CPU 工作与并行的 GPU 工作相互独立进行，仅在存在真正的依赖关系时才会阻塞。</p>
+<p>例如，当应用提交在 GPU 上生成的缓冲区时，它还将提交一个栅栏对象；该栅栏仅在 GPU 完成写入缓冲区的操作时才会变为有信号量状态。由于真正需要 GPU 写入完成的唯一系统部分是显示设备硬件（由 HWC HAL 抽象的硬件），因此图形通道能够通过 SurfaceFlinger 将该栅栏与缓冲区一起传递到 HWC 设备。只有在即将显示该缓冲区之前，设备才需要实际检查栅栏是否已经变为有信号量状态。</p>
+<p>同步栅栏紧密集成到 HWC2 中，并且按以下类别进行划分：</p>
+
+<ol>
+<li>获取栅栏会与输入缓冲区一起传递到 <code>setLayerBuffer</code> 和 <code>setClientTarget</code> 调用。这些栅栏表示正在等待写入缓冲区，并且必须在 HWC 客户端或设备尝试从关联缓冲区读取数据以执行合成之前变为有信号量状态。
+</li>
+<li>释放栅栏在调用 <code>presentDisplay</code> 之后使用 <code>getReleaseFences</code> 调用进行检索，并与将在下一次合成期间被替换的缓冲区一起传回至应用。这些栅栏表示正在等待从缓冲区读取数据，并且必须在应用尝试将新内容写入缓冲区之前变为有信号量状态。</li>
+<li>退出栅栏作为对 <code>presentDisplay</code> 的调用的一部分返回，每帧一个，说明该帧的合成何时完成，或者何时不再需要上一帧的合成结果。对于物理显示设备，这是当前帧显示在屏幕上之时，而且还可以解释为在其之后可以再次安全写入客户端目标缓冲区（如果适用）的时间。对于虚拟显示设备，这是可以安全地从输出缓冲区读取数据的时间。</li>
+</ol>
+
+<h3 id="hwc2_changes">HWC2 中的更改</h3>
+<p>HWC 2.0 中同步栅栏的含义相对于以前版本的 HAL 已有很大的改变。</p>
+<p>在 HWC v1.x 中，释放栅栏和退出栅栏是推测性的。在帧 N 中检索到的缓冲区的释放栅栏或显示设备的退出栅栏不会先于在帧 N + 1 中检索到的栅栏变为有信号量状态。换句话说，该栅栏的含义是“不再需要您为帧 N 提供的缓冲区内容”。这是推测性的，因为在理论上，SurfaceFlinger 在帧 N 之后的一段不确定的时间内可能无法再次运行，这将使得这些栅栏在该时间段内不会变为有信号量状态。</p>
+<p>在 HWC 2.0 中，释放栅栏和退出栅栏是非推测性的。在帧 N 中检索到的释放栅栏或退出栅栏，将在相关缓冲区的内容替换帧 N - 1 中缓冲区的内容后立即变为有信号量状态，或者换句话说，该栅栏的含义是“您为帧 N 提供的缓冲区内容现在已经替代以前的内容”。这是非推测性的，因为在硬件呈现此帧的内容之后，该栅栏应该在 <code>presentDisplay</code> 被调用后立即变为有信号量状态。</p>
+<p>有关实现的详细信息，请参见 <a href="https://android.googlesource.com/platform/hardware/libhardware/+/master/include/hardware/hwcomposer2.h">HWC2 标头</a>。</p>
+
+</body></html>

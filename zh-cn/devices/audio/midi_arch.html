@@ -1,0 +1,133 @@
+<html devsite><head>
+    <title>MIDI 架构</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>本文介绍了独立于任何平台实现、API 或平台专享功能的通用 MIDI 架构。
+</p>
+
+<h2 id="keyConcepts">主要概念</h2>
+
+<h3 id="events">事件</h3>
+
+<p>MIDI 协议专为基于事件的通信而设计。<a href="https://en.wikipedia.org/wiki/Event_(computing)">事件</a>表示已经发生或即将在特定时间发生的事情。MIDI 事件用信息（原子形式的信息包）表示。<em></em>
+</p>
+
+<h3 id="transport">传输</h3>
+
+<p>MIDI 信息通过<a href="https://en.wikipedia.org/wiki/Transport_layer">传输层</a>（缩写形式为“传输”）进行编码和传递，传输会将原始 MIDI 数据发送给接收者，以便接收者随后将数据解码到信息中。<em></em>
+</p>
+
+<p>基于硬件的 MIDI 传输包括：
+</p>
+<ul>
+<li>使用 <a href="https://en.wikipedia.org/wiki/DIN_connector">5-pin DIN</a> 连接器的 MIDI 1.0 电流回路</li>
+<li>USB</li>
+<li>蓝牙低功耗 (BLE)</li>
+</ul>
+
+<h3 id="messageRepresentation">信息呈现方式</h3>
+
+<p>MIDI 传输规范介绍了信息的传递方式。尽管信息的封装在最低级别是特定于传输进行的，但是在较高级别，应用可以将按时间排序的信息序列视为划分界线的<a href="https://en.wikipedia.org/wiki/Bytestream">字节流</a>。这可能是因为，如果信息边界的起点已知，则每条信息都会包含足够的信息来确定其总长度。
+</p>
+
+<p>大多数 MIDI 信息都比较短（一到三个字节），不过您可以通过 SysEx 实现较长的信息。<em></em>
+</p>
+
+<h3 id="timestamps">时间戳</h3>
+
+<p><a href="https://en.wikipedia.org/wiki/Timestamp">时间戳</a>是在原始时间或接收信息后（具体取决于传输）附加到信息的可选标签。时间戳用时间单位表示，如秒或<a href="https://en.wikipedia.org/wiki/Jiffy_(time)">滴答声</a>。
+</p>
+
+<p>在没有显式时间戳的情况下，系统必须替换紧挨着的上一条信息或电流时间的时间戳。这些时间戳（无论显式或隐式）的准确性是影响基于 MIDI 的系统的可靠性的重要因素。
+</p>
+
+<p>时间戳不是 MIDI 1.0 协议的组成部分，它们通常会被添加为平台专用 API 的一部分。BLE 传输中有相应时间戳，可以表明一个 BLE 文件包内的多条信息各自的发送时间。
+</p>
+
+<h3 id="devices">设备</h3>
+
+<p><a href="https://en.wikipedia.org/wiki/Peripheral">外围设备</a>为计算机提供输入/输出 (I/O) 功能。“MIDI 外围设备”和“MIDI 设备”这两个术语通常指支持 MIDI 协议的各种硬件或软件模块。<em></em><em></em>在本文中，MIDI 外围设备指物理实体，MIDI 设备指实际实现 MIDI 的模块。
+<em></em><em></em></p>
+
+<h3 id="ports">端口</h3>
+
+<p><a href="https://en.wikipedia.org/wiki/Computer_port_(hardware)">端口</a>是计算机和外围设备之间的接口点。
+</p>
+
+<p>MIDI 1.0 使用 5-pin DIN 插座作为端口。端口有三种：OUT（MIDI 数据的源）、IN（MIDI 数据的接收器）或 THRU（表示直接路由到 OUT 的 IN）。<em></em><em></em><em></em><em></em><em></em>
+</p>
+
+<p>USB 和 BLE 等其他传输端口是<a href="https://en.wikipedia.org/wiki/Computer_port_(software)">端口概念</a>的延伸。
+</p>
+
+<p>MIDI 设备拥有至少一个 OUT 端口、IN 端口，或同时具有两种端口。<em></em><em></em>
+</p>
+
+<p>MIDI 设备提供源自每个 OUT 端口的信息流，并接收抵达每个 IN 端口的信息流。<em></em><em></em>当然，术语 IN 和 OUT 对应于一个端口；反向的术语对应于另一个端口。<em></em><em></em>
+</p>
+
+<h3 id="connection">连接</h3>
+
+<p>在 MIDI 1.0 传输中，由于电流回路的性质，一个 OUT 端口最多能连接一个 IN 或 THRU 端口。<em></em><em></em><em></em>USB 和 BLE 传输中最底层的情况也是如此（尽管您可以通过实现修复信息流，以便它能传送到多个 IN 端口）。<em></em>
+</p>
+
+<h3 id="cable">线缆</h3>
+
+<p>MIDI 1.0 <a href="https://en.wikipedia.org/wiki/Cable">线缆</a>是连接 OUT 端口和 IN 或 THRU 端口的物理线束。<em></em><em></em><em></em>线缆仅用于传输数据。
+</p>
+
+<p class="note">
+<strong>注意</strong>：有一种针对 MIDI 的非标准修改，可以通过两个未使用的 PIN 供电，称为“幻象电源”。<em></em>
+</p>
+
+<p><a href="https://en.wikipedia.org/wiki/USB#Cabling">USB 线缆</a>和 MIDI 1.0 线缆类似，不过它有多种连接器类型，并且 IN/OUT/THRU 概念被替换为主机/外围设备角色。<em></em><em></em><em></em>
+</p>
+
+<p>在 USB 主机模式下操作时，主机设备会为 MIDI 外围设备供电。大多数小型 MIDI 外围设备使用一个 USB 单元负载 (100mA) 或者更少电量，而一些较大型的外围设备或配有音频输出或指示灯的外围设备所需的电量比主机设备能够提供的电量多。如果您遇到问题，请尝试其他 MIDI 外围设备或接通电源的 USB 集线器。
+</p>
+
+<h3 id="channel">通道</h3>
+
+<p>每个 MIDI 信息流均在 16 个通道间进行多路复用。<em></em>大多数信息都针对特定通道，不过也有些信息类型不是针对特定通道。按照惯例，尽管通道值用 0 到 15 表示，但通道按 1 到 16 计数。
+</p>
+
+<p>如果应用需要超过 16 个通道，或者需要的吞吐量超过一个信息流所能支持的限度，则必须使用多个端口。
+</p>
+
+<p>在 MIDI 1.0 中，可使用多根线缆连接端口对来实现上述目的。
+</p>
+
+<p>在使用 USB 传输的 MIDI 中，单个 USB 端点可以支持多个端口，每个端口由线缆编号 [sic] 标识。<em></em>根据 USB MIDI 规范，线缆编号可标识端点中的虚拟端口。<em></em>
+</p>
+
+<p class="note">
+<strong>注意</strong>：在标识端口时，端口编号是一个更为准确的术语。<em></em>
+</p>
+
+<p>这样一来，单个 USB 物理线缆就可以承载 16 个以上的通道。
+</p>
+
+<h2 id="platformImplementation">平台实现</h2>
+
+<p>如简介中所述，这些通用 MIDI 概念适用于所有实现。有关 Android 平台上的概念的解释说明，请参阅<a href="http://developer.android.com/reference/android/media/midi/package-summary.html">针对 <code>android.media.midi</code> 的 Android MIDI 用户指南</a>。
+</p>
+
+</body></html>

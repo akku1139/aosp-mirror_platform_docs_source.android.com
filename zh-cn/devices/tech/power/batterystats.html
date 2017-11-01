@@ -1,0 +1,517 @@
+<html devsite><head>
+    <title>查看电池使用情况数据</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+  <p><code>dumpsys batterystats</code> 命令可用来生成关于设备电池使用情况的有趣统计数据，这些数据按唯一用户 ID (UID) 进行整理。统计信息包括以下内容：</p>
+
+  <ul>
+    <li>电池相关事件的历史记录</li>
+
+    <li>设备的全局统计信息</li>
+
+    <li>每个 UID 和系统组件的大致用电量</li>
+
+    <li>单个应用的每个数据包占用的移动网络毫秒数</li>
+
+    <li>系统 UID 汇总统计信息</li>
+
+    <li>应用 UID 汇总统计信息</li>
+  </ul>
+
+  <p>使用 <a href="https://github.com/google/battery-historian">Battery Historian</a> 工具可以针对 dumpsys 命令输出内容中电量相关事件的日志来生成 HTML 可视化内容。这类信息有助于更轻松地了解和诊断电池相关问题。</p>
+
+  <h2 id="command-line_options">命令输入</h2>
+  <p>基本的 <code>batterystats</code> 命令是：</p>
+  <pre class="prettyprint">
+$ adb shell dumpsys batterystats</pre>
+  <p>支持的选项：</p>
+  <ul>
+  <li><code>--help</code> 显示用于定制输出的附加选项。
+  </li>
+  <li><code>--checkin</code> 以机器可读的 csv 格式导出结果。
+  </li>
+  </ul>
+  <p>例如，要以 csv 格式打印所有应用的电池使用情况（自设备上次充电后）统计信息，可以运行以下命令：</p>
+  <pre class="prettyprint">
+$ adb shell dumpsys batterystats --charged --checkin</pre>
+  <p>您还可以指定一个文件包名称来获取单个应用的统计信息。例如，要以 csv 格式打印指定应用包的电池使用情况（自设备上次充电后）统计信息，可以运行以下命令：</p>
+  <pre class="prettyprint">
+$ adb shell dumpsys batterystats --charged &lt;package-name&gt;</pre>
+
+  <h2 id="output">命令输出</h2>
+
+  <p><code>batterystats</code> 命令可用来生成关于设备电池使用情况（自设备上次充电后）的汇总检测信息。检测信息可以基于每个 UID 也可以基于系统级别；选择要包含的数据时，则要考虑到数据在分析电池性能时的实用性。在输出内容中，每项检测信息对应一 (1) 个条目，每个条目均由采用以下格式的逗号分隔值列表组成：int,uid,mode,section,fields（一个或多个）。<em></em><em></em><em></em><em></em><em></em></p>
+
+  <p>前 4 个值对应以下内容：</p>
+
+  <ul>
+    <li>虚拟整数</li>
+
+    <li>UID</li>
+
+    <li>汇总模式<ul>
+        <li>“i”表示不与已充电/未充电状态关联的信息。</li>
+        <li>“l”表示已充电（自上次充电后的使用情况）。</li>
+        <li>“u”表示已拔下电源（自上次拔下电源后的使用情况）。在 Android 5.1.1 中已弃用。</li>
+      </ul>
+    </li>
+
+    <li><a href="#interpreting_the_output">区段标识符</a>，用于确定如何解译行中的后续值。</li>
+  </ul>
+
+<p>示例输出：</p>
+
+  <pre class="no-pretty-print">
+  9,0,i,vers,11,116,K,L 9,0,i,uid,1000,android
+  9,0,i,uid,1000,com.android.providers.settings
+  9,0,i,uid,1000,com.android.inputdevices
+  9,0,i,uid,1000,com.android.server.telecom
+  9,0,i,uid,1000,com.android.keychain 9,0,i,uid,1000,com.android.settings
+  9,0,i,uid,1000,com.android.location.fused
+  9,0,i,uid,1001,com.android.providers.telephony
+  9,0,i,uid,1001,com.android.mms.service 9,0,i,uid,1001,com.android.stk
+  9,0,i,uid,1001,com.android.phone 9,0,i,uid,1027,com.android.nfc
+  9,0,i,uid,2000,com.android.shell
+  9,0,i,uid,10002,com.android.providers.calendar
+  9,0,i,uid,10003,com.android.cellbroadcastreceiver
+  9,0,i,uid,10004,com.android.providers.userdictionary
+  9,0,i,uid,10004,com.android.providers.contacts
+  9,0,i,uid,10005,com.google.android.apps.enterprise.dmagent
+  9,0,i,uid,10006,com.android.defcontainer
+  9,0,i,uid,10007,com.android.providers.media
+  9,0,i,uid,10007,com.android.providers.downloads
+  9,0,i,uid,10007,com.android.providers.downloads.ui
+  9,0,i,uid,10008,com.android.externalstorage
+  9,0,i,uid,10009,com.google.android.syncadapters.contacts
+  9,0,i,uid,10009,com.google.android.gms
+  9,0,i,uid,10009,com.google.android.gsf
+  9,0,i,uid,10009,com.google.android.gsf.login
+  9,0,i,uid,10009,com.google.android.backuptransport
+  9,0,i,uid,10011,com.google.android.dialer
+  9,0,i,uid,10013,com.google.android.onetimeinitializer
+  9,0,i,uid,10014,com.google.android.partnersetup
+  9,0,i,uid,10015,com.android.launcher
+  9,0,i,uid,10016,com.android.managedprovisioning
+  9,0,i,uid,10017,com.android.mms 9,0,i,uid,10018,com.android.musicfx
+  9,0,i,uid,10019,com.android.vending
+  9,0,i,uid,10022,com.android.sharedstoragebackup
+  9,0,i,uid,10023,com.android.systemui
+  9,0,i,uid,10025,com.google.android.googlequicksearchbox
+  9,0,i,uid,10027,com.google.android.apps.walletnfcrel
+  9,0,i,uid,10029,com.google.android.marvin.talkback
+  9,0,i,uid,10031,com.google.android.apps.books
+  9,0,i,uid,10034,com.google.android.calendar
+  9,0,i,uid,10037,com.android.chrome
+  9,0,i,uid,10039,com.google.android.configupdater
+  9,0,i,uid,10040,com.google.android.deskclock
+  9,0,i,uid,10041,com.android.documentsui
+  9,0,i,uid,10042,com.google.android.apps.docs
+  9,0,i,uid,10047,com.google.android.ears
+  9,0,i,uid,10054,com.google.android.talk
+  9,0,i,uid,10057,com.google.android.inputmethod.latin
+  9,0,i,uid,10061,com.google.android.music
+  9,0,i,uid,10064,com.android.packageinstaller
+  9,0,i,uid,10068,com.google.android.apps.plus
+  9,0,i,uid,10069,com.google.android.gm
+  9,0,i,uid,10070,com.google.android.keep
+  9,0,i,uid,10071,com.google.android.apps.genie.geniewidget
+  9,0,i,uid,10072,com.android.printspooler
+  9,0,i,uid,10076,com.google.android.videos
+  9,0,i,uid,10079,com.google.android.youtube
+  9,0,i,uid,10084,com.google.android.apps.magazines
+  9,0,i,dsd,1820451,97,s-,p- 9,0,i,dsd,3517481,98,s-,p-
+  9,0,l,bt,0,8548446,1000983,8566645,1019182,1418672206045,8541652,994188
+  9,0,l,gn,0,0,666932,495312,0,0,2104,1444
+  9,0,l,m,6794,0,8548446,8548446,0,0,0,666932,495312,0,697728,0,0,0,5797,0,0
+  9,0,l,br,9,0,6785,0,0 9,0,l,sgt,8548446,0,0,0,0 9,0,l,sst,9000
+  9,0,l,sgc,0,0,0,0,0 9,0,l,dct,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  9,0,l,dcc,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 9,0,l,wst,0,0,0,0,0,0,0,0
+  9,0,l,wsc,0,0,0,0,0,0,0,0 9,0,l,wsst,0,0,0,0,0,0,0,52,0,0,8548394,0,0
+  9,0,l,wssc,0,0,0,0,0,0,0,2,0,0,2,0,0 9,0,l,wsgt,0,0,0,3016,8545430
+  9,0,l,wsgc,0,0,0,2,1 9,0,l,bst,0,0,0,0 9,0,l,bsc,0,0,0,0 9,0,l,dc,2,3,0,3
+  9,0,l,kwl,msm_ipc_read00000001:00000001,0,0
+  9,0,l,kwl,rpm_regulator_tcxo,0,0 9,0,l,kwl,wlan,25423,32
+  9,0,l,kwl,event4-648,0,0 9,0,l,kwl,qcril,187,2 9,0,l,kwl,ssr(dsps),0,0
+  9,0,l,kwl,bq51051b_wireless_chip,0,0 9,0,l,kwl,qmi0,0,0
+  9,0,l,kwl,event5-648,7755,1231
+  9,0,l,kwl,PowerManagerService.WakeLocks,680435,3908
+  9,0,l,kwl,msm_hsic_host,66258,35 9,0,l,kwl,qcom_sap_wakelock,0,0
+  9,0,l,kwl,sns_async_ev_wakelock,91954,1244 9,0,l,kwl,qmuxd_port_wl_12,0,0
+  9,0,l,kwl,pil-wcnss,0,0 9,0,l,kwl,event0-648,11364,1212
+  9,0,l,kwl,dofstrim,0,0 9,0,l,kwl,ssr(lpass),0,0
+  9,0,l,kwl,qmuxd_port_wl_11,0,0 9,0,l,kwl,event2-648,0,0
+  9,0,l,kwl,pil-vidc,0,0 9,0,l,kwl,mmc0,0,0
+  9,0,l,kwl,tabla_gpio_irq_resend,0,0 9,0,l,kwl,pil-q6,0,0
+  9,0,l,kwl,radio-interface,0,0 9,0,l,kwl,msm_ipc_read00000001:00000002,0,0
+  9,0,l,kwl,event3-648,8143,1231 9,0,l,kwl,ssr(wcnss),0,0
+  9,0,l,kwl,ssr(gss),0,0 9,0,l,kwl,KeyEvents,98,1263
+  9,0,l,kwl,unknown_wakeups,0,0 9,0,l,kwl,qmuxd_port_wl_10,0,0
+  9,0,l,kwl,pil-gss,0,0 9,0,l,kwl,qcom_rx_wakelock,161828,3205
+  9,0,l,kwl,ssr(external_modem),0,0 9,0,l,kwl,power-supply,228,23
+  9,0,l,kwl,pil-dsps,0,0 9,0,l,kwl,wcnss,0,0 9,0,l,kwl,msm_otg,0,0
+  9,0,l,kwl,pm8921_eoc,0,0 9,0,l,kwl,slimport_wake_lock,0,0
+  9,0,l,kwl,smsm_snapshot,0,0 9,0,l,kwl,suspend_backoff,239760,24
+  9,0,l,kwl,event1-648,9331,1212 9,0,l,kwl,main,429,0
+  9,0,l,kwl,alarm,2892,270 9,0,l,kwl,PowerManagerService.Display,432,1
+  9,0,l,kwl,qmi1,0,0 9,0,l,kwl,kickstart,211,1
+  9,0,l,kwl,qmuxd_port_wl_9,9,102 9,0,l,kwl,ear_hook,0,0
+  9,0,l,kwl,mmc0_detect,52,1232 9,0,l,kwl,deleted_wake_locks,0,0
+  9,0,l,kwl,PowerManagerService.Broadcasts,7331,0 9,0,l,kwl,qmi2,0,0
+  9,0,l,kwl,smd_sns_dsps,456,1340 9,0,l,kwl,alarm_rtc,36084,122
+  9,0,l,pws,2100,64.4,42.0,63.0 9,10009,l,pwi,uid,20.6 9,0,l,pwi,cell,18.5
+  9,0,l,pwi,idle,8.73 9,0,l,pwi,uid,5.46 9,1000,l,pwi,uid,5.11
+  9,0,l,pwi,wifi,3.28 9,10019,l,pwi,uid,0.847 9,10069,l,pwi,uid,0.408
+  9,0,l,pwi,scrn,0.385 9,10034,l,pwi,uid,0.322 9,10025,l,pwi,uid,0.185
+  9,0,l,pwi,blue,0.0273
+  9,0,l,pwi,cell,14.0
+  9,10002,l,pwi,uid,0.180 9,10023,l,pwi,uid,0.168 9,1001,l,pwi,uid,0.0297
+  9,10068,l,pwi,uid,0.0296 9,10057,l,pwi,uid,0.0234 9,1027,l,pwi,uid,0.0157
+  9,10079,l,pwi,uid,0.00905 9,10054,l,pwi,uid,0.00527
+  9,10005,l,pwi,uid,0.00341 9,10004,l,pwi,uid,0.00204
+  9,2000,l,pwi,uid,0.00192 9,10070,l,pwi,uid,0.00144
+  9,10061,l,pwi,uid,0.000860 9,10014,l,pwi,uid,0.000495
+  9,10040,l,pwi,uid,0.000286 9,1014,l,pwi,uid,0.00000157 9,0,l,pwi,over,1.36
+  9,0,l,nt,0,0,127699,11159,0,0,975,163,0,0
+  9,0,l,pr,file-storage,0,140,0,0,0,0 9,0,l,pr,TX_Thread,0,440,0,0,0,0
+  9,0,l,pr,flush-179:0,0,850,0,0,0,0 9,0,l,pr,sync_supers,10,0,0,0,0,0
+  9,0,l,pr,dhcpcd,0,30,0,0,0,0 9,0,l,pr,kauditd,50,10,0,0,0,0
+  9,0,l,pr,sdcard,20,110,0,0,0,0 9,0,l,pr,flush-0:18,40,100,0,0,0,0
+  9,0,l,pr,zygote,250,90,0,0,0,0 9,0,l,pr,bdi-default,0,610,0,0,0,0
+  9,0,l,pr,ueventd,940,2630,0,0,0,0 9,0,l,pr,kswapd0,0,180,0,0,0,0
+  9,0,l,pr,debuggerd,180,610,0,0,0,0 9,0,l,pr,jbd2/mmcblk0p20,0,50,0,0,0,0
+  9,0,l,pr,jbd2/mmcblk0p21,0,250,0,0,0,0
+  9,0,l,pr,jbd2/mmcblk0p22,0,90,0,0,0,0
+  9,0,l,pr,jbd2/mmcblk0p23,0,1150,0,0,0,0 9,0,l,pr,MC_Thread,0,1270,0,0,0,0
+  9,0,l,pr,adbd,10,40,0,0,0,0 9,0,l,pr,lmkd,360,990,0,0,0,0
+  9,0,l,pr,logd,1550,1670,0,0,0,0 9,0,l,pr,netd,80,330,0,0,0,0
+  9,0,l,pr,rild,160,0,0,0,0,0 9,0,l,pr,vold,50,100,0,0,0,0
+  9,0,l,pr,/init,0,70,0,0,0,0 9,0,l,pr,mpdecision,1400,7820,0,0,0,0
+  9,0,l,pr,khubd,0,10,0,0,0,0 9,0,l,pr,kthreadd,0,600,0,0,0,0
+  9,0,l,pr,kworker/0:0,0,3520,0,0,0,0 9,0,l,pr,sensors.qcom,380,720,0,0,0,0
+  9,0,l,pr,healthd,20,190,0,0,0,0 9,0,l,pr,thermald,60,360,0,0,0,0
+  9,0,l,pr,mmcqd/0,0,8700,0,0,0,0 9,0,l,pr,qseecomd,0,90,0,0,0,0
+  9,0,l,pr,ksoftirqd/0,0,420,0,0,0,0 9,0,l,pr,wpa_supplicant,170,160,0,0,0,0
+  9,0,l,pr,migration/0,0,1630,0,0,0,0 9,0,l,pr,migration/1,20,0,0,0,0,0
+  9,0,l,pr,RX_Thread,0,790,0,0,0,0 9,0,l,pr,netmgrd,40,20,0,0,0,0
+  9,1000,l,nt,0,0,11054,11216,0,0,26,29,0,0 9,1000,l,ua,2,0,0
+  9,1000,l,sr,5,6813,1 9,1000,l,wl,*alarm*,0,f,0,23856,p,151,0,w,0
+  9,1000,l,st,8548446,8548446,8548446 9,1000,l,pr,system,83310,35060,0,0,0,0
+  9,1000,l,pr,surfaceflinger,6620,9330,0,0,0,0 9,1000,l,pr,ks,0,60,0,0,0,0
+  9,1000,l,pr,qcks,0,90,0,0,0,0 9,1000,l,pr,efsks,0,50,0,0,0,0
+  9,1000,l,pr,com.android.server.telecom,110,100,0,0,0,0
+  9,1000,l,pr,servicemanager,40,110,0,0,0,0
+  9,1001,l,st,8548446,8548446,8548446 9,1001,l,pr,qmuxd,0,30,0,0,0,0
+  9,1001,l,pr,com.android.phone,450,300,0,0,0,0
+  9,1014,l,nt,0,0,3410,3370,0,0,10,10,0,0 9,1027,l,st,8548446,8548446,8548446
+  9,1027,l,pr,com.android.nfc,250,160,0,0,0,0
+  9,10002,l,apk,15,com.android.providers.calendar,com.android.providers.calendar.CalendarProviderIntentService,2383,15,15
+  9,10005,l,nt,0,0,1241,2488,0,0,6,10,0,0
+  9,10009,l,nt,0,0,232255,258511,0,0,472,600,0,0
+  9,10009,l,wfl,7689000,9814000,0
+  9,10009,l,jb,com.google.android.gms/.gcm.nts.TaskExecutionService,81,3
+  9,10009,l,sr,0,43643,46 9,10025,l,nt,0,0,152461,42850,0,0,267,243,0,0
+  9,10025,l,wfl,1593000,629000,0 9,10034,l,nt,0,0,77657,40093,0,0,172,170,0,0
+  9,10068,l,nt,0,0,11929,8383,0,0,50,47,0,0
+  9,10069,l,nt,0,0,41553,22886,0,0,85,91,0,0</pre>
+
+  <h2 id="interpreting_the_output">区段标识符</h2>
+
+  <p><code>batterystats</code> 的命令输出支持以下区段：</p>
+
+  <table id="batterystats-section-ids">
+
+    <tbody><tr>
+      <th width="10%">区段标识符</th>
+      <th width="20%">说明</th>
+      <th width="70%">其余字段</th>
+    </tr>
+
+    <tr>
+      <td><p>vers</p></td>
+      <td><p>版本</p></td>
+      <td><p>签入版本、parcel 版本、启动平台版本、结束平台版本</p></td>
+    </tr>
+
+    <tr>
+      <td><p>uid</p></td>
+      <td><p>UID</p></td>
+      <td><p>uid、软件包名称</p></td>
+    </tr>
+
+    <tr>
+      <td><p>apk</p></td>
+      <td><p>APK</p></td>
+      <td><p>唤醒、APK、服务、开始时间、启动、发布</p></td>
+    </tr>
+
+    <tr>
+      <td><p>pr</p></td>
+      <td><p>进程</p></td>
+      <td><p>进程、用户、系统、前台、启动</p></td>
+    </tr>
+
+    <tr>
+      <td><p>sr</p></td>
+      <td><p>传感器</p></td>
+      <td><p>传感器编号、时间、计数</p></td>
+    </tr>
+
+    <tr>
+      <td><p>vib</p></td>
+      <td><p>振动器</p></td>
+      <td><p>时间、计数</p></td>
+    </tr>
+
+    <tr>
+      <td><p>fg</p></td>
+      <td><p>前台</p></td>
+      <td><p>时间、计数</p></td>
+    </tr>
+
+    <tr>
+      <td><p>st</p></td>
+      <td><p>状态时间</p></td>
+      <td><p>前台、活动、正在运行</p></td>
+    </tr>
+
+    <tr>
+      <td><p>wl</p></td>
+      <td><p>唤醒锁</p></td>
+      <td><p>唤醒锁定、完整时间、“f”、完整计数、部分时间、“p”、部分计数、窗口时间、“w”、窗口计数</p></td>
+    </tr>
+
+    <tr>
+      <td><p>sy</p></td>
+      <td><p>同步</p></td>
+      <td><p>同步、时间、计数</p></td>
+    </tr>
+
+    <tr>
+      <td><p>jb</p></td>
+      <td><p>作业</p></td>
+      <td><p>作业、时间、计数</p></td>
+    </tr>
+
+    <tr>
+      <td><p>kwl</p></td>
+      <td><p>内核唤醒锁定</p></td>
+      <td><p>内核唤醒锁定、时间、计数</p></td>
+    </tr>
+
+    <tr>
+      <td><p>wr</p></td>
+      <td><p>唤醒原因</p></td>
+      <td><p>唤醒原因、时间、计数</p></td>
+    </tr>
+
+    <tr>
+      <td><p>nt</p></td>
+      <td><p>网络</p></td>
+      <td><p>移动字节 RX、移动字节 TX、WLAN 字节 RX、WLAN 字节 TX、移动数据包 RX、移动数据包 TX、WLAN 数据包 RX、WLAN 数据包 TX、移动设备活动时间、移动设备活动计数</p></td>
+    </tr>
+
+    <tr>
+      <td><p>ua</p></td>
+      <td><p>用户活动</p></td>
+      <td><p>其他、按钮、触摸</p></td>
+    </tr>
+
+    <tr>
+      <td><p>bt</p></td>
+      <td><p>电池</p></td>
+      <td><p>开始计数、电池实时、电池正常运行时间、总实时、总正常运行时间、开始时钟时间、电池屏幕关闭实时、电池屏幕关闭正常运行时间</p></td>
+    </tr>
+
+    <tr>
+      <td><p>dc</p></td>
+      <td><p>电池耗电</p></td>
+      <td><p>低、高、屏幕开启、屏幕关闭</p></td>
+    </tr>
+
+    <tr>
+      <td><p>lv</p></td>
+      <td><p>电量</p></td>
+      <td><p>开始电量、当前电量</p></td>
+    </tr>
+
+    <tr>
+      <td><p>wfl</p></td>
+      <td><p>WLAN</p></td>
+      <td><p>完整 WLAN 锁定时间、WLAN 扫描时间、WLAN 运行时间、WLAN 扫描计数、WLAN 闲置时间、WLAN 接收时间、WLAN 传输时间</p>
+      </td>
+    </tr>
+
+    <tr>
+      <td><p>gwfl</p></td>
+      <td><p>全局 WLAN</p></td>
+      <td><p>WLAN 开启时间、WLAN 运行时间、WLAN 闲置时间、WLAN 接收时间、WLAN 传输时间、WLAN 功率（毫安时）</p></td>
+    </tr>
+
+    <tr>
+      <td><p>gble</p></td>
+      <td><p>全局蓝牙</p></td>
+      <td><p>BT 闲置时间、BT 接收时间、BT 传输时间、BT 功率（毫安时）</p>
+      </td>
+    </tr>
+
+    <tr>
+      <td><p>m</p></td>
+      <td><p>其他</p></td>
+      <td><p>屏幕开启时间、手机开机时间、完整唤醒锁定总时间、部分唤醒锁定总时间、移动无线装置运行时间、移动无线装置运行调整时间、交互时间、节能模式启用时间、连接更改、设备闲置模式启用时间、设备闲置模式启用计数、设备闲置时间、设备闲置计数、移动无线装置活动计数、移动无线装置活动未知时间</p></td>
+    </tr>
+
+    <tr>
+      <td><p>gn</p></td>
+      <td><p>全局网络</p></td>
+      <td><p>移动 RX 总字节数、移动 TX 总字节数、WLAN RX 总字节数、WLAN TX 总字节数、移动 RX 总数据包数、移动 TX 总数据包数、WLAN RX 总数据包数、WLAN TX 总数据包数</p></td>
+    </tr>
+
+    <tr>
+      <td><p>br</p></td>
+      <td><p>屏幕亮度</p></td>
+      <td><p>黑暗、昏暗、中等、柔光、明亮</p></td>
+    </tr>
+
+    <tr>
+      <td><p>sst</p></td>
+      <td><p>信号扫描时间</p></td>
+      <td><p>信号扫描时间</p></td>
+    </tr>
+
+    <tr>
+      <td><p>sgt</p></td>
+      <td><p>信号强度时间</p></td>
+      <td><p>无、差、一般、良好、强</p></td>
+    </tr>
+
+    <tr>
+      <td><p>sgc</p></td>
+      <td><p>信号强度计数</p></td>
+      <td><p>无、差、一般、良好、强</p></td>
+    </tr>
+
+    <tr>
+      <td><p>dct</p></td>
+      <td><p>数据连接时间</p></td>
+      <td><p>无、GPRS、EDGE、UMTS、CDMA、EVDO_0、EVDO_A、1xRTT、HSDPA、HSUPA、HSPA、IDEN、EVDO_B、LTE、EHRPD、HSPAP、其他</p></td>
+    </tr>
+
+    <tr>
+      <td><p>dcc</p></td>
+      <td><p>数据连接计数</p></td>
+      <td><p>无、GPRS、EDGE、UMTS、CDMA、EVDO_0、EVDO_A、1xRTT、HSDPA、HSUPA、HSPA、IDEN、EVDO_B、LTE、EHRPD、HSPAP、其他</p></td>
+    </tr>
+
+    <tr>
+      <td><p>wst</p></td>
+      <td><p>WLAN 状态时间</p></td>
+      <td><p>关闭、关闭扫描、无网络、断开连接、已连接 STA、已连接 P2P、已连接 STA P2P、软 AP</p></td>
+    </tr>
+
+    <tr>
+      <td><p>wsc</p></td>
+      <td><p>WLAN 状态计数</p></td>
+      <td><p>关闭、关闭扫描、无网络、断开连接、已连接 STA、已连接 P2P、已连接 STA P2P、软 AP</p></td>
+    </tr>
+
+    <tr>
+      <td><p>wsst</p></td>
+      <td><p>WLAN 客户端状态时间</p></td>
+      <td><p>无效、已断开连接、接口已停用、不活动、正在扫描、正在进行身份验证、正在关联、已关联、四步握手、组握手、已完成、休眠、未初始化</p></td>
+    </tr>
+
+    <tr>
+      <td><p>wssc</p></td>
+      <td><p>WLAN 客户端状态计数</p></td>
+      <td><p>无效、已断开连接、接口已停用、不活动、正在扫描、正在进行身份验证、正在关联、已关联、四步握手、组握手、已完成、休眠、未初始化</p></td>
+    </tr>
+
+    <tr>
+      <td><p>wsgt</p></td>
+      <td><p>WLAN 信号强度时间</p></td>
+      <td><p>无、差、一般、良好、强</p></td>
+    </tr>
+
+    <tr>
+      <td><p>wsgc</p></td>
+      <td><p>WLAN 信号强度计数</p></td>
+      <td><p>无、差、一般、良好、强</p></td>
+    </tr>
+
+    <tr>
+      <td><p>bst</p></td>
+      <td><p>蓝牙状态时间</p></td>
+      <td><p>不活动、低、中、高</p></td>
+      </tr>
+
+    <tr>
+      <td><p>bsc</p></td>
+      <td><p>蓝牙状态计数</p></td>
+      <td><p>不活动、低、中、高</p></td>
+    </tr>
+
+    <tr>
+      <td><p>pws</p></td>
+      <td><p>耗电量汇总</p></td>
+      <td><p>电池容量、计算的用电量、最低耗电量、最高耗电量</p></td>
+    </tr>
+
+    <tr>
+      <td><p>pwi</p></td>
+      <td><p>耗电项</p></td>
+      <td><p>标签、毫安时</p></td>
+    </tr>
+
+    <tr>
+      <td><p>dsd</p></td>
+      <td><p>耗电步骤</p></td>
+      <td><p>时长、级别、屏幕、节电</p></td>
+    </tr>
+
+    <tr>
+      <td><p>csd</p></td>
+      <td><p>充电步骤</p></td>
+      <td><p>时长、级别、屏幕、节电</p></td>
+    </tr>
+
+    <tr>
+      <td><p>dtr</p></td>
+      <td><p>耗电剩余时间</p></td>
+      <td><p>电池剩余时间</p></td>
+    </tr>
+
+    <tr>
+      <td><p>ctr</p></td>
+      <td><p>充电剩余时间</p></td>
+      <td><p>充电剩余时间</p></td>
+    </tr>
+
+  </tbody></table>
+
+<h2 id="wifi-reqs">蓝牙、移动网络和 WLAN 电池使用情况</h2>
+
+<p>要实现对蓝牙、移动网络和 WLAN 数据网络的电池使用情况数据支持，设备蓝牙、移动网络和 WLAN 芯片组需要实现无线电支持，且芯片组固件需要将使用情况数据传递到框架。原始设备制造商 (OEM) 必须与其芯片组提供商合作，以推动现有芯片组的现场固件更新和新芯片组上的兼容固件更新。</p>
+
+<p>此外，原始设备制造商 (OEM) 必须继续配置并提交其设备的电源配置文件。不过，当平台检测到蓝牙、移动网络（截至 Android 7.0）或 WLAN 无线电源数据可从芯片组获得时，它会使用芯片组数据，而非电源配置文件数据。有关详情，请参阅<a href="/devices/tech/power/values.html#values">电源值</a>。</p>
+
+<p class="note"><strong>注意</strong>：对于 Android 6.0 之前的版本，蓝牙无线电、移动网络无线电以及 WLAN 的耗电量在 m (Misc) 区段类别中进行跟踪。<em></em>在 Android 6.0 及更高版本中，这些组件的耗电量在 pwi（耗电项）区段进行跟踪，其中每个组件均使用单独的标签（wlan、blue、cell）。<em></em><em></em><em></em><em></em></p>
+
+</body></html>

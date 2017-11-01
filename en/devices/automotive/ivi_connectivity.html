@@ -1,0 +1,270 @@
+<html devsite>
+  <head>
+    <title>IVI Connectivity</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+    <p>
+      Android 8.0 creates a more seamless Bluetooth user experience
+      when connecting devices to the in-vehicle infotainment system (IVI).
+      The IVI listens for events, such as unlocking a car door
+      or starting the engine, and automatically scans for in-range
+      Bluetooth devices. It will also simultaneously connect to separate
+      devices so users can make hands-free calls on any device.
+    </p>
+
+    <h2 id="bluetooth-connection-management">Bluetooth connection management</h2>
+
+      <p>
+        In Android 7.x and earlier, the IVI Bluetooth stack
+        scans for devices only when the Bluetooth adapter is powered on. Users have to
+        connect manually if their device comes into range while the IVI Bluetooth is on.
+        Android 8.0 reduces the need for users to manually connect their devices through
+        the IVI settings app.
+      </p>
+
+      <p>
+        While the Bluetooth adapter is on and not connected to a device, customizable
+        trigger events (such as unlocking the door or starting the engine) cause the
+        IVI Bluetooth to scan for in-range devices to pair with on available profiles.
+        The IVI Bluetooth then uses a priority list to determine which device to
+        connect with.
+      </p>
+
+      <p>
+        In addition to the trigger events, you can specify the device priority for each
+        profile. In the default implementation, the IVI Bluetooth prioritizes the most
+        recently connected device. There is a separate priority list for each Bluetooth
+        service, so each service profile can be connected to a different device. Each
+        Bluetooth service profile also has a different connection limit.
+      </p>
+
+      <table>
+        <tr>
+         <th>Service</th>
+         <th>Profile</th>
+         <th>Connection limit</th>
+        </tr>
+        <tr>
+         <td rowspan="2">Phone</td>
+         <td>HFP</td>
+         <td>2</td>
+        </tr>
+        <tr>
+         <td>PBAP</td>
+         <td>2</td>
+        </tr>
+        <tr>
+         <td>Message</td>
+         <td>MAP</td>
+         <td>1</td>
+        </tr>
+        <tr>
+         <td>Audio</td>
+         <td>A2DP</td>
+         <td>1</td>
+        </tr>
+      </table>
+
+      <h3 id="implement-connection-management">Implement connection management</h3>
+
+        <p>
+          To support auto-connect in Android 8.0, the Bluetooth connection management logic
+          moved from the Bluetooth Service to a policy in Car Service. Within a policy,
+          you can customize when the Bluetooth auto-connect should scan for new devices,
+          and which devices it should attempt to connect to first.
+        </p>
+
+        <p>
+          The default connection policy can be found in <code><a
+              href="https://android.googlesource.com/platform/packages/services/Car/+/oreo-r6-release/service/src/com/android/car/BluetoothDeviceConnectionPolicy.java">
+          service/src/com/android/car/BluetoothDeviceConnectionPolicy.java</a></code>.
+          To use a custom phone policy, disable the default phone policy in <code><a href="https://android.googlesource.com/platform/packages/apps/Bluetooth/+/master/res/values/config.xml">
+          res/values/config.xml</a></code> by setting <code>enable_phone_policy</code>
+          to <code>false</code>.
+        </p>
+
+        <p>
+          To create a trigger event, register a listener to the respective Car Service.
+          Example of a new sensor event:
+        </p>
+
+<pre class="prettyprint">
+  /**
+  * Handles events coming in from the {&#64;link CarSensorService}
+  * Upon receiving the event that is of interest, initiate a connection attempt by
+  * calling the policy {&#64;link BluetoothDeviceConnectionPolicy}
+  */
+  private class CarSensorEventListener extends ICarSensorEventListener.Stub {
+    &#64;Override
+    public void onSensorChanged(List&lt;CarSensorEvent&gt; events) throws RemoteException {
+      if (events != null & !events.isEmpty()) {
+        CarSensorEvent event = events.get(0);
+        if (event.sensorType == CarSensorManager.SOME_NEW_SENSOR_EVENT) {
+          initiateConnection();
+        }
+      ...
+  }
+</pre>
+
+        <p>
+          To configure the device priority for each profile, modify the following methods
+          in <code><a
+              href="https://android.googlesource.com/platform/packages/services/Car/+/oreo-r6-release/service/src/com/android/car/BluetoothDeviceConnectionPolicy.java">
+          BluetoothDeviceConnectionPolicy</a></code>:
+        </p>
+
+        <ul>
+          <li><code>updateDeviceConnectionStatus()</code></li>
+          <li><code>findDeviceToConnect()</code></li>
+        </ul>
+
+      <h3 id="verify-connection-management">Verify connection management</h3>
+
+        <p>
+          Verify the behavior of the Bluetooth connection management by toggling Bluetooth
+          on your Android Automotive IVI and see that it automatically connects to the
+          appropriate devices.
+        </p>
+
+        <p>
+          You can use the following <code>adb</code> commands to test your IVI with
+          simulated vehicle events:
+        </p>
+
+        <ul>
+          <li>For <code>CarCabinManager.ID_DOOR_LOCK</code>:
+            <pre class="devsite-terminal devsite-click-to-copy">adb shell dumpsys activity service com.android.car inject-event zoned-boolean 0x16200b02 1 false</pre>
+          </li>
+          <li>For <code>CarSensorManager.SENSOR_TYPE_IGNITION_STATE</code>:
+            <pre class="devsite-terminal devsite-click-to-copy">adb shell dumpsys activity service com.android.car inject-event global-integer 0x11400409 5</pre>
+          </li>
+        </ul>
+
+    <h2 id="bluetooth-multi-device-connectivity">Bluetooth multi-device connectivity</h2>
+
+      <p>
+        In Android 8.0, the IVI can support multiple devices connected simultaneously
+        over Bluetooth. Multi-device Bluetooth phone services let users connect
+        separate devices, such as a personal phone and a work phone, and make
+        hands-free calls from either device. This feature increases driving safety by
+        reducing distraction and improves in-call experiences by taking advantage
+        of automotive audio systems.
+      </p>
+
+      <h3 id="multi-device-connectivity">Multi-device connectivity</h3>
+
+        <p>
+          When a trigger event happens, the <a
+            href="https://android.googlesource.com/platform/packages/services/Car/+/oreo-r6-release/service/src/com/android/car/BluetoothDeviceConnectionPolicy.java">
+          Bluetooth Connection Management Policy</a> determines which devices to connect
+          to on each Bluetooth profile. The policy then sends a connect intent to the
+          profile client service. In turn, the profile client service creates a client
+          state machine instance to manage the connection with each device.
+        </p>
+
+        <h4 id="hands-free-profile">Hands-Free Profile</h4>
+
+          <p>
+            The Bluetooth Hands-Free Profile (HFP) in Android 8.0 lets two devices connect
+            concurrently, and either device can make or receive phone calls. To do this,
+            each connection registers a separate phone account with the Telecom Manager,
+            which advertises the phone accounts to the IVI apps.
+          </p>
+
+          <p>
+            When a user makes or receives a phone call from a device, the corresponding
+            phone account creates an <code>HfpClientConnection</code> object. The Dialer app
+            interacts with the <code>HfpClientConnection</code> object to manage call
+            features, such as accepting a call or hanging up. However, the Dialer app does
+            not indicate which device an incoming call is coming from. To make an outgoing
+            call, the app uses the last connected device. Manufacturers can change this
+            behavior by customizing the Dialer app.
+          </p>
+
+        <h4 id="phone-book-access-profile">Phone Book Access Profile</h4>
+
+          <p>
+            The Bluetooth Phone Book Access Profile (PBAP) downloads contacts
+            from all connected devices. PBAP maintains an aggregated, searchable list of
+            contacts that is updated by PBAP client state machines. Because each device
+            interacts with a separate PBAP client state machine, contacts are associated
+            with the proper device when making a call. When a PBAP client disconnects, the
+            internal database removes all contacts associated with that phone.
+          </p>
+
+        <h3 id="implement-multi-device-hfp">Implement multi-device HFP</h3>
+
+          <p>
+            Using the default Android Bluetooth stack, an IVI automatically has the ability
+            to connect to multiple devices on HFP. The <code>MAX_STATE_MACHINES_POSSIBLE</code>
+            in the <code><a href="https://android.googlesource.com/platform/packages/apps/Bluetooth/+/master/src/com/android/bluetooth/hfpclient/HeadsetClientService.java">
+            HeadsetClientService</a></code> defines the maximum number of simultaneous
+            HFP connections.
+          </p>
+
+          <aside class="note"><strong>Note:</strong> HFP Synchronous Connection
+            Oriented (SCO) connections and phone call
+            audio routing need to be done manually with <code><a
+            href="https://android.googlesource.com/platform/system/bt/+/master/binder/android/bluetooth/IBluetoothHeadsetClient.aidl">
+            connectAudio</a></code> in the application Binder.
+          </aside>
+
+          <p>
+            When implementing multi-device HFP, you should customize your Dialer app UI to
+            let users select which device account to use when making a call. The app then
+            calls <code>telecomManager.placeCall</code> with the correct account.
+          </p>
+
+      <h3 id="verify-multi-device-hfp">Verify multi-device HFP</h3>
+
+        <p>
+          To check that multi-device connectivity works properly over Bluetooth:
+        </p>
+
+        <ol>
+          <li>Using Bluetooth, connect a device to the IVI and stream audio from the
+          device.</li>
+          <li>Connect two phones to the IVI over Bluetooth.</li>
+          <li>Pick one phone. Place an outgoing call directly from the phone,
+            and place an outgoing call using the IVI.
+            <ol>
+              <li>Both times, verify the streamed audio pauses and the phone audio
+                plays over the IVI connected speakers.</li>
+            </ol>
+          </li>
+          <li>Using the same phone, receive an incoming call directly on the phone, and
+          receive an incoming call using the IVI.
+            <ol>
+              <li>Both times, verify the stream audio pauses and the
+                phone audio plays over the IVI connected speakers.</li>
+            </ol>
+          </li>
+          <li>Repeat steps 3 and 4 with the other connected phone.</li>
+        </ol>
+
+        <aside class="note"><strong>Note</strong>: The Bluetooth PBAP profile,
+          like the MAP profile, is unidirectional. To connect a device on these profiles,
+          the connection needs to be instantiated from the IVI and not the source device.
+        </aside>
+
+  </body>
+
+</html>

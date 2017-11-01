@@ -1,0 +1,104 @@
+<html devsite><head>
+    <title>实现图形</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>要实现 Android 图形 HAL，请查看以下要求、实现详情和测试建议。</p>
+
+<h2 id="requirements">要求</h2>
+
+<p>Android 图形支持需要以下组件：</p>
+
+<ul>
+    <li>EGL 驱动程序</li>
+    <li>OpenGL ES 1.x 驱动程序</li>
+    <li>OpenGL ES 2.0 驱动程序</li>
+    <li>OpenGL ES 3.x 驱动程序（可选）</li>
+    <li>Vulkan（可选）</li>
+    <li>Gralloc HAL 实现</li>
+    <li>Hardware Composer HAL 实现</li>
+</ul>
+
+<h2 id="implementation">实现</h2>
+
+<h3 id="opengl_and_egl_drivers">OpenGL 和 EGL 驱动程序</h3>
+
+<p>您必须为 EGL、OpenGL ES 1.x 和 OpenGL ES 2.0 提供驱动程序（对 OpenGL 3.x 的支持是可选的）。主要注意事项包括：</p>
+
+<ul>
+    <li>GL 驱动程序必须稳定可靠且符合 OpenGL ES 标准。</li>
+    <li>请勿限制 GL 上下文的数量。由于 Android 允许应用在后台运行，并且会尝试使 GL 上下文保持活动状态，因此您不应限制驱动程序中的上下文数量。</li>
+    <li>通常可同时具有 20-30 个活动的 GL 上下文，因此请注意为每个上下文分配的内存量。</li>
+    <li>支持来自系统中其他组件（如媒体编解码器或相机）的 YV12 图像格式和其他 YUV 图像格式。</li>
+    <li>支持强制扩展程序：<code>GL_OES_texture_external</code>、<code>EGL_ANDROID_image_native_buffer</code> 和 <code>EGL_ANDROID_recordable</code>。另外，对于 Hardware Composer v1.1 及更高版本，还需要 <code>EGL_ANDROID_framebuffer_target</code> 扩展程序。</li>
+    </ul>
+<p>我们还强烈建议支持 <code>EGL_ANDROID_blob_cache</code>、<code>EGL_KHR_fence_sync</code>、<code>EGL_KHR_wait_sync</code> 和 <code>EGL_ANDROID_native_fence_sync</code>。</p>
+
+<p class="note"><strong>注意</strong>：呈现给应用开发者的 OpenGL API 与在设备上实现的 OpenGL 不同。应用不能直接访问 GL 驱动程序层，且必须通过 API 提供的接口。</p>
+
+<h3 id="pre-rotation">预旋转</h3>
+
+<p>许多硬件叠加层不支持旋转（即使支持，也会耗费很多处理能力）；解决方案是在缓冲区到达 SurfaceFlinger 之前进行预转换。Android 在 <code>ANativeWindow</code> 中支持查询提示 (<code>NATIVE_WINDOW_TRANSFORM_HINT</code>)，以表示 SurfaceFlinger 应用于缓冲区的最可能的转换。GL 驱动程序可以使用此提示在缓冲区到达 SurfaceFlinger 之前预转换缓冲区，以便当缓冲区到达时，可以正确转换。</p>
+
+<p>例如，当接收到旋转 90 度的提示时，会生成一个矩阵并将其应用于缓冲区，以防止其从页面末尾运行。为了节省电量，请进行此预旋转。有关详请，请参见 <code>system/core/include/system/window.h</code> 中定义的 <code>ANativeWindow</code> 接口。</p>
+
+<h3 id="gralloc_hal">Gralloc HAL</h3>
+
+<p>图形内存分配器会分配图像生成器请求的内存。您可以在 <code>hardware/libhardware/include/hardware/gralloc.h</code> 中找到 HAL 的接口定义。</p>
+
+<h3 id="protected_buffers">受保护的缓冲区</h3>
+
+<p>Gralloc 使用标记 <code>GRALLOC_USAGE_PROTECTED</code> 允许仅通过受硬件保护的路径显示图形缓冲区。这些叠加平面是显示 DRM 内容的唯一途径（SurfaceFlinger 或 OpenGL ES 驱动程序无法访问受 DRM 保护的缓冲区）。</p>
+
+<p>受 DRM 保护的视频只能在叠加平面上呈现。支持受保护内容的视频播放器必须使用 SurfaceView 实现。在不受保护的硬件上运行的软件无法读取或写入缓冲区；受硬件保护的路径必须显示在 Hardware Composer 叠加层上（也就是说，如果 Hardware Composer 切换到 OpenGL ES 合成，受保护的视频将从显示设备中消失）。</p>
+
+<p>有关受保护内容的详细信息，请参阅 <a href="/devices/drm.html">DRM</a> 一文。</p>
+
+<h3 id="hardware_composer_hal">Hardware Composer HAL</h3>
+
+<p>SurfaceFlinger 使用 Hardware Composer HAL (HWC) 将 Surface 合成到屏幕。它可以抽象出叠加层和二维位块传送器等对象，并且有助于分载通常由 OpenGL 完成的一些工作。有关 HWC 的详细信息，请参阅<a href="/devices/graphics/implement-hwc.html">实现 Hardware Composer HAL</a> 一文。</p>
+
+<h3 id="vsync">VSYNC</h3>
+
+<p>VSYNC 可将某些事件同步到显示设备的刷新周期。应用始终在 VSYNC 边界上开始绘制，而 SurfaceFlinger 始终在 VSYNC 边界上进行合成。这样可以消除卡顿，并提升图形的视觉表现。有关 VSYNC 的详细信息，请参阅<a href="/devices/graphics/implement-vsync.html">实现 VSYNC</a> 一文。</p>
+
+<h3 id="vulkan">Vulkan</h3>
+
+<p>Vulkan 是用于高性能三维图形的低开销、跨平台 API。像 OpenGL ES 一样，Vulkan 会提供相应工具，以用于在应用中创建高品质的实时图形。Vulkan 的优势包括降低 CPU 开销和支持 <a href="https://www.khronos.org/spir">SPIR-V 二进制中间</a>语言。有关 Vulkan 的详细信息，请参阅<a href="/devices/graphics/implement-vulkan.html">实现 Vulkan</a> 一文。</p>
+
+<h3 id="virtual_displays">虚拟显示设备</h3>
+
+<p>Android 在 Hardware Composer v1.3 中添加了对虚拟显示设备的平台支持。虚拟显示设备合成类似于物理显示设备：在 prepare() 中描述输入层，SurfaceFlinger 进行 GPU 合成，然后在 set() 中将层和 GPU 帧缓冲区提供给 Hardware Composer。有关虚拟显示设备的详细信息，请参阅<a href="/devices/graphics/implement-vdisplays.html">实现虚拟显示设备</a>一文。</p>
+
+<h2 id="testing">测试</h2>
+
+<p>对于基准测试，请按阶段使用以下流程：</p>
+
+<ul>
+  <li>规格设计阶段。<em></em>在最初选定设备时（例如使用不成熟的驱动程序时），使用预定义（固定）的时钟和工作负载来测量每秒渲染的帧数 (fps)。这可以让我们清楚地了解硬件功能。</li>
+  <li>开发阶段。<em></em>在驱动程序成熟后，使用一组固定的用户操作来测量动画中的可见卡顿数量。</li>
+  <li>量产阶段。<em></em>当设备已准备好投放市场时，增加工作负载，直到卡顿增加。确定当前时钟设置是否可以跟得上负载。这可以帮助您确定在何处减慢时钟并减少功耗。</li>
+</ul>
+
+<p>为了在规格设计阶段便于推究设备性能，可使用 <code>platform/frameworks/native/cmds/flatland/</code> 下的 Flatland 工具。Flatland 依靠固定时钟，并显示可通过基于合成的工作负载实现的吞吐量。Flatland 使用 gralloc 缓冲区来模拟多窗口情景，用 GL 填充窗口，然后测量合成情况。</p>
+
+<p class="note"><strong>注意：</strong>Flatland 使用同步框架来测量时间，因此您的实现必须支持同步框架。</p>
+
+</body></html>

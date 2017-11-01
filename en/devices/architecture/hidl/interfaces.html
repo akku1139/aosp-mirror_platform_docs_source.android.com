@@ -1,0 +1,228 @@
+<html devsite>
+  <head>
+    <title>Interfaces &amp; Packages</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+
+<p>HIDL is built around interfaces, an abstract type used in object-oriented
+languages to define behaviors. Each interface is part of a package.</p>
+
+<h2 id=packages>Packages</h2>
+
+<p>Package names can have sublevels such as <code>package.subpackage</code>. The
+root directory for published HIDL packages is <code>hardware/interfaces</code>
+or <code>vendor/vendorName</code> (e.g. <code>vendor/google</code> for Pixel
+devices). The package name forms one or more subdirectories under the root
+directory; all files defining a package are in the same directory. For example,
+<code>package android.hardware.example.extension.light@2.0</code> could be found
+under <code>hardware/interfaces/example/extension/light/2.0</code>.</p>
+
+<p>The following table lists package prefixes and locations:</p>
+<table>
+<tbody>
+
+<tr>
+<th>Package Prefix</th>
+<th>Location</th>
+</tr>
+
+<tr>
+<td><code>android.hardware.*</code></td>
+<td><code>hardware/interfaces/*</code></td>
+</tr>
+
+<tr>
+<td><code>android.frameworks.*</code></td>
+<td><code>frameworks/hardware/interfaces/*</code></td>
+</tr>
+
+<tr>
+<td><code>android.system.*</code></td>
+<td><code>system/hardware/interfaces/*</code></td>
+</tr>
+
+<tr>
+<td><code>android.hidl.*</code></td>
+<td><code>system/libhidl/transport/*</code></td>
+</tr>
+
+</tbody>
+</table>
+
+<p>The package directory contains files with extension <code>.hal</code>. Every
+file must contain a <code>package</code> statement naming the package and
+version the file is part of. The file <code>types.hal</code>, if present, does
+not define an interface but instead defines data types accessible to every
+interface in the package.</p>
+
+<h2 id=interface-def>Interface definition</h2>
+<p>Aside from <code>types.hal</code>, every other <code>.hal</code> file defines
+an interface. For example, an interface is typically defined as follows:</p>
+
+<pre class="prettyprint">
+interface IBar extends IFoo { // IFoo is another interface
+    // embedded types
+    struct MyStruct {/*...*/};
+
+    // interface methods
+    create(int32_t id) generates (MyStruct s);
+    close();
+};
+</pre>
+
+<p>An interface without an explicit <code>extends</code> declaration implicitly
+extends from <code>android.hidl.base@1.0::IBase</code> (similar to
+<code>java.lang.Object</code> in Java.) The IBase interface, implicitly
+imported, declares several reserved methods that should not and cannot be
+redeclared in user-defined interfaces or used otherwise. These methods
+include:</p>
+
+<ul>
+<li><code>ping</code></li>
+<li><code>interfaceChain</code></li>
+<li><code>interfaceDescriptor</code></li>
+<li><code>notifySyspropsChanged</code></li>
+<li><code>linkToDeath</code></li>
+<li><code>unlinkToDeath</code></li
+<li><code>setHALInstrumentation</code></li>
+<li><code>getDebugInfo</code></li>
+<li><code>debug</code></li>
+<li><code>getHashChain</code></li>
+</ul>
+
+<h2 id=import>Importing</h2>
+<p>The <code>import</code> statement is HIDL mechanism to access package
+interfaces and types in another package. An <code>import</code> statement
+concerns itself with two entities:</p>
+
+<ul>
+<li>The import<em>ing</em> entity, which can be either a package or an
+interface; and</li>
+<li>The import<em>ed</em> entity, which too can be either a package or an
+interface.</li>
+</ul>
+
+<p>The importing entity is determined by the location of the
+<code>import</code> statement. When the statement is inside a package's
+<code>types.hal</code>, what is being imported is visible by the entire package;
+this is a <em>package-level</em> import. When the statement is inside an
+interface file, the importing entity is the interface itself; this is an
+<em>interface-level</em> import.</p>
+
+<p>The imported entity is determined by the value after the <code>import</code>
+keyword. The value need not be a fully-qualified name; if a component is
+omitted, it is automatically filled with information from the current package.
+For fully-qualified values, the following import cases are supported:</p>
+
+<ul>
+<li><strong>Whole-package imports</strong>. If the value is a package name and a
+version (syntax described below), then the entire package is imported into the
+importing entity.</li>
+<li><strong>Partial imports</strong>.
+<ul>
+<li>If the value is an interface, the package's <code>types.hal</code> and that
+interface are imported into the importing entity.</li>
+<li>If the value is an UDT defined in <code>types.hal</code>, then only that UDT
+is imported into the importing entity (other types in <code>types.hal</code> are
+not imported).</li>
+</ul>
+<li><strong>Types-only imports</strong>. If the value uses the syntax of a
+partial import described above, but with the keyword <code>types</code> instead
+of an Interface name, only the UDTs in <code>types.hal</code> of the designated
+package are imported.</li>
+</ul>
+
+<p>The importing entity gets access to a combination of:</p>
+<ul>
+<li>The imported package's common UDTs defined in <code>types.hal</code>;</li>
+<li>The imported package's interfaces (for a whole-package import) or specified
+interface (for a partial import) for the purposes of invoking them, passing
+handles to them and/or inheriting from them.</li>
+</ul>
+
+<p>The import statement uses the fully-qualified-type-name syntax to provide the
+name and version of the package or interface being imported:</p>
+
+<pre class="prettyprint">
+import android.hardware.nfc@1.0;            // import a whole package
+import android.hardware.example@1.0::IQuux; // import an interface and types.hal
+import android.hardware.example@1.0::types; // import just types.hal
+</pre>
+
+<h2 id=inheritance>Interface inheritance</h2>
+
+<p>An interface can be an extension of a previously-defined interface.
+Extensions can be one of the following three types:</p>
+<ul>
+<li>Interface can add functionality to another one, incorporating its API
+unchanged.</li>
+<li>Package can add functionality to another one, incorporating its API
+unchanged.</li>
+<li>Interface can import types from a package or from a specific interface.</li>
+</ul>
+
+<p>An interface can extend only one other interface (no multiple inheritance).
+Each interface in a package with a non-zero minor version number must extend an
+interface in the previous version of the package. For example, if an interface
+<code>IBar</code> in version 4.0 of package <code>derivative</code> is based on
+(extends) an interface <code>IFoo</code> in version 1.2 of package
+<code>original</code>, and a version 1.3 of package <code>original</code> is
+created, <code>IBar</code> version 4.1 cannot extend version 1.3 of
+<code>IFoo</code>. Instead, <code>IBar</code> version 4.1 must extend
+<code>IBar</code> version 4.0, which is tied to <code>IFoo</code> version 1.2.
+<code>IBar</code> version 5.0 could extend <code>IFoo</code> version 1.3, if
+desired.</p>
+
+<p>Interface extensions do not imply library dependence or cross-HAL inclusion
+in the generated code&mdash;they simply import the data structure and method
+definitions at the HIDL level. Every method in a HAL must be implemented in that
+HAL.</p>
+
+<h2 id=vendor-ext>Vendor extensions</h2>
+<p>In some cases, vendor extensions will be implemented as a subclass of the
+base object that represents the core interface they extend. The same object will
+be registered under the base HAL name and version, and under the extension's
+(vendor) HAL name and version.</p>
+
+
+<h2 id=version>Versioning</h2>
+<p>Packages are versioned, and interfaces have the version of their package.
+Versions are expressed in two integers, <em>major</em>.<em>minor</em>.</p>
+<ul>
+<li><strong>Major</strong> versions are not backwards compatible. Incrementing
+the major version number resets the minor version to 0.</li>
+<li><strong>Minor</strong> versions are backwards compatible. Incrementing the
+minor number indicates the newer version is fully backward compatible with the
+previous version. New data structures and methods can be added, but no existing
+data structures or method signatures may be changed.</li>
+</ul>
+
+<p>For broader compatibility with frameworks, multiple major versions of a HAL
+can be present on a device simultaneously. While multiple minor versions can
+also be present on a device, as minor versions are backwards compatible no
+reason exists to support more than the latest minor version for each major
+version.</p>
+
+<p>For more details on versioning and vendor extensions, see
+<a href="/devices/architecture/hidl/versioning">HIDL Versioning</a>.</p>
+
+  </body>
+</html>

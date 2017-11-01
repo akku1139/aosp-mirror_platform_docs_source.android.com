@@ -1,0 +1,96 @@
+<html devsite>
+  <head>
+    <title>Implementing storaged</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>Android O adds support for <code>storaged</code>, an Android native daemon that
+collects and publishes storage metrics on Android devices.</p>
+
+<ul>
+<li>For daily diskstats, <code>storaged</code> periodically parses
+<code>/sys/block/mmcblk0/stat</code> (eMMC storage devices) or
+<code>/sys/block/sda/stat</code> (non-eMMC devices).</li>
+
+<li>For eMMC lifetime, <code>storaged</code> parses <code>/d/mmc0/mmc0:001/ext_csd</code> (if
+available).</li>
+
+<li>For application I/O blaming, <code>storaged</code> periodically traverses
+<code>/proc/uid_io/stats</code> and maintains parsed data, which includes data
+from all applications (not just running applications). <code>dumpsys</code> can
+call <code>storaged</code> to log the application I/O usage in a bug report.</li>
+</ul>
+
+<p>Diskstat (including stalled diskstats) and eMMC information is logged to the
+Android event log, where a platform checkin service collects the logs.</p>
+
+<p><code>storaged</code> operations occur automatically and are handled entirely by the Android
+framework, so you don't need to do any implementation work. This page
+describes the design of <code>storaged</code> (including new interfaces) and how to use it to
+get I/O status from the kernel.</p>
+
+<h2 id="storaged-design">storaged design</h2>
+
+<p>For accounting and permission flexibility, <code>storaged</code> is implemented as a kernel
+module that returns per-uid I/O information (instead of using standard
+<code>proc/PID/io</code>). Raw I/O data for each I/O request continues to be
+stored and updated in kernel <code>task_struct</code>, and the kernel keeps
+track of when a process exits so it doesn't miss I/O usage that occurs from the
+last <code>storaged</code> polling event.</p>
+
+<p>The module reads raw data and processes it only when the framework notifies it
+of a uid foreground/background switch or when the <code>storaged</code> daemon requests a
+report. At that time, the module exports a file node from kernel for
+communication with framework and <code>storaged</code> daemon.</p>
+
+<p><code>storaged</code> introduces the <code>/proc/uid_io/stats</code> interface, which returns
+a list of I/O stats for each UID in the system. The format is:</p>
+
+<pre>&lt;uid>: &lt;foreground read bytes> &lt;foreground write bytes> &lt;foreground read chars> &lt;foreground write chars> &lt;background read bytes> &lt;background write bytes> &lt;background read chars> &lt;background write chars>
+</pre>
+
+<ul>
+<li>read/write bytes are I/O events from a storage device.</li>
+<li>read/write chars (also in bytes) are data requested by read/write
+syscalls.</li>
+</ul>
+
+<h2 id="getting-i-o-status-from-the-kernel">Getting I/O status from the
+kernel</h2>
+
+<p>To dump I/O usage from the kernel, use the <code>storaged</code> command with
+the <strong><code>-u</code></strong> option.</p>
+
+<p>Command: <code>storaged -u</code></p>
+
+<p>Command output format: <code>name/uid fg_rchar fg_wchar fg_rbytes fg_wbytes
+bg_rchar bg_wchar bg_rbytes bg_wbytes fg_fsync bg_fsync</code></p>
+
+<p class="note"><strong>Note: </strong>This output is similar to the output for
+<code>proc/uid_io/stats</code>. This is because <code>storaged</code> processes data from
+<code>/proc/uid_io/stats</code> and generates its own data.</p>
+
+<p>Example output:</p>
+
+<pre>com.google.android.backuptransport  2269  60  0  0  1719845663  143912573  149065728  184180736
+com.android.vending  2170  60  0  0  219904796  38693092  174436352  18944000</pre>
+
+</body>
+</html>

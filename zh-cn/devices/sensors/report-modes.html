@@ -1,0 +1,42 @@
+<html devsite><head>
+    <title>报告模式</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>传感器可以不同的方式（称为报告模式）生成事件；每种传感器类型有且仅有一个与之关联的报告模式。共有 4 种报告模式。</p>
+<h2 id="continuous">连续模式</h2>
+<p>以传递给 <code>batch</code> 函数的 <a href="hal-interface.html#sampling_period_ns">sampling_period_ns</a> 参数所定义的恒定速率生成事件。使用连续报告模式的示例传感器有<a href="sensor-types.html#accelerometer">加速度计</a>和<a href="sensor-types.html#gyroscope">陀螺仪</a>。</p>
+<h2 id="on-change">变化模式</h2>
+<p>仅在测量值发生变化时生成事件。在 HAL 层激活传感器（在其上调用 <code>activate(..., enable=1)</code>）也会触发事件，也就是说在激活变化传感器时，HAL 必须立即返回事件。使用变化报告模式的示例传感器包括计步器、近程传感器和心率传感器类型。</p>
+<p>传递给 <code>batch</code> 函数的 <a href="hal-interface.html#sampling_period_ns">sampling_period_ns</a> 参数用于设置连续事件之间的最小时间间隔，也就是说不得在自上一事件后的 sampling_period_ns 纳秒内生成事件，即使值在这段时间内发生了变化也是如此。如果值发生变化，则必须在自上一事件的 <code>sampling_period_ns</code> 后立即生成事件。</p>
+<p>例如，假设：</p>
+<ul>
+  <li>我们使用 <code>sampling_period_ns = 10 * 10^9</code>（10 秒）激活计步器。</li>
+  <li>然后步行 55 秒，再站立 1 分钟。</li>
+  <li>在第一分钟，约每 10 秒生成一个事件（包括传感器激活时的 t=0 秒以及 t=60 秒），共有 7 个事件；在第二分钟，不生成任何事件，因为步数的值在 t=60 秒后没有发生变化。</li>
+</ul>
+<h2 id="one-shot">单次模式</h2>
+<p>一检测到事件，传感器便会自行禁用，然后通过 HAL 发送单个事件。顺序非常重要，可避免出现争用情况（在通过 HAL 报告事件之前，传感器必须处于禁用状态）。重新激活传感器之前，不会发送其他任何事件。<a href="sensor-types.html#significant_motion">显著运动</a>传感器就是这样一种传感器。</p>
+<p>单次传感器有时称为触发传感器。</p>
+<p>传递给 <code>batch</code> 函数的 <code>sampling_period_ns</code> 和 <code>max_report_latency_ns</code> 参数会被忽略。来自单次事件的事件不可存储在硬件 FIFO 中；这些事件在生成后必须立即报告。</p>
+<h2 id="special">特殊模式</h2>
+<p>有关何时生成事件的详细信息，请参阅各个<a href="sensor-types.html">传感器类型说明</a>。</p>
+
+</body></html>

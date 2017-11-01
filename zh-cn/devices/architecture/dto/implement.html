@@ -1,0 +1,140 @@
+<html devsite><head>
+    <title>实现 DTO</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>实现 DTO 包括分割设备树、编译、分区和运行。在实现可以正常工作之后，您还必须保持两个 DT 之间的兼容性，并确定用于确保每个 DT 分区安全性的策略。</p>
+
+<h2 id="divide">分割 DT</h2>
+<p>首先将设备树分割成两 (2) 部分：</p>
+<ul>
+<li><strong>主 DT</strong>。由 SoC 供应商提供的 SoC 公用部分和默认配置。</li>
+<li><strong>叠加 DT</strong>。由原始设计制造商 (ODM)/原始设备制造商(OEM) 提供的设备专属配置。</li>
+</ul>
+<p>分割设备树之后，您必须确保主 DT 和叠加 DT 之间的兼容性，以便通过合并主 DT 和叠加 DT 为设备生成完整的 DT。有关 DTO 格式和规则的详细信息，请参阅 <a href="/devices/architecture/dto/syntax.html">DTO 语法</a>。有关多个设备树的详细信息，请参阅<a href="/devices/architecture/dto/multiple.html">多个 DT</a>。</p>
+
+<h2 id="build">编译主 DT 和叠加 DT</h2>
+<p>要编译主 DT，请执行以下操作：</p>
+<ol>
+<li>将主 <code>.dts</code> 编译为 <code>.dtb</code> 文件。</li>
+<li>将 <code>.dtb</code> 文件刷写到引导加载程序在运行时可访问的分区（详见下文）。</li>
+</ol>
+
+<p>要编译叠加 DT，请执行以下操作：</p>
+<ol>
+<li>将叠加 DT <code>.dts</code> 编译为 <code>.dtbo</code> 文件。虽然此文件格式与已格式化为扁平化设备树的 <code>.dtb</code> 文件相同，但是不同的文件扩展名可以将其与主 DT 区分开来。</li>
+<li>将 <code>.dtbo</code> 文件刷写到引导加载程序在运行时可访问的分区（详见下文）。</li>
+</ol>
+
+<p>要详细了解如何使用 DTC 进行编译并在主机上验证 DTO 结果，请参阅<a href="/devices/architecture/dto/compile.html">编译和验证</a>。
+</p>
+
+<h2 id="partition">对 DT 进行分区</h2>
+<p>在闪存中确定引导加载程序在运行时可访问和可信的位置信息以放入 <code>.dtb</code> 和 <code>.dtbo</code>。</p>
+
+<p>主 DT 的示例位置：</p>
+<ul>
+<li>引导分区的一部分，已附加到内核 (<code>image.gz</code>)。</li>
+<li>单独的 DT blob (<code>.dtb</code>)，位于专用分区 (<code>dtb</code>) 中。</li>
+</ul>
+
+<p>叠加 DT 的示例位置：</p>
+
+<div style="width:75%">
+<div class="attempt-left">
+<table><tbody><tr><th style="text-align: center;">唯一分区</th></tr></tbody></table>
+<figure id="treble_dto_dtbo_partition_1">
+<img src="../images/treble_dto_dtbo_partition_1.png" style="display:block; margin:0 auto"/>
+<figcaption>
+<strong>图 1</strong> 将 <code>.dtbo</code> 放在唯一的分区（例如 <code>dtbo</code> 分区）中。
+</figcaption>
+</figure>
+</div>
+<div class="attempt-right">
+<figure id="treble_dto_dtbo_partition_2">
+<table><tbody><tr><th style="text-align: center;">ODM 分区</th></tr></tbody></table>
+<img src="../images/treble_dto_dtbo_partition_2.png" style="display:block; margin:0 auto"/>
+<figcaption>
+<strong>图 2.</strong> 将 <code>.dtbo</code> 放入 <code>odm</code> 分区中（仅在您的引导加载程序能够从 <code>odm</code> 分区的文件系统中加载数据时才这样做）。
+</figcaption>
+</figure>
+</div>
+</div>
+
+<p class="note" style="clear:both"><strong>注意</strong>：叠加 DT 分区的大小取决于设备和主 DT blob 上所需的更改量。通常，8 MB 已足够当前使用并已为未来扩展留出了空间（如果需要的话）。</p>
+
+<p>对于支持<a href="https://source.android.com/devices/tech/ota/ab_updates.html">无缝 (A/B) 更新</a>的设备，请用 A/B 来标识主 DT 和叠加 DT 分区：</p>
+
+<div style="width:75%">
+<div class="attempt-left">
+<table><tbody><tr><th style="text-align: center;">示例 1</th></tr></tbody></table>
+<figure id="treble_dto_dtbo_ab_1">
+<img src="../images/treble_dto_dtbo_ab_1.png" style="display:block; margin:0 auto"/>
+<figcaption>
+<strong>图 3.</strong> DTBO 分区 A/B，示例 1。
+</figcaption>
+</figure>
+</div>
+<div class="attempt-right">
+<table><tbody><tr><th style="text-align: center;">示例 2</th></tr></tbody></table>
+<figure id="treble_dto_dtbo_ab_2">
+<img src="../images/treble_dto_dtbo_ab_2.png" style="display:block; margin:0 auto"/>
+<figcaption>
+<strong>图 4.</strong> DTBO 分区 A/B，示例 2。
+</figcaption>
+</figure>
+</div>
+</div>
+
+<h2 id="run" style="clear:both">在引导加载程序中运行</h2>
+<p>要运行，请执行以下操作：</p>
+
+<figure id="treble_dto_dtbo">
+<img src="../images/treble_dto_dtbo.png"/>
+<figcaption><strong>图 5.</strong> 引导加载程序中设备树叠加层的典型运行时实现。</figcaption>
+</figure>
+
+<ol>
+<li>将 <code>.dtb</code> 从存储加载到内存中。</li>
+<li>将 <code>.dtbo</code> 从存储加载到内存中。</li>
+<li>用 <code>.dtbo</code> 叠加 <code>.dtb</code> 以形成合并的 DT。</li>
+<li>启动内核（已给定合并 DT 的内存地址）。</li>
+</ol>
+
+<h2 id="maintain">保持兼容性</h2>
+<p>主 DTB（来自 SoC 供应商）会被视为 DTBO 的 API 表面。将设备树分离为 SoC 通用部件和设备专用部件后，您必须确保这两个部件以后相互兼容，包括：</p>
+
+<ul>
+<li><strong>主 DT 中的 DT 定义</strong><em>（例如，节点、属性、标签）</em>。主 DT 中的任何定义更改都可能会触发叠加 DT 中的更改。例如，要更正主 DT 中的某个节点名称，请定义映射到原始节点名称的“别名”标签（以避免更改叠加 DT）。</li>
+<li><strong>叠加 DT 的存储位置</strong><em>（例如，分区名称、存储格式）</em>。</li>
+</ul>
+
+<h2 id="security">确保安全</h2>
+<p>引导加载程序必须确保 DTB/DTBO 安全无虞、未被修改且未被损坏。您可以使用任何解决方案来保护 DTB/DTBO，例如，VBoot 1.0 中的<a href="/security/verifiedboot/verified-boot#signature_format">启动映像签名</a>或 <a href="https://android.googlesource.com/platform/external/avb/+/master/README.md#The-VBMeta-struct" class="external">AVB 哈希页脚</a> (VBoot 2.0)。
+</p>
+
+<ul>
+<li>如果 DTB/DTBO 位于唯一的分区中，则可以将该分区添加到 AVB 的信任链。信任链从硬件保护的信任根开始，并进入引导加载程序，从而验证 DTB/DTBO 分区的完整性和真实性。</li>
+<li>如果 DTB/DTBO 位于现有分区（如 <code>odm</code> 分区）中，则该分区应位于 AVB 的信任链中。（DTBO 分区可以与 <code>odm</code> 分区共享一个公共密钥）。</li>
+</ul>
+
+<p>有关详细信息，请参阅<a href="/security/verifiedboot/index.html">验证启动</a>。</p>
+
+</body></html>

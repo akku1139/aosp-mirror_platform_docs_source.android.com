@@ -1,0 +1,154 @@
+<html devsite><head>
+    <title>参考 TV 应用</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>Android TV 设备需要安装可播放电视直播内容的 TV 应用。Android 平台随附一个参考 TV 应用 (<a href="https://play.google.com/store/apps/details?id=com.google.android.tv">Live TV</a>)，该应用可按原样使用，亦可进行自定义、扩展或替换成其他应用。其<a href="https://android.googlesource.com/platform/packages/apps/TV/">源代码</a>可在 Android 开放源代码项目中获取。</p>
+
+<p>本文总结了如何基于 Live TV 为您的 Android 电视设备构建和自定义系统 TV 应用。（您可以通过扩展您的 TV 应用来实现特定于设备制造商或国家/地区的功能，但这不属于参考 TV 应用的使用范围。）</p>
+
+<h2 id="dependencies">依赖关系</h2>
+
+<p>TV 应用是<a href="/devices/tv/">电视输入框架</a> (TIF) 的一个组件，不能独立于其他组件使用。这就意味着只有具有 TIF 的设备才能运行 <a href="https://play.google.com/store/apps/details?id=com.google.android.tv">Live TV</a> 应用。</p>
+
+<p>Live TV 应用依赖于 Android API。不同的分支所依赖的 API 级别也不同：</p>
+
+<p class="table-caption" id="table-1">
+  <strong>表 1.</strong> Live TV 分支</p>
+<table>
+ <tbody><tr>
+    <th>分支</th>
+    <th>目标 API 级别</th>
+    <th>最低 API 级别</th>
+ </tr>
+ <tr>
+    <td><a href="https://android.googlesource.com/platform/packages/apps/TV/+/master">master</a></td>
+    <td>24 (Android 7.0)</td>
+    <td>23</td>
+ </tr>
+
+ <tr>
+    <td><a href="https://android.googlesource.com/platform/packages/apps/TV/+/android-live-tv">android-live-tv</a></td>
+    <td>23 (Android 6.0)</td>
+    <td>21</td>
+ </tr>
+ <tr>
+    <td><a href="https://android.googlesource.com/platform/packages/apps/TV/+/android-live-tv-l-mr1">android-live-tv-l-mr1</a></td>
+    <td>22 (Android 5.1)</td>
+    <td>21</td>
+ </tr>
+</tbody></table>
+
+<h2 id="get_the_source">获取源代码</h2>
+
+<p>首选，请从 Git 中选择您想要的 Live TV 版本。以下说明面向的是最新版的 Live TV，但您也可以通过将分支从 master 更改为上表中所列的其他分支，来选择一个更早的版本。</p>
+
+<pre>
+$ mkdir live-tv &amp;&amp; cd live-tv
+$ repo init -u <a href="https://android.googlesource.com/platform/manifest">https://android.googlesource.com/platform/manifest</a> -b master
+$ repo sync -j8 -c
+</pre>
+
+<h2 id="build">构建</h2>
+
+<p>要构建 Live TV 代码，请运行：</p>
+
+<pre>
+$ . build/envsetup.sh
+$ tapas LiveTv x86
+$ make LiveTv
+</pre>
+
+<h2 id="push">推送</h2>
+
+<p>要将 Live TV 推送到测试设备，请运行：</p>
+
+<pre>
+$ adb install -r -d $OUT/system/priv-app/LiveTv/LiveTv.apk
+</pre>
+
+<p>如果开发者想让 Live TV 应用拥有系统权限，则在首次安装时，需要通过运行以下命令将该应用推送到 /system/priv-app：</p>
+
+<pre>adb push $OUT/system/priv-app/LiveTv/LiveTv.apk  /system/priv-app/LiveTv/</pre>
+
+<h2 id="test">测试</h2>
+
+<p>在设备上安装 Live TV 后，您需要测试该应用是否已正确集成。除了对 TV 应用运行<a href="/compatibility/cts/index.html">兼容性测试套件</a>和 <a href="http://source.android.com/compatibility/cts/verifier.html">CTS 验证程序测试</a>外，还可使用以下这些测试：</p>
+
+<h3 id="unit_tests">单元测试</h3>
+
+<p>可对 Live TV 应用运行单元测试和功能测试。您必须连接一台设备（或模拟器）才能运行这类测试。</p>
+
+<pre>
+$ adb shell logcat -c
+m LiveTv TVTestInput TVUnitTests -j20 &amp;&amp;\
+adb install -r -d $OUT/system/priv-app/LiveTv/LiveTv.apk &amp;&amp;\
+adb install -r -d $OUT/system/app/TVTestInput/TVTestInput.apk &amp;&amp; \
+adb install -r -d $OUT/data/app/TVUnitTests/TVUnitTests.apk &amp;&amp; \
+adb shell pm clear <a href="http://com.android.providers.tv/">com.android.providers.tv</a> &amp;&amp; \
+adb shell pm clear <a href="http://com.google.android.tv/">com.google.android.tv</a> &amp;&amp; \
+adb shell am instrument \
+  -e testSetupMode unit \
+  -w com.android.tv.testinput/.instrument.TestSetupInstrumentation &amp;&amp;\
+adb shell input keyevent KEYCODE_HOME &amp;&amp;\
+adb shell am instrument \
+  -w 'com.android.tv.tests/android.support.test.runner.AndroidJUnitRunner'
+</pre>
+
+<h3 id="functional_tests">功能测试</h3>
+
+<pre>
+$ adb shell logcat -c
+m LiveTv TVTestInput TVFuncTests -j20 &amp;&amp;\
+adb install -r -d $OUT/system/priv-app/LiveTv/LiveTv.apk &amp;&amp;\
+adb install -r -d $OUT/system/app/TVTestInput/TVTestInput.apk &amp;&amp; \
+adb install -r -d $OUT/data/app/TVFuncTests/TVFuncTests.apk &amp;&amp; \
+adb shell pm clear <a href="http://com.android.providers.tv/">com.android.providers.tv</a> &amp;&amp; \
+adb shell pm clear <a href="http://com.google.android.tv/">com.google.android.tv</a> &amp;&amp; \
+adb shell am instrument \
+  -e testSetupMode func \
+  -w com.android.tv.testinput/.instrument.TestSetupInstrumentation &amp;&amp;\
+adb shell input keyevent KEYCODE_HOME &amp;&amp;\
+adb shell am instrument \
+  -w 'com.android.tv.tests.ui/android.support.test.runner.AndroidJUnitRunner'
+</pre>
+
+<h3 id="jank_tests">Jank 测试</h3>
+
+<p>Jank 测试用于检查是否存在丢帧和渲染延迟。</p>
+
+<pre>
+$ adb shell logcat -c
+m LiveTv TVTestInput TVJankTests -j20 &amp;&amp;\
+adb install -r -d $OUT/system/priv-app/LiveTv/LiveTv.apk &amp;&amp;\
+adb install -r -d $OUT/system/app/TVTestInput/TVTestInput.apk &amp;&amp;\
+adb install -r -d $OUT/data/app/TVJankTests/TVJankTests.apk &amp;&amp;\
+adb shell pm clear <a href="http://com.android.providers.tv/">com.android.providers.tv</a> &amp;&amp;\
+adb shell pm clear <a href="http://com.google.android.tv/">com.google.android.tv</a> &amp;&amp;\
+echo "Creating a lot of channels and EPG data, this may take a while" &amp;&amp;\
+adb shell am instrument \
+  -e testSetupMode jank \
+  -w com.android.tv.testinput/.instrument.TestSetupInstrumentation &amp;&amp;\
+adb shell input keyevent KEYCODE_HOME &amp;&amp;\
+adb shell am instrument \
+  -w 'com.android.tv.tests.jank/android.support.test.runner.AndroidJUnitRunner'
+</pre>
+
+</body></html>

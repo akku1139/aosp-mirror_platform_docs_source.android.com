@@ -1,0 +1,67 @@
+<html devsite><head>
+    <title>输出流和剪裁</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<h2 id="output-stream">输出流</h2>
+<p>与具有 3 至 4 种从相机生成数据的不同方式（基于 ANativeWindow 的预览操作、预览回调、视频回调和 takePicture 回调）的旧版相机子系统不同，新版相机子系统针对所有分辨率和输出格式都仅在基于 ANativeWindow 的通道上运行。您可以同时配置多路这样的输出流，以便将单个帧发送至多个目标，例如：GPU、视频编码器、RenderScript，或应用可见的缓冲区（RAW Bayer 缓冲区、经处理的 YUV 缓冲区或经 JPEG 编码的缓冲区）。</p>
+<p>出于优化的目的，这些输出流必须提前配置，而且只有有限的输出流可同时存在。这样一来，就可以预先分配内存缓冲区和配置相机硬件，以便在提交列有多个或者不同输出通道的请求时，不会出现请求延迟执行的情况。</p>
+<p>为了使当前的 camera API 具有向后兼容性，相机子系统必须至少同时支持 3 路 YUV 输出流，外加一路 JPEG 流。要支持视频快照，同时使应用也可接收 YUV 缓冲区，则必须满足上述要求：</p>
+<ul>
+  <li>一路视频流（不透明的 YUV 格式）流向 GPU/SurfaceView 以用于预览</li>
+  <li>一路视频流（不透明的 YUV 格式）流向视频编码器以用于录制</li>
+  <li>一路视频流（已知的 YUV 格式）流向应用以用于预览帧回调</li>
+  <li>一路视频流 (JPEG) 流向应用以用于视频快照</li>
+</ul>
+<p>由于相应的 API 尚未最终确定，确切的要求仍未敲定。</p>
+<h2>剪裁</h2>
+<p>完整像素阵列的剪裁（用于数字变焦和需要更小 FOV 的其他使用情况）通过 ANDROID_SCALER_CROP_REGION 设置进行传递。这个设置可按需更改，这种方式对于实现平滑的数字变焦至关重要。</p>
+<p>该区域被定义为矩形（x 和 y 分别表示宽和高），其中 (x,y) 表示矩形的左上角。该矩形在传感器有源像素阵列的坐标系中进行定义，其中 (0,0) 对应有源像素阵列的左上角像素。因此，宽度和高度不能大于 ANDROID_SENSOR_ACTIVE_PIXEL_ARRAY 静态信息字段中所报告的尺寸。允许的最小宽度和高度由 HAL 通过 ANDROID_SCALER_MAX_DIGITAL_ZOOM 静态信息字段进行报告，该字段描述了所支持的缩放因子的最大值。因此，最小剪裁区域的宽度和高度为：</p>
+<pre class="devsite-click-to-copy">
+  {width, height} =
+   { floor(ANDROID_SENSOR_ACTIVE_PIXEL_ARRAY[0] /
+       ANDROID_SCALER_MAX_DIGITAL_ZOOM),
+     floor(ANDROID_SENSOR_ACTIVE_PIXEL_ARRAY[1] /
+       ANDROID_SCALER_MAX_DIGITAL_ZOOM) }
+</pre>
+<p>如果剪裁区域需要满足特定需求（例如：要求起始位置坐标为偶数，并且其宽度/高度需均为偶数），则 HAL 必须进行必要的舍入运算，并写出输出结果元数据中所用的最终剪裁区域。同样，HAL 要实现视频防抖功能，则必须调整结果剪裁区域，以描述在应用视频防抖功能后输出结果中实际包含的区域。一般情况下，使用相机的应用必须能够根据剪裁区域、图像传感器的尺寸和镜头焦距确定其接收的视野范围。</p>
+<p>由于剪裁区域适用于所有视频流，这些视频流的宽高比可能与剪裁区域的不同，所以每路视频流所用的实际传感器区域可能小于剪裁区域。具体而言，每路视频流应尽量避免进一步剪裁已定义的剪裁区域，以维持方形像素及其宽高比。如果视频流的宽高比大于剪裁区域，则该视频流应该在垂直方向上进一步剪裁，如果视频流的宽高比小于剪裁区域，则该视频流应该在水平方向上进一步剪裁。</p>
+<p>在所有情况下，视频流剪裁均必须位于整个剪裁区域的中心位置，并且相对于整个剪裁区域，每路视频流要么在水平方向上进行剪裁，要么在垂直方向上进行剪裁，但绝不能在这两个方向上同时进行剪裁。</p>
+<p>例如，如果两路视频流分别定义为 640x480（宽高比为 4:3）和 1280x720（宽高比为 16:9），并假设传感器为 300 万像素级（2000 x 1500 像素阵列），则下面展示了针对几个样本剪裁区域，每路视频流的预期输出区域。</p>
+<p></p>剪裁区域：（500、375、1000、750）（宽高比为 4:3）<br />640x480 视频流剪裁：（500、375、1000、750）（与剪裁区域相同）<br />1280x720 视频流剪裁：（500、469、1000、562）<p></p>
+  <img src="images/crop-region-43-ratio.png" alt="crop-region-43-ratio" id="figure1"/>
+<p class="img-caption">
+  <strong>图 1.</strong> 宽高比为 4:3</p>
+<p>剪裁区域：（500、375、1333、750）（宽高比为 16:9）<br />640x480 视频流剪裁：（666、375、1000、750）<br />1280×720 视频流剪裁：（500、375、1333、750）（与剪裁区域相同）</p>
+  <img src="images/crop-region-169-ratio.png" alt="crop-region-169-ratio" id="figure2"/>
+<p class="img-caption">
+  <strong>图 2. </strong>宽高比为 16:9</p>
+<p>剪裁区域：（500、375、750、750）（宽高比为 1:1）<br />640x480 视频流剪裁：（500、469、750、562）<br />1280x720 视频流剪裁：（500、543、750、414）</p>
+  <img src="images/crop-region-11-ratio.png" alt="crop-region-11-ratio" id="figure3"/>
+<p class="img-caption">
+  <strong>图 3. </strong>宽高比为 1:1</p>
+<p>最后一个示例是宽高比为 1024×1024（方形）的视频流，而不是 480p 视频流：<br />剪裁区域：（500、375、1000、750）（宽高比为 4:3）<br />1024x1024 视频流剪裁：（625、375、750、750）<br />1280x720 视频流剪裁：（500、469、1000、562）</p>
+  <img src="images/crop-region-43-square-ratio.png" alt="crop-region-43-square-ratio" id="figure4"/>
+<p class="img-caption">
+  <strong>图 4. </strong>宽高比为 4:3（方形）</p>
+<h2 id="reprocessing">重新处理</h2>
+<p>对原始图片文件提供额外的支持功能，即 RAW Bayer 数据重新处理支持功能。该支持功能允许相机通道处理之前捕获的 RAW 缓冲区和元数据（之前记录的整个帧），以生成新渲染的 YUV 或 JPEG 输出。</p>
+
+</body></html>

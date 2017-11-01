@@ -1,0 +1,271 @@
+<html devsite><head>
+    <title>低内存配置</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<h2 id="intro">简介</h2>
+
+<p>Android 现支持内存为 512MB 的设备。本文档旨在帮助 OEM 优化和配置 Android 4.4，使其能够在低内存设备上运行。在下文所述的优化措施中，有几项非常通用，甚至也可应用于以前的版本。</p>
+
+<h2 id="optimizations">Android 4.4 平台优化</h2>
+
+<h3 id="opt-mgmt">改善了内存管理</h3>
+<ul>
+<li>验证了可节省内存的内核配置：内核同页合并 (KSM) 和交换到 ZRAM。</li>
+<li>终止那些即将被取消缓存且过大的缓存进程。</li>
+<li>不允许大型服务自行返回至 A 服务（以免导致启动器终止）。</li>
+<li>终止那些处于空闲维护状态中的过大进程（甚至终止当前 IME 等通常不可终止的进程）。</li>
+<li>对后台服务的启动进行序列化。</li>
+<li>微调了低内存设备的内存使用情况：采用更严格的内存不足 (OOM) 调整级别、缩减图形缓存大小，等等。</li>
+</ul>
+
+<h3 id="opt-mem">减少了系统内存</h3>
+<ul>
+<li>删减了 system_server 和 SystemUI 进程（节省了几兆的内存）。</li>
+<li>在 Dalvik 中预加载 dex 缓存（节省了几兆的内存）。</li>
+<li>验证了 JIT-off 选项（每个进程最多可节省 1.5MB 的内存）。</li>
+<li>减少了各进程的字体缓存开销。</li>
+<li>引入了占用内存更小的 ArrayMap/ArraySet，并在框架中广泛地使用其来替代 HashMap/HashSet。</li>
+</ul>
+
+<h3 id="opt-proc">Procstats</h3>
+<p>
+新增了一个开发者选项，以显示内存状态和应用内存使用情况（按照运行频率和所耗内存量排序）。
+</p>
+
+<h3 id="opt-api">API</h3>
+<p>
+新增了 ActivityManager.isLowRamDevice()，使应用不仅能够检测是否是在低内存设备上运行，还能选择停用那些占用内存较大的功能。
+</p>
+
+<h3 id="opt-track">内存跟踪</h3>
+<p>
+使用新的 memtrack HAL 跟踪图形内存分配情况、dumpsys meminfo 中的其他信息以及 meminfo 中的阐明性总结（例如，所报告的空闲内存包括缓存进程的内存，以免 OEM 费力去优化错误的对象）。
+</p>
+
+<h2 id="build-time">编译时配置</h2>
+<h3 id="flag">启用低内存设备标志</h3>
+<p>我们引入了一个名为 <code>ActivityManager.isLowRamDevice()</code> 的新 API，以便应用能够确定是否应关闭那些在低内存设备上运行不良的内存密集型功能。</p>
+<p>对于内存为 512MB 的设备，该 API 预计会返回“true”。若要启用该 API，请在设备 makefile 中使用下面这项系统属性：
+<br />
+<code>PRODUCT_PROPERTY_OVERRIDES += ro.config.low_ram=true</code></p>
+
+<h3 id="jit">停用 JIT</h3>
+
+  <p>系统级的 JIT 内存使用情况取决于正在运行的应用的数量以及这些应用的代码所占用的空间。JIT 会为编译后代码的缓存设定大小上限，并会根据需要处理其中的页面。在典型的运行系统中，JIT 会占用 3M 到 6M 的内存。<br />
+  <br />
+大型应用往往很快就会达到代码缓存大小上限（默认情况下向来都是 1M）。平均来说，每个应用的 JIT 缓存使用量会介于 100K 和 200K 字节之间。减小缓存的大小上限在某种程度上有助于改进内存使用情况，但如果将这一上限设得过低，则会将 JIT 置于颠簸模式。对于内存确实很低的设备，我们建议完全停用 JIT。</p>
+
+<p>若要完全停用 JIT，请在产品 makefile 中添加下面这行内容：<br />
+<code>PRODUCT_PROPERTY_OVERRIDES += dalvik.vm.jit.codecachesize=0</code></p>
+<h3 id="launcher">启动器配置</h3>
+
+  <p>请务必确保启动器上的默认壁纸设置<strong>未</strong>使用动态壁纸。低内存设备不应预安装任何动态壁纸。</p>
+
+<h2 id="kernel">内核配置</h2>
+<h3 id="kernel-tuning">微调内核/ActivityManager 以减少直接回收</h3>
+
+  <p>当进程或内核尝试分配（直接分配或因新页面中存在故障而分配）内存页面并且内核已用尽所有可用内存时，就会发生直接回收。在这种情况下，内核便需要阻止分配并释放一个页面，而这通常又需要磁盘 I/O 清理一个有文件支持的脏页或等待 <code>lowmemorykiller</code> 终止一个进程。最终可能会导致任意线程（包括界面线程）中出现额外 I/O。</p>
+
+  <p>为避免出现直接回收，内核已配有可触发 <code>kswapd</code> 或后台回收的水印。此线程会尝试释放页面，以便下次分配的真实线程能够快速顺利启动。</p>
+
+  <p>用于触发后台回收的默认阈值相当低 - 在 2GB 设备上约为 2MB，在 512MB 设备上约为 636KB。而且，内核通过后台回收仅能回收几兆的内存。这即意味着，任何快速分配超过几兆字节的内容的进程都会快速导致直接回收。</p>
+
+<p>在 android-3.4 内核分支中，我们以补丁程序 92189d47f66c67e5fd92eafaa287e153197a454f（“添加额外的可调可用千字节”）的形式添加了对可调新内核的支持。选择将该补丁程序添加到设备内核中，会让 ActivityManager 告知内核尝试保留能容纳 3 个全屏 32 bpp 缓冲区的可用内存空间。</p>
+
+<p>这些阈值可通过框架 config.xml 进行配置</p>
+
+<pre>
+&lt;!-- Device configuration setting the /proc/sys/vm/extra_free_kbytes tunable
+in the kernel (if it exists).  A high value will increase the amount of memory
+that the kernel tries to keep free, reducing allocation time and causing the
+lowmemorykiller to kill earlier.  A low value allows more memory to be used by
+processes but may cause more allocations to block waiting on disk I/O or
+lowmemorykiller.  Overrides the default value chosen by ActivityManager based
+on screen size.  0 prevents keeping any extra memory over what the kernel keeps
+by default.  -1 keeps the default. --&gt;
+&lt;integer name="config_extraFreeKbytesAbsolute"&gt;-1&lt;/integer&gt;
+</pre>
+
+<pre>
+&lt;!-- Device configuration adjusting the /proc/sys/vm/extra_free_kbytes
+tunable in the kernel (if it exists).  0 uses the default value chosen by
+ActivityManager.  A positive value  will increase the amount of memory that the
+kernel tries to keep free, reducing allocation time and causing the
+lowmemorykiller to kill earlier.  A negative value allows more memory to be
+used by processes but may cause more allocations to block waiting on disk I/O
+or lowmemorykiller.  Directly added to the default value chosen by
+ActivityManager based on screen size. --&gt;
+&lt;integer name="config_extraFreeKbytesAdjust"&gt;0&lt;/integer&gt;
+</pre>
+
+<h3 id="lowmem">微调 LowMemoryKiller</h3>
+
+<p>ActivityManager 可配置 LowMemoryKiller 的阈值，以匹配它对在每个优先级存储分区中运行进程时所需的文件支持页面（缓存页面）工作集的预期。如果设备对工作集有很高的要求（例如：如果供应商界面需要更多内存，或者如果添加了更多服务），则可增大阈值。</p>
+
+<p>如果为文件支持页面预留了太多内存，则可减小阈值，以便系统能够早在因缓存变得过小而导致磁盘颠簸之前就终止后台进程。</p>
+
+<pre>
+&lt;!-- Device configuration setting the minfree tunable in the lowmemorykiller
+in the kernel.  A high value will cause the lowmemorykiller to fire earlier,
+keeping more memory in the file cache and preventing I/O thrashing, but
+allowing fewer processes to stay in memory.  A low value will keep more
+processes in memory but may cause thrashing if set too low.  Overrides the
+default value chosen by ActivityManager based on screen size and total memory
+for the largest lowmemorykiller bucket, and scaled proportionally to the
+smaller buckets.  -1 keeps the default. --&gt;
+&lt;integer name="config_lowMemoryKillerMinFreeKbytesAbsolute"&gt;-1&lt;/integer&gt;
+</pre>
+
+<pre>
+&lt;!-- Device configuration adjusting the minfree tunable in the
+lowmemorykiller in the kernel.  A high value will cause the lowmemorykiller to
+fire earlier, keeping more memory in the file cache and preventing I/O
+thrashing, but allowing fewer processes to stay in memory.  A low value will
+keep more processes in memory but may cause thrashing if set too low.  Directly
+added to the default value chosen by          ActivityManager based on screen
+size and total memory for the largest lowmemorykiller bucket, and scaled
+proportionally to the smaller buckets. 0 keeps the default. --&gt;
+&lt;integer name="config_lowMemoryKillerMinFreeKbytesAdjust"&gt;0&lt;/integer&gt;
+</pre>
+
+<h3 id="ksm">KSM（内核同页合并）</h3>
+
+<p>KSM 是一个在后台运行的内核线程，可对内存中已由用户空间标为 <code>MADV_MERGEABLE</code> 的页面进行比较。如果发现两个页面相同，KSM 线程即会将它们合并为内存的单个写入时复制页面。</p>
+
+<p>从长远来看，KSM 会为所运行的系统节省内存，但它是以 CPU 功耗为代价来获得重复的内存，这可能会对电池寿命产生不良影响。功耗损失与通过启用 KSM 而节省的内存到底孰重孰轻？您应认真地权衡一下。</p>
+
+<p>为便于测试 KSM，我们建议您查看长时间运行（运行数小时）的设备，并观察 KSM 是否对启动时间和渲染时间起到了明显的改善作用。</p>
+
+<p>要启用 KSM，请先启用内核中的 <code>CONFIG_KSM</code>，然后将下列各行内容添加到 <code>init.&lt;device&gt;.rc</code> 文件中：<br />
+
+</p><pre>
+write /sys/kernel/mm/ksm/pages_to_scan 100
+write /sys/kernel/mm/ksm/sleep_millisecs 500
+write /sys/kernel/mm/ksm/run 1
+</pre>
+
+<p>启用后，有几种实用工具可帮助进行调试，这几种工具分别是：procrank、librank 和 ksminfo。借助这些实用工具，您可以查看 KSM 内存与进程之间的映射关系以及占用 KSM 内存最多的进程。一旦发现一块看起来值得探索的内存，您便可以使用 hat 实用工具来探索该内存（如果它是 dalvik 堆上的重复对象）。</p>
+
+<h3 id="zram">交换到 zRAM</h3>
+
+<p>zRAM 交换可通过压缩内存页面并将其放入动态分配的内存交换区来增加系统中的可用内存量。</p>
+
+<p>由于这是以牺牲 CPU 时间为代价来增加少量内存，因此您应仔细权衡 zRAM 交换会对您系统的性能造成的负面影响。</p>
+
+<p>Android 会在多个层面上处理 zRAM 交换：</p>
+
+<ul>
+  <li>首先，必须启用以下内核选项，才能有效地使用 zRAM 交换：<ul>
+      <li><code>CONFIG_SWAP</code></li>
+      <li><code>CONFIG_CGROUP_MEM_RES_CTLR</code></li>
+      <li><code>CONFIG_CGROUP_MEM_RES_CTLR_SWAP</code></li>
+      <li><code>CONFIG_ZRAM</code></li>
+    </ul>
+  </li>
+  <li>然后，您应将一行与下例类似的内容添加到您的 fstab 中：<br />
+    <code>/dev/block/zram0 none swap defaults zramsize=&lt;size in bytes&gt;,swapprio=&lt;swap partition priority&gt;</code><br />
+  <code><br />
+  zramsize</code> 是必要内容，表示您希望 zram 区域占用多少未压缩内存。压缩比通常为 30-50％。<br />
+  <br />
+  <code>swapprio</code> 是可选内容；如果您没有多个交换区，则无需使用此项。<br />
+  <br />
+您还应确保在特定于设备的 <a href="/security/selinux/implement.html">sepolicy/file_contexts</a> 中将关联的块设备标为 swap_block_device，以便 SELinux 适当地处理它。<br />
+  <code>/dev/block/zram0 u:object_r:swap_block_device:s0</code><br />
+  <br />
+  </li>
+  <li>默认情况下，Linux 内核每次会换入 8 页内存。当使用 ZRAM 时，由每次读取 1 页而产生的增量成本微乎其微，且可能有助于防止设备承受极端的内存压力。要想每次只读取 1 页，请将以下内容添加到您的 <code>init.rc</code>：<br />
+  <code>write /proc/sys/vm/page-cluster 0</code></li>
+  <li>在您的 <code>init.rc</code> 中的 <code>mount_all /fstab. X</code> 行后面，添加以下内容：<br />
+  <code>swapon_all /fstab.X</code></li>
+  <li>如果在内核中启用了此功能，系统便会在启动时自动配置内存 cgroup。</li>
+  <li>如果内存 cgroup 可用，ActivityManager 就会将优先级较低的线程标为比其他线程更易于交换。如果需要内存，Android 内核则会开始将内存页面迁移到 zRAM 交换区，并会优先处理那些已被 ActivityManager 标记的内存页面。</li>
+</ul>
+
+<h3 id="carveouts">Carveout、Ion 和连续内存分配 (CMA)</h3>
+
+<p>对于低内存设备，需要特别注意 carveout，尤其是未必会一直被充分利用的 carveout，例如用于安全地播放视频的 carveout。有几种解决方案可最大限度地减小 carveout 区域的影响，具体取决于硬件的确切要求。</p>
+
+<p>如果硬件允许不连续的内存分配，则 Ion 系统堆可从系统内存中分配内存，这样便无需使用 carveout。它还会尝试进行大量分配以消除外围设备上的 TLB 压力。如果内存区域必须连续或必须限定在某个特定地址范围内，则可以使用连续内存分配器 (CMA)。</p>
+
+<p>以这种方式创建的 carveout 也可供系统用于处理可移动页面。当需要该区域时，可移动页面就会被从中移出，以便系统将一个处于空闲状态的大型 carveout 用于其他目的。您可以直接使用 CMA，也可以借助 Ion（通过使用离子 CMA 堆）更轻松地使用 CMA。</p>
+
+<h2 id="app-opts">应用优化提示</h2>
+<ul>
+   <li>查看<a href="http://developer.android.com/training/articles/memory.html">管理您的应用内存</a>和与同一主题相关的以往博文：<ul>
+    <li><a href="http://android-developers.blogspot.com/2009/01/avoiding-memory-leaks.html">http://android-developers.blogspot.com/2009/01/avoiding-memory-leaks.html</a></li>
+    <li><a href="http://android-developers.blogspot.com/2011/03/memory-analysis-for-android.html">http://android-developers.blogspot.com/2011/03/memory-analysis-for-android.html</a></li>
+    <li><a href="http://android-developers.blogspot.com/2009/02/track-memory-allocations.html">http://android-developers.blogspot.com/2009/02/track-memory-allocations.html</a></li>
+    <li> <a href="http://tools.android.com/recent/lintperformancechecks">http://tools.android.com/recent/lintperformancechecks</a></li>
+    </ul>
+</li>
+  <li>从预安装应用中检查/移除所有未使用的资源 - development/tools/findunused（应该会有助于减小应用所占用的空间）。</li>
+<li>对资源（特别是具有透明区域的资源）使用 PNG 格式</li>
+<li>如果要编写本机代码，请使用 calloc() 而非 malloc/memset</li>
+<li>不要启用会将 Parcel 数据写入磁盘并会在日后读取此数据的代码。</li>
+<li>不要订阅已安装的所有软件包，而应使用 ssp 过滤。请添加如下所示的过滤条件：<br />
+  <code>&lt;data android:scheme="package" android:ssp="com.android.pkg1" /&gt;<br />
+  &lt;data android:scheme="package" android:ssp="com.myapp.act1" /&gt;</code></li>
+</ul>
+
+<h3 id="process-states">了解 Android 中的各种进程状态</h3>
+
+  <ul>
+  <li><p>SERVICE - SERVICE_RESTARTING<br />
+因自身原因自动在后台运行的应用。这是频繁在后台运行的应用最常出现的问题。%duration * pss 很可能是一个绝佳的“不良”指标，但该组合的目标过于明确，也许只执行 %duration 就能更好地筛选出我们完全不希望运行的应用。</p></li>
+  <li><p>IMPORTANT_FOREGROUND - RECEIVER<br />
+因任何原因在后台运行的应用（不直接与用户交互）。这些应用都会增加系统的内存负载。在这种情况下，使用 (%duration * pss) 不良值很可能是对这些进程进行排序的最佳方式：许多此类进程都会因合理原因而需要一直运行，因此它们的 pss 大小将会是它们的内存负载的重要组成部分。</p></li>
+  <li><p>PERSISTENT<br />
+持续的系统进程。跟踪 pss 可监视这些进程是否会变得过大。</p></li>
+  <li><p>TOP<br />
+正与用户交互的进程。pss 在此又成为了重要指标，可显示应用在被使用的过程中产生的内存负载。</p></li>
+  <li><p>HOME - CACHED_EMPTY<br />
+所有此类底部进程均是系统保留的备用进程；此类进程可随时终止，并可根据需要重建。这些进程是我们计算内存状态时参照的依据 -“正常”、“中等”、“低”、“严重”均是基于系统可以保留多少个此类进程而定的。pss 亦是这些进程的关键指标；当这些进程处于该状态时，它们应尽量减少自身的内存占用空间，以便系统能够保留尽可能多的进程。一般来说，与在 TOP 状态下相比，运行状况良好的应用在该状态下的 pss 占用空间明显更小。</p></li>
+  <li>
+    <p>比较 TOP 与 CACHED_ACTIVITY-CACHED_ACTIVITY_CLIENT<em><br />
+  </em>对于同一进程而言，当它处于 TOP 状态时的 pss 和当它处于上述任一种缓存状态时的 pss 之间会存在差异，而这种差异恰恰是可表明该进程在进入后台运行时的内存释放能力的最佳数据。排除 CACHED_EMPTY 状态可以改善该数据，因为这项操作会排除因某些原因（不仅仅是为了呈现界面）而启动进程的情况，因此无需在与用户交互时处理所有的界面开销。</p></li>
+  </ul>
+
+<h2 id="analysis">分析</h2>
+
+<h3 id="app-startup">分析应用启动时间</h3>
+
+<p>使用带有 <code>-P</code> 或 <code>--start-profiler</code> 选项的 <code>$ adb shell am start</code> 在应用启动时运行分析器。这样一来，当您的进程从 zygote 分岔之后，分析器就会立即启动，虽然此时您的任何代码都还未加载到其中。</p>
+
+<h3 id="bug-reports">使用错误报告进行分析</h3>
+
+<p>现已包含可用于进行调试的各种信息。这些服务包括 <code>batterystats</code>、<code>netstats</code>、<code>procstats</code> 和 <code>usagestats</code>。您可以使用如下所示的各行内容找到它们：</p>
+
+<pre>
+------ CHECKIN BATTERYSTATS (dumpsys batterystats --checkin) ------
+7,0,h,-2558644,97,1946288161,3,2,0,340,4183
+7,0,h,-2553041,97,1946288161,3,2,0,340,4183
+</pre>
+
+<h3 id="persistent">检查是否存在任何持续进程</h3>
+
+<p>重新启动设备并检查进程。<br />
+运行几个小时，然后再次检查进程。不应存在任何长时间运行的进程。</p>
+
+<h3 id="longevity">长时测试</h3>
+
+<p>运行较长时间，并跟踪进程的内存。内存是增加了，还是保持不变？创建规范的使用案例并针对这些情形运行长时测试</p>
+
+</body></html>
