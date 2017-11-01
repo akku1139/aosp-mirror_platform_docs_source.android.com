@@ -1,0 +1,151 @@
+<html devsite>
+  <head>
+    <title>Interface Methods &amp; Errors</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>This section details interface methods and errors.</p>
+
+<h2 id=void>Void methods</h2>
+<p>Methods that do not return results are translated into Java methods that
+return <code>void</code>. For example, the HIDL declaration:</p>
+
+<pre class="prettyprint">
+doThisWith(float param);
+</pre>
+
+<p>… becomes:</p>
+
+<pre class="prettyprint">
+void doThisWith(float param);
+</pre>
+
+<h2 id=single-result>Single-result methods</h2>
+<p>Methods that return a single result are translated into their Java
+equivalents also returning a single result. For example, the following:</p>
+
+<pre class="prettyprint">
+doQuiteABit(int32_t a, int64_t b,
+            float c, double d) generates (double something);
+</pre>
+
+<p>… becomes:</p>
+
+<pre class="prettyprint">
+double doQuiteABit(int a, long b, float c, double d);
+</pre>
+
+
+<h2 id=multiple-result>Multiple-result methods</h2>
+<p>For each method that returns more than one result, a callback class is
+generated that supplies all the results in its <code>onValues</code> method.
+That callback acts as an additional parameter to the method. For example, the
+following:</p>
+
+<pre class="prettyprint">
+oneProducesTwoThings(SomeEnum x) generates (double a, double b);
+</pre>
+
+<p>… becomes:</p>
+
+<pre class="prettyprint">
+public interface oneProducesTwoThingsCallback {
+    public void onValues(double a, double b);
+}
+void oneProducesTwoThings(byte x, oneProducesTwoThingsCallback cb);
+</pre>
+
+<p>A caller of <code>oneProducesTwoThings()</code> would typically use an
+anonymous inner class or lambda to implement the callback locally:</p>
+
+<pre class="prettyprint">
+someInstanceOfFoo.oneProducesTwoThings(
+         5 /* x */,
+         new IFoo.oneProducesTwoThingsCallback() {
+          @Override
+          void onValues(double a, double b) {
+             // do something interesting with a and b.
+             ...
+          }});
+</pre>
+
+<p>or:</p>
+
+<pre class="prettyprint">
+someInstanceOfFoo.oneProducesTwoThings(5 /* x */,
+    (a, b) -&gt; a &gt; 3.0 ? f(a, b) : g(a, b)));
+</pre>
+
+<p>You can also define a class to use as a callback … </p>
+
+<pre class="prettyprint">
+class MyCallback implements oneProducesTwoThingsCallback {
+  public void onValues(double a, double b) {
+    // do something interesting with a and b.
+  }
+}
+</pre>
+
+<p>… and pass an instance of <code>MyCallback</code> as the third parameter to
+<code>oneProducesTwoThings()</code>.</p>
+
+<h2 id=errors>Transport errors and death recipients</h2>
+<p>Because service implementations can run in a different process, in some cases
+the client can stay alive even when the process implementing an interface dies.
+Calls on an interface object hosted in a dead process fail with a transport
+error (a runtime exception thrown by the called method). Recovery from such a
+failure is possible by requesting a new instance of the service by calling
+<code>I&lt;InterfaceName&gt;.getService()</code>. However, this method works
+only if the process that crashed has restarted and re-registered its services
+with the servicemanager (which is generally true for HAL implementations).</p>
+
+<p>Clients of an interface can also register a <em>death recipient</em> to get a
+notification when a service dies. Transport errors can still occur if a call is
+made just as the server dies. To register for such notifications on a retrieved
+<code>IFoo</code> interface, a client can do the following:</p>
+
+<pre class="prettyprint">
+foo.linkToDeath(recipient, 1481 /* cookie */);
+</pre>
+
+<p>The <code>recipient</code> parameter must be an implementation of the
+interface <code>HwBinder.DeathRecipient</code> provided by HIDL. The interface
+contains a single method <code>serviceDied()</code> that is called when the
+process hosting the interface dies.</p>
+
+<pre class="prettyprint">
+final class DeathRecipient implements HwBinder.DeathRecipient {
+    @Override
+    public void serviceDied(long cookie) {
+        // Deal with service going away
+    }
+}
+</pre>
+
+<p>The <code>cookie</code> parameter contains the cookie that was passed with
+the call to <code>linkToDeath()</code>. It's also possible to unregister a death
+recipient after registering it using:</p>
+
+<pre class="prettyprint">
+foo.unlinkToDeath(recipient);
+</pre>
+
+  </body>
+</html>

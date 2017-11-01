@@ -1,0 +1,83 @@
+<html devsite><head>
+    <title>基于块的 OTA</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>您可以为运行 Android 5.0 的新设备启用基于块的无线 (OTA) 更新。OTA 是原始设备制造商 (OEM) 用于远程更新设备系统分区的机制：</p>
+<ul>
+<li><b>Android 5.0</b> 及更高版本使用块 OTA 更新，以确保每个设备使用的分区完全相同。块 OTA 不会比较各个文件，也不会分别计算各个二进制补丁程序，而是将整个分区处理为一个文件并计算单个二进制补丁程序，以确保生成的分区刚好包含预期的位数。这样一来，设备系统映像就能够通过 fastboot 或 OTA 达到相同的状态。</li>
+<li><b>Android 4.4</b> 及更低版本使用文件 OTA 更新，确保设备包含类似的文件内容、权限和模式，但允许时间戳和底部存储的布局等元数据在各设备之间因更新方法而异。</li>
+
+</ul>
+<p>因为块 OTA 可确保每个设备使用相同的分区，所以它能够使用 dm-verity 以加密的方式为系统分区签名。要详细了解 dm-verity，请参阅<a href="/security/verifiedboot/index.html">验证启动</a>。
+</p>
+
+<p class="note"><strong>注意</strong>：您必须拥有正常运行的块 OTA 系统才能使用 dm-verity。</p>
+
+<h2 id="Recommendations">推荐</h2>
+
+<p>对于使用 Android 5.0 或更高版本启动的设备，请在出厂 ROM 中使用块 OTA 更新。要为后续更新生成基于块的 OTA，请将 <code>--block</code> 选项传递到 <code>ota_from_target_files</code>。</p>
+
+<p>对于搭载 Android 4.4 或更低版本的设备，请使用文件 OTA 更新。虽然可以通过发送 Android 5.0 或更高版本的完整块 OTA 来转换设备，但这需要发送一个明显大于增量 OTA 的完整 OTA（因此不建议采用该方法）。
+</p>
+
+<p>由于仅在搭载 Android 5.0 或更高版本的新设备中提供 dm-verity 所需的引导加载程序支持，因此无法为现有设备启用 dm-verity。<i></i></p>
+
+<p>致力于开发 Android OTA 系统（生成 OTA 的恢复映像和脚本）的开发者可以订阅 <a href="https://groups.google.com/forum/#!forum/android-ota">android-ota@googlegroups.com</a> 邮寄名单以及时了解最新动态。</p>
+
+<h2 id="File vs. Block OTAs">文件与块 OTA</h2>
+
+<p>在进行基于文件的 OTA 期间，Android 会尝试在文件系统层更改系统分区的内容（逐个更改）。更新无法保证按照一致的顺序写入文件、具有一致的上次修改时间或超级块、甚至将块放置在块设备上的同一位置。因此，在启用 dm-verity 的设备上执行基于文件的 OTA 将会失败；进行 OTA 尝试后，设备不会启动。</p>
+<p>在执行基于块的 OTA 期间，Android 为设备提供两个块映像（而非两组文件）之间的差异。该更新使用以下方法之一在块级别（位于文件系统下方）针对相应构建服务器来检查设备版本：</p>
+<ul>
+<li><b>完整更新</b>：复制整个系统映像很容易操作且易于生成补丁程序，但同时导致生成的映像较大，因而增加了应用补丁程序的成本。</li>
+<li><b>增量更新</b>：使用二进制文件 differ 工具可生成较小的映像且易于应用补丁程序，但在生成补丁程序本身时却占用大量内存。</li>
+</ul>
+
+<p class="note"><strong>注意</strong>：<code>adb fastboot</code> 在设备上放置与完整 OTA 完全相同的位数，以便刷写设备与块 OTA 兼容。</p>
+
+<h3 id="Unmodified Systems">更新未修改的系统</h3>
+
+<p>对于具有运行 Android 5.0 的未修改系统分区的设备，下载和安装块 OTA 的过程与文件 OTA 相同。不过，OTA 更新本身可能包括以下一个或多个区别：<i></i></p>
+<ul>
+<li><b>下载大小</b>：完整块 OTA 更新的大小接近完整文件 OTA 更新的大小，而增量更新可能只有几兆字节。<p></p>
+
+<img src="../images/ota_size_comparison.png" alt="比较 OTA 大小"/>
+
+<p class="img-caption"><strong>图 1.</strong> 比较 Android 5.0 和 Android 5.1 两个版本之间 Nexus 6 OTA 的大小（不同的目标版本更改）</p>
+
+<p>一般情况下，增量块 OTA 更新大于增量文件 OTA 更新的原因如下：</p>
+<ul>
+<li>数据保存：<i></i>基于块的 OTA 比基于文件的 OTA 保存的数据更多（文件元数据、dm-verity 数据、ext4 布局等）。</li>
+<li>计算算法不同：<i></i>在文件 OTA 更新中，如果两个版本的文件路径完全相同，则 OTA 包不包含该文件的任何数据。在块 OTA 更新中，确定文件中没有发生变化或发生很少变化取决于补丁程序计算算法的质量以及源系统和目标系统中文件数据的布局。</li>
+</ul>
+</li>
+<li><b>对错误 Flash 和 RAM 敏感</b>：如果文件已损坏，只要文件 OTA 没有接触到损坏的文件，则文件 OTA 就会成功；但如果块 OTA 在系统分区上检测到任何损坏，则块 OTA 失败。</li>
+</ul>
+
+<h3 id="Modified Systems">更新已修改的系统</h3>
+<p>对于具有运行 Android 5.0 的已修改系统分区的设备：<i></i></p>
+<ul>
+<li><b>增量块 OTA 更新失败</b>：系统分区可能会在 <code>adb remount</code> 期间或由于恶意软件而被修改。文件 OTA 允许对分区进行一些更改，例如添加不属于源版本或目标版本的文件。但是，块 OTA 不允许向分区添加内容，因此用户需要安装完整 OTA（覆盖所有系统分区修改）或刷写新的系统映像，以启用将来的 OTA。</li>
+<li><b>尝试更改已修改的文件会导致更新失败</b>：对于文件 OTA 和块 OTA 更新，如果 OTA 尝试更改已修改的文件，则 OTA 更新会失败。</li>
+<li><b>尝试访问已修改的文件会生成错误</b>（仅限 dm-verity）：<i></i>对于文件 OTA 和块 OTA 更新，如果 dm-verity 已启用且 OTA 尝试访问系统文件系统的已修改部分，则 OTA 会生成错误。</li>
+</ul>
+
+</body></html>

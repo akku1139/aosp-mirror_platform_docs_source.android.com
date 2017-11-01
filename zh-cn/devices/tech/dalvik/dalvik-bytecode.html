@@ -1,0 +1,1068 @@
+<html devsite><head>
+    <title>Dalvik 字节码</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<h2 id="design">通用设计</h2>
+
+<ul>
+<li>机器模型和调用规范旨在大致模仿常见的真实架构和 C 样式的调用规范：<ul>
+  <li>机器基于寄存器，而帧的大小在创建时确定后就固定不变。每一帧由特定数量的寄存器（由相应方法指定）以及执行该方法所需的所有辅助数据构成，例如（但不限于）程序计数器和对包含该方法的 <code>.dex</code> 文件的引用。
+  </li>
+  <li>当用于位值（例如整数和浮点数）时，寄存器会被视为宽度为 32 位。如果值是 64 位，则使用两个相邻的寄存器。对于寄存器对，没有对齐要求。
+  </li>
+  <li>当用于对象引用时，寄存器会被视为其宽度能够正好容纳一个此类引用。
+  </li>
+  <li>对于按位表示，<code>(Object) null == (int)
+    0</code>。
+  </li>
+  <li>如果一个方法有 N 个参数，则在该方法的调用帧的最后 N 个寄存器中按顺序传递参数。<i></i><i></i>较宽的参数占用两个寄存器。给实例方法传递一个 <code>this</code> 引用作为其第一个参数。
+  </li>
+  </ul>
+</li><li>指令流中的存储单元是 16 位无符号数。某些指令中的某些位会被忽略/必须为 0。
+</li>
+<li>指令并非一定限于特定类型。例如，在不做任何解释的情况下移动 32 位寄存器值的指令不一定非得指定是在移动整数还是浮点数。
+</li>
+<li>对字符串、类型、字段和方法的引用有单独枚举和已编入索引的常量池。
+</li>
+<li>按位字面数据在指令流中内嵌表示。</li>
+<li>在实践中，一个方法需要 16 个以上的寄存器不太常见，而需要 8 个以上的寄存器却相当普遍，因此很多指令仅限于寻址前 16 个寄存器。<i></i>在合理的可能情况下，指令允许引用最多前 256 个寄存器。此外，某些指令还具有允许更多寄存器的变体，包括可寻址 <code>v0</code> - <code>v65535</code> 范围内的寄存器的一对 catch-all <code>move</code> 指令。如果指令变体不能用于寻址所需的寄存器，寄存器内容会（在运算前）从原始寄存器移动到低位寄存器和/或（在运算后）从低位结果寄存器移动到高位寄存器。
+</li>
+<li>存在几个“伪指令”，用来容纳被常规指令（例如，<code>fill-array-data</code>）引用的可变长度数据有效负荷。在正常的执行流程中绝对不能遇到这类指令。此外，这类指令必须位于偶数字节码偏移（即以 4 字节对齐）上。为了满足这一要求，如果这类指令未对齐，则 dex 生成工具必须发出额外的 <code>nop</code> 指令来进行填充。最后，虽然并非必须这样做，但是大多数工具会选择在方法的末尾发出这些额外的指令，否则可能需要在这些方法周围分布额外的指令。
+</li>
+<li>如果安装到正在运行的系统中，那么在安装过程中，静态链接优化可能会更改某些指令的格式。这样可以在链接已知之后加快执行的速度。有关建议的变体，请参阅相关的<a href="instruction-formats.html">指令格式文档</a>。使用“建议”一词是因为并非必须强制实施这些变体。
+</li>
+<li>人类语法和助记符：<ul>
+  <li>对参数进行 Dest-then-source 排序。</li>
+  <li>一些运算码具有消除歧义的名称后缀，这些后缀用来表明运算类型：<ul>
+    <li>常规类型的 32 位运算码未标记。</li>
+    <li>常规类型的 64 位运算码以 <code>-wide</code> 为后缀。</li>
+    <li>特定类型的运算码以其类型（或简单缩写）为后缀，这些类型包括：<code>-boolean</code>、<code>-byte</code>、<code>-char</code>、<code>-short</code>、<code>-int</code>、<code>-long</code>、<code>-float</code>、<code>-double</code>、<code>-object</code>、<code>-string</code>、<code>-class</code> 和 <code>-void</code>。</li>
+    </ul>
+  </li>
+  <li>一些运算码具有消除歧义的后缀，这些后缀用于区分具有不同指令版式或选项的相同运算。这些后缀与主要名称之间以斜杠（“<code>/</code>”）分开，主要目的是使生成和解析可执行文件的代码中存在与静态常量的一对一映射关系（即，降低让代码查看者感到模糊不清的可能性）。
+  </li>
+  <li>在本文档的说明部分，我们使用 4 位宽的字符来强调值的宽度（例如，表示常量的范围或可能寻址的寄存器的数量）。
+  </li>
+  <li>例如，在指令“<code>move-wide/from16 vAA, vBBBB</code>”中：<ul>
+    <li>“<code>move</code>”为基础运算码，表示这是基本运算（移动寄存器的值）。</li>
+    <li>“<code>wide</code>”为名称后缀，表示指令对较宽（64 位）数据进行运算。</li>
+    <li>“<code>from16</code>”为运算码后缀，表示具有 16 位寄存器引用源的变体。</li>
+    <li>“<code>vAA</code>”为目标寄存器（隐含在运算中；并且，规定目标参数始终在前），取值范围为 <code>v0</code> - <code>v255</code>。</li>
+    <li>“<code>vBBBB</code>”为源寄存器，取值范围为 <code>v0</code> - <code>v65535</code>。</li>
+    </ul>
+  </li>
+  </ul>
+</li>
+<li>请参阅<a href="instruction-formats.html">指令格式文档</a>，详细了解各种指令格式（在“运算和格式”下列出）以及运算码语法。
+</li>
+<li>请参阅 <a href="dex-format.html"><code>.dex</code> 文件格式文档</a>，详细了解字节码如何融入整个编码环境。
+</li>
+</ul>
+
+<h2 id="instructions">字节码集合的总结</h2>
+
+<table class="instruc">
+<thead>
+<tr>
+  <th>运算和格式</th>
+  <th>助记符/语法</th>
+  <th>参数</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>00 10x</td>
+  <td>nop</td>
+  <td> </td>
+  <td>空循环。
+    <p class="note"><strong>注意</strong>：数据传送伪指令用此运算码来标记，在这种情况下，运算码单元的高阶字节表示数据的性质。请参阅下文的“<code>packed-switch-payload</code> 格式”、“<code>sparse-switch-payload</code> 格式”和“<code>fill-array-data-payload</code> 格式”。</p>
+  </td>
+</tr>
+<tr>
+  <td>01 12x</td>
+  <td>move vA, vB</td>
+  <td><code>A:</code> 目标寄存器（4 位）<br />
+    <code>B:</code> 源寄存器（4 位）</td>
+  <td>将一个非对象寄存器的内容移到另一个非对象寄存器中。</td>
+</tr>
+<tr>
+  <td>02 22x</td>
+  <td>move/from16 vAA, vBBBB</td>
+  <td><code>A:</code> 目标寄存器（8 位）<br />
+    <code>B:</code> 源寄存器（16 位）</td>
+  <td>将一个非对象寄存器的内容移到另一个非对象寄存器中。</td>
+</tr>
+<tr>
+  <td>03 32x</td>
+  <td>move/16 vAAAA, vBBBB</td>
+  <td><code>A:</code> 目标寄存器（16 位）<br />
+    <code>B:</code> 源寄存器（16 位）</td>
+  <td>将一个非对象寄存器的内容移到另一个非对象寄存器中。</td>
+</tr>
+<tr>
+  <td>04 12x</td>
+  <td>move-wide vA, vB</td>
+  <td><code>A:</code> 目标寄存器对（4 位）<br />
+    <code>B:</code> 源寄存器对（4 位）</td>
+  <td>将一个寄存器对的内容移到另一个寄存器对中。
+    <p class="note"><strong>注意</strong>：可以从 <code>v<i>N</i></code> 移到 <code>v<i>N-1</i></code> 或 <code>v<i>N+1</i></code>，因此必须在执行写入运算之前，为要读取的寄存器对的两部分均安排实现。</p>
+  </td>
+</tr>
+<tr>
+  <td>05 22x</td>
+  <td>move-wide/from16 vAA, vBBBB</td>
+  <td><code>A:</code> 目标寄存器对（8 位）<br />
+    <code>B:</code> 源寄存器对（16 位）</td>
+  <td>将一个寄存器对的内容移到另一个寄存器对中。
+    <p class="note"><strong>注意</strong>：实现的注意事项与上文的 <code>move-wide</code> 相同。</p>
+  </td>
+</tr>
+<tr>
+  <td>06 32x</td>
+  <td>move-wide/16 vAAAA, vBBBB</td>
+  <td><code>A:</code> 目标寄存器对（16 位）<br />
+    <code>B:</code> 源寄存器对（16 位）</td>
+  <td>将一个寄存器对的内容移到另一个寄存器对中。
+    <p class="note"><strong>注意</strong>：实现的注意事项与上文的 <code>move-wide</code> 相同。</p>
+  </td>
+</tr>
+<tr>
+  <td>07 12x</td>
+  <td>move-object vA, vB</td>
+  <td><code>A:</code> 目标寄存器（4 位）<br />
+    <code>B:</code> 源寄存器（4 位）</td>
+  <td>将一个对象传送寄存器的内容移到另一个对象传送寄存器中。</td>
+</tr>
+<tr>
+  <td>08 22x</td>
+  <td>move-object/from16 vAA, vBBBB</td>
+  <td><code>A:</code> 目标寄存器（8 位）<br />
+    <code>B:</code> 源寄存器（16 位）</td>
+  <td>将一个对象传送寄存器的内容移到另一个对象传送寄存器中。</td>
+</tr>
+<tr>
+  <td>09 32x</td>
+  <td>move-object/16 vAAAA, vBBBB</td>
+  <td><code>A:</code> 目标寄存器（16 位）<br />
+    <code>B:</code> 源寄存器（16 位）</td>
+  <td>将一个对象传送寄存器的内容移到另一个对象传送寄存器中。</td>
+</tr>
+<tr>
+  <td>0a 11x</td>
+  <td>move-result vAA</td>
+  <td><code>A:</code> 目标寄存器（8 位）</td>
+  <td>将最新的 <code>invoke-<i>kind</i></code> 的单字非对象结果移到指定的寄存器中。该指令必须紧跟在（单字非对象）结果不会被忽略的 <code>invoke-<i>kind</i></code> 之后执行，否则无效。</td>
+</tr>
+<tr>
+  <td>0b 11x</td>
+  <td>move-result-wide vAA</td>
+  <td><code>A:</code> 目标寄存器对（8 位）</td>
+  <td>将最新的 <code>invoke-<i>kind</i></code> 的双字结果移到指定的寄存器对中。该指令必须紧跟在（双字）结果不会被忽略的 <code>invoke-<i>kind</i></code> 之后执行，否则无效。</td>
+</tr>
+<tr>
+  <td>0c 11x</td>
+  <td>move-result-object vAA</td>
+  <td><code>A:</code> 目标寄存器（8 位）</td>
+  <td>将最新的 <code>invoke-<i>kind</i></code> 的对象结果移到指定的寄存器中。该指令必须紧跟在（对象）结果不会被忽略的 <code>invoke-<i>kind</i></code> 或 <code>filled-new-array</code> 之后执行，否则无效。</td>
+</tr>
+<tr>
+  <td>0d 11x</td>
+  <td>move-exception vAA</td>
+  <td><code>A:</code> 目标寄存器（8 位）</td>
+  <td>将刚刚捕获的异常保存到给定寄存器中。该指令必须为捕获的异常不会被忽略的任何异常处理程序的第一条指令，且该指令必须仅作为异常处理程序的第一条指令执行，否则无效。<i></i></td>
+</tr>
+<tr>
+  <td>0e 10x</td>
+  <td>return-void</td>
+  <td> </td>
+  <td>从 <code>void</code> 方法返回。</td>
+</tr>
+<tr>
+  <td>0f 11x</td>
+  <td>return vAA</td>
+  <td><code>A:</code> 返回值寄存器（8 位）</td>
+  <td>从单字宽度（32 位）非对象值返回方法返回。
+  </td>
+</tr>
+<tr>
+  <td>10 11x</td>
+  <td>return-wide vAA</td>
+  <td><code>A:</code> 返回值寄存器对（8 位）</td>
+  <td>从双字宽度（64 位）值返回方法返回。</td>
+</tr>
+<tr>
+  <td>11 11x</td>
+  <td>return-object vAA</td>
+  <td><code>A:</code> 返回值寄存器（8 位）</td>
+  <td>从对象返回方法返回。</td>
+</tr>
+<tr>
+  <td>12 11n</td>
+  <td>const/4 vA, #+B</td>
+  <td><code>A:</code> 目标寄存器（4 位）<br />
+    <code>B:</code> 有符号整数（4 位）</td>
+  <td>将给定的字面值（符号扩展为 32 位）移到指定的寄存器中。</td>
+</tr>
+<tr>
+  <td>13 21s</td>
+  <td>const/16 vAA, #+BBBB</td>
+  <td><code>A:</code> 目标寄存器（8 位）<br />
+    <code>B:</code> 有符号整数（16 位）</td>
+  <td>将给定的字面值（符号扩展为 32 位）移到指定的寄存器中。</td>
+</tr>
+<tr>
+  <td>14 31i</td>
+  <td>const vAA, #+BBBBBBBB</td>
+  <td><code>A:</code> 目标寄存器（8 位）<br />
+    <code>B:</code> 任意 32 位常量</td>
+  <td>将给定的字面值移到指定的寄存器中。</td>
+</tr>
+<tr>
+  <td>15 21h</td>
+  <td>const/high16 vAA, #+BBBB0000</td>
+  <td><code>A:</code> 目标寄存器（8 位）<br />
+    <code>B:</code> 有符号整数（16 位）</td>
+  <td>将给定的字面值（右零扩展为 32 位）移到指定的寄存器中。</td>
+</tr>
+<tr>
+  <td>16 21s</td>
+  <td>const-wide/16 vAA, #+BBBB</td>
+  <td><code>A:</code> 目标寄存器（8 位）<br />
+    <code>B:</code> 有符号整数（16 位）</td>
+  <td>将给定的字面值（符号扩展为 64 位）移到指定的寄存器对中。</td>
+</tr>
+<tr>
+  <td>17 31i</td>
+  <td>const-wide/32 vAA, #+BBBBBBBB</td>
+  <td><code>A:</code> 目标寄存器（8 位）<br />
+    <code>B:</code> 有符号整数（32 位）</td>
+  <td>将给定的字面值（符号扩展为 64 位）移到指定的寄存器对中。</td>
+</tr>
+<tr>
+  <td>18 51l</td>
+  <td>const-wide vAA, #+BBBBBBBBBBBBBBBB</td>
+  <td><code>A:</code> 目标寄存器（8 位）<br />
+    <code>B:</code> 任意双字宽度（64 位）常量</td>
+  <td>将给定的字面值移到指定的寄存器对中。</td>
+</tr>
+<tr>
+  <td>19 21h</td>
+  <td>const-wide/high16 vAA, #+BBBB000000000000</td>
+  <td><code>A:</code> 目标寄存器（8 位）<br />
+    <code>B:</code> 有符号整数（16 位）</td>
+  <td>将给定的字面值（右零扩展为 64 位）移到指定的寄存器对中。</td>
+</tr>
+<tr>
+  <td>1a 21c</td>
+  <td>const-string vAA, string@BBBB</td>
+  <td><code>A:</code> 目标寄存器（8 位）<br />
+    <code>B:</code> 字符串索引</td>
+  <td>将通过给定的索引获取的字符串引用移到指定的寄存器中。</td>
+</tr>
+<tr>
+  <td>1b 31c</td>
+  <td>const-string/jumbo vAA, string@BBBBBBBB</td>
+  <td><code>A:</code> 目标寄存器（8 位）<br />
+    <code>B:</code> 字符串索引</td>
+  <td>将通过给定的索引获取的字符串引用移到指定的寄存器中。</td>
+</tr>
+<tr>
+  <td>1c 21c</td>
+  <td>const-class vAA, type@BBBB</td>
+  <td><code>A:</code> 目标寄存器（8 位）<br />
+    <code>B:</code> 类型索引</td>
+  <td>将通过给定的索引获取的类引用移到指定的寄存器中。如果指定的类型是原始类型，则将存储对原始类型的退化类的引用。</td>
+</tr>
+<tr>
+  <td>1d 11x</td>
+  <td>monitor-enter vAA</td>
+  <td><code>A:</code> 引用传送寄存器（8 位）</td>
+  <td>获取指定对象的监视锁。</td>
+</tr>
+<tr>
+  <td>1e 11x</td>
+  <td>monitor-exit vAA</td>
+  <td><code>A:</code> 引用传送寄存器（8 位）</td>
+  <td>释放指定对象的监视锁。
+    <p class="note"><strong>注意</strong>：如果该指令需要抛出异常，则必须以 pc 已提前超出该指令的方式抛出。不妨将其想象成，该指令（在一定意义上）已成功执行，并且在该指令之后但又在下一条指令找到机会执行之前抛出异常。<i></i><i></i>这种定义使得某个方法有可能将监视锁清理 catch-all（例如 <code>finally</code>）分块用作分块自身的监视锁清理，以便处理可能由于 <code>Thread.stop()</code> 的既往实现而抛出的任意异常，同时仍尽力维持适当程度的监视锁安全机制。</p>
+  </td>
+</tr>
+<tr>
+  <td>1f 21c</td>
+  <td>check-cast vAA, type@BBBB</td>
+  <td><code>A:</code> 引用传送寄存器（8 位）<br />
+    <code>B:</code> 类型索引（16 位）</td>
+  <td>如果给定寄存器中的引用不能转型为指定的类型，则抛出 <code>ClassCastException</code>。
+    <p class="note"><strong>注意</strong>：由于 <code>A</code> 必须始终是引用（而非原始值），因此如果 <code>B</code> 引用原始类型，则必然会在运行时失败（即抛出异常）。</p>
+  </td>
+</tr>
+<tr>
+  <td>20 22c</td>
+  <td>instance-of vA, vB, type@CCCC</td>
+  <td><code>A:</code> 目标寄存器（4 位）<br />
+    <code>B:</code> 引用传送寄存器（4 位）<br />
+    <code>C:</code> 类型索引（16 位）</td>
+  <td>如果指定的引用是给定类型的实例，则为给定目标寄存器赋值 <code>1</code>，否则赋值 <code>0</code>。
+    <p class="note"><strong>注意</strong>：由于 <code>B</code> 必须始终是引用（而非原始值），因此如果 <code>C</code> 引用原始类型，则始终赋值 <code>0</code>。</p></td>
+</tr>
+<tr>
+  <td>21 12x</td>
+  <td>array-length vA, vB</td>
+  <td><code>A:</code> 目标寄存器（4 位）<br />
+    <code>B:</code> 数组引用传送寄存器（4 位）</td>
+  <td>将指定数组的长度（条目个数）赋值给给定目标寄存器</td>
+</tr>
+<tr>
+  <td>22 21c</td>
+  <td>new-instance vAA, type@BBBB</td>
+  <td><code>A:</code> 目标寄存器（8 位）<br />
+    <code>B:</code> 类型索引</td>
+  <td>根据指定的类型构造新实例，并将对该新实例的引用存储到目标寄存器中。该类型必须引用非数组类。</td>
+</tr>
+<tr>
+  <td>23 22c</td>
+  <td>new-array vA, vB, type@CCCC</td>
+  <td><code>A:</code> 目标寄存器（4 位）<br />
+    <code>B:</code> 大小寄存器<br />
+    <code>C:</code> 类型索引</td>
+  <td>根据指定的类型和大小构造新数组。该类型必须是数组类型。</td>
+</tr>
+<tr>
+  <td>24 35c</td>
+  <td>filled-new-array {vC, vD, vE, vF, vG}, type@BBBB</td>
+  <td>
+    <code>A:</code> 数组大小和参数字数（4 位）<br />
+    <code>B:</code> 类型索引（16 位）<br />
+    <code>C..G:</code> 参数寄存器（每个寄存器各占 4 位）</td>
+  <td>根据给定类型和大小构造数组，并使用提供的内容填充该数组。该类型必须是数组类型。数组的内容必须是单字类型（即不接受 <code>long</code> 或 <code>double</code> 类型的数组，但接受引用类型的数组）。构造的实例会存储为一个“结果”，方式与方法调用指令存储其结果的方式相同，因此构造的实例必须移到后面紧跟 <code>move-result-object</code> 指令（如果要使用的话）的寄存器。</td>
+</tr>
+<tr>
+  <td>25 3rc</td>
+  <td>filled-new-array/range {vCCCC .. vNNNN}, type@BBBB</td>
+  <td><code>A:</code> 数组大小和参数字数（8 位）<br />
+    <code>B:</code> 类型索引（16 位）<br />
+    <code>C:</code> 第一个参数寄存器（16 位）<br />
+    <code>N = A + C - 1</code></td>
+  <td>根据给定类型和大小构造数组，并使用提供的内容填充该数组。相关的说明和限制与上文所述 <code>filled-new-array</code> 的相同。</td>
+</tr>
+<tr>
+  <td>26 31t</td>
+  <td>fill-array-data vAA, +BBBBBBBB（有关补充数据，请参阅下文的“<code>fill-array-data-payload</code> 格式”）<i></i></td>
+  <td><code>A:</code> 数组引用（8 位）<br />
+    <code>B:</code> 到表格数据伪指令的有符号“分支”偏移量（32 位）</td>
+  <td>用指定的数据填充给定数组。必须引用原始类型的数组，且数据表格的类型必须与数组匹配；此外，数据表格所包含的元素个数不得超出数组中的元素个数。也就是说，数组可能比表格大；如果是这样，仅设置数组的初始元素，而忽略剩余元素。
+  </td>
+</tr>
+<tr>
+  <td>27 11x</td>
+  <td>throw vAA</td>
+  <td><code>A:</code> 异常传送寄存器（8 位）<br /></td>
+  <td>抛出指定的异常。</td>
+</tr>
+<tr>
+  <td>28 10t</td>
+  <td>goto +AA</td>
+  <td><code>A:</code> 有符号分支偏移量（8 位）</td>
+  <td>无条件地跳转到指定的指令。
+    <p class="note"><strong>注意</strong>：分支偏移量不得为 <code>0</code>。（自旋循环可以用 <code>goto/32</code> 或通过在分支之前添加 <code>nop</code> 作为目标来正常构造）。</p>
+  </td>
+</tr>
+<tr>
+  <td>29 20t</td>
+  <td>goto/16 +AAAA</td>
+  <td><code>A:</code> 有符号分支偏移量（16 位）<br /></td>
+  <td>无条件地跳转到指定的指令。
+    <p class="note"><strong>注意</strong>：分支偏移量不得为 <code>0</code>。（自旋循环可以用 <code>goto/32</code> 或通过在分支之前添加 <code>nop</code> 作为目标来正常构造）。</p>
+  </td>
+</tr>
+<tr>
+  <td>2a 30t</td>
+  <td>goto/32 +AAAAAAAA</td>
+  <td><code>A:</code> 有符号分支偏移量（32 位）<br /></td>
+  <td>无条件地跳转到指定的指令。</td>
+</tr>
+<tr>
+  <td>2b 31t</td>
+  <td>packed-switch vAA, +BBBBBBBB（有关补充数据，请参阅下文的“<code>packed-switch-payload</code> 格式”）<i></i></td>
+  <td><code>A:</code> 要测试的寄存器<br />
+    <code>B:</code> 到表格数据伪指令的有符号“分支”偏移量（32 位）</td>
+  <td>通过使用与特定整数范围内的每个值相对应的偏移量表，基于给定寄存器中的值跳转到新指令；如果没有匹配项，则跳转到下一条指令。
+  </td>
+</tr>
+<tr>
+  <td>2c 31t</td>
+  <td>sparse-switch vAA, +BBBBBBBB（有关补充数据，请参阅下文的“<code>sparse-switch-payload</code> 格式”）<i></i></td>
+  <td><code>A:</code> 要测试的寄存器<br />
+    <code>B:</code> 到表格数据伪指令的有符号“分支”偏移量（32 位）</td>
+  <td>通过使用偏移值对的有序表，基于给定寄存器中的值跳转到新指令；如果没有匹配项，则跳转到下一条指令。
+  </td>
+</tr>
+<tr>
+  <td>2d..31 23x</td>
+  <td>cmp<i>kind</i> vAA, vBB, vCC<br />2d: cmpl-float <i>(lt bias)</i><br />2e: cmpg-float <i>(gt bias)</i><br />2f: cmpl-double <i>(lt bias)</i><br />30: cmpg-double <i>(gt bias)</i><br />31: cmp-long</td>
+  <td><code>A:</code> 目标寄存器（8 位）<br />
+    <code>B:</code> 第一个源寄存器或寄存器对<br />
+    <code>C:</code> 第二个源寄存器或寄存器对</td>
+  <td>执行指定的浮点或 <code>long</code> 比较；如果 <code>b == c</code>，则将 <code>a</code> 设为 <code>0</code>，如果 <code>b &gt; c</code>，则设为 <code>1</code>，或者，如果 <code>b &lt; c</code>，则设为 <code>-1</code>。浮点运算列出的“bias”表示如何处理 <code>NaN</code> 比较：对于 <code>NaN</code> 比较，“gt bias”指令返回 <code>1</code>，而“lt bias”指令返回 <code>-1</code>。
+    <p>例如，建议使用 <code>cmpg-float</code> 来检查浮点数是否满足条件 <code>x &lt; y</code>；如果结果是 <code>-1</code>，则表示测试为 true，其他值则表示测试为 false，原因是当前比较是有效比较但是结果不符合预期或其中一个值是 <code>NaN</code>。</p>
+  </td>
+</tr>
+<tr>
+  <td>32..37 22t</td>
+  <td>if-<i>test</i> vA, vB, +CCCC<br />32: if-eq<br />33: if-ne<br />34: if-lt<br />35: if-ge<br />36: if-gt<br />37: if-le<br />
+  </td>
+  <td><code>A:</code> 要测试的第一个寄存器（4 位）<br />
+    <code>B:</code> 要测试的第二个寄存器（4 位）<br />
+    <code>C:</code> 有符号分支偏移量（16 位）</td>
+  <td>如果两个给定寄存器的值比较结果符合预期，则分支到给定目标寄存器。
+    <p class="note"><strong>注意</strong>：分支偏移量不得为 <code>0</code>。（自旋循环可以通过围绕后向 <code>goto</code> 进行分支或通过在分支之前添加 <code>nop</code> 作为目标来正常构造。）</p>
+  </td>
+</tr>
+<tr>
+  <td>38..3d 21t</td>
+  <td>if-<i>test</i>z vAA, +BBBB<br />38: if-eqz<br />39: if-nez<br />3a: if-ltz<br />3b: if-gez<br />3c: if-gtz<br />3d: if-lez<br />
+  </td>
+  <td><code>A:</code> 要测试的寄存器（8 位）<br />
+    <code>B:</code> 有符号分支偏移量（16 位）</td>
+  <td>如果给定寄存器的值与 0 的比较结果符合预期，则分支到给定目标寄存器。
+    <p class="note"><strong>注意</strong>：分支偏移量不得为 <code>0</code>。（自旋循环可以通过围绕后向 <code>goto</code> 进行分支或通过在分支之前添加 <code>nop</code> 作为目标来正常构造。）</p>
+  </td>
+</tr>
+<tr>
+  <td>3e..43 10x</td>
+  <td><i>（未使用）</i></td>
+  <td> </td>
+  <td><i>（未使用）</i></td>
+</tr>
+<tr>
+  <td>44..51 23x</td>
+  <td><i>arrayop</i> vAA, vBB, vCC<br />44: aget<br />45: aget-wide<br />46: aget-object<br />47: aget-boolean<br />48: aget-byte<br />49: aget-char<br />4a: aget-short<br />4b: aput<br />4c: aput-wide<br />4d: aput-object<br />4e: aput-boolean<br />4f: aput-byte<br />50: aput-char<br />51: aput-short</td>
+  <td><code>A:</code> 值寄存器或寄存器对；可以是源寄存器，也可以是目标寄存器（8 位）<br />
+    <code>B:</code> 数组寄存器（8 位）<br />
+    <code>C:</code> 索引寄存器（8 位）</td>
+  <td>在给定数组的已标识索引处执行已确定的数组运算，并将结果加载或存储到值寄存器中。</td>
+</tr>
+<tr>
+  <td>52..5f 22c</td>
+  <td>i<i>instanceop</i> vA, vB, field@CCCC<br />52: iget<br />53: iget-wide<br />54: iget-object<br />55: iget-boolean<br />56: iget-byte<br />57: iget-char<br />58: iget-short<br />59: iput<br />5a: iput-wide<br />5b: iput-object<br />5c: iput-boolean<br />5d: iput-byte<br />5e: iput-char<br />5f: iput-short</td>
+  <td><code>A:</code> 值寄存器或寄存器对；可以是源寄存器，也可以是目标寄存器（4 位）<br />
+    <code>B:</code> 对象寄存器（4 位）<br />
+    <code>C:</code> 实例字段引用索引（16 位）</td>
+  <td>对已标识的字段执行已确定的对象实例字段运算，并将结果加载或存储到值寄存器中。
+    <p class="note"><strong>注意</strong>：这些运算码是静态链接的合理候选项，将字段参数更改为更直接的偏移量。</p>
+  </td>
+</tr>
+<tr>
+  <td>60..6d 21c</td>
+  <td>s<i>staticop</i> vAA, field@BBBB<br />60: sget<br />61: sget-wide<br />62: sget-object<br />63: sget-boolean<br />64: sget-byte<br />65: sget-char<br />66: sget-short<br />67: sput<br />68: sput-wide<br />69: sput-object<br />6a: sput-boolean<br />6b: sput-byte<br />6c: sput-char<br />6d: sput-short</td>
+  <td><code>A:</code> 值寄存器或寄存器对；可以是源寄存器，也可以是目标寄存器（8 位）<br />
+    <code>B:</code> 静态字段引用索引（16 位）</td>
+  <td>对已标识的静态字段执行已确定的对象静态字段运算，并将结果加载或存储到值寄存器中。
+    <p class="note"><strong>注意</strong>：这些运算码是静态链接的合理候选项，将字段参数更改为更直接的偏移量。</p>
+  </td>
+</tr>
+<tr>
+  <td>6e..72 35c</td>
+  <td>invoke-<i>kind</i> {vC, vD, vE, vF, vG}, meth@BBBB<br />6e: invoke-virtual<br />6f: invoke-super<br />70: invoke-direct<br />71: invoke-static<br />72: invoke-interface</td>
+  <td>
+    <code>A:</code> 参数字数（4 位）<br />
+    <code>B:</code> 方法引用索引（16 位）<br />
+    <code>C..G:</code> 参数寄存器（每个寄存器各占 4 位）</td>
+  <td>调用指定的方法。所得结果（如果有的话）可能与紧跟其后的相应 <code>move-result*</code> 变体指令一起存储。
+    <p>使用 <code>invoke-virtual</code> 调用正常的虚方法（该方法不是 <code>private</code>、<code>static</code> 或 <code>final</code>，也不是构造函数）。</p>
+    <p>当 <code>method_id</code> 引用非接口类方法时，使用 <code>invoke-super</code> 调用最近超类的虚方法（这与调用类中具有相同 <code>method_id</code> 的方法相反）。<code>invoke-virtual</code> 具有相同的方法限制。</p>
+    <p>在版本 <code>037</code> 或更高版本的 Dex 文件中，如果 <code>method_id</code> 引用接口方法，则使用 <code>invoke-super</code> 来调用在该接口上定义的该方法的最具体、未被覆盖版本。<code>invoke-virtual</code> 具有相同的方法限制。在版本 <code>037</code> 之前的 Dex 文件中，具有接口 <code>method_id</code> 是不当且未定义的。</p>
+    <p><code>invoke-direct</code> 用于调用非 <code>static</code> 直接方法（也就是说，本质上不可覆盖的实例方法，即 <code>private</code> 实例方法或构造函数）。</p>
+    <p><code>invoke-static</code> 用于调用 <code>static</code> 方法（该方法始终被视为直接方法）。</p>
+    <p><code>invoke-interface</code> 用于调用 <code>interface</code> 方法，也就是说，在具体类未知的对象上，使用引用 <code>interface</code> 的 <code>method_id</code>。</p>
+    <p class="note"><strong>注意</strong>：这些运算码是静态链接的合理候选项，将方法参数更改为更直接的偏移量（或相关的寄存器对）。</p>
+  </td>
+</tr>
+<tr>
+  <td>73 10x</td>
+  <td><i>（未使用）</i></td>
+  <td> </td>
+  <td><i>（未使用）</i></td>
+</tr>
+<tr>
+  <td>74..78 3rc</td>
+  <td>invoke-<i>kind</i>/range {vCCCC .. vNNNN}, meth@BBBB<br />74: invoke-virtual/range<br />75: invoke-super/range<br />76: invoke-direct/range<br />77: invoke-static/range<br />78: invoke-interface/range</td>
+  <td><code>A:</code> 参数字数（8 位）<br />
+    <code>B:</code> 方法引用索引（16 位）<br />
+    <code>C:</code> 第一个参数寄存器（16 位）<br />
+    <code>N = A + C - 1</code></td>
+  <td>调用指定的方法。有关详情、注意事项和建议，请参阅上文第一个 <code>invoke-<i>kind</i></code> 说明。
+  </td>
+</tr>
+<tr>
+  <td>79..7a 10x</td>
+  <td><i>（未使用）</i></td>
+  <td> </td>
+  <td><i>（未使用）</i></td>
+</tr>
+<tr>
+  <td>7b..8f 12x</td>
+  <td><i>unop</i> vA, vB<br />7b: neg-int<br />7c: not-int<br />7d: neg-long<br />7e: not-long<br />7f: neg-float<br />80: neg-double<br />81: int-to-long<br />82: int-to-float<br />83: int-to-double<br />84: long-to-int<br />85: long-to-float<br />86: long-to-double<br />87: float-to-int<br />88: float-to-long<br />89: float-to-double<br />8a: double-to-int<br />8b: double-to-long<br />8c: double-to-float<br />8d: int-to-byte<br />8e: int-to-char<br />8f: int-to-short</td>
+  <td><code>A:</code> 目标寄存器或寄存器对（4 位）<br />
+    <code>B:</code> 源寄存器或寄存器对（4 位）</td>
+  <td>对源寄存器执行已确定的一元运算，并将结果存储到目标寄存器中。</td>
+</tr>
+
+<tr>
+  <td>90..af 23x</td>
+  <td><i>binop</i> vAA, vBB, vCC<br />90: add-int<br />91: sub-int<br />92: mul-int<br />93: div-int<br />94: rem-int<br />95: and-int<br />96: or-int<br />97: xor-int<br />98: shl-int<br />99: shr-int<br />9a: ushr-int<br />9b: add-long<br />9c: sub-long<br />9d: mul-long<br />9e: div-long<br />9f: rem-long<br />a0: and-long<br />a1: or-long<br />a2: xor-long<br />a3: shl-long<br />a4: shr-long<br />a5: ushr-long<br />a6: add-float<br />a7: sub-float<br />a8: mul-float<br />a9: div-float<br />aa: rem-float<br />ab: add-double<br />ac: sub-double<br />ad: mul-double<br />ae: div-double<br />af: rem-double</td>
+  <td><code>A:</code> 目标寄存器或寄存器对（8 位）<br />
+    <code>B:</code> 第一个源寄存器或寄存器对（8 位）<br />
+    <code>C:</code> 第二个源寄存器或寄存器对（8 位）</td>
+  <td>对两个源寄存器执行已确定的二元运算，并将结果存储到目标寄存器中。
+    <p class="note"><strong>注意</strong>：与其他 <code>-long</code> 数学运算（对第一个和第二个源寄存器都采用寄存器对的运算）相反，<code>shl-long</code>、<code>shr-long</code> 和 <code>ushr-long</code> 对第一个源寄存器采用寄存器对（存放要移动的值），而对第二个源寄存器采用单个寄存器（存放移动的距离）。
+    </p>
+</td>
+</tr>
+<tr>
+  <td>b0..cf 12x</td>
+  <td><i>binop</i>/2addr vA, vB<br />b0: add-int/2addr<br />b1: sub-int/2addr<br />b2: mul-int/2addr<br />b3: div-int/2addr<br />b4: rem-int/2addr<br />b5: and-int/2addr<br />b6: or-int/2addr<br />b7: xor-int/2addr<br />b8: shl-int/2addr<br />b9: shr-int/2addr<br />ba: ushr-int/2addr<br />bb: add-long/2addr<br />bc: sub-long/2addr<br />bd: mul-long/2addr<br />be: div-long/2addr<br />bf: rem-long/2addr<br />c0: and-long/2addr<br />c1: or-long/2addr<br />c2: xor-long/2addr<br />c3: shl-long/2addr<br />c4: shr-long/2addr<br />c5: ushr-long/2addr<br />c6: add-float/2addr<br />c7: sub-float/2addr<br />c8: mul-float/2addr<br />c9: div-float/2addr<br />ca: rem-float/2addr<br />cb: add-double/2addr<br />cc: sub-double/2addr<br />cd: mul-double/2addr<br />ce: div-double/2addr<br />cf: rem-double/2addr</td>
+  <td><code>A:</code> 目标寄存器和第一个源寄存器或寄存器对（4 位）<br />
+    <code>B:</code> 第二个源寄存器或寄存器对（4 位）</td>
+  <td>对两个源寄存器执行已确定的二元运算，并将结果存储到第一个源寄存器中。
+    <p class="note"><strong>注意</strong>：与其他 <code>-long/2addr</code> 数学运算（对目标寄存器/第一个源寄存器和第二个源寄存器都采用寄存器对的运算）相反，<code>shl-long/2addr</code>、<code>shr-long/2addr</code> 和 <code>ushr-long/2addr</code> 对目标寄存器/第一个源寄存器采用寄存器对（存放要移动的值），而对第二个源寄存器采用单个寄存器（存放移动的距离）。
+    </p>
+  </td>
+</tr>
+<tr>
+  <td>d0..d7 22s</td>
+  <td><i>binop</i>/lit16 vA, vB, #+CCCC<br />d0: add-int/lit16<br />d1: rsub-int (reverse subtract)<br />d2: mul-int/lit16<br />d3: div-int/lit16<br />d4: rem-int/lit16<br />d5: and-int/lit16<br />d6: or-int/lit16<br />d7: xor-int/lit16</td>
+  <td><code>A:</code> 目标寄存器（4 位）<br />
+    <code>B:</code> 源寄存器（4 位）<br />
+    <code>C:</code> 有符号整数常量（16 位）</td>
+  <td>对指定的寄存器（第一个参数）和字面值（第二个参数）执行指定的二元运算，并将结果存储到目标寄存器中。
+    <p class="note"><strong>注意</strong>：<code>rsub-int</code> 不含后缀，因为此版本是其一系列运算码中的主运算码。另外，有关语义的详细信息，请参阅下文。
+    </p>
+  </td>
+</tr>
+<tr>
+  <td>d8..e2 22b</td>
+  <td><i>binop</i>/lit8 vAA, vBB, #+CC<br />d8: add-int/lit8<br />d9: rsub-int/lit8<br />da: mul-int/lit8<br />db: div-int/lit8<br />dc: rem-int/lit8<br />dd: and-int/lit8<br />de: or-int/lit8<br />df: xor-int/lit8<br />e0: shl-int/lit8<br />e1: shr-int/lit8<br />e2: ushr-int/lit8</td>
+  <td><code>A:</code> 目标寄存器（8 位）<br />
+    <code>B:</code> 源寄存器（8 位）<br />
+    <code>C:</code> 有符号整数常量（8 位）</td>
+  <td>对指定的寄存器（第一个参数）和字面值（第二个参数）执行指定的二元运算，并将结果存储到目标寄存器中。
+    <p class="note"><strong>注意</strong>：有关 <code>rsub-int</code> 语义的详细信息，请参阅下文。</p>
+  </td>
+</tr>
+<tr>
+  <td>e3..f9 10x</td>
+  <td><i>（未使用）</i></td>
+  <td> </td>
+  <td><i>（未使用）</i></td>
+</tr>
+<tr>
+  <td>fa 45cc</td>
+  <td>invoke-polymorphic {vC, vD, vE, vF, vG}, meth@BBBB, proto@HHHH</td>
+  <td>
+    <code>A:</code> 参数字数（4 位）<br />
+    <code>B:</code> 方法引用索引（16 位）<br />
+    <code>C:</code> 要调用的方法句柄引用（16 位）<br />
+    <code>D..G:</code> 参数寄存器（每个寄存器各占 4 位）<br />
+    <code>H:</code> 原型引用索引（16 位）<br />
+  </td>
+  <td>调用指定的方法句柄。所得结果（如果有的话）可能与紧跟其后的相应 <code>move-result*</code> 变体指令一起存储。
+    <p>方法引用必须针对 <code>java.lang.invoke.MethodHandle.invoke</code> 或 <code>java.lang.invoke.MethodHandle.invokeExact</code>。
+    </p><p>原型引用说明了所提供的参数类型和预期的返回类型。
+    </p><p><code>invoke-polymorphic</code> 字节码执行时可能会引发异常。有关这些异常的详情，请参阅 <code>java.lang.invoke.MethodHandle.invoke</code> 和 <code>java.lang.invoke.MethodHandle.invokeExact</code> 的 API 文档。
+    </p><p>存在于 <code>038</code> 和更高版本的 Dex 文件中。
+  </p></td>
+</tr>
+<tr>
+  <td>fb 4rcc</td>
+  <td>invoke-polymorphic/range {vCCCC .. vNNNN}, meth@BBBB, proto@HHHH</td>
+  <td>
+    <code>A:</code> 参数字数（8 位）<br />
+    <code>B:</code> 方法引用索引（16 位）<br />
+    <code>C:</code> 要调用的方法句柄引用（16 位）<br />
+    <code>H:</code> 原型引用索引（16 位）<br />
+    <code>N = A + C - 1</code>
+  </td>
+  <td>调用指定的方法句柄。有关详情，请参阅上文的 <code>invoke-polymorphic</code> 说明。
+    <p>存在于 <code>038</code> 和更高版本的 Dex 文件中。
+  </p></td>
+</tr>
+<tr>
+  <td>fc 35c</td>
+  <td>invoke-custom {vC, vD, vE, vF, vG}, call_site@BBBB</td>
+  <td>
+    <code>A:</code> 参数字数（4 位）<br />
+    <code>B:</code> 调用点引用索引（16 位）<br />
+    <code>C..G:</code> 参数寄存器（每个寄存器各占 4 位）</td>
+  <td>解析并调用指定的调用点。调用的结果（如果有的话）可能与紧跟其后的相应 <code>move-result*</code> 变体指令一起存储。
+
+    <p>该指令分两个阶段执行：调用点解析和调用点调用。
+
+    </p><p>调用点解析会检查指定的调用点是否有关联的 <code>java.lang.invoke.CallSite</code> 实例。如果没有，则使用 Dex 文件（请参阅 <a href="dex-format.html#call-site-item">call_site_item</a>）中存在的参数调用指定的调用点的引导链接器方法。引导链接器方法会返回 <code>java.lang.invoke.CallSite</code> 实例；如果不存在关联，则该实例将与指定的调用点关联。另一个线程可能已先进行了关联；如果是这种情况，则通过第一个关联的 <code>java.lang.invoke.CallSite</code> 实例继续执行该指令。
+
+    </p><p>调用点调用是对 <code>java.lang.invoke.MethodHandle</code> 目标进行调用，该目标属于所解析的 <code>java.lang.invoke.CallSite</code> 实例。调用目标就像执行 <code>invoke-polymorphic</code>（如上所述）一样，使用 <code>invoke-custom</code> 指令的方法句柄和作为精确方法句柄调用的参数。
+
+    </p><p>引导链接器方法引发的异常封装在 <code>java.lang.BootstrapMethodError</code> 中。如果出现下列情况，还将引发 <code>BootstrapMethodError</code>：</p><ul>
+        <li>该引导链接器方法无法返回 <code>java.lang.invoke.CallSite</code> 实例。</li>
+        <li>返回的 <code>java.lang.invoke.CallSite</code> 具有 <code>null</code> 方法句柄目标。</li>
+        <li>该方法句柄目标不属于所请求的类型。</li>
+      </ul>
+    <p>存在于 <code>038</code> 和更高版本的 Dex 文件中。
+  </p></td>
+</tr>
+<tr>
+  <td>fd 3rc</td>
+  <td>invoke-custom/range {vCCCC .. vNNNN}, call_site@BBBB</td>
+  <td>
+    <code>A:</code> 参数字数（8 位）<br />
+    <code>B:</code> 调用点引用索引（16 位）<br />
+    <code>C:</code> 第一个参数寄存器（16 位）<br />
+    <code>N = A + C - 1</code>
+  </td>
+  <td>解析并调用一个调用点。有关详情，请参阅上文的 <code>invoke-custom</code> 说明。
+    <p>存在于 <code>038</code> 和更高版本的 Dex 文件中。
+  </p></td>
+</tr>
+<tr>
+  <td>fe..ff 10x</td>
+  <td><i>（未使用）</i></td>
+  <td> </td>
+  <td><i>（未使用）</i></td>
+</tr>
+</tbody>
+</table>
+
+<h2 id="packed-switch">packed-switch-payload 格式</h2>
+
+<table class="supplement">
+<thead>
+<tr>
+  <th>名称</th>
+  <th>格式</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>ident</td>
+  <td>ushort = 0x0100</td>
+  <td>识别伪运算码</td>
+</tr>
+<tr>
+  <td>size</td>
+  <td>ushort</td>
+  <td>表格中的条目数</td>
+</tr>
+<tr>
+  <td>first_key</td>
+  <td>int</td>
+  <td>第一位（即最低位）switch case 的值</td>
+</tr>
+<tr>
+  <td>targets</td>
+  <td>int[]</td>
+  <td>与 <code>size</code> 相对的分支目标的列表。这些目标相对应的是 switch 运算码的地址（而非此表格的地址）。
+  </td>
+</tr>
+</tbody>
+</table>
+
+<p class="note"><strong>注意</strong>：此表格的实例的代码单元总数为 <code>(size * 2) + 4</code>。</p>
+
+<h2 id="sparse-switch">sparse-switch-payload 格式</h2>
+
+<table class="supplement">
+<thead>
+<tr>
+  <th>名称</th>
+  <th>格式</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>ident</td>
+  <td>ushort = 0x0200</td>
+  <td>识别伪运算码</td>
+</tr>
+<tr>
+  <td>size</td>
+  <td>ushort</td>
+  <td>表格中的条目数</td>
+</tr>
+<tr>
+  <td>keys</td>
+  <td>int[]</td>
+  <td><code>size</code> 键值列表，从低到高排序</td>
+</tr>
+<tr>
+  <td>targets</td>
+  <td>int[]</td>
+  <td>与 <code>size</code> 相对应的分支目标的列表，每一个目标对应相同索引下的键值。这些目标相对应的是 switch 运算码的地址（而非此表格的地址）。
+  </td>
+</tr>
+</tbody>
+</table>
+
+<p class="note"><strong>注意</strong>：此表格的实例的代码单元总数为 <code>(size * 4) + 2</code>。</p>
+
+<h2 id="fill-array">fill-array-data-payload 格式</h2>
+
+<table class="supplement">
+<thead>
+<tr>
+  <th>名称</th>
+  <th>格式</th>
+  <th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>ident</td>
+  <td>ushort = 0x0300</td>
+  <td>识别伪运算码</td>
+</tr>
+<tr>
+  <td>element_width</td>
+  <td>ushort</td>
+  <td>每个元素的字节数</td>
+</tr>
+<tr>
+  <td>size</td>
+  <td>uint</td>
+  <td>表格中的元素数</td>
+</tr>
+<tr>
+  <td>data</td>
+  <td>ubyte[]</td>
+  <td>数据值</td>
+</tr>
+</tbody>
+</table>
+
+<p class="note"><strong>注意</strong>：此表格的实例的代码单元总数为 <code>(size * element_width + 1) / 2 + 4</code>。</p>
+
+<h2 id="math">数学运算详情</h2>
+
+<p class="note"><strong>注意</strong>：除非另有说明，否则浮点运算必须遵循 IEEE 754 规则，使用最近舍入和渐进式下溢。</p>
+
+<table class="math">
+<thead>
+<tr>
+  <th>运算码</th>
+  <th>C 语义</th>
+  <th>备注</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>neg-int</td>
+  <td>int32 a;<br />int32 result = -a;</td>
+  <td>一元二进制补码。</td>
+</tr>
+<tr>
+  <td>not-int</td>
+  <td>int32 a;<br />int32 result = ~a;</td>
+  <td>一元反码。</td>
+</tr>
+<tr>
+  <td>neg-long</td>
+  <td>int64 a;<br />int64 result = -a;</td>
+  <td>一元二进制补码。</td>
+</tr>
+<tr>
+  <td>not-long</td>
+  <td>int64 a;<br />int64 result = ~a;</td>
+  <td>一元反码。</td>
+</tr>
+<tr>
+  <td>neg-float</td>
+  <td>float a;<br />float result = -a;</td>
+  <td>浮点否定。</td>
+</tr>
+<tr>
+  <td>neg-double</td>
+  <td>double a;<br />double result = -a;</td>
+  <td>浮点否定。</td>
+</tr>
+<tr>
+  <td>int-to-long</td>
+  <td>int32 a;<br />int64 result = (int64) a;</td>
+  <td>将 <code>int32</code> 符号扩展为 <code>int64</code>。</td>
+</tr>
+<tr>
+  <td>int-to-float</td>
+  <td>int32 a;<br />float result = (float) a;</td>
+  <td>使用最近舍入，将 <code>int32</code> 转换为 <code>float</code>。这会导致某些值不够精准。
+  </td>
+</tr>
+<tr>
+  <td>int-to-double</td>
+  <td>int32 a;<br />double result = (double) a;</td>
+  <td>将 <code>int32</code> 转换为 <code>double</code>。</td>
+</tr>
+<tr>
+  <td>long-to-int</td>
+  <td>int64 a;<br />int32 result = (int32) a;</td>
+  <td>将 <code>int64</code> 截断为 <code>int32</code>。</td>
+</tr>
+<tr>
+  <td>long-to-float</td>
+  <td>int64 a;<br />float result = (float) a;</td>
+  <td>使用最近舍入，将 <code>int64</code> 转换为 <code>float</code>。这会导致某些值不够精准。
+  </td>
+</tr>
+<tr>
+  <td>long-to-double</td>
+  <td>int64 a;<br />double result = (double) a;</td>
+  <td>使用最近舍入，将 <code>int64</code> 转换为 <code>double</code>。这会导致某些值不够精准。
+  </td>
+</tr>
+<tr>
+  <td>float-to-int</td>
+  <td>float a;<br />int32 result = (int32) a;</td>
+  <td>使用向零舍入，将 <code>float</code> 转换为 <code>int32</code>。<code>NaN</code> 和 <code>-0.0</code>（负零）转换为整数 <code>0</code>。无穷数和因所占幅面过大而无法表示的值根据符号转换为 <code>0x7fffffff</code> 或 <code>-0x80000000</code>。
+  </td>
+</tr>
+<tr>
+  <td>float-to-long</td>
+  <td>float a;<br />int64 result = (int64) a;</td>
+  <td>使用向零舍入，将 <code>float</code> 转换为 <code>int64</code>。适用于 <code>float-to-int</code> 的特殊情况规则也适用于此，但超出范围的值除外，这些值根据符号转换为 <code>0x7fffffffffffffff</code> 或 <code>-0x8000000000000000</code>。
+  </td>
+</tr>
+<tr>
+  <td>float-to-double</td>
+  <td>float a;<br />double result = (double) a;</td>
+  <td>将 <code>float</code> 转换为 <code>double</code>，值依然精准。
+  </td>
+</tr>
+<tr>
+  <td>double-to-int</td>
+  <td>double a;<br />int32 result = (int32) a;</td>
+  <td>使用向零舍入，将 <code>double</code> 转换为 <code>int32</code>。适用于 <code>float-to-int</code> 的特殊情况规则也适用于此。
+  </td>
+</tr>
+<tr>
+  <td>double-to-long</td>
+  <td>double a;<br />int64 result = (int64) a;</td>
+  <td>使用向零舍入，将 <code>double</code> 转换为 <code>int64</code>。适用于 <code>float-to-long</code> 的特殊情况规则也适用于此。
+  </td>
+</tr>
+<tr>
+  <td>double-to-float</td>
+  <td>double a;<br />float result = (float) a;</td>
+  <td>使用最近舍入，将 <code>double</code> 转换为 <code>float</code>。这会导致某些值不够精准。
+  </td>
+</tr>
+<tr>
+  <td>int-to-byte</td>
+  <td>int32 a;<br />int32 result = (a &lt;&lt; 24) &gt;&gt; 24;</td>
+  <td>符号扩展结果，将 <code>int32</code> 截断为 <code>int8</code>。
+  </td>
+</tr>
+<tr>
+  <td>int-to-char</td>
+  <td>int32 a;<br />int32 result = a &amp; 0xffff;</td>
+  <td>无需符号扩展，将 <code>int32</code> 截断为 <code>uint16</code>。
+  </td>
+</tr>
+<tr>
+  <td>int-to-short</td>
+  <td>int32 a;<br />int32 result = (a &lt;&lt; 16) &gt;&gt; 16;</td>
+  <td>符号扩展结果，将 <code>int32</code> 截断为 <code>int16</code>。
+  </td>
+</tr>
+<tr>
+  <td>add-int</td>
+  <td>int32 a, b;<br />int32 result = a + b;</td>
+  <td>二进制补码加法。</td>
+</tr>
+<tr>
+  <td>sub-int</td>
+  <td>int32 a, b;<br />int32 result = a - b;</td>
+  <td>二进制补码减法。</td>
+</tr>
+<tr>
+  <td>rsub-int</td>
+  <td>int32 a, b;<br />int32 result = b - a;</td>
+  <td>二进制补码反向减法。</td>
+</tr>
+<tr>
+  <td>mul-int</td>
+  <td>int32 a, b;<br />int32 result = a * b;</td>
+  <td>二进制补码乘法。</td>
+</tr>
+<tr>
+  <td>div-int</td>
+  <td>int32 a, b;<br />int32 result = a / b;</td>
+  <td>二进制补码除法，向零舍入（即截断为整数）。如果 <code>b == 0</code>，则会抛出 <code>ArithmeticException</code>。
+  </td>
+</tr>
+<tr>
+  <td>rem-int</td>
+  <td>int32 a, b;<br />int32 result = a % b;</td>
+  <td>二进制补码除后取余数。结果的符号与 <code>a</code> 的符号相同，可更精确地定义为 <code>result == a - (a / b) * b</code>。如果 <code>b == 0</code>，则会抛出 <code>ArithmeticException</code>。
+  </td>
+</tr>
+<tr>
+  <td>and-int</td>
+  <td>int32 a, b;<br />int32 result = a &amp; b;</td>
+  <td>按位 AND。</td>
+</tr>
+<tr>
+  <td>or-int</td>
+  <td>int32 a, b;<br />int32 result = a | b;</td>
+  <td>按位 OR。</td>
+</tr>
+<tr>
+  <td>xor-int</td>
+  <td>int32 a, b;<br />int32 result = a ^ b;</td>
+  <td>按位 XOR。</td>
+</tr>
+<tr>
+  <td>shl-int</td>
+  <td>int32 a, b;<br />int32 result = a &lt;&lt; (b &amp; 0x1f);</td>
+  <td>按位左移（带掩码参数）。</td>
+</tr>
+<tr>
+  <td>shr-int</td>
+  <td>int32 a, b;<br />int32 result = a &gt;&gt; (b &amp; 0x1f);</td>
+  <td>按位有符号右移（带掩码参数）。</td>
+</tr>
+<tr>
+  <td>ushr-int</td>
+  <td>uint32 a, b;<br />int32 result = a &gt;&gt; (b &amp; 0x1f);</td>
+  <td>按位无符号右移（带掩码参数）。</td>
+</tr>
+<tr>
+  <td>add-long</td>
+  <td>int64 a, b;<br />int64 result = a + b;</td>
+  <td>二进制补码加法。</td>
+</tr>
+<tr>
+  <td>sub-long</td>
+  <td>int64 a, b;<br />int64 result = a - b;</td>
+  <td>二进制补码减法。</td>
+</tr>
+<tr>
+  <td>mul-long</td>
+  <td>int64 a, b;<br />int64 result = a * b;</td>
+  <td>二进制补码乘法。</td>
+</tr>
+<tr>
+  <td>div-long</td>
+  <td>int64 a, b;<br />int64 result = a / b;</td>
+  <td>二进制补码除法，向零舍入（即截断为整数）。如果 <code>b == 0</code>，则会抛出 <code>ArithmeticException</code>。
+  </td>
+</tr>
+<tr>
+  <td>rem-long</td>
+  <td>int64 a, b;<br />int64 result = a % b;</td>
+  <td>二进制补码除后取余数。结果的符号与 <code>a</code> 的符号相同，可更精确地定义为 <code>result == a - (a / b) * b</code>。如果 <code>b == 0</code>，则会抛出 <code>ArithmeticException</code>。
+  </td>
+</tr>
+<tr>
+  <td>and-long</td>
+  <td>int64 a, b;<br />int64 result = a &amp; b;</td>
+  <td>按位 AND。</td>
+</tr>
+<tr>
+  <td>or-long</td>
+  <td>int64 a, b;<br />int64 result = a | b;</td>
+  <td>按位 OR。</td>
+</tr>
+<tr>
+  <td>xor-long</td>
+  <td>int64 a, b;<br />int64 result = a ^ b;</td>
+  <td>按位 XOR。</td>
+</tr>
+<tr>
+  <td>shl-long</td>
+  <td>int64 a;<br />int32 b;<br />int64 result = a &lt;&lt; (b &amp; 0x3f);</td>
+  <td>按位左移（带掩码参数）。</td>
+</tr>
+<tr>
+  <td>shr-long</td>
+  <td>int64 a;<br />int32 b;<br />int64 result = a &gt;&gt; (b &amp; 0x3f);</td>
+  <td>按位有符号右移（带掩码参数）。</td>
+</tr>
+<tr>
+  <td>ushr-long</td>
+  <td>uint64 a;<br />int32 b;<br />int64 result = a &gt;&gt; (b &amp; 0x3f);</td>
+  <td>按位无符号右移（带掩码参数）。</td>
+</tr>
+<tr>
+  <td>add-float</td>
+  <td>float a, b;<br />float result = a + b;</td>
+  <td>浮点加法。</td>
+</tr>
+<tr>
+  <td>sub-float</td>
+  <td>float a, b;<br />float result = a - b;</td>
+  <td>浮点减法。</td>
+</tr>
+<tr>
+  <td>mul-float</td>
+  <td>float a, b;<br />float result = a * b;</td>
+  <td>浮点乘法。</td>
+</tr>
+<tr>
+  <td>div-float</td>
+  <td>float a, b;<br />float result = a / b;</td>
+  <td>浮点除法。</td>
+</tr>
+<tr>
+  <td>rem-float</td>
+  <td>float a, b;<br />float result = a % b;</td>
+  <td>浮点除后取余数。该函数不同于 IEEE 754 取余，定义为 <code>result == a - roundTowardZero(a / b) * b</code>。
+  </td>
+</tr>
+<tr>
+  <td>add-double</td>
+  <td>double a, b;<br />double result = a + b;</td>
+  <td>浮点加法。</td>
+</tr>
+<tr>
+  <td>sub-double</td>
+  <td>double a, b;<br />double result = a - b;</td>
+  <td>浮点减法。</td>
+</tr>
+<tr>
+  <td>mul-double</td>
+  <td>double a, b;<br />double result = a * b;</td>
+  <td>浮点乘法。</td>
+</tr>
+<tr>
+  <td>div-double</td>
+  <td>double a, b;<br />double result = a / b;</td>
+  <td>浮点除法。</td>
+</tr>
+<tr>
+  <td>rem-double</td>
+  <td>double a, b;<br />double result = a % b;</td>
+  <td>浮点除后取余数。该函数不同于 IEEE 754 取余，定义为 <code>result == a - roundTowardZero(a / b) * b</code>。
+  </td>
+</tr>
+</tbody>
+</table>
+
+</body></html>

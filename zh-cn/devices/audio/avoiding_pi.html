@@ -1,0 +1,224 @@
+<html devsite><head>
+    <title>避免优先级倒置</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>
+本文介绍了 Android 的音频系统如何尝试避免优先级倒置，还重点介绍了您可以使用的技术。
+</p>
+
+<p>
+对于高性能音频应用的开发者、原始设备制造商 (OEM) 和要实现音频 HAL 的 SoC 提供商而言，这些技术可能很有用。请注意，实现这些技术不能保证一定不会出现错误或其他故障，尤其在音频环境之外使用时。使用不同的技术，获得的结果可能也会不同，您需要自己进行评估和测试。
+</p>
+
+<h2 id="background">背景</h2>
+
+<p>
+Android AudioFlinger 音频服务器和 AudioTrack/AudioRecord 客户端实现正在进行架构调整，以缩短延迟时间。这项工作从 Android 4.1 开始，在 4.2、4.3、4.4 和 5.0 中得到了进一步改进。
+</p>
+
+<p>
+为了缩短延迟时间，需要对整个系统进行大量更改。其中一项重要更改是采用预测性更高的调度策略将 CPU 资源分配给对时间要求严格的线程。可靠的调度可减小音频缓冲区的大小和数目，同时仍可避免欠载和溢出。
+</p>
+
+<h2 id="priorityInversion">优先级倒置</h2>
+
+<p>
+<a href="http://en.wikipedia.org/wiki/Priority_inversion">优先级倒置</a>是实时系统的一种典型故障模式，在这种模式下，优先级较高的任务会因等待优先级较低的任务释放<a href="http://en.wikipedia.org/wiki/Mutual_exclusion">互斥</a>（保护的共享状态）等资源而无限时受阻。
+</p>
+
+<p>
+在音频系统中，如果使用环形缓冲区或其在响应命令时延迟，优先级倒置通常表现为音频<a href="http://en.wikipedia.org/wiki/Glitch">错误</a>（咔嗒声、爆裂声、音频丢失）和<a href="http://en.wikipedia.org/wiki/Max_Headroom_(character)">音频重复</a>。
+</p>
+
+<p>
+优先级倒置的常见解决方法是增加音频缓冲区大小。不过，这种方法会增加延迟时间，仅仅将问题隐藏，而非解决问题。最好的方法是了解并防止优先级倒置，如下所示。
+</p>
+
+<p>
+在 Android 音频实现中，优先级倒置最有可能发生在以下位置。因此，您应该重点关注这些位置：
+</p>
+
+<ul>
+
+<li>
+AudioFlinger 中的常规混合器线程和快速混合器线程之间
+</li>
+
+<li>
+快速 AudioTrack 的应用回调线程和快速混合器线程之间（它们的优先级都较高，但略有不同）
+</li>
+
+<li>
+快速 AudioRecord 的应用回调线程和快速捕获线程之间（与上一种情况类似）
+</li>
+
+<li>
+在音频硬件抽象层 (HAL) 实现（例如用于电话或回声消除的实现）中
+</li>
+
+<li>
+在内核的音频驱动程序中
+</li>
+
+<li>
+AudioTrack 或 AudioRecord 回调线程和其他应用线程（这不在我们的控制范围内）之间
+</li>
+
+</ul>
+
+<h2 id="commonSolutions">常用解决方法</h2>
+
+<p>
+一般采用的解决方法包括：
+</p>
+
+<ul>
+
+<li>
+停用中断
+</li>
+
+<li>
+优先级继承互斥
+</li>
+
+</ul>
+
+<p>
+停用中断在 Linux 用户空间中不可行，且不适用于对称多处理器 (SMP)。
+</p>
+
+<p>
+优先级继承 <a href="http://en.wikipedia.org/wiki/Futex">futex</a>（快速用户空间互斥）在 Linux 内核中可用，但目前并未由 Android C 运行时库 <a href="http://en.wikipedia.org/wiki/Bionic_(software)">Bionic</a> 采用。由于它们的负载相对较重，且依赖于可信客户端，因此不用于音频系统中。
+</p>
+
+<h2 id="androidTechniques">Android 使用的技术</h2>
+
+<p>
+实验从“尝试锁定”(try lock) 和超时锁定开始。它们是互斥锁定操作的非阻塞和有界阻塞变体。尝试锁定和超时锁定的效果相当不错，但容易受到几个罕见故障模式的影响：如果客户端繁忙，则不能保证服务器一定能够访问共享状态；如果一长系列不相关的锁定都已超时，则累积的超时时间可能会过长。
+</p>
+
+<p>
+我们还使用<a href="http://en.wikipedia.org/wiki/Linearizability">原子操作</a>，例如：
+</p>
+
+<ul>
+<li>递增</li>
+<li>按位“或”</li>
+<li>按位“和”</li>
+</ul>
+
+<p>
+所有这些操作均返回之前的值，并包含必要的 SMP 屏障。缺点在于它们可能需要无限次重试。在实践中，我们发现重试并不是问题。
+</p>
+
+<p class="note"><strong>注意</strong>：原子操作及其与内存屏障的互动遭到非常严重的误解和误用。我们在此处提供这些方法，是为了提供完整的信息；不过，建议您同时阅读 <a href="https://developer.android.com/training/articles/smp.html">SMP Primer for Android</a> 这篇文章，以了解更多信息。
+</p>
+
+<p>
+我们仍然保有和使用上述大多数工具，并在最近添加了以下技术：
+</p>
+
+<ul>
+
+<li>
+针对数据使用非阻塞单读取器单写入器 <a href="http://en.wikipedia.org/wiki/Circular_buffer">FIFO 队列</a>。
+</li>
+
+<li>
+在高优先级和低优先级模块之间尝试“复制”状态而非“共享”状态。<i></i><i></i>
+</li>
+
+<li>
+如果确实需要共享状态，请将状态的大小上限设为一个<a href="http://en.wikipedia.org/wiki/Word_(computer_architecture)">字</a>，在不重试的情况下，可以在单个总线操作中通过原子方式访问该状态。
+</li>
+
+<li>
+对于复杂的多字状态，请使用状态队列。状态队列基本上只是用于状态（而非数据）的非阻塞单读取器单写入器 FIFO 队列，写入器将相邻推送收成单个推送这一情况除外。
+</li>
+
+<li>
+注意<a href="http://en.wikipedia.org/wiki/Memory_barrier">内存屏障</a>，以保证 SMP 的准确性。
+</li>
+
+<li>
+<a href="http://en.wikipedia.org/wiki/Trust,_but_verify">信任，但要验证</a>。在进程之间共享“状态”时，请勿假定状态的格式正确无误。<i></i>例如，检查索引是否在范围内。在同一个进程中的线程之间，以及在相互信任的进程（通常具有相同的 UID）之间，不需要进行验证。此外，也无需验证共享的“数据”，例如出现非继发性损坏的 PCM 音频。<i></i>
+</li>
+
+</ul>
+
+<h2 id="nonBlockingAlgorithms">非阻塞算法</h2>
+
+<p>
+<a href="http://en.wikipedia.org/wiki/Non-blocking_algorithm">非阻塞算法</a>是我们最近一直在研究的一项内容。不过，除了单读取器单写入器 FIFO 队列之外，我们发现此类算法复杂且容易出错。
+</p>
+
+<p>
+从 Android 4.2 开始，您可以在以下位置找到我们的非阻塞单读取器/写入器类：
+</p>
+
+<ul>
+
+<li>
+frameworks/av/include/media/nbaio/
+</li>
+
+<li>
+frameworks/av/media/libnbaio/
+</li>
+
+<li>
+frameworks/av/services/audioflinger/StateQueue*
+</li>
+
+</ul>
+
+<p>
+它们是专为 AudioFlinger 设计的，并不通用。非阻塞算法因其难以调试而臭名昭著。您可以将此代码视为一种模型。不过请注意，非阻塞算法可能会出现错误，且不能保证这些类一定适合用于其他用途。
+</p>
+
+<p>
+对于开发者来说，应该更新部分示例 OpenSL ES 应用代码，以使用非阻塞算法或参照非 Android 开放源代码库。
+</p>
+
+<p>
+我们发布了一个示例非阻塞 FIFO 实现，该实现专为应用代码设计。请在平台源目录 <code>frameworks/av/audio_utils</code> 中查看以下文件：
+</p>
+<ul>
+  <li><a href="https://android.googlesource.com/platform/system/media/+/master/audio_utils/include/audio_utils/fifo.h">include/audio_utils/fifo.h</a></li>
+  <li><a href="https://android.googlesource.com/platform/system/media/+/master/audio_utils/fifo.c">fifo.c</a></li>
+  <li><a href="https://android.googlesource.com/platform/system/media/+/master/audio_utils/include/audio_utils/roundup.h">include/audio_utils/roundup.h</a></li>
+  <li><a href="https://android.googlesource.com/platform/system/media/+/master/audio_utils/roundup.c">roundup.c</a></li>
+</ul>
+
+<h2 id="tools">工具</h2>
+
+<p>
+据我们所知，目前没有用于找出优先级倒置（尤其是在优先级倒置发生之前）的自动工具。一些研究型静态代码分析工具如果能够访问整个代码库，就能找出优先级倒置。当然，如果涉及到任意用户代码（这里指应用）或用户代码是一个大型代码库（如 Linux 内核和设备驱动程序），则进行静态分析可能会不切实际。最重要的是，请务必认真阅读代码，并充分理解整个系统和各种交互操作。<a href="http://developer.android.com/tools/help/systrace.html">systrace</a> 和 <code>ps -t -p</code> 等工具有助于在优先级倒置发生后及时发现，但并不会提前告知您。
+</p>
+
+<h2 id="aFinalWord">总结</h2>
+
+<p>
+经过上述讨论后，请不要害怕互斥。一般情况下，互斥会是您的得力助手，例如，在时间不紧急的一般使用情形中正确使用和实现互斥时。但在高优先级任务和低优先级任务之间以及在时间敏感型系统中，互斥更有可能会导致出现问题。
+</p>
+
+</body></html>

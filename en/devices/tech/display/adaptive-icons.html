@@ -1,0 +1,148 @@
+<html devsite>
+  <head>
+    <title>Implementing Adaptive Icons</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+    <p>
+    Adaptive Icons maintain a consistent shape intra-device but vary from device to
+    device with only one icon asset provided by the developer. Additionally, icons
+    support two layers (foreground and background) that can be used for motion to
+    provide visual delight to users.
+    </p>
+    <p>
+    Device implementers provide a device mask that will decide the shape of all icons on a
+    device. This icon will be used on any system UI surfaces that use Launcher Icons
+    (e.g., launcher, overview, settings and share sheet).
+    </p>
+    <h2 id="examples-and-source">Examples and source</h2>
+    <p>
+    Code examples:
+    </p><ul>
+      <li><code>platform/development/samples/AdaptiveIconSample/</code></li></ul>
+    <p>
+
+    Developer documentation:
+    </p><ul>
+    <li><a
+    href="https://developer.android.com/preview/features/adaptive-icons.html">https://developer.android.com/preview/features/adaptive-icons.html</a>
+    <li><a
+    href="https://developer.android.com/reference/android/graphics/drawable/AdaptiveIconDrawable.html">https://developer.android.com/reference/android/graphics/drawable/AdaptiveIconDrawable.html</a>
+    <li><a
+    href="https://developer.android.com/reference/android/graphics/drawable/Icon.html#createWithAdaptiveBitmap(android.graphics.Bitmap)">https://developer.android.com/reference/android/graphics/drawable/Icon.html#createWithAdaptiveBitmap(android.graphics.Bitmap)</a></li></ul>
+    <p>
+
+    Source code:
+    </p><ul>
+    <li><code>platform/frameworks/base/graphics/java/android/graphics/drawable/AdaptiveIconDrawable.java</code></li></ul>
+    <h2 id="implementation">Implementation</h2>
+    <p>
+    To change the shape of the icon on a platform, overlay one string in
+    <code>framework/base/core/res/res/values/config.xml</code>, as follows:
+    </p>
+
+    <pre
+    class="prettyprint">&lt;!-- Specifies the path that is used by AdaptiveIconDrawable class to crop launcher icons. -->
+	&lt;string name="config_icon_mask" translatable="false">"M50,0L100,0 100,100 0,100 0,0z"&lt;/string></pre>
+    <p>
+    The format and syntax of the string follow the <a
+    href="https://www.w3.org/TR/SVG/paths.html">W3, SVG standard for path
+    definition</a>. This format for PathData is what Android vector drawables
+    support as well.
+    </p>
+    <p>
+    This path should be convex and should respect the safezone (66/71 = 91%) within
+    the view bounds. This is enforced in one of the CTS tests.
+    </p>
+    <p>
+    If you decide to use a circle as the platform mask, make sure to also overlay
+    config_useRoundIcon = true. If not, set this config value false or do not
+    specify this config value.
+    </p>
+    <h2>Adaptive Icon API</h2>
+    <p>
+    The API for the <code>AdaptiveIconDrawable</code> class is shown below:
+    </p>
+
+
+    <pre
+    class="prettyprint">package  android.graphics.drawable;
+    public class AdaptiveIconDrawable extends Drawable implements Drawable.Callback {
+	method public Drawable getBackground();
+	method public Drawable getForeground();
+	method public Path getIconMask();
+	method public Region getSafeZone();
+	method public float getExtraInsetFraction();
+	method public int getOpacity();
+	method public void invalidateDrawable(Drawable);
+	method public void scheduleDrawable(Drawable, Runnable, long);
+	method public void setAlpha(int);
+	method public void setColorFilter(ColorFilter);
+	method public void setOpacity(int);
+	method public void unscheduleDrawable(android.graphics.drawable.Drawable, java.lang.Runnable);
+    }</pre>
+
+
+
+    <pre
+    class="prettyprint">public class Icon extends Parceleable {
+	method public Bitmap createWithAdaptiveBitmap();
+    }</pre>
+    <h2>Reference Implementation</h2>
+    <p>
+    Nothing needs to be done to render the static adaptive icons on any of the
+    System UI surfaces. When PackageManager returns a drawable, simply bind that to
+    an ImageView. This is how icons are already rendered in Pre-O platforms.
+    </p>
+    <p>
+    Regarding rendering dynamic motion effect,  Launcher3
+    (platform/packages/apps/Launcher3) will have a reference implementation showing
+    how to achieve the effect in O-MR1.
+    </p>
+    <h2 id="validation">Validation</h2>
+    <p>
+    To validate the implementation, after overriding the mask of their liking, see
+    if icons are rendered correctly in Launcher3, Settings, Overview and Settings.
+    You may also run AdaptiveIconDrawableTest.java and AdaptiveIconMaskTest.java
+    inside graphics CTS TestCase to test the implementation.
+    </p>
+    <p>
+    A recommended manual test case can be found at:
+    platform/development/samples/AdaptiveIconSample/.
+    </p>
+    <h2>Known Issues</h2>
+    <p>
+    Known issues include the following:
+    </p><ul>
+    <li>Blurry icons, depending on how the mask path is defined.
+    <li>Zoomed-in shortcut icons if app developers do not use the
+    <code>Icon.createWithAdaptiveBitmap()</code> method, or do not use this method
+    properly. For this method to function properly, the passed in Bitmap should be
+    padded 25% on all four sides. </li></ul>
+    <p>
+    These issues can be addressed as follows:
+    </p><ul>
+    <li>The mask should be defined in [0, 100] x [0, 100] coordinate system.
+    <li>Make sure that images used for adaptive icons (launcher icons , shortcuts)
+    have sufficient padding (25%) on all four sides.</li></ul>
+
+    </body>
+</html>

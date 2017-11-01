@@ -1,0 +1,192 @@
+<html devsite>
+  <head>
+    <title>Privileged Permission Whitelist Requirement</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+    <p>
+    Historically device implementers had little control over which
+    signature|privileged permissions could be granted to privileged apps.
+    Privileged applications are system applications that are located in
+    <code>/system/priv-app</code> directory on the system image.
+    </p>
+
+    <p>
+    Starting in Android 8.0, all privileged apps must be explicitly whitelisted in
+    system configuration XML files in the <code>/etc/permissions</code> directory.
+    If they are not, then the device will boot, but the device implementation will
+    not pass CTS.
+    </p>
+
+    <h2 id="adding-the-whitelists">Adding the whitelists</h2>
+
+    <p>
+    Permission whitelists for applications can be listed in a single or multiple XML
+    files located in the <code>frameworks/base/etc/permissions</code> directory, as follows:
+    </p>
+
+    <ul>
+      <li><code>/etc/permissions/privapp-permissions-&lt;OEM_NAME&gt;.xml</code>
+      <li><code>/etc/permissions/privapp-permissions-&lt;DEVICE_NAME&gt;.xml</code>.
+    </ul>
+
+    <p>
+    There is no strict rule for organizing content, it can be decided by the device implementer as
+    long as all applications from <code>/system/priv-app</code> are whitelisted. For
+    example, Google has a single whitelist for all privileged applications developed
+    by Google.
+    </p>
+
+    <p>
+    The following organization is recommended:
+    </p>
+
+    <ul>
+      <li>Permissions for apps that are already included in AOSP tree are listed in
+      this file: <code>/etc/permissions/privapp-permissions-platform.xml</code>
+      <li>Permissions for Google applications are listed in this file:
+      <code>/etc/permissions/privapp-permissions-google.xml </code>
+      <li>For other applications, use files of the form:
+      <code>
+      /etc/permissions/privapp-permissions-&lt;device_name&gt;.xml</code></li>
+    </ul>
+
+    <h3 id="whitelist-generation-tool">Whitelist generation tool</h3>
+
+    <p>
+    A whitelist for all applications available on the system image can be
+    automatically generated using a command-line tool available in AOSP, at the
+    following location:
+    </p>
+
+    <pre
+    class="prettyprint">development/tools/privapp_permissions/privapp_permissions.py
+    </pre>
+
+    <p>
+    To generate an initial version of device-specific
+    <code>privapp-permissions.xml</code>, complete the following steps:
+
+    </p>
+    <ol>
+      <li>Build a system image, as follows:<br>
+        <pre>$ . build/envsetup.sh
+$ lunch product_name
+$ make -j</pre>
+      </li>
+
+      <li>Run the following tool to generate a <code>privapp-permissions.xml
+      </code>file that lists all signature|privileged permissions that are required to
+      be whitelisted.<br>
+      <pre>$ development/tools/privapp_permissions/privapp_permissions.py</pre><br>
+
+      This tool prints XML content that can be used as a single file or split into
+      multiple files in <code>/etc/permissions</code>.<br><br>
+      If device already includes whitelists in the <code>/etc/permissions</code> directory, the tool
+      prints the difference, that is, only the missing signature|privileged
+      permissions that need to be added to the whitelist. This is also useful for
+      audit purposes, when a new version of the app is added, the tool will detect the
+      additional permissions needed.
+      </li>
+      <li>Copy the generated files to the <code>/etc/permissions</code> directory, where the system
+        will read it during boot.</li>
+    </ol>
+    <h3 id="whitelist-format">Whitelist format</h3>
+    <ul>
+      <li>Since the  implementation is already in AOSP, only customization is needed.
+      <li>Permissions for apps that are included in AOSP tree are already whitelisted
+        in <code>/etc/permissions/privapp-permissions-platform.xml</code>
+      </li>
+    </ul>
+
+
+
+    <pre class="prettyprint">&lt;!--
+    This XML file declares which signature|privileged permissions should be granted to privileged
+    applications that come with the platform
+    -->
+    &lt;permissions>
+	&lt;privapp-permissions package="com.android.backupconfirm">
+	    &lt;permission name="android.permission.BACKUP"/>
+	    &lt;permission name="android.permission.CRYPT_KEEPER"/>
+	&lt;/privapp-permissions>
+	&lt;privapp-permissions package="com.android.cellbroadcastreceiver">
+	    &lt;permission name="android.permission.INTERACT_ACROSS_USERS"/>
+	    &lt;permission name="android.permission.MANAGE_USERS"/>
+	    &lt;permission name="android.permission.MODIFY_PHONE_STATE"/>
+	    &lt;permission name="android.permission.READ_PRIVILEGED_PHONE_STATE"/>
+	    &lt;permission name="android.permission.RECEIVE_EMERGENCY_BROADCAST"/>
+	&lt;/privapp-permissions>
+    ...</pre>
+
+    <h3 id="enabling-logs-to-find-missing-permissions">Enabling logs to find missing
+    permissions</h3>
+    <p>
+    When bringing up a new device, we recommend enabling transitional log-mode at
+    first, as follows:
+    </p>
+    <p>
+    <strong> <code>ro.control_privapp_permission=log</code> </strong>
+
+    <p>
+    The violations will be reported in the log file, but permissions will still be
+    granted. This will keep device in a working state, while providing the list of
+    violations.
+    </p>
+    <p>
+    Error message format is as follows:
+    </p>
+    <p>
+
+    <code>PackageManager: Privileged permission {PERMISSION_NAME} for package
+    {PACKAGE_NAME} - not in privapp-permissions whitelist</code>
+    </p>
+    <p>
+    All violations must be  addressed by adding them to whitelists. Otherwise device
+    will not pass CTS tests.
+    </p>
+    <h2 id="cts-tests-for-whitelists">CTS tests for whitelists</h2>
+    <p>
+    Your device implementation will not pass CTS if it contains privileged apps that
+    do not appear in a whitelist at <code>/etc/permissions.</code>
+    </p>
+    <p>
+    <code>The </code>PrivappPermissionsTest.java  test enforces the
+    signature|privileged permission whitelist, as follows:
+    </p><ul>
+    <li>Reports the permissions that are granted into the CTS log.
+    <li>Ensures all priv permissions are exclusively granted to applications
+    declared in <code>&lt;privapp-permissions&gt;,</code> i.e. it will fail if a
+    privileged application is requesting signature|privileged permission that is not
+    whitelisted or a whitelisted permission wasn't granted by the system.</li></ul>
+    <h2 id="run-time-enforcement-of-whitelists">Run-time enforcement of
+    whitelists</h2>
+    <p>
+    Once the whitelists are in place, run-time enforcement can be enabled by setting
+    a build property <code>ro.control_privapp_permission=enforce</code>.
+    </p>
+    <p>
+    <strong>Note: </strong>Please note that regardless of
+    <code>ro.control_privapp_permission</code> property state, only devices with
+    properly whitelisted privileged permissions for all privileged applications will
+    pass CTS tests.
+    </p>
+
+  </body>
+</html>

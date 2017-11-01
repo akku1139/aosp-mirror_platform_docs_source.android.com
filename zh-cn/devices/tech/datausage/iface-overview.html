@@ -1,0 +1,28 @@
+<html devsite><head>
+    <title>网络接口统计信息概览</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>在 Android 4.0 中，Linux 网络接口所报告的统计信息会不时进行记录，并用于强制执行网络配额限制、呈现用户可见的图表等操作。</p>
+<p>每个网络设备驱动程序（包括 WLAN）都必须遵循标准的内核设备生命周期，并通过 <code>dev_get_stats()</code> 返回正确的统计信息。特别是即便接口处于激活状态时，返回的统计信息也必须严格保持单调统一性。驱动程序可能仅在成功完成 <code>unregister_netdev()</code> 或者为通过 <code>register_netdevice_notifier()</code> <code>register_inetaddr_notifier()</code>/<code>register_inet6addr_notifier()</code> 注册的回调生成 <code>NETDEV_UNREGISTER</code> 事件的类似命令时重置统计信息。</p>
+<p>移动运营商通常会在网络层 (IP) 计算数据流量。为了在 Android 4.0 中匹配这种方法，我们依赖于这样一个事实：对于内核设备，我们关注 <code>dev_get_stats()</code> 所返回的 <code>rx_bytes</code> 和 <code>tx_bytes</code> 值是否准确返回所传输的网络层 (<code>IP</code>) 字节。我们也知道，对其他设备而言可能并非如此。现在，该功能依赖于这一特性。新的驱动程序应该也拥有该属性，且 <code>dev_get_stats()</code> 值不得包含较低网络层（如以太网标头）的任何封装开销，且最好不包含其他流量（如 ARP），除非可以忽略不计。</p>
+<p>Android 框架仅从 <code>ConnectivityService</code> 中与 <code>NetworkStateTracker</code> 关联的网络接口收集统计信息。这样一来，框架就可以具体识别每个网络接口，包括其类型（如 <code>TYPE_MOBILE</code> 或 <code>TYPE_WIFI</code>）以及订阅者身份（如 IMSI）。用于路由数据的所有网络接口都应由 <code>NetworkStateTracker</code> 表示，以便正确计算统计信息。</p>
+
+</body></html>

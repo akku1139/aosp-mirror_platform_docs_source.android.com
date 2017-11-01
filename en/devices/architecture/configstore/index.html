@@ -1,0 +1,108 @@
+<html devsite>
+  <head>
+    <title>Configstore HAL</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+
+<p>Android O splits the monolithic Android OS into generic (system.img)
+and hardware-specific (vendor.img and odm.img) partitions. As a result of this
+change, conditional compilation must be removed from modules installed to the
+system partition and such modules must now determine the configuration of the
+system at runtime (and behave differently depending on that configuration).</p>
+
+<p>The ConfigStore HAL provides a set of APIs for accessing read-only
+configuration items used to configure the Android framework. This page describes
+the design of ConfigStore HAL (and why system properties were not used for this
+purpose); other pages in this section detail the
+<a href="/devices/architecture/configstore/interface.html">HAL interface</a>,
+<a href="/devices/architecture/configstore/service.html">service
+implementation</a>, and
+<a href="/devices/architecture/configstore/client.html">client-side usage</a>,
+all using <code>surfaceflinger</code> as an example. For help with ConfigStore
+interface classes, see
+<a href="/devices/architecture/configstore/add-class-item.html">Adding Interface
+Classes &amp; Items</a>.</p>
+
+<h2 id=system-properties>Why not use system properties?</h2>
+<p>We considered using system properties but found several fundamental issues,
+including: </p>
+<ul>
+<li><strong>Length limits on values</strong>. System properties have
+tight limits on the length of their values (92 bytes). In addition, as these
+limits have been directly exposed to Android apps as C macros, increasing the
+length can cause backwards-compatibility issues.</li>
+<li><strong>No type support</strong>. All values are essentially strings, and
+APIs simply parse the string into an <code>int</code> or <code>bool</code>.
+Other compound data types (array, struct, etc.) should be encoded/decoded by
+the clients (e.g. "aaa,bbb,ccc" can be decoded as an array of three strings).
+</li>
+<li><strong>Overwrites</strong>. Because read-only system properties are
+implemented as write-once properties, vendors/ODMs that want to override
+AOSP-defined read-only values must import their own read-only values prior to
+AOSP-defined read-only values, which in turn results in vendor-defined
+re-writable values being overridden by AOSP-defined values.</li>
+<li><strong>Address space requirements</strong>. System properties take a
+relatively large amount of address space in each process. System properties are
+grouped in <code>prop_area</code> units with a fixed size of 128KB, all of which
+is allocated to a process address space even if only a single system property in
+it is being accessed. This can cause problems on 32-bit devices where address
+space is precious.</li>
+</ul>
+<p>We attempted to overcome these limitations without sacrificing compatibility
+but continued to be concerned that system properties were not designed to
+support accessing read-only configuration items. Eventually we decided that
+system properties are better suited for sharing a few dynamically-updated items
+across all of Android in real time, and that a need existed for a new system
+dedicated to accessing read-only configuration items.</p>
+
+<h2>ConfigStore HAL design</h2>
+<p>The basic design is simple:</p>
+<p><img src="../images/treble_configstore_design.png"></p>
+<p><strong>Figure 1.</strong> ConfigStore HAL design</p>
+
+<ul>
+<li>Describe build flags (currently used for conditionally compiling the
+framework) in HIDL.</li>
+<li>Vendors and OEMs provide SoC and device-specific values for build flags by
+implementing the HAL service.</li>
+<li>Modify the framework to use the HAL service to find the value of a
+configuration item at runtime.</li>
+</ul>
+
+<p>Configuration items currently referenced by the framework are included in a
+versioned HIDL package (<code>android.hardware.configstore@1.0</code>). Vendors
+and/or OEMs provide values to the configuration items by implementing interfaces
+in this package, and the framework uses the interfaces when it needs to get a
+value for a configuration item.</p>
+
+<h2 id=security>Security considerations</h2>
+<p>Build flags defined in the same interface are affected by same SELinux
+policy. If one or more build flags should have different SELinux policies,
+<strong>they must be separated to another interface</strong>. This can require
+major uprev of <code>android.hardware.configstore package</code> as the
+separated interfaces are no longer backwards-compatible.</p>
+
+<aside class="note"><strong>Note:</strong> For details on Android 8.0 SELinux,
+see <a href="/security/selinux/images/SELinux_Treble.pdf">SELinux for Android
+8.0</a>.</aside>
+
+  </body>
+</html>

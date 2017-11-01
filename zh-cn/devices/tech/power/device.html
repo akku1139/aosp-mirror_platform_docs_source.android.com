@@ -1,0 +1,210 @@
+<html devsite><head>
+    <title>测量设备电量</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>对于配有 Summit SMB347 或 Maxim MAX17050（许多 Nexus 设备均有提供）等电池电量计的 Android 设备，您可以确定设备耗电量。如果没有外部测量设备，或将外部测量设备连接到设备较麻烦（如在移动使用中），可使用系统内置电量计。</p>
+
+<p>测量结果可包括瞬时电流、剩余电量、测试开始和结束时的电量，以及其他测量结果（取决于设备支持的属性，见下文）。为获得最佳效果，请在长时间运行的 A/B 测试中进行设备电量测量，且该测试应使用具有相同电量计和相同电流感应电阻的同类型设备。确保每台设备的起始电量相同，以避免电量计在电池放电曲线的不同点出现不同的行为。</p>
+
+<p>即使处在相同的测试环境下，也不能保证测量结果具有绝对的高精确度。然而，在各次测试运行中，特定于电量计和感应电阻的大部分误差都会保持一致，这样使得相同设备之间的比较变得有意义。我们建议采用不同的配置进行多次测试，以确定各配置间的显著差异和相对耗电量。</p>
+
+<h2 id="power-consumption">读取耗电量</h2>
+
+<p>要读取耗电量数据，请在测试代码中插入对 API 的调用。</p>
+
+<pre>
+import android.os.BatteryManager;
+import android.content.Context;
+BatteryManager mBatteryManager =
+(BatteryManager)Context.getSystemService(Context.BATTERY_SERVICE);
+Long energy =
+mBatteryManager.getLongProperty(BatteryManager.BATTERY_PROPERTY_ENERGY_COUNTER);
+Slog.i(TAG, "Remaining energy = " + energy + "nWh");
+</pre>
+
+<h2 id="avail-props">可用属性</h2>
+
+<p>Android 支持以下电池电量计属性：</p>
+
+<pre>
+BATTERY_PROPERTY_CHARGE_COUNTER   Remaining battery capacity in microampere-hours
+BATTERY_PROPERTY_CURRENT_NOW      Instantaneous battery current in microamperes
+BATTERY_PROPERTY_CURRENT_AVERAGE  Average battery current in microamperes
+BATTERY_PROPERTY_CAPACITY         Remaining battery capacity as an integer percentage
+BATTERY_PROPERTY_ENERGY_COUNTER   Remaining energy in nanowatt-hours
+</pre>
+
+<p>大多数属性都是从内核中类似于 power_supply 名称的子系统属性中读取。但是，特定设备的确切属性、属性值解析和更新频率取决于：</p>
+
+<ul>
+<li>电量计硬件，如 Summit SMB347 或 Maxim MAX17050。</li>
+<li>电量计与系统的连接，如外部电流感应电阻的值。</li>
+<li>电量计芯片的软件配置，如为内核驱动程序中的平均电流计算间隔所选的值。</li>
+</ul>
+
+<p>有关详情，请参阅 <a href="#nexus-devices">Nexus 设备</a>的可用属性。</p>
+
+<h2 id="maxim-fuel">Maxim 电量计</h2>
+
+<p>在确定电池在长时间内的荷电状态时，Maxim 电量计（MAX17050，BC15）可校正库仑计数器的偏移测量结果。对于在短时间内进行的测量（如耗电量计量测试），该电量计不会进行校正，使得当电流测量值过小时偏移成为主要误差源（尽管任何时长都无法完全消除偏移误差）。</p>
+
+<p>对于典型的 10 毫欧感应电阻设计，电流偏移量应小于 1.5 毫安，这意味着任何测量结果误差均为 +/- 1.5 毫安（电路板布局也会对该误差产生影响）。例如，当测量强电流（200 毫安）时，您将会获得以下结果：</p>
+
+<ul>
+<li>2 毫安（200 毫安的 1% 增益误差，由电量计增益误差导致）</li>
+<li>+2 毫安（200 毫安的 1% 增益误差，由感应电阻误差导致）</li>
+<li>+1.5 毫安（电流感应偏移误差，由电量计导致）</li>
+</ul>
+
+<p>总误差为 5.5 毫安 (2.75%)。将该误差与中等电流（50 毫安）进行比较（相同误差百分比得出的总误差为 7％），或与小电流（15 毫安）进行比较（+/-1.5 毫安误差得出的总误差为 10％）。</p>
+
+<p>为获得最佳效果，我们建议测量大于 20 毫安的电流。增益测量误差是可重复的系统误差，使您能够在多种模式下测试设备，并获得纯粹的相对测量结果（1.5 毫安偏移量除外）。</p>
+
+<p>对于 +/-100 微安的相对测量结果，所需测量时间取决于：</p>
+
+<ul>
+<li><b>ADC 采样噪声</b>。具有正常出厂配置的 MAX17050 由于噪声而产生 +/-1.5 毫安的样本变差，每 175.8 毫秒输出一个样本。对于 1 分钟的测试间隙，您将会获得大约 +/-100 微安的噪声，对于 6 分钟的测试间隙，您将会获得小于 100 微安、3-sigma 的纯粹噪声（或 33 微安、1-sigma 的噪声）。</li>
+<li><b>由负载变化引起的样本混叠</b>。差异会放大误差，因此对于具有负载固有差异的样本，请考虑采用较长的测试间隙。</li>
+</ul>
+
+<h2 id="nexus-devices">支持的 Nexus 设备</h2>
+
+<h5 id="nexus-5">Nexus 5</h5>
+
+<table>
+<tbody>
+<tr>
+<th>型号</th>
+<td>Nexus 5</td>
+</tr>
+<tr>
+<th>电量计</th>
+<td>Maxim MAX17048 电量计（ModelGauge™，无库仑计数器）</td>
+</tr>
+<tr>
+<th>属性</th>
+<td>BATTERY_PROPERTY_CAPACITY</td>
+</tr>
+<tr>
+<th>测量结果</th>
+<td>电量计不支持除电池荷电状态达到 ％/256（占满格电池电量的百分之一的 256 分之一）解析度之外的任何测量结果。</td>
+</tr>
+</tbody>
+</table>
+
+<h5 id="nexus-6">Nexus 6</h5>
+
+<table>
+<tbody>
+<tr>
+<th>型号</th>
+<td>Nexus 6</td>
+</tr>
+<tr>
+<th>电量计</th>
+<td>Maxim MAX17050 电量计（带有 Maxim ModelGauge™ 调节功能的库仑计数器）和 10 毫欧电流感应电阻。</td>
+</tr>
+<tr>
+<th>属性</th>
+<td>BATTERY_PROPERTY_CAPACITY<br />
+BATTERY_PROPERTY_CURRENT_NOW<br />
+BATTERY_PROPERTY_CURRENT_AVERAGE<br />
+BATTERY_PROPERTY_CHARGE_COUNTER<br />
+BATTERY_PROPERTY_ENERGY_COUNTER</td>
+</tr>
+<tr>
+<th>测量结果</th>
+<td>CURRENT_NOW 解析度为 156.25 微安，更新周期为 175.8 毫秒。<br />
+CURRENT_AVERAGE 解析度为 156.25 微安，更新周期可在 0.7 秒到 6.4 小时范围内配置，默认为 11.25 秒。<br />
+CHARGE_COUNTER（累计电流，不可扩展精度）解析度为 500 微安时（未经电量计针对库仑计数器偏移量进行调整的原始库仑计数器读数，加上来自 ModelGauge m3 算法的输入值，其中包括空值补偿）。<br />
+CHARGE_COUNTER_EXT（内核扩展精度）解析度为 8 纳安时。<br />
+当额定电压为 3.7 伏时，ENERGY_COUNTER 为 CHARGE_COUNTER_EXT。</td>
+</tr>
+</tbody>
+</table>
+
+<h5 id="nexus-9">Nexus 9</h5>
+
+<table>
+<tbody>
+<tr>
+<th>型号</th>
+<td>Nexus 9</td>
+</tr>
+<tr>
+<th>电量计</th>
+<td>Maxim MAX17050 电量计（带有 Maxim ModelGauge™ 调节功能的库仑计数器）和 10 毫欧电流感应电阻。</td>
+</tr>
+<tr>
+<th>属性</th>
+<td>BATTERY_PROPERTY_CAPACITY<br />
+BATTERY_PROPERTY_CURRENT_NOW<br />
+BATTERY_PROPERTY_CURRENT_AVERAGE<br />
+BATTERY_PROPERTY_CHARGE_COUNTER<br />
+BATTERY_PROPERTY_ENERGY_COUNTER</td>
+</tr>
+<tr>
+<th>测量结果</th>
+<td>CURRENT_NOW 解析度为 156.25 微安，更新周期为 175.8 毫秒。<br />
+CURRENT_AVERAGE 解析度为 156.25 微安，更新周期可在 0.7 秒到 6.4 小时范围内配置，默认为 11.25 秒。<br />
+CHARGE_COUNTER（累计电流，不可扩展精度）解析度为 500 微安时。<br />
+CHARGE_COUNTER_EXT（内核扩展精度）解析度为 8 纳安时。<br />
+当额定电压为 3.7 伏时，ENERGY_COUNTER 为 CHARGE_COUNTER_EXT。<br />
+累计电流更新周期为 175.8 毫秒。<br />
+当经过 175 毫秒的量化时进行 ADC 采样，采样周期为 4 毫秒。可以调整占空比。</td>
+</tr>
+</tbody>
+</table>
+
+<h5 id="nexus-10">Nexus 10</h5>
+
+<table>
+<tbody>
+<tr>
+<th>型号</th>
+<td>Nexus 10</td>
+</tr>
+<tr>
+<th>电量计</th>
+<td>Dallas Semiconductor DS2784 电量计（库仑计数器），带 10 毫欧电流感应电阻。</td>
+</tr>
+<tr>
+<th>属性</th>
+<td>BATTERY_PROPERTY_CAPACITY<br />
+BATTERY_PROPERTY_CURRENT_NOW<br />
+BATTERY_PROPERTY_CURRENT_AVERAGE<br />
+BATTERY_PROPERTY_CHARGE_COUNTER<br />
+BATTERY_PROPERTY_ENERGY_COUNTER</td>
+</tr>
+<tr>
+<th>测量结果</th>
+<td>电流测量（瞬时电流和平均电流）解析度为 156.3 微安。<br />
+CURRENT_NOW 瞬时电流更新周期为 3.5 秒。<br />
+CURRENT_AVERAGE 更新周期为 28 秒（不可配置）。<br />
+CHARGE_COUNTER（累计电流，不可扩展精度）解析度为 625 微安时。<br />
+CHARGE_COUNTER_EXT（内核扩展精度）解析度为 144 纳安时。<br />
+当额定电压为 3.7 伏时，ENERGY_COUNTER 为 CHARGE_COUNTER_EXT。<br />
+全部更新周期为 3.5 秒。</td>
+</tr>
+</tbody>
+</table>
+
+</body></html>

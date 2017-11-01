@@ -1,0 +1,190 @@
+<html devsite><head>
+    <title>其他资源</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>以下资源提供了有关代码位置、工具、测试、许可和注意事项的详细信息。</p>
+
+<h2 id="query-api-code">可查询的代码位置</h2>
+<p>可查询的供应商接口对象的代码位于 <code><a href="https://android.googlesource.com/platform/system/libvintf/+/master#" class="external">system/libvintf</a></code>（请参见<a href="/devices/architecture/vintf/objects.html#queryable-api">可查询的 API</a>）。</p>
+
+<h2 id="related-tools">工具</h2>
+<p>手写清单文件和兼容性矩阵可能很难。您可以使用以下工具来生成样板清单/兼容性矩阵，从其入手。</p>
+
+<h3 id="lshal">LSHAL</h3>
+<p>LSHAL 是一种设备端工具，可以列出向 <code>hwservicemanager</code> 注册的所有 HAL 以及设备上所有可用的直通实现（例如 <code>android.hardware.foo@1.0-impl.so</code>）。它还可以根据该列表生成<strong>设备清单</strong>文件：</p>
+
+<pre class="devsite-terminal">
+adb shell su 0 /system/bin/lshal --init-vintf
+</pre>
+
+<p>请注意以下几点：</p>
+<ol>
+<li>如果既向 <code>hwservicemanager</code> 注册了某个软件包，又发现其作为直通 HAL，则将 <code>&lt;transport&gt;</code> 设置为 <code>hwbinder</code>。</li>
+<li>清单的末尾存在一个虚拟 <code>&lt;sepolicy&gt;<version>0.0</version>&lt;/sepolicy&gt;</code> 元素。它指明了该元素已被删除并将通过 <code>assemble_vintf</code> 将其注入（如下所述）。</li>
+<li>生成的 HAL 清单文件可能不准确。需要手动对比来更正设备清单与 <code>vendor.img</code> 实际提供的内容之间的不一致。</li>
+</ol>
+
+<h3 id="assemble_vintf">ASSEMBLE_VINTF</h3>
+<p><code>assemble_vintf</code> 是一种主机端工具，可以执行以下操作：</p>
+<ol>
+<li>验证兼容性矩阵或清单文件是否有效。</li>
+<li>将变量注入到构建时可用的清单/兼容性矩阵，并生成应该安装到设备上的新文件。</li>
+<li>检查生成的文件与其双重文件之间的兼容性。</li>
+<li>如果给出了清单文件，则可以视需要生成与该清单文件兼容的样板兼容性矩阵。</li>
+</ol>
+
+<h4><strong>示例：</strong>从框架清单文件生成<strong>设备兼容性矩阵</strong></h4>
+
+<pre class="devsite-terminal">
+assemble_vintf -m \
+    -i system/libhidl/manifest.xml \
+    -o device/manufacturer/device_name/compatibility_matrix.xml
+</pre>
+<p>请注意以下几点：</p>
+<ul>
+<li>即使 <code>&lt;vndk&gt;</code> 条目在输出兼容性矩阵中，也应该将其删除，然后在构建时进行注入。</li>
+<li>所有 HAL 都设置为 <code>optional="true"</code>。</li>
+</ul>
+
+<h4><strong>示例：</strong>从设备清单文件生成骨架框架兼容性矩阵</h4>
+
+<pre class="devsite-terminal">
+BOARD_SEPOLICY_VERS=10000.0 assemble_vintf -m \
+    -i device/foo/bar/manifest.xml
+    -o path/to/place/output/compatibility_matrix.xml
+</pre>
+<p>请注意以下几点：</p>
+<ul>
+<li>即使 <code>&lt;sepolicy&gt;</code> 和 <code>&lt;avb&gt;</code> 在输出兼容性矩阵中，也应该将其删除，然后在构建时进行注入。</li>
+<li>所有 HAL 都设置为 <code>optional="true"</code>。</li>
+</ul>
+
+<h4><strong>示例：</strong>从变量生成 XML 文件</h4>
+
+<p>构建时，如果在 <code>device/manufacturer/device_name/BoardConfig.mk</code> 中定义了以下变量：</p>
+
+<pre class="prettyprint">
+DEVICE_MANIFEST_FILE := \
+    device/manufacturer/device_name/manifest.xml
+DEVICE_MATRIX_FILE := \
+    device/manufacturer/device_name/compatibility_matrix.xml
+</pre>
+
+<p>然后，执行以下命令（修改为省略实现详细信息）来生成所有 XML 文件：</p>
+
+<pre class="prettyprint">
+# device manifest; only when DEVICE_MANIFEST_FILE is set
+BOARD_SEPOLICY_VERS=10000.0 assemble_vintf \
+    -i device/manufacturer/device_name/manifest.xml \
+    -o $(TARGET_OUT_VENDOR)/manifest.xml
+
+# device compatibility matrix; only when DEVICE_MATRIX_FILE is set
+assemble_vintf \
+    -i device/manufacturer/device_name/compatibility_matrix.xml \
+    -o $(TARGET_OUT_VENDOR)/compatibility_matrix.xml
+
+# framework manifest
+assemble_vintf
+    -i system/libhidl/manifest.xml \
+    -o $(TARGET_OUT)/manifest.xml \
+    -c $(TARGET_OUT_VENDOR)/compatibility_matrix.xml
+
+# framework compatibility matrix
+BOARD_SEPOLICY_VERS=$(BOARD_SEPOLICY_VERS) \
+POLICYVERS=$(POLICYVERS) \
+BOARD_AVB_VBMETA_VERSION=$(BOARD_AVB_VBMETA_VERSION)
+assemble_vintf \
+    -i hardware/interfaces/compatibility_matrix.xml \
+    -o $(TARGET_OUT)/compatibility_matrix.xml \
+    -c $(TARGET_OUT_VENDOR)/manifest.xml \
+</pre>
+
+<h4><strong>示例：</strong>从片段生成设备清单</h4>
+
+<p>多个设备清单片段可以在构建时捆绑。例如：</p>
+
+<pre class="prettyprint">
+&lt;!-- device/manufacturer/device_name/manifest_common.xml --&gt;
+&lt;manifest version="1.0" type="device"&gt;
+    &lt;!-- common HALs here --&gt;
+&lt;/manifest&gt;
+</pre>
+
+<pre class="prettyprint">
+&lt;!-- device/manufacturer/device_name/ir.xml --&gt;
+&lt;manifest version="1.0" type="device"&gt;
+    &lt;hal&gt;
+        &lt;name&gt;android.hardware.ir&lt;/name&gt;
+        &lt;version&gt;1.0&lt;/version&gt;
+        &lt;!-- other fields --&gt;
+    &lt;/hal&gt;
+&lt;/manifest&gt;
+</pre>
+
+<pre class="prettyprint">
+# device/manufacturer/device_name/BoardConfig.mk
+DEVICE_MANIFEST_FILE := device/manufacturer/device_name/manifest_common.xml
+ifdef BOARD_ENABLE_IR
+    DEVICE_MANIFEST_FILE += device/manufacturer/device_name/ir.xml
+endif
+</pre>
+
+<p>然后，如果定义了 <code>BOARD_ENABLE_IR</code>，则 <code>assemble_vintf</code> 将 Ir HAL 添加到设备清单；如果未定义 <code>BOARD_ENABLE_IR</code>，则将其省略。执行以下命令（修改为省略实现详细信息）来生成设备清单：</p>
+
+<pre class="prettyprint">
+# if BOARD_ENABLE_IR is defined
+BOARD_SEPOLICY_VERS=10000.0 assemble_vintf \
+    -i device/manufacturer/device_name/manifest_common.xml:device/manufacturer/device_name/ir.xml \
+    -o $(TARGET_OUT_VENDOR)/manifest.xml
+
+# if BOARD_ENABLE_IR is not defined
+BOARD_SEPOLICY_VERS=10000.0 assemble_vintf \
+    -i device/manufacturer/device_name/manifest_common.xml \
+    -o $(TARGET_OUT_VENDOR)/manifest.xml
+</pre>
+
+<p>有关详细信息，请参见：</p>
+
+<pre class="devsite-terminal">assemble_vintf --help</pre>
+
+<h2 id="testing">测试</h2>
+<p><code>platform/system/libvintf</code> 项目使用 <a href="https://github.com/google/googletest" class="external">GTest</a> 进行序列化、反序列化和兼容性检查。</p>
+
+<h2 id="licensing">许可</h2>
+<ul>
+<li><code>tinyxml2</code> (external/tinyxml2) 用于将对象序列化到 XML 或从 XML 反序列化对象。类似于 BSD 的许可证。</li>
+<li><code>libselinux</code> (external/selinux/libselinux) 用于获取 policydb 版本。公共网域许可证。</li>
+<li><code>libz</code> (external/zlib) 用于解压缩 <code>/proc/config.gz</code>。类似于 BSD 的许可证。</li>
+<li><code>libvintf</code> 项目使用 Apache 2.0 许可证（具有适当的 MODULE_LICENSE_APACHE2 和 NOTICE 文件）。</li>
+</ul>
+
+<h2 id="caveats">注意事项</h2>
+<p>您也可以通过查询 <code>hwservicemanager</code>（就像 <code>lshal</code> 一样）在运行时确定 HAL。但是：</p>
+<ul>
+<li><code>hwservicemanager</code> 不会列出直通服务。</li>
+<li>如果服务刚刚崩溃并正在重新启动，则可能会在查询结果中缺失。</li>
+<li>不适用于可热插拔服务。</li>
+<li><code>hwservicemanager</code> 在恢复模式下不可用（请参见下文）。</li>
+</ul>
+
+<p>在恢复模式下，用于检索供应商接口对象的 API 必须仍然可用，以允许设备再次对照兼容性矩阵检查供应商接口。</p>
+
+</body></html>

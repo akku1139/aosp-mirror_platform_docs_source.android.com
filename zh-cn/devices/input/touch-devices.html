@@ -1,0 +1,869 @@
+<html devsite><head>
+    <title>触摸设备</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>Android 支持各种触摸屏和触摸板，包括基于触控笔的数字化板。</p>
+<p>触摸屏是与显示屏相关联的触摸设备，使用户能够在屏幕上直接操纵内容。</p>
+<p>触摸板是不与显示屏相关联的触摸设备（如数字化板）。触摸板通常用于指控或绝对间接定位或基于手势的界面控制。</p>
+<p>触摸设备可能具有功能与鼠标按钮类似的按钮。</p>
+<p>有时可以使用各种不同的工具（如手指或触控笔）操作触摸设备，具体取决于底层的触摸传感器技术。</p>
+<p>触摸设备有时用于实现虚拟按键。例如，在某些 Android 设备上，触摸屏传感器区域延伸超出显示屏的边缘，作为触摸式键盘的一部分发挥双重作用。</p>
+<p>由于触摸设备种类繁多，Android 依赖于大量配置属性来描述每个设备的特征和期望的行为。</p>
+<h2 id="touch-device-classification">触摸设备分类</h2>
+<p>如果同时满足以下两个条件，则输入设备属于多点触控设备：<em></em></p>
+<ul>
+<li>
+<p>输入设备报告存在 <code>ABS_MT_POSITION_X</code> 和 <code>ABS_MT_POSITION_Y</code> 绝对轴。</p>
+</li>
+<li>
+<p>输入设备没有任何游戏手柄按钮。某些游戏手柄会使用与 MT 轴的代码重叠的代码来报告轴，而这一条件则消除了这种歧义。</p>
+</li>
+</ul>
+<p>如果同时满足以下两个条件，则输入设备属于单点触控设备：<em></em></p>
+<ul>
+<li>
+<p>输入设备不属于多点触控设备。输入设备要么属于单点触控设备，要么属于多点触控设备，而不会同时属于这两种类别。</p>
+</li>
+<li>
+<p>输入设备报告存在 <code>ABS_X</code> 和 <code>ABS_Y</code> 绝对轴以及 <code>BTN_TOUCH</code> 按键代码。</p>
+</li>
+</ul>
+<p>一旦输入设备属于触摸设备，则通过尝试加载设备的虚拟按键映射文件来确定是否存在虚拟按键。如果存在虚拟按键映射，则还会加载设备的按键布局文件。</p>
+<p>有关虚拟按键映射文件的位置和格式，请参阅下面的部分。</p>
+<p>接下来，系统会加载触摸设备的输入设备配置文件。</p>
+<p><strong>所有内置触摸设备都应具有输入设备配置文件。</strong>如果没有输入设备配置文件，则系统将选择适用于典型通用触摸外设（如外部 USB 或蓝牙 HID 触摸屏或触摸板）的默认配置。这些默认配置不适用于内置触摸屏，很可能会导致错误的行为。</p>
+<p>加载输入设备配置后，系统会将输入设备分类为触摸屏、触摸板或指控设备。<em></em><em></em><em></em></p>
+<ul>
+<li>
+<p><em></em>触摸屏设备用于直接操纵屏幕上的对象。由于用户直接触摸屏幕，因此系统不需要任何额外的感知性来指示被操纵的对象。</p>
+</li>
+<li>
+<p><em></em>触摸板设备用于向应用提供关于在给定传感器区域上进行触摸时的绝对定位信息。它可能对数字化板有用。</p>
+</li>
+<li>
+<p><em></em>指控设备用于使用光标间接操纵屏幕上的对象。手指被解释为多点触控指控手势。其他工具（如触控笔）则通过绝对位置来解释。</p>
+<p>有关详情，请参阅<a href="#indirect-multi-touch-pointer-gestures">间接多点触控指控手势</a>。</p>
+</li>
+</ul>
+<p>以下规则用于将输入设备分类为触摸屏、触摸板或指控设备。<em></em><em></em><em></em></p>
+<ul>
+<li>
+<p>如果设置了 <code>touch.deviceType</code> 属性，则将按照指示设置设备类型。</p>
+</li>
+<li>
+<p>如果输入设备报告存在 <code>INPUT_PROP_DIRECT</code> 输入属性（通过 <code>EVIOCGPROP</code> ioctl），则设备类型将设置为触摸屏。<em></em>该条件假设直接输入触摸设备已连接到同样处于连接状态的显示屏。</p>
+</li>
+<li>
+<p>如果输入设备报告存在 <code>INPUT_PROP_POINTER</code> 输入属性（通过 <code>EVIOCGPROP</code> ioctl），则设备类型将设置为指控设备。<em></em></p>
+</li>
+<li>
+<p>如果输入设备报告存在 <code>REL_X</code> 或 <code>REL_Y</code> 相对轴，则设备类型将设置为触摸板。<em></em>该条件消除了由鼠标和触摸板组成的输入设备存在的歧义。在这种情况下，触摸板不会用于控制指针，因为鼠标已经在控制它。</p>
+</li>
+<li>
+<p>否则，设备类型将被设置为指控设备。<em></em>该默认设置确保没有指定任何其他特殊用途的触摸板将用于控制指针。</p>
+</li>
+</ul>
+<h2 id="buttons">按钮</h2>
+<p>按钮是可供应用用来执行其他功能的“可选”控件。<em></em>触摸设备上的按钮与鼠标按钮类似，主要与“指针式”触摸设备或者触控笔配合使用。<em></em></p>
+<p>支持以下按钮：</p>
+<ul>
+<li>
+<p><code>BTN_LEFT</code>：映射到 <code>MotionEvent.BUTTON_PRIMARY</code>。</p>
+</li>
+<li>
+<p><code>BTN_RIGHT</code>：映射到 <code>MotionEvent.BUTTON_SECONDARY</code>。</p>
+</li>
+<li>
+<p><code>BTN_MIDDLE</code>：映射到 <code>MotionEvent.BUTTON_MIDDLE</code>。</p>
+</li>
+<li>
+<p><code>BTN_BACK</code> 和 <code>BTN_SIDE</code>：映射到 <code>MotionEvent.BUTTON_BACK</code>。按此按钮还可以合成按键（使用按键代码 <code>KeyEvent.KEYCODE_BACK</code>）。</p>
+</li>
+<li>
+<p><code>BTN_FORWARD</code> 和 <code>BTN_EXTRA</code>：映射到 <code>MotionEvent.BUTTON_FORWARD</code>。按此按钮还可以合成按键（使用按键代码 <code>KeyEvent.KEYCODE_FORWARD</code>）。</p>
+</li>
+<li>
+<p><code>BTN_STYLUS</code>：映射到 <code>MotionEvent.BUTTON_SECONDARY</code>。</p>
+</li>
+<li>
+<p><code>BTN_STYLUS2</code>：映射到 <code>MotionEvent.BUTTON_TERTIARY</code>。</p>
+</li>
+</ul>
+<h2 id="tools-and-tool-types">工具和工具类型</h2>
+<p>“工具”是指用于和触摸设备进行交互的手指、触控笔或其他装置。<em></em>有些触摸设备可以区分不同类型的工具。</p>
+<p>在 Android 的其他位置（和在 <code>MotionEvent</code> API 中一样），“工具”通常被称为“指针”。<em></em><em></em></p>
+<p>支持以下工具类型：</p>
+<ul>
+<li>
+<p><code>BTN_TOOL_FINGER</code> 和 <code>MT_TOOL_FINGER</code>：映射到 <code>MotionEvent.TOOL_TYPE_FINGER</code>。</p>
+</li>
+<li>
+<p><code>BTN_TOOL_PEN</code> 和 <code>MT_TOOL_PEN</code>：映射到 <code>MotionEvent.TOOL_TYPE_STYLUS</code>。</p>
+</li>
+<li>
+<p><code>BTN_TOOL_RUBBER</code>：映射到 <code>MotionEvent.TOOL_TYPE_ERASER</code>。</p>
+</li>
+<li>
+<p><code>BTN_TOOL_BRUSH</code>：映射到 <code>MotionEvent.TOOL_TYPE_STYLUS</code>。</p>
+</li>
+<li>
+<p><code>BTN_TOOL_PENCIL</code>：映射到 <code>MotionEvent.TOOL_TYPE_STYLUS</code>。</p>
+</li>
+<li>
+<p><code>BTN_TOOL_AIRBRUSH</code>：映射到 <code>MotionEvent.TOOL_TYPE_STYLUS</code>。</p>
+</li>
+<li>
+<p><code>BTN_TOOL_MOUSE</code>：映射到 <code>MotionEvent.TOOL_TYPE_MOUSE</code>。</p>
+</li>
+<li>
+<p><code>BTN_TOOL_LENS</code>：映射到 <code>MotionEvent.TOOL_TYPE_MOUSE</code>。</p>
+</li>
+<li>
+<p><code>BTN_TOOL_DOUBLETAP</code>、<code>BTN_TOOL_TRIPLETAP</code> 和 <code>BTN_TOOL_QUADTAP</code>：映射到 <code>MotionEvent.TOOL_TYPE_FINGER</code>。</p>
+</li>
+</ul>
+<h2 id="hovering-vs-touching-tools">悬停与触摸工具</h2>
+<p>工具可以与触摸设备接触，也可以在触摸设备的感应范围内悬停在设备的上方。并非所有触摸设备都能够感应到悬停在其上方的工具。那些可实现感应的触摸设备（如基于射频的触控笔数字化仪）通常能在工具进入其有限的感应范围后检测到该工具。</p>
+<p><code>InputReader</code> 组件会谨慎区分触摸工具和悬停工具。同样，触摸工具和悬停工具也会以不同的方式报告给应用。</p>
+<p>触摸工具将通过以下组件作为触摸事件报告给应用：<code>MotionEvent.ACTION_DOWN</code>、<code>MotionEvent.ACTION_MOVE</code>、<code>MotionEvent.ACTION_DOWN</code>、<code>MotionEvent.ACTION_POINTER_DOWN</code> 和 <code>MotionEvent.ACTION_POINTER_UP</code>。</p>
+<p>悬停工具将通过以下组件作为通用动作事件报告给应用：<code>MotionEvent.ACTION_HOVER_ENTER</code>、<code>MotionEvent.ACTION_HOVER_MOVE</code> 和 <code>MotionEvent.ACTION_HOVER_EXIT</code>。</p>
+<h2 id="touch-device-driver-requirements">触摸设备驱动程序要求</h2>
+<ol>
+<li>
+<p>触摸设备驱动程序应该仅注册它们实际支持的轴/按钮的轴/按键代码。如果注册多余的轴/按键代码，则可能会混淆设备分类算法或导致系统错误地检测设备的功能。</p>
+<p>例如，如果设备报告 <code>BTN_TOUCH</code> 按键代码，系统会假设 <code>BTN_TOUCH</code> 将始终用于指示该工具是实际触摸屏幕还是只在感应范围内悬停。</p>
+</li>
+<li>
+<p>单点触控设备使用以下 Linux 输入事件：</p>
+<ul>
+<li>
+<p><code>ABS_X</code>：（必需）报告工具的 X 坐标。<em></em></p>
+</li>
+<li>
+<p><code>ABS_Y</code>：（必需）报告工具的 Y 坐标。<em></em></p>
+</li>
+<li>
+<p><code>ABS_PRESSURE</code>：（可选）报告应用于工具尖端的物理压力或触摸点的信号强度。<em></em></p>
+</li>
+<li>
+<p><code>ABS_TOOL_WIDTH</code>：（可选）报告触摸点或工具本身的横截面积或宽度。<em></em></p>
+</li>
+<li>
+<p><code>ABS_DISTANCE</code>：（可选）报告工具与触摸设备表面之间的距离。<em></em></p>
+</li>
+<li>
+<p><code>ABS_TILT_X</code>：（可选）报告工具沿触摸设备表面 X 轴方向的倾斜度。<em></em></p>
+</li>
+<li>
+<p><code>ABS_TILT_Y</code>：（可选）报告工具沿触摸设备表面 Y 轴方向的倾斜度。<em></em></p>
+</li>
+<li>
+<p><code>BTN_TOUCH</code>：（必需）指示工具是否触摸到设备。<em></em></p>
+</li>
+<li>
+<p><code>BTN_LEFT</code>、<code>BTN_RIGHT</code>、<code>BTN_MIDDLE</code>、<code>BTN_BACK</code>、<code>BTN_SIDE</code>、<code>BTN_FORWARD</code>、<code>BTN_EXTRA</code>、<code>BTN_STYLUS</code>、<code>BTN_STYLUS2</code>：（可选）报告<a href="#buttons">按钮</a>状态。<em></em></p>
+</li>
+<li>
+<p><code>BTN_TOOL_FINGER</code>、<code>BTN_TOOL_PEN</code>、<code>BTN_TOOL_RUBBER</code>、<code>BTN_TOOL_BRUSH</code>、<code>BTN_TOOL_PENCIL</code>、<code>BTN_TOOL_AIRBRUSH</code>、<code>BTN_TOOL_MOUSE</code>、<code>BTN_TOOL_LENS</code>、<code>BTN_TOOL_DOUBLETAP</code>、<code>BTN_TOOL_TRIPLETAP</code>、<code>BTN_TOOL_QUADTAP</code>：（可选）报告<a href="#tools-and-tool-types">工具类型</a>。<em></em></p>
+</li>
+</ul>
+</li>
+<li>
+<p>多点触控设备使用以下 Linux 输入事件：</p>
+<ul>
+<li>
+<p><code>ABS_MT_POSITION_X</code>：（必需）报告工具的 X 坐标。<em></em></p>
+</li>
+<li>
+<p><code>ABS_MT_POSITION_Y</code>：（必需）报告工具的 Y 坐标。<em></em></p>
+</li>
+<li>
+<p><code>ABS_MT_PRESSURE</code>：（可选）报告应用于工具尖端的物理压力或触摸点的信号强度。<em></em></p>
+</li>
+<li>
+<p><code>ABS_MT_TOUCH_MAJOR</code>：（可选）报告触摸点的横截面积或触摸点间较长尺寸的长度。<em></em></p>
+</li>
+<li>
+<p><code>ABS_MT_TOUCH_MINOR</code>：（可选）报告触摸点间较短尺寸的长度。<em></em>如果 <code>ABS_MT_TOUCH_MAJOR</code> 报告区域测量，则不应使用此轴。</p>
+</li>
+<li>
+<p><code>ABS_MT_WIDTH_MAJOR</code>：（可选）报告工具本身的横截面积或工具本身较长尺寸的长度。<em></em>如果工具本身的尺寸未知，则不应使用此轴。</p>
+</li>
+<li>
+<p><code>ABS_MT_WIDTH_MINOR</code>：（可选）报告工具本身较短尺寸的长度。<em></em>如果 <code>ABS_MT_WIDTH_MAJOR</code> 报告区域测量或者工具本身的尺寸未知，则不应使用此轴。</p>
+</li>
+<li>
+<p><code>ABS_MT_ORIENTATION</code>：（可选）报告工具的方向。<em></em></p>
+</li>
+<li>
+<p><code>ABS_MT_DISTANCE</code>：（可选）报告工具与触摸设备表面之间的距离。<em></em></p>
+</li>
+<li>
+<p><code>ABS_MT_TOOL_TYPE</code>：（可选）将<a href="#tools-and-tool-types">工具类型</a>报告为 <code>MT_TOOL_FINGER</code> 或 <code>MT_TOOL_PEN</code>。<em></em></p>
+</li>
+<li>
+<p><code>ABS_MT_TRACKING_ID</code>：（可选）报告工具的跟踪 ID。<em></em>跟踪 ID 是一个任意的非负整数。当多个工具同时处于活动状态时，该 ID 用于独立地识别和跟踪各个工具。例如，当多个手指同时触摸设备时，会为每个手指分配一个不同的跟踪 ID，用于在手指保持接触期间识别手指。跟踪 ID 可在其关联的工具移出感应范围后重复使用。</p>
+</li>
+<li>
+<p><code>ABS_MT_SLOT</code>：（可选）在使用 Linux 多点触控协议“B”时，报告工具的槽位 ID。<em></em>有关详情，请参阅 Linux 多点触控协议文档。</p>
+</li>
+<li>
+<p><code>BTN_TOUCH</code>：（必需）指示工具是否触摸到设备。<em></em></p>
+</li>
+<li>
+<p><code>BTN_LEFT</code>、<code>BTN_RIGHT</code>、<code>BTN_MIDDLE</code>、<code>BTN_BACK</code>、<code>BTN_SIDE</code>、<code>BTN_FORWARD</code>、<code>BTN_EXTRA</code>、<code>BTN_STYLUS</code>、<code>BTN_STYLUS2</code>：（可选）报告<a href="#buttons">按钮</a>状态。<em></em></p>
+</li>
+<li>
+<p><code>BTN_TOOL_FINGER</code>、<code>BTN_TOOL_PEN</code>、<code>BTN_TOOL_RUBBER</code>、<code>BTN_TOOL_BRUSH</code>、<code>BTN_TOOL_PENCIL</code>、<code>BTN_TOOL_AIRBRUSH</code>、<code>BTN_TOOL_MOUSE</code>、<code>BTN_TOOL_LENS</code>、<code>BTN_TOOL_DOUBLETAP</code>、<code>BTN_TOOL_TRIPLETAP</code>、<code>BTN_TOOL_QUADTAP</code>：（可选）报告<a href="#tools-and-tool-types">工具类型</a>。<em></em></p>
+</li>
+</ul>
+</li>
+<li>
+<p>如果同时定义了单点触控协议轴和多点触控协议轴，则仅使用多点触控轴，并忽略单点触控轴。</p>
+</li>
+<li>
+<p><code>ABS_X</code>、<code>ABS_Y</code>、<code>ABS_MT_POSITION_X</code> 和 <code>ABS_MT_POSITION_Y</code> 轴的最小值和最大值用于在特定于设备的 Surface 单元内指定设备有效区域的范围。如果是触摸屏，有效区域是指触摸设备实际覆盖显示屏的部分。</p>
+<p>对于触摸屏，系统会自动插入报告的触摸位置（在 Surface 单元内），以通过以下公式计算得出采用显示像素表示的触摸位置：</p>
+<pre class="devsite-click-to-copy">
+displayX = (x - minX) * displayWidth / (maxX - minX + 1)
+displayY = (y - minY) * displayHeight / (maxY - minY + 1)
+</pre>
+<p>触摸屏可能会报告在报告的有效区域之外发起的触摸。</p>
+<p>在有效区域之外发起的触摸不会传递给应用，但可用于虚拟按键。</p>
+<p>在有效区域内发起的触摸或进入和退出显示区域的触摸会传递给应用。因此，如果触摸是在应用的范围内开始，然后移动到有效区域之外，则应用可能会收到显示坐标为负或超出显示范围的触摸事件。这属于正常现象。</p>
+<p>触摸设备不得限制有效区域的触摸坐标边界。如果触摸退出有效区域，则应将其报告为超出有效区域范围，或者根本不应报告。</p>
+<p>例如，如果用户的手指在触摸屏左上角附近触摸，则可能会报告 (minX, minY) 坐标。如果手指继续移动到有效区域之外，触摸屏应该开始报告分量小于 minX 和 minY 的坐标（如 (minX - 2, minY - 3)），或者完全停止报告触摸。换句话说，当用户的手指确实触摸到有效区域之外时，触摸屏不应该报告 (minX, minY)。<em></em></p>
+<p>如果将触摸坐标限制到显示屏边缘，则会在屏幕边缘周围产生人为硬边界，阻止系统顺畅地跟踪进入或退出显示区域边界的运动。</p>
+</li>
+<li>
+<p><code>ABS_PRESSURE</code> 或 <code>ABS_MT_PRESSURE</code> 报告的值（如果有报告）在工具触摸设备时必须为非零值；否则就为零，表示该工具处于悬停状态。</p>
+<p>报告压力信息为可选项，但强烈建议报告该信息。<em></em>应用可以使用压力信息来实现压敏绘图等效果。</p>
+</li>
+<li>
+<p><code>ABS_TOOL_WIDTH</code>、<code>ABS_MT_TOUCH_MAJOR</code>、<code>ABS_MT_TOUCH_MINOR</code>、<code>ABS_MT_WIDTH_MAJOR</code> 或 <code>ABS_MT_WIDTH_MINOR</code> 报告的值在工具触摸设备时应为非零值；否则就为零，但这不是必需的。例如，触摸设备可能能够测量手指触摸点的尺寸，但不能测量触控笔触摸点的尺寸。</p>
+<p>报告大小信息为可选项，但强烈建议报告。<em></em>应用可以使用压力信息来实现尺寸敏感绘图等效果。</p>
+</li>
+<li>
+<p><code>ABS_DISTANCE</code> 或 <code>ABS_MT_DISTANCE</code> 报告的值在工具触摸设备时应接近零。即使当工具处于直接接触时，距离仍可能为非零。报告的确切值取决于硬件测量距离的方式。</p>
+<p>报告距离信息为可选项，但建议用于触控笔设备。<em></em></p>
+</li>
+<li>
+<p>当工具垂直于设备时，<code>ABS_TILT_X</code> 和 <code>ABS_TILT_Y</code> 报告的值应为零。将非零倾斜作为工具保持在倾斜处的标志。</p>
+<p>假定沿 X 轴和 Y 轴的倾斜角度以与垂直方向的夹角计。中心点（完全垂直）由每个轴的 <code>(max + min) / 2</code> 指定。小于中心点的值表示向上或向左倾斜，大于中心点的值表示向下或向右倾斜。</p>
+<p><code>InputReader</code> 将 X 和 Y 倾斜分量转换成从 0 到 <code>PI / 2</code> 弧度的垂直倾斜角以及从 <code>-PI</code> 到 <code>PI</code> 弧度的平面定向角。该表示法将产生与描述手指触摸所用方向相符的方向的描述。</p>
+<p>报告倾斜信息为可选项，但建议用于触控笔设备。<em></em></p>
+</li>
+<li>
+<p>如果工具类型是由 <code>ABS_MT_TOOL_TYPE</code> 报告的，则会取代 <code>BTN_TOOL_*</code> 报告的任何工具类型信息。如果根本没有可用的工具类型信息，则工具类型将默认为 <code>MotionEvent.TOOL_TYPE_FINGER</code>。</p>
+</li>
+<li>
+<p>根据以下条件确定工具的活动状态：</p>
+<ul>
+<li>
+<p>当使用单点触控协议时，如果 <code>BTN_TOUCH</code> 或 <code>BTN_TOOL_*</code> 为 1，则表示工具处于活动状态。</p>
+<p>这个条件意味着 <code>InputReader</code> 至少需要获得一些关于工具性质的信息：工具是否正在触摸，或者至少知道工具的类型。如果没有可用的信息，则假定工具处于非活动状态（超出范围）。</p>
+</li>
+<li>
+<p>当使用多点触控协议“A”时，只要工具出现在最近的同步报告中，则表示其处于活动状态。当工具不再出现在同步报告中时，则表示工具不再存在。</p>
+</li>
+<li>
+<p>当使用多点触控协议“B”时，只要工具具有活动插槽，则表示其处于活动状态。当插槽被清除时，则表示工具不再存在。</p>
+</li>
+</ul>
+</li>
+<li>
+<p>根据以下条件确定工具悬停：</p>
+<ul>
+<li>
+<p>如果工具为 <code>BTN_TOOL_MOUSE</code> 或 <code>BTN_TOOL_LENS</code>，则该工具不会悬停，即使以下任一条件为真也不例外。</p>
+</li>
+<li>
+<p>如果工具处于活动状态，并且驱动程序报告的压力为零，则表示工具处于悬停状态。</p>
+</li>
+<li>
+<p>如果工具处于活动状态，而且驱动程序支持 <code>BTN_TOUCH</code> 按键代码，并且 <code>BTN_TOUCH</code> 的值为零，则表示工具处于悬停状态。</p>
+</li>
+</ul>
+</li>
+<li>
+<p><code>InputReader</code> 支持多点触控协议“A”和“B”。新驱动程序应该使用“B”协议，但是使用任一协议均可正常运作。</p>
+</li>
+<li>
+<p><strong>根据 Android Ice Cream Sandwich 4.0，可能需要更改触摸屏驱动程序，以符合 Linux 输入协议规范。</strong></p>
+<p>可能需要进行以下更改：</p>
+<ul>
+<li>
+<p>当一个工具变为非活动状态（“抬起”一根手指）时，它应该停止显示在后续的多点触控同步报告中。当所有工具变为非活动状态（“抬起”所有手指）时，驱动程序应发送一个空的同步报告数据包，如 <code>SYN_MT_REPORT</code> 后跟 <code>SYN_REPORT</code>。</p>
+<p>以前版本的 Android 通过发送压力值 0 来报告“抬起”事件。该旧行为与 Linux 输入协议规范不兼容，因此不再受支持。</p>
+</li>
+<li>
+<p>物理压力或信号强度信息应使用 <code>ABS_MT_PRESSURE</code> 进行报告。</p>
+<p>以前版本的 Android 从 <code>ABS_MT_TOUCH_MAJOR</code> 检索压力信息。该旧行为与 Linux 输入协议规范不兼容，因此不再受支持。</p>
+</li>
+<li>
+<p>触摸尺寸信息应使用 <code>ABS_MT_TOUCH_MAJOR</code> 进行报告。</p>
+<p>以前版本的 Android 从 <code>ABS_MT_TOOL_MAJOR</code> 检索尺寸信息。该旧行为与 Linux 输入协议规范不兼容，因此不再受支持。</p>
+</li>
+</ul>
+<p>触摸设备驱动程序不再需要 Android 系统专用的自定义设置。通过依靠标准的 Linux 输入协议，Android 可以使用未经修改的驱动程序来支持更多种类的触摸外设，如外部 HID 多点触控触摸屏。</p>
+</li>
+</ol>
+<h2 id="touch-device-operation">触摸设备操作</h2>
+<p>下面简要汇总了 Android 上的触摸设备操作。</p>
+<ol>
+<li>
+<p><code>EventHub</code> 从 <code>evdev</code> 驱动程序读取原始事件。</p>
+</li>
+<li>
+<p><code>InputReader</code> 消耗原始事件，并更新关于每个工具的位置和其他特征的内部状态。它还会跟踪按钮状态。</p>
+</li>
+<li>
+<p>如果按下或释放“后退”或“前进”按钮，<code>InputReader</code> 会向 <code>InputDispatcher</code> 发出按键事件通知。</p>
+</li>
+<li>
+<p><code>InputReader</code> 确定是否发生了虚拟按键的按压操作。如果是，它会向 <code>InputDispatcher</code> 发出按键事件通知。</p>
+</li>
+<li>
+<p><code>InputReader</code> 确定触摸行为是否在显示范围内发起的。如果是，它会向 <code>InputDispatcher</code> 发出触摸事件通知。</p>
+</li>
+<li>
+<p>如果没有触摸工具，但至少有一个悬停工具，则 <code>InputReader</code> 会向 <code>InputDispatcher</code> 发出悬停事件通知。</p>
+</li>
+<li>
+<p><em></em>如果触摸设备类型是指控设备，则 <code>InputReader</code> 会执行指针手势检测，相应地移动指针和相关点，并向 <code>InputDispatcher</code> 发出指针事件通知。</p>
+</li>
+<li>
+<p><code>InputDispatcher</code> 使用 <code>WindowManagerPolicy</code> 来确定是否应该调度这些事件，以及它们是否应该唤醒设备。然后，<code>InputDispatcher</code> 将事件传递给相应的应用。</p>
+</li>
+</ol>
+<h2 id="touch-device-configuration">触摸设备配置</h2>
+<p>触摸设备行为由设备的坐标轴、按钮、输入属性、输入设备配置、虚拟按键映射和按键布局确定。</p>
+<p>要详细了解参与键盘配置的文件，请参阅以下部分：</p>
+<ul>
+<li><a href="input-device-configuration-files.html">输入设备配置文件</a></li>
+<li><a href="#virtual-key-map-files">虚拟按键映射文件</a></li>
+</ul>
+<h3 id="properties">属性</h3>
+<p>系统依赖于许多输入设备配置属性来配置和校准触摸设备行为。</p>
+<p>原因之一是触摸设备的设备驱动程序通常使用特定于设备的单元来报告触摸特性。</p>
+<p>例如，许多触摸设备使用内部特定于设备的比例（例如由触摸触发的传感器节点的总数）来测量触摸接触面积。此原始尺寸值对应用来说没有意义，因为它们需要了解触摸设备传感器节点的物理尺寸和其他特性。</p>
+<p>系统使用在输入设备配置文件中编码的校准参数，将触摸设备报告的值解码、转换和标准化为应用可以理解的更简单的标准表示。</p>
+<h3 id="documentation-conventions">文档规范</h3>
+<p>对本文档而言，我们将使用以下规范来描述系统在校准过程中使用的值。</p>
+<h4 id="raw-axis-values">原始轴值</h4>
+<p>以下表达式表示触摸设备驱动程序作为 <code>EV_ABS</code> 事件报告的原始值。</p>
+<dl>
+<dt><code>raw.x</code></dt>
+<dd><code>ABS_X</code> 或 <code>ABS_MT_POSITION_X</code> 轴的值。</dd>
+<dt><code>raw.y</code></dt>
+<dd><code>ABS_Y</code> 或 <code>ABS_MT_POSITION_Y</code> 轴的值。</dd>
+<dt><code>raw.pressure</code></dt>
+<dd><code>ABS_PRESSURE</code> 或 <code>ABS_MT_PRESSURE</code> 轴的值，如果未提供，则为 0。</dd>
+<dt><code>raw.touchMajor</code></dt>
+<dd><code>ABS_MT_TOUCH_MAJOR</code> 轴的值，如果未提供，则为 0。</dd>
+<dt><code>raw.touchMinor</code></dt>
+<dd><code>ABS_MT_TOUCH_MINOR</code> 轴的值，如果未提供，则为 <code>raw.touchMajor</code>。</dd>
+<dt><code>raw.toolMajor</code></dt>
+<dd><code>ABS_TOOL_WIDTH</code> 或 <code>ABS_MT_WIDTH_MAJOR</code> 轴的值，如果未提供，则为 0。</dd>
+<dt><code>raw.toolMinor</code></dt>
+<dd><code>ABS_MT_WIDTH_MINOR</code> 轴的值，如果未提供，则为 <code>raw.toolMajor</code>。</dd>
+<dt><code>raw.orientation</code></dt>
+<dd><code>ABS_MT_ORIENTATION</code> 轴的值，如果未提供，则为 0。</dd>
+<dt><code>raw.distance</code></dt>
+<dd><code>ABS_DISTANCE</code> 或 <code>ABS_MT_DISTANCE</code> 轴的值，如果未提供，则为 0。</dd>
+<dt><code>raw.tiltX</code></dt>
+<dd><code>ABS_TILT_X</code> 轴的值，如果未提供，则为 0。</dd>
+<dt><code>raw.tiltY</code></dt>
+<dd><code>ABS_TILT_Y</code> 轴的值，如果未提供，则为 0。</dd>
+</dl>
+<h4 id="raw-axis-ranges">原始轴范围</h4>
+<p>以下表达式表示原始值的范围。通过为每个轴调用 <code>EVIOCGABS</code> ioctl 获得它们。</p>
+<dl>
+<dt><code>raw.*.min</code></dt>
+<dd>原始轴的最小值（含）。</dd>
+<dt><code>raw.*.max</code></dt>
+<dd>原始轴的最大值（含）。</dd>
+<dt><code>raw.*.range</code></dt>
+<dd>相当于 <code>raw.*.max - raw.*.min</code>。</dd>
+<dt><code>raw.*.fuzz</code></dt>
+<dd>原始轴的精度。例如，fuzz = 1 表示值精确到 +/- 1 个单位。</dd>
+<dt><code>raw.width</code></dt>
+<dd>触摸区域的宽度（含），相当于 <code>raw.x.range + 1</code>。</dd>
+<dt><code>raw.height</code></dt>
+<dd>触摸区域的高度（含），相当于 <code>raw.y.range + 1</code>。</dd>
+</dl>
+<h4 id="output-ranges">输出范围</h4>
+<p>以下表达式表示输出坐标系的特性。系统使用线性插值将触摸设备使用的 Surface 单元的触摸位置信息转换成将报告给应用的输出单元（如显示像素）。</p>
+<dl>
+<dt><code>output.width</code></dt>
+<dd>输出宽度。对于触摸屏（与显示屏相关联），输出宽度是显示屏宽度（以像素为单位）。对于触摸板（不与显示屏相关联），输出宽度等于 <code>raw.width</code>，表示不会插入值。</dd>
+<dt><code>output.height</code></dt>
+<dd>输出高度。对于触摸屏（与显示屏相关联），输出高度是显示屏高度（以像素为单位）。对于触摸板（不与显示屏相关联），输出高度等于 <code>raw.height</code>，表示不会插入值。</dd>
+<dt><code>output.diag</code></dt>
+<dd>输出坐标系的对角线长度，相当于 <code>sqrt(output.width ^2 + output.height ^2)</code>。</dd>
+</dl>
+<h3 id="basic-configuration">基础配置</h3>
+<p>触摸输入映射器在输入设备配置文件中使用许多配置属性来指定校准值。下表介绍了一些通用配置属性。在下面的部分中介绍了所有其他属性及其进行校准所用的字段。</p>
+<h4 id="touchdevicetype"><code>touch.deviceType</code></h4>
+<p><em></em>定义：<code>touch.deviceType</code> = <code>touchScreen</code> | <code>touchPad</code> | <code>pointer</code> | <code>default</code></p>
+<p>指定触摸设备类型。</p>
+<ul>
+<li>
+<p>如果值为 <code>touchScreen</code>，则触摸设备是与显示屏相关联的触摸屏。</p>
+</li>
+<li>
+<p>如果值为 <code>touchPad</code>，则触摸设备是不与显示屏相关联的触摸板。</p>
+</li>
+<li>
+<p>如果值为 <code>pointer</code>，则触摸设备是不与显示屏相关联的触摸板，并且其动作用于<a href="#indirect-multi-touch-pointer-gestures">间接多点触控指控手势</a>。</p>
+</li>
+<li>
+<p>如果值为 <code>default</code>，则系统将根据分类算法自动检测设备类型。</p>
+</li>
+</ul>
+<p>有关设备类型如何影响触摸设备的行为的详细信息，请参阅<a href="#touch-device-classification">分类</a>部分。</p>
+<p>在 Honeycomb 之前，所有触摸设备都被视为触摸屏。</p>
+<h4 id="touchorientationaware"><code>touch.orientationAware</code></h4>
+<p><em></em>定义：<code>touch.orientationAware</code> = <code>0</code> | <code>1</code></p>
+<p>指定触摸设备是否应对显示屏的方向更改做出响应。</p>
+<ul>
+<li>
+<p>如果值为 <code>1</code>，则只要显示屏的方向更改了，触摸设备报告的触摸位置就会旋转。</p>
+</li>
+<li>
+<p>如果值为 <code>0</code>，则触摸设备报告的触摸位置将不受显示屏方向更改的影响。</p>
+</li>
+</ul>
+<p>如果设备是触摸屏，则默认值为 <code>1</code>，否则为 <code>0</code>。</p>
+<p>系统会区分内部和外部触摸屏与显示部分。方向感知型内部触摸屏基于内部显示部分的方向进行旋转。方向感知型外部触摸屏基于外部显示部分的方向进行旋转。</p>
+<p>方向感知功能用于支持 Nexus One 等设备上的触摸屏旋转。例如，当设备从其自然方向顺时针旋转 90 度时，触摸的绝对位置将被重新映射，使得在触摸屏绝对坐标系左上角的触摸行为被报告为在显示屏旋转坐标系左上角的触摸行为。这样做是为了使用应用绘制其可见元素时所用的同一坐标系报告触摸行为。</p>
+<p>在 Honeycomb 之前，所有触摸设备都被视为具有方向感知功能。</p>
+<h4 id="touchgesturemode"><code>touch.gestureMode</code></h4>
+<p><em></em>定义：<code>touch.gestureMode</code> = <code>pointer</code> | <code>spots</code> | <code>default</code></p>
+<p>指定指控手势的表示模式。<em></em>仅在触摸设备为指控类型时，该配置属性才具有相关性。</p>
+<ul>
+<li>
+<p>如果值为 <code>pointer</code>，则触摸板手势将通过与鼠标指针相似的光标来表示。</p>
+</li>
+<li>
+<p>如果值为 <code>spots</code>，则触摸板手势由代表手势形心的锚点和代表各个手指位置的一组圆形斑点来表示。</p>
+</li>
+</ul>
+<p>如果设置了 <code>INPUT_PROP_SEMI_MT</code> 输入属性，则默认值为 <code>pointer</code>，否则为 <code>spots</code>。</p>
+<h3 id="x-and-y-fields"><code>X</code> 和 <code>Y</code> 字段</h3>
+<p>X 和 Y 字段给出了接触区域中心的位置信息。</p>
+<h4 id="calculation">计算</h4>
+<p>计算非常简单：来自触摸驱动程序的位置信息被线性插入输出坐标系。</p>
+<pre class="devsite-click-to-copy">
+xScale = output.width / raw.width
+yScale = output.height / raw.height
+
+If not orientation aware or screen rotation is 0 degrees:
+output.x = (raw.x - raw.x.min) * xScale
+output.y = (raw.y - raw.y.min) * yScale
+Else If rotation is 90 degrees:
+    output.x = (raw.y - raw.y.min) * yScale
+    output.y = (raw.x.max - raw.x) * xScale
+Else If rotation is 180 degrees:
+    output.x = (raw.x.max - raw.x) * xScale
+    output.y = (raw.y.max - raw.y) * yScale
+Else If rotation is 270 degrees:
+    output.x = (raw.y.max - raw.y) * yScale
+    output.y = (raw.x - raw.x.min) * xScale
+End If
+</pre>
+<h3 id="touchmajor-touchminor-toolmajor-toolminor-size-fields"><code>TouchMajor</code>、<code>TouchMinor</code>、<code>ToolMajor</code>、<code>ToolMinor</code>、<code>Size</code> 字段</h3>
+<p><code>TouchMajor</code> 和 <code>TouchMinor</code> 字段描述了在输出单元中接触区域的大致维度（单位为像素）。</p>
+<p><code>ToolMajor</code> 和 <code>ToolMinor</code> 字段描述了在输出单元中<a href="#tools-and-tool-types">工具</a>本身的大致维度（单位为像素）。</p>
+<p><code>Size</code> 字段描述了相对于触摸设备可以感知的最大可能触摸区域的标准化触摸区域尺寸。可能的最小标准化尺寸为 0.0（无接触或不可测量），可能的最大标准化尺寸为 1.0（传感器区域已经完全覆盖）。</p>
+<p>如果可以同时测量近似长度和宽度，则 <code>TouchMajor</code> 字段会指定接触区域的较长维度，<code>TouchMinor</code> 字段会指定接触区域的较短维度。如果只能测量接触区域的大致直径，则 <code>TouchMajor</code> 和 <code>TouchMinor</code> 字段将相等。</p>
+<p>同样，<code>ToolMajor</code> 字段会指定工具截断面的较长维度，<code>ToolMinor</code> 字段会指定工具截断面的较短维度。</p>
+<p>如果触摸尺寸不可测量，但工具尺寸可测量，则工具尺寸将设为等于触摸尺寸。相反，如果工具尺寸不可测量，但触摸尺寸可测量，则触摸尺寸将设为等于工具尺寸。</p>
+<p>触摸设备以各种方式测量或报告触摸尺寸和工具尺寸。目前的实现支持三种不同的测量方式：Surface 单元内的直径、面积和几何边界区域。</p>
+<h4 id="touchsizecalibration"><code>touch.size.calibration</code></h4>
+<p><em></em>定义：<code>touch.size.calibration</code> = <code>none</code> | <code>geometric</code> | <code>diameter</code> | <code>area</code> | <code>default</code></p>
+<p>指定触摸驱动程序报告触摸尺寸和工具尺寸时所用的测量类型。</p>
+<ul>
+<li>
+<p>如果值为 <code>none</code>，则尺寸设为零。</p>
+</li>
+<li>
+<p>如果值为 <code>geometric</code>，则假定以与位置相同的 Surface 单元指定尺寸，从而以相同的方式对尺寸进行缩放。</p>
+</li>
+<li>
+<p>如果值为 <code>diameter</code>，则假定尺寸与触摸或工具直径（宽度）成比例。</p>
+</li>
+<li>
+<p>如果值为 <code>area</code>，则假定尺寸与触摸或工具面积成比例。</p>
+</li>
+<li>
+<p>如果值为 <code>default</code>，那么在 <code>raw.touchMajor</code> 或 <code>raw.toolMajor</code> 轴提供值的情况下，系统将使用 <code>geometric</code> 校准，否则将使用 <code>none</code> 校准。</p>
+</li>
+</ul>
+<h4 id="touchsizescale"><code>touch.size.scale</code></h4>
+<p><em></em>定义：<code>touch.size.scale</code> = &lt;非负浮点数&gt;</p>
+<p>指定校准中使用的恒定比例因子。</p>
+<p>默认值为 <code>1.0</code>。</p>
+<h4 id="touchsizebias"><code>touch.size.bias</code></h4>
+<p><em></em>定义：<code>touch.size.bias</code> = &lt;非负浮点数&gt;</p>
+<p>指定校准中使用的恒定偏差值。</p>
+<p>默认值为 <code>0.0</code>。</p>
+<h4 id="touchsizeissummed"><code>touch.size.isSummed</code></h4>
+<p><em></em>定义：<code>touch.size.isSummed</code> = <code>0</code> | <code>1</code></p>
+<p>指定尺寸是报告为所有有效接触区域的尺寸总和，还是针对每个接触区域单独报告尺寸。</p>
+<ul>
+<li>
+<p>如果值为 <code>1</code>，则报告的尺寸需除以接触数量，然后才能使用。</p>
+</li>
+<li>
+<p>如果值为 <code>0</code>，则报告的尺寸将按原样使用。</p>
+</li>
+</ul>
+<p>默认值为 <code>0</code>。</p>
+<p>一些触摸设备（尤其是“Semi-MT”设备）无法区分多个接触点的单个维度，因此它们会报告表示其总面积或宽度的尺寸测量结果。对于此类设备，此属性只能设为 <code>1</code>。如果有疑问，请将此值设为 <code>0</code>。</p>
+<h4 id="calculation_1">计算</h4>
+<p><code>TouchMajor</code>、<code>TouchMinor</code>、<code>ToolMajor</code>、<code>ToolMinor</code> 和 <code>Size</code> 字段的计算方法取决于指定的校准参数。</p>
+<pre class="devsite-click-to-copy">
+If raw.touchMajor and raw.toolMajor are available:
+    touchMajor = raw.touchMajor
+    touchMinor = raw.touchMinor
+    toolMajor = raw.toolMajor
+    toolMinor = raw.toolMinor
+Else If raw.touchMajor is available:
+    toolMajor = touchMajor = raw.touchMajor
+    toolMinor = touchMinor = raw.touchMinor
+Else If raw.toolMajor is available:
+    touchMajor = toolMajor = raw.toolMajor
+    touchMinor = toolMinor = raw.toolMinor
+Else
+    touchMajor = toolMajor = 0
+    touchMinor = toolMinor = 0
+    size = 0
+End If
+
+size = avg(touchMajor, touchMinor)
+
+If touch.size.isSummed == 1:
+    touchMajor = touchMajor / numberOfActiveContacts
+    touchMinor = touchMinor / numberOfActiveContacts
+    toolMajor = toolMajor / numberOfActiveContacts
+    toolMinor = toolMinor / numberOfActiveContacts
+    size = size / numberOfActiveContacts
+End If
+
+If touch.size.calibration == "none":
+    touchMajor = toolMajor = 0
+    touchMinor = toolMinor = 0
+    size = 0
+Else If touch.size.calibration == "geometric":
+    outputScale = average(output.width / raw.width, output.height / raw.height)
+    touchMajor = touchMajor * outputScale
+    touchMinor = touchMinor * outputScale
+    toolMajor = toolMajor * outputScale
+    toolMinor = toolMinor * outputScale
+Else If touch.size.calibration == "area":
+    touchMajor = sqrt(touchMajor)
+    touchMinor = touchMajor
+    toolMajor = sqrt(toolMajor)
+    toolMinor = toolMajor
+Else If touch.size.calibration == "diameter":
+    touchMinor = touchMajor
+    toolMinor = toolMajor
+End If
+
+If touchMajor != 0:
+    output.touchMajor = touchMajor * touch.size.scale + touch.size.bias
+Else
+    output.touchMajor = 0
+End If
+
+If touchMinor != 0:
+    output.touchMinor = touchMinor * touch.size.scale + touch.size.bias
+Else
+    output.touchMinor = 0
+End If
+
+If toolMajor != 0:
+    output.toolMajor = toolMajor * touch.size.scale + touch.size.bias
+Else
+    output.toolMajor = 0
+End If
+
+If toolMinor != 0:
+    output.toolMinor = toolMinor * touch.size.scale + touch.size.bias
+Else
+    output.toolMinor = 0
+End If
+
+output.size = size
+</pre>
+<h3 id="pressure-field"><code>Pressure</code> 字段</h3>
+<p><code>Pressure</code> 字段描述了以介于 0.0（无接触）和 1.0（全力）之间的标准化值形式施加到触摸设备的近似物理压力。</p>
+<p>零压力表示工具处于悬停状态。</p>
+<h4 id="touchpressurecalibration"><code>touch.pressure.calibration</code></h4>
+<p><em></em>定义：<code>touch.pressure.calibration</code> = <code>none</code> | <code>physical</code> | <code>amplitude</code> | <code>default</code></p>
+<p>指定触摸驱动程序报告压力所用的测量类型。</p>
+<ul>
+<li>
+<p>如果值为 <code>none</code>，压力未知，因此触摸时设置为 1.0，悬停时为 0.0。</p>
+</li>
+<li>
+<p>如果值为 <code>physical</code>，则认为压力轴测量的是施加到触摸板的压力的实际物理强度。</p>
+</li>
+<li>
+<p>如果值为 <code>amplitude</code>，则认为压力轴测量的是信号幅度（与接触的尺寸和施加的压力有关）。</p>
+</li>
+<li>
+<p>如果值为 <code>default</code>，在压力轴可用的情况下，系统将使用 <code>physical</code> 校准，否则使用 <code>none</code>。</p>
+</li>
+</ul>
+<h4 id="touchpressurescale"><code>touch.pressure.scale</code></h4>
+<p><em></em>定义：<code>touch.pressure.scale</code> = &lt;非负浮点数&gt;</p>
+<p>指定校准中使用的恒定比例因子。</p>
+<p>默认值为 <code>1.0 / raw.pressure.max</code>。</p>
+<h4 id="calculation_2">计算</h4>
+<p><code>Pressure</code> 字段的计算方法取决于指定的校准参数。</p>
+<pre class="devsite-click-to-copy">If touch.pressure.calibration == "physical" or "amplitude":
+    output.pressure = raw.pressure * touch.pressure.scale
+Else
+    If hovering:
+        output.pressure = 0
+    Else
+        output.pressure = 1
+    End If
+End If
+</pre>
+<h3 id="orientation-and-tilt-fields"><code>Orientation</code> 和 <code>Tilt</code> 字段</h3>
+<p><code>Orientation</code> 字段以角度测量的形式描述了触摸和工具的方向。值 <code>0</code> 表示长轴垂直取向，<code>-PI/2</code> 表示长轴朝向左侧，<code>PI/2</code> 表示长轴朝向右侧。当存在触控笔工具时，方向范围可以是从 <code>-PI</code> 到 <code>PI</code> 的整个圆环范围。</p>
+<p><code>Tilt</code> 字段通过测量角度描述了工具的倾斜度。倾斜度为 <code>0</code> 表示工具垂直于表面。倾斜度为 <code>PI/2</code> 表示工具与表面平行。</p>
+<h4 id="touchorientationcalibration"><code>touch.orientation.calibration</code></h4>
+<p><em></em>定义：<code>touch.orientation.calibration</code> = <code>none</code> | <code>interpolated</code> | <code>vector</code> | <code>default</code></p>
+<p>指定触摸驱动程序报告方向时所用的测量类型。</p>
+<ul>
+<li>
+<p>如果值为 <code>none</code>，则方向未知，因此设为 0。</p>
+</li>
+<li>
+<p>如果值为 <code>interpolated</code>，则方向被线性插入，使得 <code>raw.orientation.min</code> 的原始值映射到 <code>-PI/2</code>，<code>raw.orientation.max</code> 的原始值映射到 <code>PI/2</code>。<code>(raw.orientation.min + raw.orientation.max) / 2</code> 的中心值映射到 <code>0</code>。</p>
+</li>
+<li>
+<p>如果值为 <code>vector</code>，则方向表示为包含两个带符号的 4 位字段的压缩向量。该表示用于 Atmel 基于对象的协议部分。当解码时，向量生成定向角和置信度。置信度用于缩放尺寸信息，除非它是几何图形。</p>
+</li>
+<li>
+<p>如果值为 <code>default</code>，那么在方向轴可用的情况下，系统将使用 <code>interpolated</code> 校准，否则使用 <code>none</code>。</p>
+</li>
+</ul>
+<h4 id="calculation_3">计算</h4>
+<p><code>Orientation</code> 和 <code>Tilt</code> 字段的计算方法取决于指定的校准参数和可用输入。</p>
+<pre class="devsite-click-to-copy">
+If touch.tiltX and touch.tiltY are available:
+    tiltXCenter = average(raw.tiltX.min, raw.tiltX.max)
+    tiltYCenter = average(raw.tiltY.min, raw.tiltY.max)
+    tiltXAngle = (raw.tiltX - tiltXCenter) * PI / 180
+    tiltYAngle = (raw.tiltY - tiltYCenter) * PI / 180
+    output.orientation = atan2(-sin(tiltXAngle), sinf(tiltYAngle))
+    output.tilt = acos(cos(tiltXAngle) * cos(tiltYAngle))
+Else If touch.orientation.calibration == "interpolated":
+    center = average(raw.orientation.min, raw.orientation.max)
+    output.orientation = PI / (raw.orientation.max - raw.orientation.min)
+    output.tilt = 0
+Else If touch.orientation.calibration == "vector":
+    c1 = (raw.orientation &amp; 0xF0) &gt;&gt; 4
+    c2 = raw.orientation &amp; 0x0F
+
+    If c1 != 0 or c2 != 0:
+        If c1 &gt;= 8 Then c1 = c1 - 16
+        If c2 &gt;= 8 Then c2 = c2 - 16
+        angle = atan2(c1, c2) / 2
+        confidence = sqrt(c1*c1 + c2*c2)
+
+        output.orientation = angle
+
+        If touch.size.calibration == "diameter" or "area":
+            scale = 1.0 + confidence / 16
+            output.touchMajor *= scale
+            output.touchMinor /= scale
+            output.toolMajor *= scale
+            output.toolMinor /= scale
+        End If
+    Else
+        output.orientation = 0
+    End If
+    output.tilt = 0
+Else
+    output.orientation = 0
+    output.tilt = 0
+End If
+
+If orientation aware:
+    If screen rotation is 90 degrees:
+        output.orientation = output.orientation - PI / 2
+    Else If screen rotation is 270 degrees:
+        output.orientation = output.orientation + PI / 2
+    End If
+End If
+</pre>
+<h3 id="distance-field"><code>Distance</code> 字段</h3>
+<p><code>Distance</code> 字段描述了工具和触摸设备表面之间的距离。值 0.0 表示直接接触，值越大，表示与表面之间的距离越远。</p>
+<h4 id="touchdistancecalibration"><code>touch.distance.calibration</code></h4>
+<p><em></em>定义：<code>touch.distance.calibration</code> = <code>none</code> | <code>scaled</code> | <code>default</code></p>
+<p>指定触摸驱动程序报告距离时所用的测量类型。</p>
+<ul>
+<li>
+<p>如果值为 <code>none</code>，则距离未知，因此设为 0。</p>
+</li>
+<li>
+<p>如果值为 <code>scaled</code>，则报告的距离将乘以恒定比例因子。</p>
+</li>
+<li>
+<p>如果值为 <code>default</code>，则在距离轴可用的情况下，系统将使用 <code>scaled</code> 校准，否则使用 <code>none</code>。</p>
+</li>
+</ul>
+<h4 id="touchdistancescale"><code>touch.distance.scale</code></h4>
+<p><em></em>定义：<code>touch.distance.scale</code> = &lt;非负浮点数&gt;</p>
+<p>指定校准中使用的恒定比例因子。</p>
+<p>默认值为 <code>1.0</code>。</p>
+<h4 id="calculation_4">计算</h4>
+<p><code>Distance</code> 字段的计算方法取决于指定的校准参数。</p>
+<pre class="devsite-click-to-copy">If touch.distance.calibration == "scaled":
+    output.distance = raw.distance * touch.distance.scale
+Else
+    output.distance = 0
+End If
+</pre>
+<h3 id="example">示例</h3>
+<pre class="devsite-click-to-copy">
+# Input device configuration file for a touch screen that supports pressure,
+# size and orientation.  The pressure and size scale factors were obtained
+# by measuring the characteristics of the device itself and deriving
+# useful approximations based on the resolution of the touch sensor and the
+# display.
+#
+# Note that these parameters are specific to a particular device model.
+# Different parameters will need to be used for other devices.
+
+# Basic Parameters
+touch.deviceType = touchScreen
+touch.orientationAware = 1
+
+# Size
+# Based on empirical measurements, we estimate the size of the contact
+# using size = sqrt(area) * 28 + 0.
+touch.size.calibration = area
+touch.size.scale = 28
+touch.size.bias = 0
+touch.size.isSummed = 0
+
+# Pressure
+# Driver reports signal strength as pressure.
+#
+# A normal index finger touch typically registers about 80 signal strength
+# units although we don't expect these values to be accurate.
+touch.pressure.calibration = amplitude
+touch.pressure.scale = 0.0125
+
+# Orientation
+touch.orientation.calibration = vector
+</pre>
+<h3 id="compatibility-notes">兼容性说明</h3>
+<p>触摸设备的配置属性在 Android Ice Cream Sandwich 4.0 中发生了重大变化。<strong>必须更新触摸设备的所有输入设备配置文件，才能使用新配置属性。</strong></p>
+<p>更旧的触摸设备<a href="#touch-device-driver-requirements">驱动程序</a>可能也需要更新。</p>
+<h2 id="virtual-key-map-files">虚拟按键映射文件</h2>
+<p>触摸设备经常用于实现虚拟按键。</p>
+<p>有几种方法可以做到这一点，具体取决于触摸控制器的功能。一些触摸控制器可以直接配置为通过设置固件寄存器来实现软键。其他时候，最好在软件中执行从触摸坐标到按键代码的映射。</p>
+<p>在软件中实现虚拟按键时，内核必须将名为 <code>virtualkeys.&lt;devicename&gt;</code> 的虚拟按键映射文件作为本机已加载属性导出。例如，如果触摸屏设备驱动程序将其名称报告为“touchyfeely”，则虚拟按键映射文件的路径必须为 <code>/sys/board_properties/virtualkeys.touchyfeely</code>。</p>
+<p>虚拟按键映射文件描述了触摸屏上虚拟按键的坐标和 Linux 按键代码。</p>
+<p>除了虚拟按键映射文件外，还必须有一个对应的按键布局文件和按键字符映射文件，以将 Linux 按键代码映射到 Android 按键代码，并指定键盘设备的类型（通常为 <code>SPECIAL_FUNCTION</code>）。</p>
+<h3 id="syntax">语法</h3>
+<p>虚拟按键映射文件是一个纯文本文件，由一系列用换行符或冒号分隔的虚拟按键布局描述组成。</p>
+<p>注释行以“#”开头，并持续到这一行的结束位置。</p>
+<p>每个虚拟按键用由 6 个冒号分隔的组件进行描述：</p>
+<ul>
+<li><code>0x01</code>：版本代码。必须始终为 <code>0x01</code>。</li>
+<li>&lt;Linux key code&gt;：虚拟按键的 Linux 按键代码。</li>
+<li>&lt;centerX&gt;：虚拟按键中心的 X 轴坐标（以像素为单位）。</li>
+<li>&lt;centerY&gt;：虚拟按键中心的 Y 轴坐标（以像素为单位）。</li>
+<li>&lt;width&gt;：虚拟按键的宽度（以像素为单位）。</li>
+<li>&lt;height&gt;：虚拟按键的高度（以像素为单位）。</li>
+</ul>
+<p>所有的坐标和尺寸都是根据显示坐标系指定的。</p>
+<p>下面是一个虚拟按键映射文件，全部写在一行上。</p>
+<pre class="devsite-click-to-copy">
+# All on one line
+0x01:158:55:835:90:55:0x01:139:172:835:125:55:0x01:102:298:835:115:55:0x01:217:412:835:95:55
+</pre>
+<p>相同的虚拟按键映射文件也可以写在多行上。</p>
+<pre class="devsite-click-to-copy">
+# One key per line
+0x01:158:55:835:90:55
+0x01:139:172:835:125:55
+0x01:102:298:835:115:55
+0x01:217:412:835:95:55
+</pre>
+<p>在上述示例中，触摸屏具有 480×800 的分辨率。因此，所有虚拟按键的 &lt;centerY&gt; 坐标为 835，位于略低于触摸屏可见区域的位置。</p>
+<p>第一个按键的 Linux 扫描代码为 <code>158</code> (<code>KEY_BACK</code>)，centerX 为 <code>55</code>，centerY 为 <code>835</code>，width 为 <code>90</code>，height 为 <code>55</code>。</p>
+<h3 id="example_1">示例</h3>
+<p>虚拟按键映射文件：<code>/sys/board_properties/virtualkeys.touchyfeely</code>。</p>
+<pre class="devsite-click-to-copy">
+0x01:158:55:835:90:55
+0x01:139:172:835:125:55
+0x01:102:298:835:115:55
+0x01:217:412:835:95:55
+</pre>
+<p>按键布局文件：<code>/system/usr/keylayout/touchyfeely.kl</code>。</p>
+<pre class="devsite-click-to-copy">key 158 BACK
+key 139 MENU
+key 102 HOME
+key 217 SEARCH
+</pre>
+<p>按键字符映射文件：<code>/system/usr/keychars/touchyfeely.kcm</code>。</p>
+<pre class="devsite-click-to-copy">
+type SPECIAL_FUNCTION
+</pre>
+<h2 id="indirect-multi-touch-pointer-gestures">间接多点触控指控手势</h2>
+<p>在指控模式下，系统会解释以下手势：</p>
+<ol>
+<li>
+<p>单指点按：点击。</p>
+</li>
+<li>
+<p>单指移动：移动指针。</p>
+</li>
+<li>
+<p>单指移动加按下按钮：拖动指针。</p>
+</li>
+<li>
+<p>两个手指移动（两个手指沿相同的方向移动）：沿着该方向拖动指针下方的区域。指针本身不动。</p>
+</li>
+<li>
+<p>两个手指移动（两个手指朝着彼此移动或者移向不同方向）：平移/缩放/旋转指针周围的区域。指针本身不动。</p>
+</li>
+<li>
+<p>多个手指移动：自由手势。</p>
+</li>
+</ol>
+<h2 id="further-reading">延伸阅读</h2>
+<ol>
+<li><a href="http://www.kernel.org/doc/Documentation/input/multi-touch-protocol.txt">Linux 多点触控协议</a></li>
+<li><a href="http://lii-enac.fr/en/architecture/linux-input/multitouch-devices.html">ENAC 列出的在 Linux 上可用的多点触控设备</a></li>
+</ol>
+
+</body></html>

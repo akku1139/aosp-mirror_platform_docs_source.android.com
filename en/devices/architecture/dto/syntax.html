@@ -1,0 +1,328 @@
+<html devsite>
+  <head>
+    <title>DTO Syntax</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>Device Tree Source (DTS) format is a textual representation of a device tree.
+The Device Tree Compiler (DTC) processes this format into a binary device tree,
+which is the form expected by the Linux kernel.</p>
+
+<h2 id=reference>Using references</h2>
+
+<p>The <a href="https://github.com/pantoniou/dtc" class="external">DTC</a>
+(Device Tree compiler + overlay patches) project describes the DTS format in
+<a href="https://android.googlesource.com/platform/external/dtc/+/refs/heads/master/Documentation/dts-format.txt" class="external">dtc-format.txt</a>
+and
+<a href="https://android.googlesource.com/platform/external/dtc/+/refs/heads/master/Documentation/manual.txt" class="external">manual.txt</a>.
+DTO format and rules are described in
+<a href="https://android.googlesource.com/platform/external/dtc/+/refs/heads/master/Documentation/dt-object-internal.txt" class="external">dt-object-internal.txt</a>.
+These documents describe how to update the main DT using node
+<code>fragment@x</code> and syntax <code>__overlay__</code> in overlay DT. For
+example:</p>
+<pre class="prettyprint">
+/ {
+  fragment@0 {
+    target = &lt;&amp;some_node&gt;;
+      __overlay__ {
+        some_prop = "okay";
+        ...
+      };
+  };
+};
+</pre>
+
+<p>However, Google strongly recommends you do <strong>not</strong> use
+<code>fragment@x</code> and syntax <code>__overlay__</code>, and instead use the
+reference syntax. For example:</p>
+<pre class="prettyprint">
+&amp;some_node {
+  some_prop = "okay";
+  ...
+};
+</pre>
+
+<p>Reference syntax is compiled by <code>dtc</code> into the same object as the
+above using syntax <code>__overlay__</code>. This syntax does not force you to
+number the fragments, enabling you to read and write overlay DTS easily. If your
+<code>dtc</code> doesn't support this syntactic sugar, use the
+<a href="https://android.googlesource.com/platform/external/dtc" class="external">dtc
+in AOSP</a>.</p>
+
+<h2 id=labels>Using labels</h2>
+<p>To allow undefined references to nodes not present at compilation time, the
+overlay DT <code>.dts</code> file must have a tag <code>/plugin/</code> in its
+header. For example:</p>
+
+<pre class="prettyprint">
+/dts-v1/;
+/plugin/;
+</pre>
+
+<p>From here you can target the nodes to be overlaid using a reference, which is
+an absolute node path prefixed with an ampersand (&amp;). For example, for
+<code>node@0</code> in the main DT:</p>
+
+<table>
+<tr>
+<th width="50%">Define labels in the main DT ...</th>
+<th>... then use the labels.</th>
+</tr>
+
+<tr>
+<td>
+<pre class="prettyprint">
+[my_main_dt.dts]
+
+/dts-v1/;
+
+/ {
+  my_node: node@0 {
+    status = "disabled";
+
+    my_child: child@0 {
+      value = &lt;0xffffffff&gt;;
+    };
+  };
+};
+</pre>
+</td>
+
+<td  class="alt">
+<pre class="prettyprint">
+[my_overlay_dt.dts]
+
+/dts-v1/;
+/plugin/;
+
+&amp;my_node {
+  status = "okay";
+};
+
+&amp;my_child {
+  value = &lt;0x1&gt;;
+};
+</pre>
+</td>
+</tr>
+</table>
+
+<h2 id=override>Overriding</h2>
+<p>If the reference target property exists in the main DT, it is overridden
+after DTO; otherwise, it is appended. For example:</p>
+
+<table>
+<tr>
+<th width="33%">main.dts</th>
+<th width="33%">overlay.dts</th>
+<th>Merged Result</th>
+</tr>
+
+<tr>
+<td>
+<pre class="prettyprint">
+[my_main_dt.dts]
+
+/dts-v1/;
+
+/ {
+  compatible = "corp,foo";
+
+  my_node: node@0 {
+    status = "disabled";
+  };
+};
+</pre>
+</td>
+
+<td class="alt">
+<pre class="prettyprint">
+[my_overlay_dt.dts]
+
+/dts-v1/;
+/plugin/;
+
+&amp;my_node {
+  status = "okay";
+};
+</pre>
+</td>
+
+<td>
+<pre class="prettyprint">
+/dts-v1/;
+
+/ {
+  compatible = "corp,foo";
+
+  ...
+
+  node@0 {
+    linux,phandle = <0x1>;
+    phandle = <0x1>;
+    status = "okay";
+  };
+};
+</pre>
+</td>
+</tr>
+</table>
+
+<h2 id=append>Appending</h2>
+<p>If the reference target property does not exist in the main DT, it is
+appended after DTO. For example:</p>
+
+<table>
+<tr>
+<th width="33%">main.dts</th>
+<th width="33%">overlay.dts</th>
+<th>Merged Result</th>
+</tr>
+
+<tr>
+<td>
+<pre class="prettyprint">
+[my_main_dt.dts]
+
+/dts-v1/;
+
+/ {
+  compatible = "corp,foo";
+
+  my_node: node@0 {
+    status = "okay";
+  };
+};
+</pre>
+</td>
+
+<td class="alt">
+<pre class="prettyprint">
+[my_overlay_dt.dts]
+
+/dts-v1/;
+/plugin/;
+
+&amp;my_node {
+  new_prop = "bar";
+};
+</pre>
+</td>
+
+<td>
+<pre class="prettyprint">
+/dts-v1/;
+
+/ {
+  compatible = "corp,foo";
+
+  ...
+
+  node@0 {
+    linux,phandle = &lt;0x1&gt;;
+    phandle = &lt;0x1&gt;;
+    status = "okay";
+    new_prop = "bar";
+  };
+};
+</pre>
+</td>
+</tr>
+</table>
+
+<h2 id="child">Child nodes</h2>
+<p>Examples of child node syntax:</p>
+
+<table>
+<tr>
+<th width="33%">main.dts</th>
+<th width="33%">overlay.dts</th>
+<th>Merged Result</th>
+</tr>
+
+<tr>
+<td>
+<pre class="prettyprint">
+[my_main_dt.dts]
+
+/dts-v1/;
+
+/ {
+  compatible = "corp,foo";
+
+  my_nodes: nodes {
+    compatible = "corp,bar";
+
+    node@0 {
+      status = "disabled";
+    };
+  };
+};
+</pre>
+</td>
+
+<td class="alt">
+<pre class="prettyprint">
+[my_overlay_dt.dts]
+
+/dts-v1/;
+/plugin/;
+
+&amp;my_nodes {
+  new_prop1 = "abc";
+
+  node@0 {
+    status = "okay";
+    new_prop2 = "xyz";
+  };
+};
+</pre>
+</td>
+
+<td>
+<pre class="prettyprint">
+/dts-v1/;
+
+/ {
+  compatible = "corp,foo";
+
+  ...
+
+  nodes {
+    linux,phandle = &lt;0x1&gt;;
+    phandle = &lt;0x1&gt;;
+    compatible = "corp,bar";
+    new_prop1 = "abc";
+
+    node@0 {
+      linux,phandle = &lt;0x2&gt;;
+      phandle = &lt;0x2&gt;;
+      status = "okay";
+      new_prop2 = "xyz";
+    };
+  };
+};
+</pre>
+</td>
+</tr>
+</table>
+
+  </body>
+</html>

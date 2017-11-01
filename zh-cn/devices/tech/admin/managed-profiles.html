@@ -1,0 +1,114 @@
+<html devsite><head>
+    <title>使用受管理资料</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>“受管理资料”或“工作资料”是在管理方式和视觉外观方面具有额外特殊属性的 Android <a href="multi-user.html">用户</a>。<em></em><em></em></p>
+
+<p>受管理资料的主要目的是为受管理的数据（如企业数据）创建一个隔离且安全的存储空间。资料管理员可以全权控制数据的范围、入口、出口及其有效期。这些政策可以赋予极高的权限，因此需由受管理资料（而非设备管理员）负责执行。</p>
+
+<ul>
+  <li><strong>创建</strong>：受管理资料可由主用户中的任何应用创建。用户在创建之前会收到受管理资料行为和政策执行的通知。</li>
+  <li><strong>管理</strong>：受管理资料由以编程方式调用 <a href="http://developer.android.com/reference/android/app/admin/DevicePolicyManager.html">DevicePolicyManager</a> 类中的 API 的应用管理，并且受管理资料的使用受到限制。这类应用称为“资料所有者”，在初始资料设置时定义。<em></em>受管理资料独有的政策涉及应用限制、可更新性和 intent 行为。
+  </li>
+  <li><strong>外观处理</strong>：受管理资料中的应用、通知和微件总是带有标记，并且通常内嵌在主用户的界面元素中。</li>
+</ul>
+
+<h2 id="data_segregation">数据隔离</h2>
+<p>受管理资料使用以下数据隔离规则。</p>
+
+<h3 id="applications">应用</h3>
+
+<p>当同一应用同时存在于主用户和受管理资料中时，应用使用自己的隔离数据限定范围。通常，应用彼此独立地进行操作，并且彼此之间不能跨越资料-用户边界直接通信。</p>
+
+<h3 id="accounts">帐号</h3>
+
+<p>受管理资料中的帐号与主用户截然不同。这些帐号无法跨越资料-用户边界访问凭据。只有在各自环境中的应用才能访问其各自的帐号。</p>
+
+<h3 id="intents">Intent</h3>
+
+<p>管理员可以控制是否在/不在受管理资料中解析 Intent。在默认情况下，受管理资料中的应用的范围被限定到受管理资料内，但 Device Policy API 除外。</p>
+
+<h3 id="settings">设置</h3>
+
+<p>在通常情况下，设置的执行范围限定到受管理资料，但锁定屏幕和加密设置除外，它们的范围依然是整个设备且会在主用户和受管理资料之间共享。在其他情况下，资料所有者在受管理资料之外没有任何设备管理员权限。</p>
+
+<p>受管理资料按以下原则被实现为一种新的次要用户：</p>
+
+<pre>uid = 100000 * userid + appid</pre>
+
+<p>与常规用户一样，它们具有独立的应用数据：</p>
+
+<pre>/data/user/&lt;userid&gt;</pre>
+
+<p>系统会使用 <code>Binder.getCallingUid()</code> 为所有系统请求计算 UserId，并且所有系统状态和响应都由 UserId 分隔。您可以考虑使用 <code>Binder.getCallingUserHandle</code>（而非 <code>getCallingUid</code>），以避免在 Uid 与 UserId 之间引起混淆。</p>
+
+<p>AccountManagerService 为每个用户保留了一个单独的帐号列表。受管理资料与常规次要用户之间的主要区别如下：</p>
+
+<ul>
+  <li>受管理资料与其父用户相关联，并在启动时与主用户一起启动。</li>
+  <li>受管理资料的通知由 ActivityManagerService 启用，从而允许受管理资料与主用户共享活动堆栈。</li>
+  <li>其他共享系统服务包括 IME、A11Y 服务、WLAN 和 NFC。</li>
+  <li>借助新的 Launcher API，启动器可以在主要资料中的应用旁显示受管理资料中带有标记的应用和加入白名单的微件，而无需切换用户。</li>
+</ul>
+
+<h2 id="device_administration">设备管理</h2>
+
+<p>Android 设备管理包括以下类型的企业设备管理员：</p>
+
+<ul>
+  <li>资料所有者：<em></em>专为自带设备 (BYOD) 环境而设计</li>
+  <li>设备所有者：<em></em>专为由企业负责的环境而设计</li>
+</ul>
+
+<p>为 Android 5.0 添加的大多数新设备管理员 API 仅适用于资料或设备所有者。传统的设备管理员仍然保留，但适用于更简单的仅限消费者情况（例如，查找我的设备）。</p>
+
+<h3 id="profile_owners">资料所有者</h3>
+
+<p>Device Policy Client (DPC) 应用通常用作资料所有者。DPC 应用通常由企业移动管理 (EMM) 合作伙伴（如 Google Apps Device Policy）提供。</p>
+
+<p>资料所有者应用通过发送 <code>ACTION_PROVISION_MANAGED_PROFILE</code> intent 在设备上创建受管理资料。此类资料因具有应用标记以及个性化外观而有别于其他资料。该标记或 Android 设备管理图标标识了哪些应用是工作应用。</p>
+
+<p>EMM 仅对受管理资料（而非个人空间）进行控制，但有一些例外情况，例如执行锁定屏幕。</p>
+
+<h3 id="device_owners">设备所有者</h3>
+
+<p>只能在未配置的设备中设置设备所有者：</p>
+
+<ul>
+  <li>只能在初始设备设置时进行配置</li>
+  <li>强制披露始终以快捷设置显示</li>
+</ul>
+
+<p>设备所有者可以执行一些资料所有者无法执行的任务，如：</p>
+
+<ul>
+  <li>擦除设备数据</li>
+  <li>停用 WLAN/蓝牙</li>
+  <li>控制 <code>setGlobalSetting</code></li>
+  <li><code>setLockTaskPackages</code>（能够将可将自己固定到前台的软件包加入白名单）</li>
+  <li>设置 <code>DISALLOW_MOUNT_PHYSICAL_MEDIA</code>（默认为 <code>FALSE</code>）。如果为 <code>TRUE</code>，则便携式和可合并的物理媒体都无法装载。</li>
+</ul>
+
+<h3 id="dpm_api">DevicePolicyManager API</h3>
+
+<p>Android 5.0 及更高版本大幅改进了 DevicePolicyManager，其中包含数十个新的 API，可同时支持企业所有和自带设备 (BYOD) 的管理用例。示例包括应用限制、证书静默安装和跨资料共享 intent 访问控制。可以从示例 Device Policy Client (DPC) 应用 <a href="https://developer.android.com/samples/BasicManagedProfile/index.html">BasicManagedProfile.apk</a> 着手使用。有关详情，请参阅<a href="https://developer.android.com/training/enterprise/work-policy-ctrl.html">构建工作政策控制器</a>。</p>
+
+</body></html>

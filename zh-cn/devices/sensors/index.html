@@ -1,0 +1,117 @@
+<html devsite><head>
+    <title>传感器</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<img style="float: right; margin: 0px 15px 15px 15px;" src="images/ape_fwk_hal_sensors.png" alt="Android 传感器 HAL 图标"/>
+
+<p>Android 传感器使应用可以访问移动设备的底层物理传感器。它们是负责提供数据的虚拟设备，由传感器硬件抽象层 (HAL) <a href="/devices/halref/sensors_8h.html">sensor.h</a> 进行定义。</p>
+
+<h2 id="what_are_“android_sensors”">什么是 Android 传感器？</h2>
+<p>Android 传感器属于虚拟设备，可提供来自以下各种物理传感器的数据：加速度计、陀螺仪、磁力计、气压计、湿度传感器、压力传感器、光传感器、近程传感器和心率传感器。</p>
+<p>提供数据的物理设备的列表中不包括相机、指纹传感器、麦克风和触摸屏。这些设备有自己的报告机制；这种区别是随意的，但一般来说，Android 传感器提供较低带宽的数据。例如，“100 hz x 3 个通道”用于加速度计、“25 hz x 8 MP x 3 个通道”用于相机，或“44 kHz x 1 个通道”用于麦克风。</p>
+    <p>Android 不定义不同物理传感器如何连接到系统芯片 (SoC)。</p>
+    <ul>
+      <li>通常，传感器芯片通过<a href="sensor-stack.html#sensor_hub">传感器中枢</a>连接到 SoC，允许对数据进行一些低功耗的监控和数据处理。</li>
+      <li>通常，使用内部集成电路 (I2C) 或串行外设接口 (SPI) 作为传输机制。</li>
+      <li>为了降低功耗，一些架构具有层次性，在专用集成电路（简称 ASIC，如加速度计芯片上的运动检测）中进行极少的处理，而在微控制器（如传感器中枢中的步数检测）中进行更多处理。</li>
+      <li>设备制造商会根据精确度、功率、价格和封装大小特性来选择架构。有关详情，请参阅<a href="sensor-stack.html">传感器堆栈</a>。</li>
+      <li>批处理功能是功率优化的重要考虑因素。有关详情，请参阅<a href="batching.html">批处理</a>。</li>
+    </ul>
+    <p>每个 Android 传感器都有一个“类型”，表示传感器的行为及其提供的数据。</p>
+    <ul>
+      <li>官方 Android <a href="sensor-types.html">传感器类型</a>在 <a href="/devices/halref/sensors_8h.html">sensors.h</a> 中的 SENSOR_TYPE_ 名称下定义<ul>
+          <li>绝大多数传感器都具有官方传感器类型。</li>
+          <li>这些类型记录在 Android SDK 中。</li>
+	  <li>这些类型的传感器的行为在 Android 兼容性测试套件 (CTS) 中进行测试。</li>
+        </ul>
+      </li>
+      <li>如果制造商在 Android 设备上集成了一种新型传感器，则可以自行定义一个临时类型来引用它。
+        <ul>
+          <li>这些类型不会被记录，因此应用开发者不太可能使用它们，因为开发者不了解它们，或者知道它们很少存在（仅在该特定制造商制造的某些设备上）。</li>
+          <li>它们未经过 CTS 测试。</li>
+	  <li>一旦 Android 为这种传感器定义了官方传感器类型，那么制造商必须停止使用自己的临时类型，并改为使用官方类型。这样，该传感器将供更多应用开发者使用。</li>
+        </ul>
+      </li>
+      <li>设备上存在的所有传感器的列表由 HAL 实现报告。
+        <ul>
+          <li>可以存在几个相同类型的传感器。例如，两个近程传感器或两个加速度计。</li>
+          <li>绝大多数应用仅会请求给定类型的单个传感器。例如，请求默认加速度计的应用将获得列表中的第一个加速度计。</li>
+          <li>传感器通常由<a href="suspend-mode.html#wake-up_sensors">唤醒</a>和<a href="suspend-mode.html#non-wake-up_sensors">非唤醒</a>对定义，两个传感器共享同一类型，但其唤醒特性不同。</li>
+        </ul>
+      </li>
+    </ul>
+<p>Android 传感器提供的数据是一系列传感器事件。</p>
+      <p>每个<a href="hal-interface.html#sensors_event_t">事件</a>包含：</p>
+        <ul>
+          <li>生成该事件的传感器的句柄</li>
+          <li>检测到或测量事件时的时间戳</li>
+          <li>以及一些数据</li>
+        </ul>
+      <p>对所报告数据的解析取决于传感器类型。有关针对每种传感器类型报告什么数据的详细信息，请参见<a href="sensor-types.html">传感器类型</a>定义。</p>
+
+<h2 id="existing_documentation2">现有文档</h2>
+    <h3 id="targeted_at_developers">面向开发者</h3>
+    <ul>
+      <li>概览
+        <ul>
+          <li><a href="https://developer.android.com/guide/topics/sensors/sensors_overview.html"> https://developer.android.com/guide/topics/sensors/sensors_overview.html </a></li>
+        </ul>
+      </li>
+      <li>SDK 参考
+        <ul>
+          <li> <a href="https://developer.android.com/reference/android/hardware/SensorManager.html">https://developer.android.com/reference/android/hardware/SensorManager.html</a></li>
+          <li><a href="https://developer.android.com/reference/android/hardware/SensorEventListener.html">https://developer.android.com/reference/android/hardware/SensorEventListener.html</a></li>
+          <li> <a href="https://developer.android.com/reference/android/hardware/SensorEvent.html">https://developer.android.com/reference/android/hardware/SensorEvent.html</a></li>
+          <li><a href="https://developer.android.com/reference/android/hardware/Sensor.html">https://developer.android.com/reference/android/hardware/Sensor.html</a></li>
+        </ul>
+      </li>
+      <li>StackOverflow 和教程网站
+        <ul>
+          <li>由于有时缺少传感器文档，因此开发者会前往 StackOverflow 等问答网站来寻找答案。</li>
+          <li>还存在一些教程网站，但不涉及最新功能，如批处理、大幅度动作传感器和游戏旋转矢量传感器。</li>
+          <li>这些网站的回答不一定总是正确，这就显示出哪些地方需要更多的文档来提供信息。</li>
+        </ul>
+      </li>
+    </ul>
+<h3 id="targeted_at_manufacturers_public">面向制造商</h3>
+    <ul>
+      <li> 概览
+        <ul>
+	  <li>此<a href="/devices/sensors/index.html">传感器</a>页面及其子页面。</li>
+        </ul>
+      </li>
+      <li>硬件抽象层 (HAL)
+        <ul>
+          <li> <a href="/devices/halref/sensors_8h_source.html">https://source.android.com/devices/halref/sensors_8h_source.html</a></li>
+          <li>也称为“sensors.h”</li>
+          <li>信息来源。开发新功能时要更新的第一份文档。</li>
+        </ul>
+      </li>
+      <li>Android CDD（兼容性定义文档）
+        <ul>
+          <li><a href="/compatibility/android-cdd.pdf">https://source.android.com/compatibility/android-cdd.pdf</a></li>
+          <li>查看有关传感器的部分。</li>
+          <li>CDD 的要求很宽松，因此满足 CDD 要求不足以确保传感器质量会很高。</li>
+        </ul>
+      </li>
+    </ul>
+
+</body></html>

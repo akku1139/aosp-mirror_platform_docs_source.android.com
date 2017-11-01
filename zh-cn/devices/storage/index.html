@@ -1,0 +1,48 @@
+<html devsite><head>
+    <title>存储</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<img style="float: right; margin: 0px 15px 15px 15px;" src="images/ape_fwk_hal_extstor.png" alt="Android external storage HAL icon"/>
+<p>Android 一直在不断发展，可支持各种存储设备类型和功能。所有 Android 版本均支持配有<a href="/devices/storage/traditional.html">传统存储</a>（包括便携式存储和内置存储）的设备。便携式存储是指物理介质（如 SD 卡或 USB 设备），用于进行临时数据传输/文件存储。<em></em>物理介质可以随设备一起保留更长时间，但并非固定在设备上，可以移除。自 Android 1.0 开始，SD 卡已可用作便携式存储；Android 6.0 增加对 USB 的支持。“内置”存储可通过将部分内部存储暴露于模拟层来实现存储，并且从 Android 3.0 开始便已支持此功能。<em></em></p>
+
+<p>从 Android 6.0 开始，Android 支持<a href="/devices/storage/adoptable.html">适配的存储设备</a>，此类存储是指物理介质（如 SD 卡或 USB 设备），已进行加密和格式化，能像内部存储一样运行。<em></em>适配的存储设备可存储各类应用数据。</p>
+
+<h2 id="permissions">权限</h2>
+<p>采用各种 Android 权限保护对外部存储设备的访问。从 Android 1.0 开始，采用 <code>WRITE_EXTERNAL_STORAGE</code> 权限保护写入访问。从 Android 4.1 开始，采用 <code>READ_EXTERNAL_STORAGE</code> 权限保护读取访问。</p>
+<p>从 Android 4.4 开始，外部存储设备上的文件所有者、组和模式根据目录结构合成。这样，应用可在外部存储设备上管理其特定文件包的目录，而无需获得广泛的 <code>WRITE_EXTERNAL_STORAGE</code> 权限。例如，文件包名称为 <code>com.example.foo</code> 的应用现在可以自由访问外部存储设备上的 <code>Android/data/com.example.foo/</code>，没有权限限制。通过将原始存储设备封装在 FUSE 守护进程中，可实现此类合成权限。</p>
+
+<h3 id="runtime_permissions">运行时权限</h3>
+
+<p>Android 6.0 引入了一种新的<a href="/devices/tech/config/runtime_perms.html">运行时权限</a>模式，在该模式中，应用可在运行时根据需要请求功能。由于新模式包含 <code>READ/WRITE_EXTERNAL_STORAGE</code> 权限，因此平台需要动态授予存储访问权限，而不会终止或重新启动已运行的应用。通过维护所有安装存储设备的三个不同视图可实现该模式：</p>
+
+<ul>
+  <li><code>/mnt/runtime/default</code> 是向无特殊存储权限的应用以及 <code>adbd</code> 和其他系统组件所在的根命名空间显示。
+  </li><li><code>/mnt/runtime/read</code> 是向具有 <code>READ_EXTERNAL_STORAGE</code> 的应用显示
+  </li><li><code>/mnt/runtime/write</code> 是向具有 <code>WRITE_EXTERNAL_STORAGE</code> 的应用显示
+</li></ul>
+
+<p>在 Zygote 进行 fork 操作时，我们会为各运行应用创建装载命名空间，并将相应的初始视图挂载到位。稍后，当授予运行时权限时，<code>vold</code> 将跳转到已运行应用的装载命名空间，并将升级后的视图挂载到位。请注意，权限降级定会导致应用被终止。</p>
+
+<p>用于实现此特性的 <code>setns()</code> 功能至少需要运行 Linux 3.8，但补丁程序已反向移植至 Linux 3.4。<code>PermissionsHostTest</code> CTS 测试可用于验证内核行为是否正确。</p>
+
+<p>在 Android 6.0 中，第三方应用无权访问 <code>sdcard_r</code> 和 <code>sdcard_rw</code> GID。相反，访问通过仅为该应用装载适当的运行时视图来控制。用户间交互使用 <code>everybody</code> GID 来阻止。</p>
+
+</body></html>

@@ -1,0 +1,102 @@
+<html devsite><head>
+    <title>自动执行测试</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>deqp 测试模块可通过多种方式集成到自动化测试系统中。最佳方式取决于现有的测试架构和目标环境。</p>
+
+<p>测试运行的主要输出始终是测试日志文件，即带 <code>.qpa</code> 后缀的文件。可以从测试日志中解析得到完整的测试结果。控制台输出仅包含调试信息，并且可能并非在所有平台上都可获得。</p>
+
+<p>测试二进制文件可以直接从测试自动化系统调用。可以针对特定用例、某个测试集或所有可用测试启动测试二进制文件。如果执行期间发生致命错误（如某些 API 错误或系统崩溃），测试执行过程将会中止。对于回归测试，最佳方式是为单个用例或小型测试集单独调用测试二进制文件，以便在发生严重故障时也可获得部分结果。</p>
+
+<p>deqp 附带命令行测试执行工具，这些工具可与执行服务结合使用，以实现更强大的集成。执行器检测测试过程的终止，然后会在下一个可用用例上恢复测试执行过程。由完整测试会话生成单个日志文件。对于不提供崩溃恢复机制的轻量级测试系统而言，该设置是一个理想之选。</p>
+
+<h2 id="command_line_test_execution_tools">命令行测试执行工具</h2>
+
+<p>当前的命令行工具集包含以下组件：远程测试执行工具、用于执行回归分析的测试日志比较生成器、测试日志转 CSV 文件的转换器、测试日志转 XML 文件的转换器和测试日志转 JUnit 的转换器。</p>
+
+<p>这些工具的源代码位于 <code>executor</code> 目录中，相关的二进制文件内置于 <code>&lt;builddir&gt;/executor</code> 目录中。</p>
+
+<h3 id="command_line_test_executor">命令行测试执行器</h3>
+
+<p>命令行测试执行器是一种便携式 C++ 工具，用于在设备上启动测试运行，并基于 TCP/IP 协议从设备收集生成的日志。该执行器与目标设备上的执行服务 (execserver) 进行通信。二者共同协作，提供从测试过程崩溃恢复等功能。以下示例演示了如何使用命令行测试执行器（使用 <code>--help</code> 可查看更多详细信息）：</p>
+
+<h4 id="example_1_run_gles2_functional_tests">示例 1：在 Android 设备上运行 GLES2 功能测试：</h4>
+
+<pre class="devsite-terminal devsite-click-to-copy">
+executor --connect=127.0.0.1 --port=50016 --binaryname=
+com.drawelements.deqp/android.app.NativeActivity
+--caselistdir=caselists
+--testset=dEQP-GLES2.* --out=BatchResult.qpa
+--cmdline="--deqp-crashhandler=enable --deqp-watchdog=enable
+--deqp-gl-config-name=rgba8888d24s8"
+</pre>
+
+<h4 id="example_2_continue_a_partial_opengl">示例 2：在本地继续执行部分 OpenGL ES 2 测试：</h4>
+
+<pre class="devsite-terminal devsite-click-to-copy">
+executor --start-server=execserver/execserver --port=50016
+--binaryname=deqp-gles2 --workdir=modules/opengl
+--caselistdir=caselists
+--testset=dEQP-GLES2.* --exclude=dEQP-GLES2.performance.* --in=BatchResult.qpa
+--out=BatchResult.qpa
+</pre>
+
+<h3 id="test_log_csv_export_and_compare">以 CSV 格式导出测试日志并进行比较</h3>
+
+<p>deqp 具有将测试日志（.<code>qpa </code>文件）转换为 CSV 文件的工具。CSV 输出中包含一系列测试用例及其结果。该工具还可以比较两个或多个批处理结果，并仅列出在输入批处理结果中具有不同状态代码的测试用例。该比较还会列出匹配用例的数量。</p>
+
+<p>CSV 格式的输出内容非常实用，可用于通过标准命令行实用程序或电子表格编辑器进行进一步处理。使用命令行参数 <code>--format=text</code> 还可以选择其他人类可读的纯文本格式。</p>
+
+<h4 id="example_1_export_test_log_in_csv_format">示例 1：以 CSV 格式导出测试日志</h4>
+
+<pre class="devsite-click-to-copy">
+<code class="devsite-terminal">testlog-to-csv --value=code BatchResult.qpa &gt; Result_statuscodes.csv</code>
+<code class="devsite-terminal">testlog-to-csv --value=details BatchResult.qpa &gt; Result_statusdetails.csv</code>
+</pre>
+
+<h4 id="example_2_list_differences">示例 2：列出两个测试日志中测试结果之间的差异</h4>
+
+<pre class="devsite-terminal devsite-click-to-copy">
+testlog-to-csv --mode=diff --format=text Device_v1.qpa Device_v2.qpa
+</pre>
+
+<p class="note"><strong>注</strong>：参数 <code>--value=code</code> 可输出测试结果代码，如“Pass”或“Fail”。参数 <code>--value=details</code> 可选择对性能、功能或精度测试产生的结果或数值做进一步说明。</p>
+
+<h3 id="test_log_xml_export">以 XML 格式导出测试日志</h3>
+
+<p>测试日志文件可以使用 <code>testlog-to-xml</code> 实用程序转换为有效的 XML 文档。日志支持两种输出模式：</p>
+
+<ul>
+  <li>独立文档模式，其中每个测试用例和 <code>caselist.xml</code> 汇总文档都会写入目标目录
+  </li><li>单个文件模式，其中 <code>.qpa</code> 文件中的所有结果都将写入单个 XML 文档。
+</li></ul>
+
+<p>可使用 XML 样式表在浏览器中查看导出的测试日志文件。示例样式表文档（<code>testlog.xsl</code> 和 <code>testlog.css</code>）位于 <code>doc/testlog-stylesheet</code> 目录中。若要在浏览器中查看日志文件，可将两个样式表文件复制到导出的 XML 文档所在的同一目录。</p>
+
+<p>如果您使用的是 Google Chrome，则必须通过 HTTP 访问这些文件，因为 Chrome 出于安全考虑，会限制对本地文件的访问。标准的 Python 安装包括一个基本的 HTTP 服务器，该服务器可通过 <code>python –m SimpleHTTPServer 8000</code> 命令启动，以作为当前目录。启动服务器后，只需将 Chrome 浏览器指向 <code>http://localhost:8000</code> 即可查看测试日志。</p>
+
+<h3 id="conversion_to_a_junit_test_log">转换为 JUnit 测试日志</h3>
+
+<p>很多测试自动化系统都可以从 JUnit 输出生成测试运行结果报告。可使用 testlog-to-junit 工具将 deqp 测试日志文件转换为 JUnit 输出格式。</p>
+
+<p>该工具目前仅支持转换测试用例判定表。由于 JUnit 仅支持“pass”和“fail”结果，deqp 的通过结果会映射到“JUnit pass”，其他结果则会被视为失败。原始的 deqp 结果代码可从 JUnit 输出中获得。转换时将不会保留日志消息或结果图片等其他数据。</p>
+
+</body></html>

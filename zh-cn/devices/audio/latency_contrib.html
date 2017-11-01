@@ -1,0 +1,107 @@
+<html devsite><head>
+    <title>音频延迟的促成因素</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>本页面重点介绍输出延迟的促成因素，但是类似的内容也适用于输入延迟。
+</p>
+<p>假设模拟电路的促成作用没有那么显著，那么音频延迟的主要 Surface 级促成因素如下：</p>
+
+<ul>
+  <li>应用</li>
+  <li>通道中的缓冲区总数</li>
+  <li>每个缓冲区的大小（以帧为单位）</li>
+  <li>应用处理器之后的额外延迟，例如来自 DSP 的延迟</li>
+</ul>
+
+<p>上述促成因素列表在尽量做到准确的同时，可能也存在误导。原因在于缓冲区计数和缓冲区大小更像是影响而非原因。<em></em><em></em>通常发生的情况是实现并测试一个指定的缓冲区方案，但是在测试期间，音频欠载或过载听到的声音是“咔哒声”或“砰砰声”。作为补偿措施，系统设计人员因此增加了缓冲区大小或缓冲区计数。这样一来，虽然达到了消除欠载或过载这一预期效果，但是也带来了延迟时间变长的负面影响。有关缓冲区大小的更多信息，请观看视频<a href="https://youtu.be/PnDK17zP9BI">音频延迟：缓冲区大小</a>。
+
+</p>
+
+<p>更好的方法是了解欠载和过载的原因，然后纠正这些问题。这样可消除我们能听见的杂音，并且允许使用更小或更少的缓冲区，从而缩短延迟。
+</p>
+
+<p>根据我们的经验，最常见的欠载和过载的原因包括：</p>
+<ul>
+  <li>Linux CFS（完全公平的调度程序）</li>
+  <li>具有 SCHED_FIFO 调度的高优先级线程</li>
+  <li>优先级倒置</li>
+  <li>长时间调度延迟</li>
+  <li>长时间运行的中断处理程序</li>
+  <li>长时间中断禁用</li>
+  <li>电源管理</li>
+  <li>安全内核</li>
+</ul>
+
+<h3 id="linuxCfs">Linux CFS 和 SCHED_FIFO 调度</h3>
+<p>Linux CFS 旨在公平地对待共享通用 CPU 资源的竞争性工作负载。这种公平性体现在在每个线程中使用 nice 参数。<em></em>nice 值范围从 -19（最不友好，即分配最多的 CPU 时间）到 20（最友好，即分配最少的 CPU 时间）。一般来说，具有指定 nice 值的所有线程会获得差不多相同的 CPU 时间，而 nice 值较低的线程预计会获得更多的 CPU 时间。不过，只有在相对较长的观察期内，才能看出 CFS 是“公平”的。在较短的观察期内，CFS 可能会以意想不到的方式分配 CPU 资源。例如，它可能会将具有较低 nice 值的线程上的 CPU 转移到具有较高 nice 值的线程。对于音频而言，这可能会导致欠载或过载。
+</p>
+
+<p>显而易见的解决方案是避免将 CFS 用于高性能音频线程。从 Android 4.1 开始，此类线程现在使用 <code>SCHED_FIFO</code> 调度策略，而非通过 CFS 实现的 <code>SCHED_NORMAL</code>（也称为 <code>SCHED_OTHER</code>）调度策略。</p>
+
+<h3 id="schedFifo">SCHED_FIFO 优先级</h3>
+<p>虽然高性能音频线程现在使用 <code>SCHED_FIFO</code>，但是它们仍然很容易受到其他优先级更高的 <code>SCHED_FIFO</code> 线程的影响。这些线程通常是内核 Worker 线程，但也可能存在一些采用策略 <code>SCHED_FIFO</code> 的非音频用户线程。可用的 <code>SCHED_FIFO</code> 优先级范围是从 1 到 99。音频线程的运行优先级为 2 或 3。这使得优先级 1 可用于优先级较低的线程，而优先级 4 到 99 则适用于优先级较高的线程。我们建议您尽可能使用优先级 1，并保留优先级 4 到 99 以用于以下线程：保证在有限时间内完成、执行时间短于音频线程时间并且已知不会干扰音频线程调度的线程。
+</p>
+
+<h3 id="rms">速率单调调度</h3>
+<p>有关固定优先级分配理论的更多信息，请参阅维基百科文章<a href="http://en.wikipedia.org/wiki/Rate-monotonic_scheduling">速率单调调度</a> (RMS)。关键在于，固定优先级应严格按照周期分配，较高优先级分配给较短周期的线程，而不是基于观察到的“重要性”。可以使用最大执行频率和每次执行的最大计算能力将非周期性线程建模为周期性线程。如果非周期性线程不能建模为周期性线程（例如，它可以按无限频率执行或每次执行使用无限计算能力），则不应为其分配固定优先级，否则会与真正的周期性线程的调度不兼容。
+</p>
+
+<h3 id="priorityInversion">优先级倒置</h3>
+<p>
+  <a href="http://en.wikipedia.org/wiki/Priority_inversion">优先级倒置</a>是实时系统的一种典型故障模式，是指优先级较高的任务因等待优先级较低的任务释放资源（如受<a href="http://en.wikipedia.org/wiki/Mutual_exclusion">互斥</a>保护的共享状态）而无限受阻。请参阅“<a href="avoiding_pi.html">避免优先级倒置</a>”一文，了解缓和这种情况的技术。
+</p>
+
+<h3 id="schedLatency">调度延迟</h3>
+<p>调度延迟是指从线程已准备好运行到环境切换完成可以在 CPU 上实际运行线程之间的间隔时间。延迟越短越好，一旦超过 2 毫秒，就会造成音频问题。在模式转换期间最有可能出现长时间的调度延迟，例如，启动或关闭 CPU、在安全内核和普通内核之间切换、从全功率模式切换为低功率模式或者调整 CPU 时钟频率和电压。
+</p>
+
+<h3 id="interrupts">中断</h3>
+<p>在许多设计中，CPU 0 为所有外部中断提供服务。因此，长时间运行的中断处理程序可能会延迟其他中断，尤其是音频直接内存访问 (DMA) 完成中断。将中断处理程序设计为快速完成并将冗长的工作延迟到某个线程（最好是 CFS 线程或优先级为 1 的 <code>SCHED_FIFO</code> 线程）。
+</p>
+
+<p>同样，如果将 CPU 0 上的中端停用很长一段时间，会带来与延迟音频中断服务一样的效果。长时间中断停用通常发生在等待内核自旋锁定时。<i></i>检查这些自旋锁定，确保它们有时间限制。
+</p>
+
+<h3 id="power">电源、性能和散热管理</h3>
+<p>
+  <a href="http://en.wikipedia.org/wiki/Power_management">电源管理</a>是一个广义的术语，涵盖为了监控并减少电耗、同时优化性能所采取的措施。
+  <a href="http://en.wikipedia.org/wiki/Thermal_management_of_electronic_devices_and_systems">散热管理</a>和<a href="http://en.wikipedia.org/wiki/Computer_cooling">计算机冷却</a>类似，但寻求测量并控制热量，以避免因过热而造成损坏。在 Linux 内核中，CPU <a href="http://en.wikipedia.org/wiki/Governor_%28device%29">调节器</a>负责低级别的策略，而用户模式则配置高级别的策略。用到的技术包括：</p>
+
+<ul>
+  <li>动态电压调节</li>
+  <li>动态频率调节</li>
+  <li>动态核心启用</li>
+  <li>集群切换</li>
+  <li>电源门控</li>
+  <li>热插拔（热交换）</li>
+  <li>各种睡眠模式（中断、停止、空闲、暂停等）</li>
+  <li>进程迁移</li>
+  <li><a href="http://en.wikipedia.org/wiki/Processor_affinity">处理器关联</a></li>
+</ul>
+
+<p>一些管理操作会导致“停工”或者在一段时间内应用处理器未执行任何有用的工作。这些停工会干扰音频，因此应该设计管理措施，确保音频处于活动状态时，最糟糕的停工情况可接受。当然，当出现散热失控的紧急情况时，避免永久损坏比音频更重要！
+</p>
+
+<h3 id="security">安全内核</h3>
+<p>用于<a href="http://en.wikipedia.org/wiki/Digital_rights_management">数字版权管理</a> (DRM) 的<a href="http://en.wikipedia.org/wiki/Security_kernel">安全内核</a>可以运行在用于主要操作系统内核和应用代码的同一应用处理器内核上。只要安全内核操作在一个核心上处于活动状态，就会导致在该核心上本应正常运行的普通工作停止。尤其是，这可能包括音频工作。本质上来看，从较高层级无法预测安全内核的内部行为，因而安全内核引起的任何性能异常会特别严重。例如，安全内核操作通常不会出现在环境切换的跟踪中。我们称之为“黑暗时期”，即在流逝却无法观察到的时间。安全内核应该经过设计，确保音频处于活动状态时，最糟糕的停工情况可接受。
+</p>
+
+</body></html>

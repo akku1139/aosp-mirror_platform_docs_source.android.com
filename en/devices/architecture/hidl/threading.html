@@ -1,0 +1,156 @@
+<html devsite>
+  <head>
+    <title>Threading Models</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+
+<p>Methods marked as <code>oneway</code> do not block. For methods not marked as
+<code>oneway</code>, a client's method call will block until the server has
+completed execution or called a synchronous callback (whichever comes first).
+Server method implementations may call at most one synchronous callback; extra
+callback calls are discarded and logged as errors. If a method is supposed to
+return values via callback and does not call its callback, this is logged as an
+error and reported as a transport error to the client.</p>
+
+<h2 id=passthrough>Threads in passthrough mode</h2>
+<p>In passthrough mode, most calls are synchronous. However, to preserve the
+intended behavior that <code>oneway</code> calls do not block the client, a
+thread is created for each process. For details, see the
+<a href="/devices/architecture/hidl/index.html#passthrough">HIDL overview</a>.
+</p>
+
+<h2 id=binderized>Threads in binderized HALs</h2>
+<p>To serve incoming RPC calls (including asynchronous callbacks from HALs to
+HAL users) and death notifications, a threadpool is associated with each process
+that uses HIDL. If a single process implements multiple HIDL interfaces and/or
+death notification handlers, its threadpool is shared between all of them. When
+a process receives an incoming method call from a client, it picks a free thread
+from the threadpool and executes the call on that thread. If no free thread is
+available, it blocks until one is available.</p>
+
+<p>If the server has only one thread, then calls into the server are completed
+in order. A server with more than one thread may complete calls out of order
+even if the client has only one thread. As <code>oneway</code> calls do not
+block the client, multiple <code>oneway</code> calls may be processed
+simultaneously or out of order by a server with more than one thread, and
+<code>oneway</code> calls may be processed concurrently with a subsequent
+blocking call.</p>
+
+<h2 id=model>Server threading model</h2>
+<p>Except for passthrough mode, server implementations of HIDL interfaces live
+in a different process than the client and need one or more threads waiting for
+incoming method calls. These threads are the server's threadpool; the server may
+decide how many threads it wants running in its threadpool, and can use a
+threadpool size of one to serialize all calls on its interfaces. If the server
+has more than one thread in the threadpool, it can receive concurrent incoming
+calls on any of its interfaces (in C++, this means that shared data must be
+carefully locked).</p>
+
+<p>Oneway calls into the same interface are serialized. If a multi-threaded
+client calls <code>method1</code> and <code>method2</code> on interface
+<code>IFoo</code>, and <code>method3</code> on interface <code>IBar</code>,
+<code>method1</code> and <code>method2</code> will always be serialized, but
+<code>method3</code> may run in parallel with <code>method1</code> and
+<code>method2</code>.</p>
+
+<p>A single client thread of execution can cause concurrent execution on a
+server with multiple threads in two ways:</p>
+
+<ul>
+<li><code>oneway</code> calls do not block. If a <code>oneway</code> call is
+executed and then a non-<code>oneway</code> is called, the server may execute
+the <code>oneway</code> call and the non-<code>oneway</code> call
+simultaneously.</li>
+<li>Server methods that pass data back with synchronous callbacks can unblock
+the client as soon as the callback is called from the server.</li>
+</ul>
+
+<p>For the second way, any code in the server function that executes after the
+callback is called may execute concurrently, with the server handling subsequent
+calls from the client. This includes code in the server function and automatic
+destructors that execute at the end of the function. If the server has more than
+one thread in its threadpool, concurrency issues arise even if calls are coming
+in from only one single client thread. (If any HAL served by a process needs
+multiple threads, all HALs will have multiple threads because the threadpool is
+shared per-process.)</p>
+
+<p>As soon as the server calls the provided callback, the transport can call the
+implemented callback on the client and unblock the client. The client proceeds
+in parallel with whatever the server implementation does after it calls the
+callback (which may include running destructors). Code in the server function
+after the callback is no longer blocking the client (as long as the server
+threadpool has enough threads to handle incoming calls), but may be executed
+concurrently with future calls from the client (unless the server threadpool has
+only one thread).</p>
+
+<p>In addition to synchronous callbacks, <code>oneway</code> calls from a
+single-threadedclient may be handled concurrently by a server with multiple
+threads in its threadpool, but only if those <code>oneway</code> calls are
+executed on different interfaces. <code>oneway</code> calls on the same
+interface are always serialized.</p>
+
+<p class=note><strong>Note:</strong> We strongly encourage server functions to
+return as soon as they have called the callback function.</p>
+
+<p>For example (in C++):</p>
+
+<pre class="prettyprint">
+Return&lt;void&gt; someMethod(someMethod_cb _cb) {
+    // Do some processing, then call callback with return data
+    hidl_vec&lt;uint32_t&gt; vec = ...
+    _cb(vec);
+    // At this point, the client's callback will be called,
+    // and the client will resume execution.
+    ...
+    return Void(); // is basically a no-op
+};
+</pre>
+
+<h2 id=client>Client threading model</h2>
+<p>The threading model on the client differs between non-blocking calls
+(functions that are marked with the <code>oneway</code> keyword) and blocking
+calls (functions that do not have the <code>oneway</code> keyword specified).</p>
+
+<h3 id=block>Blocking calls</h3>
+<p>For blocking calls, the client blocks until one of the following happens:</p>
+
+<ul>
+<li>Transport error occurs; the <code>Return</code> object contains an error
+state that can be retrieved with <code>Return::isOk()</code>.</li>
+<li>Server implementation calls the callback (if there was one).</li>
+<li>Server implementation returns a value (if there was no callback parameter).
+</li>
+</ul>
+
+<p>In case of success, the callback function the client passes as an argument is
+always called by the server before the function itself returns. The callback is
+executed on the same thread that the function call is made on, so implementers
+must be careful with holding locks during function calls (and avoid them
+altogether when possible). A function without a <code>generates</code> statement
+or a <code>oneway</code> keyword is still blocking; the client blocks until the
+server returns a <code>Return&lt;void&gt;</code> object.</p>
+
+<h3 id=oneway>Oneway calls</h3>
+<p>When a function is marked <code>oneway</code>, the client returns immediately
+and does not wait for the server to complete its function call invocation.</p>
+
+  </body>
+</html>

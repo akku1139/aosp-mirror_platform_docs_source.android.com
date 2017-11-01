@@ -1,0 +1,82 @@
+<html devsite><head>
+    <title>游戏循环</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>实现游戏循环的热门方法如下所示：</p>
+
+<pre class="devsite-click-to-copy">
+while (playing) {
+    advance state by one frame
+    render the new frame
+    sleep until it’s time to do the next frame
+}
+</pre>
+
+<p>此方法还存在一些问题，最根本的问题是游戏可以定义什么是“帧”这一情况。不同的显示屏将以不同的速率刷新，并且该速率可能会随时间变化。如果您生成帧的速度快于显示屏能够显示的速度，则您偶尔不得不丢掉一个帧。如果生成帧的速度过慢，则 SurfaceFlinger 会定期无法找到新的缓冲区来获取帧，并将重新显示上一帧。这两种情况都会导致明显异常。</p>
+
+<p>您要做的是匹配显示屏的帧速率，并根据从上一帧起经过的时间推进游戏状态。有两种方法可以实现这一点：(1) 将 BufferQueue 填满并依赖“交换缓冲区”背压；(2) 使用 Choreographer (API 16+)。</p>
+
+<h2 id="stuffing">队列填充</h2>
+
+<p>只需尽快交换缓冲区，即可轻松实现队列填充。在 Android 的早期版本中，这样做实际上可能会使您遭受处罚，其中 <code>SurfaceView#lockCanvas()</code> 会让您休眠 100 毫秒。现在，它由 BufferQueue 调节，且 BufferQueue 的清空速度与 SurfaceFlinger 的消费能力相关。</p>
+
+<p>可在 <a href="https://code.google.com/p/android-breakout/">Android Breakout</a> 中找到此方法的一个示例。它使用 GLSurfaceView，后者在一个循环中运行，而该循环会调用应用的 onDrawFrame() 回调，然后交换缓冲区。如果 BufferQueue 已满，则直到缓冲区可用之后才会调用 <code>eglSwapBuffers()</code>。当 SurfaceFlinger 获取一个新的用于显示的缓冲区后，便会释放之前获取的缓冲区，这时这些缓冲区就变为可用状态。因为这发生在 VSYNC 上，所以您的绘图循环时间将与刷新率相匹配。大多数情况下是这样的。</p>
+
+<p>此方法存在几个问题。首先，应用与 SurfaceFlinger 操作组件关联，后者所花费的时间各不相同，具体取决于要执行的工作量以及是否与其他进程抢占 CPU 时间。由于您的游戏状态根据缓冲区交换的间隔时间推进，因此动画不会以一致的速率更新。但是以 60fps 的速率运行时，不一致会在一段时间之后达到平衡，因此您可能不会注意到卡顿。</p>
+
+<p>其次，由于 BufferQueue 尚未填满，因此前几次缓冲区交换的速度会非常快。所计算的帧间隔时间将接近于零，因此游戏会生成几个不会发生任何操作的帧。在 Breakout 这样的游戏（每次刷新都会更新屏幕）中，除了游戏首次启动（或取消暂停）时之外，队列总是满的，因此效果不明显。偶尔暂停动画，然后返回到快速模式的游戏可能会出现异常问题。</p>
+
+<h2 id="choreographer">Choreographer</h2>
+
+<p>通过 Choreographer，您可以设置在下一个 VSYNC 上触发的回调。实际的 VSYNC 时间以参数形式传入。因此，即使您的应用不会立即唤醒，您仍然可以准确了解显示屏刷新周期何时开始。使用此值（而非当前时间）可为您的游戏状态更新逻辑产生一致的时间源。</p>
+
+<p>遗憾的是，您在每个 VSYNC 之后得到回调这一事实并不能保证及时执行回调，也无法保证您能够迅速高效地对其进行操作。您的应用需要手动检测卡顿和丢帧的情况。</p>
+
+<p>Grafika 中的“记录 GL 应用”操作组件提供了此情况的示例。在某些设备（例如 Nexus 4 和 Nexus 5）上，如果您只是坐视不理，则操作组件会开始丢帧。GL 呈现微不足道，但有时会重新绘制 View 元素；如果设备已进入降低功耗模式，则测量/布局传递可能需要很长时间（根据 systrace，Android 4.4 上的时钟速度减慢之后，这一传递需要 28 毫秒，而不是 6 毫秒。如果您在屏幕上拖动手指，它会认为您在与该操作组件互动，因此时钟会保持高速状态，您永远不会丢帧）。</p>
+
+<p>如果当前时间超过 VSYNC 时间后 N 毫秒，则简单的解决办法是在 Choreographer 回调中丢掉一帧。理想情况下，N 的值取决于先前观察到的 VSYNC 间隔。例如，如果刷新周期是 16.7 毫秒 (60fps)，而您的运行时间延迟超过 15 毫秒，则可能会丢失一帧。</p>
+
+<p>如果您查看“记录 GL 应用”运行情况，则会看到丢帧计数器计数增加了，甚至会在丢帧时在边框中看到红色闪烁情况。除非您的观察力非常强，否则不会看到动画卡顿现象。以 60fps 的速率运行时，只要动画以固定速率继续播放，应用可以偶尔丢帧，没有任何人会注意到。您成功的几率在一定程度上取决于您正在绘制的内容、显示屏的特性，以及使用该应用的用户发现卡顿的擅长程度。</p>
+
+<h2 id="thread">线程管理</h2>
+
+<p>一般而言，如果您要呈现到 SurfaceView、GLSurfaceView 或 TextureView 上，则需要在专用线程中进行呈现。请勿在界面线程上进行任何“繁重”或花费时间不定的操作。</p>
+
+<p>Breakout 和“记录 GL 应用”使用专用呈现程序线程，并且也在该线程上更新动画状态。只要可以快速更新游戏状态，这就是合理的方法。</p>
+
+<p>其他游戏将游戏逻辑和呈现完全分开。如果您有一个简单的游戏，只是每 100 毫秒移动一个块，则您可以使用一个只进行以下操作的专用线程：</p>
+
+<pre class="devsite-click-to-copy">
+    run() {
+        Thread.sleep(100);
+        synchronized (mLock) {
+            moveBlock();
+        }
+    }
+</pre>
+
+<p>（您可能需要让休眠时间基于固定的时钟，以防止漂移现象 - sleep() 不完全一致，并且 moveBlock() 需要花费的时间不为零 - 但是您了解就行。）</p>
+
+<p>当绘图代码唤醒时，它就会抓住锁，获取块的当前位置，释放锁，然后进行绘制。您无需基于帧间增量时间进行分数移动，只需要有一个移动对象的线程，以及另一个在绘制开始时随地绘制对象的线程。</p>
+
+<p>如果您想要针对复杂的场景创建即将到来的事件列表（按唤醒时间排序），且场景在下一个事件结束之前保持休眠状态，则原理是一样的。</p>
+
+</body></html>

@@ -1,0 +1,76 @@
+<html devsite><head>
+    <title>音频预热</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>音频预热是设备中的音频放大电路充满电并达到正常运行状态所需的时间。音频预热时间的主要影响因素是电源管理以及用于稳定电路的任何“de-pop”逻辑。
+</p>
+
+<p>本文档介绍了如何测量音频预热时间以及缩短预热时间的可行方法。</p>
+
+<h2 id="measuringOutput">测量输出预热时间</h2>
+
+<p>AudioFlinger 的 FastMixer 线程可自动测量输出预热时间并在 <code>dumpsys media.audio_flinger</code> 命令的输出中报告相关信息。在预热期间，FastMixer 会重复调用 <code>write()</code>，直到两个 <code>write()</code> 之间的时间达到预期值。FastMixer 通过查看硬件抽象层 (HAL) <code>write()</code> 达到稳定状态所需的时间来确定音频预热时间。
+</p>
+
+<p>要测量音频预热时间，请在启动后的不同时间针对内置扬声器和有线耳机执行以下操作。每种输出设备的预热时间通常是不同的，启动相应设备之后，请立即执行以下操作：</p>
+
+<ol>
+  <li>确保 FastMixer 已启用。</li>
+  <li>通过依次在设备上选择<b>设置 &gt; 声音 &gt; 触摸提示音</b>，启用触摸提示音。</li>
+  <li>确保音频至少已关闭三秒钟。五秒钟或更长时间会更好，因为除了 AudioFlinger 的 3 秒钟时间之外，硬件本身可能也存在自己的电源逻辑。</li>
+  <li>按主屏幕按钮，您应该会听到点击声音。</li>
+  <li>运行以下命令以接收测量的预热时间：<br /><code>adb shell dumpsys media.audio_flinger | grep measuredWarmup</code>
+
+<p>您应该会看到类似以下内容的输出：</p>
+
+<pre>
+sampleRate=44100 frameCount=256 measuredWarmup=X ms, warmupCycles=X
+</pre>
+
+<p><code>measuredWarmup=X</code> 表示完成第一组 HAL <code>write()</code> 耗用了 X 毫秒。
+</p>
+
+<p><code>warmupCycles=X</code> 表示 <code>write()</code> 的执行时间达到预期前发出的 HAL 写入请求数量。
+</p>
+</li>
+<li>进行五次测量并记录所有值及平均值。如果并非所有值都完全接近，那么可能其中的某次测量不准确。例如，音频关闭后，如果您未等待足够长的时间，将会出现预热时间小于平均值的情况。
+</li>
+</ol>
+
+<h2 id="measuringInput">测量输入预热时间</h2>
+
+<p>目前还没有用于测量音频输入预热时间的工具。不过，通过观察返回 <a href="http://developer.android.com/reference/android/media/AudioRecord.html#startRecording()">startRecording()</a> 所需的时间，可估算输入预热时间。
+</p>
+
+<h2 id="reducing">缩短预热时间</h2>
+
+<p>通常通过实施以下优化组合，可以缩短预热时间：</p>
+  <ul>
+  <li>良好的电路设计</li>
+  <li>内核设备驱动程序中的时间延迟很精确</li>
+  <li>并行（而非按顺序）执行独立的预热操作</li>
+  <li>使电路保持通电状态，或者不重新配置时钟（会增加闲置功耗）</li>
+  <li>缓存计算过的参数</li>
+  </ul>
+<p>不过，请注意避免过度优化。您可能会发现，您需要在较短预热时间和电源转换时无爆鸣之间进行权衡。
+</p>
+
+</body></html>

@@ -1,0 +1,187 @@
+<html devsite>
+  <head>
+    <title>Implementing DTOs</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+
+<p>Implementing DTO involves dividing the device tree, building, partitioning,
+and running. After you have a working implementation, you must also maintain
+compatibility between the two DTs and determine a strategy for ensuring the
+security of each DT partition.</p>
+
+<h2 id=divide>Dividing the DT</h2>
+<p>Start by dividing the device tree into two (2) parts:</p>
+<ul>
+<li><strong>Main DT</strong>. The SoC-only part and the default configurations,
+provided by SoC vendor.</li>
+<li><strong>Overlay DT</strong>. The device-specific configurations, provided by
+ODM/OEM.</li>
+</ul>
+<p>After dividing the device trees, you must ensure compatibility between main
+DT and overlay DT so that merging main DT and overlay DT results in a complete
+DT for the device. For details on DTO format and rules, see
+<a href="/devices/architecture/dto/syntax.html">DTO Syntax</a>. For details on
+multiple device trees, see
+<a href="/devices/architecture/dto/multiple.html">Multiple DTs</a>.</p>
+
+<h2 id=build>Building main &amp; overlay DTs</h2>
+<p>To build the main DT:</p>
+<ol>
+<li>Compile main DT <code>.dts</code> into <code>.dtb</code> file.</li>
+<li>Flash <code>.dtb</code> file into a bootloader runtime-accessible partition
+(detailed below).</li>
+</ol>
+
+<p>To build the overlay DT:</p>
+<ol>
+<li>Compile overlay DT <code>.dts</code> into <code>.dtbo</code> file. While
+this file format is the same as the <code>.dtb</code> file formatted as a
+flattened device tree, the different file extension distinguishes it from the
+main DT.
+</li>
+<li>Flash <code>.dtbo</code> file into a bootloader runtime-accessible partition
+(as detailed below).</li>
+</ol>
+
+<p>For details on compiling with DTC and verifying DTO results on the host, see
+<a href="/devices/architecture/dto/compile.html">Compiling &amp; Verifying</a>.
+</p>
+
+<h2 id=partition>Partitioning DTs</h2>
+<p>Determine a bootloader runtime-accessible and trusted location in flash
+memory to put <code>.dtb</code> and <code>.dtbo</code>.</p>
+
+<p>Example locations for the main DT:</p>
+<ul>
+<li>Part of boot partition, appended to the kernel (<code>image.gz</code>).</li>
+<li>Separate DT blobs (<code>.dtb</code>) in dedicated partition
+(<code>dtb</code>).</li>
+</ul>
+
+<p>Example locations for the overlay DT:</p>
+
+<div style="width:75%">
+<div class="attempt-left">
+<table><tr><th style="text-align: center;">Unique Partition</th></tr></table>
+<figure id="treble_dto_dtbo_partition_1">
+<img src="../images/treble_dto_dtbo_partition_1.png" style="display:block; margin:0 auto">
+<figcaption>
+<strong>Figure 1.</strong> Put <code>.dtbo</code> into a unique partition, e.g.
+<code>dtbo</code> partition.
+</figcaption>
+</figure>
+</div>
+<div class="attempt-right">
+<figure id="treble_dto_dtbo_partition_2">
+<table><tr><th style="text-align: center;">ODM Partition</th></tr></table>
+<img src="../images/treble_dto_dtbo_partition_2.png" style="display:block; margin:0 auto">
+<figcaption>
+<strong>Figure 2.</strong> Put <code>.dtbo</code> into <code>odm</code>
+partition (do this only if your bootloader has capability to load data from the
+filesystem of <code>odm</code> partition).
+</figcaption>
+</figure>
+</div>
+</div>
+
+<p class="note" style="clear:both"><strong>Note:</strong> The size of the
+overlay DT partition depends on the device and the amount of changes needed on
+top of the main DT blob. Typically, 8 MB is more than enough and allows room to
+grow in the future if required.</p>
+
+<p>For devices that support
+<a href="https://source.android.com/devices/tech/ota/ab_updates.html">seamless
+(A/B) updates</a>, A/B the main DT and overlay DT partitions:</p>
+
+<div style="width:75%">
+<div class="attempt-left">
+<table><tr><th style="text-align: center;">Example 1</th></tr></table>
+<figure id="treble_dto_dtbo_ab_1">
+<img src="../images/treble_dto_dtbo_ab_1.png" style="display:block; margin:0 auto">
+<figcaption>
+<strong>Figure 3.</strong> DTBO partition A/B, example 1.
+</figcaption>
+</figure>
+</div>
+<div class="attempt-right">
+<table><tr><th style="text-align: center;">Example 2</th></tr></table>
+<figure id="treble_dto_dtbo_ab_2">
+<img src="../images/treble_dto_dtbo_ab_2.png" style="display:block; margin:0 auto">
+<figcaption>
+<strong>Figure 4.</strong> DTBO partition A/B, example 2.
+</figcaption>
+</figure>
+</div>
+</div>
+
+<h2 id=run style="clear:both">Running in bootloader</h2>
+<p>To run:</p>
+
+<figure id=treble_dto_dtbo>
+<img src="../images/treble_dto_dtbo.png">
+<figcaption><strong>Figure 5.</strong> Typical runtime implementation for device
+tree overlay in bootloader.</figcaption>
+</figure>
+
+<ol>
+<li>Load <code>.dtb</code> from storage into memory.</li>
+<li>Load <code>.dtbo</code> from storage into memory.</li>
+<li>Overlay <code>.dtb</code> with <code>.dtbo</code> to be a merged DT.</li>
+<li>Start kernel given the memory address of the merged DT.</li>
+</ol>
+
+<h2 id=maintain>Maintaining compatibility</h2>
+<p>The main DTB (from SoC vendor) is treated as an API surface for DTBOs. After
+separating the device tree into a SoC-common part and a device-specific part,
+you must keep the two parts mutually compatible in the future, including:</p>
+
+<ul>
+<li><strong>DT definition in main DT</strong> <em>(e.g. nodes, properties,
+labels)</em>. Any definition change in main DT could trigger changes in overlay
+DT. For example, to correct a node name in main DT, define an "alias" label that
+maps to the original node name (to avoid the change of overlay DT).</li>
+<li><strong>Overlay DT store location</strong> <em>(e.g. partition name, store
+format)</em>.</li>
+</ul>
+
+<h2 id=security>Ensuring security</h2>
+<p>Bootloader must ensure the DTB/DTBO is secure, unmodified, and uncorrupted.
+You could use any solution to secure DTB/DTBO, for example,
+<a href="/security/verifiedboot/verified-boot#signature_format">Boot image
+signature</a> in VBoot 1.0 or
+<a href="https://android.googlesource.com/platform/external/avb/+/master/README.md#The-VBMeta-struct" class="external">AVB HASH footer</a> (VBoot 2.0).
+</p>
+
+<ul>
+<li>If DTB/DTBO is in a unique partition, you can add that partition to the
+trust chain of AVB. The trust chain starts from a hardware-protected root of
+trust and goes to the bootloader, which verifies the integrity and authenticity
+of DTB/DTBO partition.</li>
+<li>If DTB/DTBO is in an existing partition (such as the <code>odm</code>
+partition), that partition should be in the trust chain of AVB. (DTBO partition
+could share a public key with <code>odm</code> partition).</li>
+</ul>
+
+<p>For details, refer to <a href="/security/verifiedboot/index.html">Verified
+Boot</a>.</p>
+
+  </body>
+</html>

@@ -1,0 +1,228 @@
+<html devsite><head>
+    <title>UICC 运营商权限</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>Android 5.1 引入了一种机制，即如果 API 与通用集成电路卡 (UICC) 所有者的应用相关，则可以向 API 授予特殊权限。Android 平台会加载存储在 UICC 上的证书，并向由这些证书签名的应用授予权限，允许其调用一些特殊的 API。</p>
+<p>Android 7.0 针对 UICC 运营商权限规则，对该功能进行了扩展，以支持其他存储源（例如访问规则文件 (ARF)），从而大幅增加了可以使用此类 API 的运营商数量。有关 API 参考，请参阅 <a href="#carrierconfigmanager">CarrierConfigManager</a>；有关说明，请参阅<a href="/devices/tech/config/carrier.html">运营商配置</a>。</p>
+
+<p>由于运营商拥有对 UICC 的完全控制权，该机制不仅提供了一种安全而灵活的方式来管理移动网络运营商 (MNO) 在通用应用分发渠道（如 Google Play）上托管的应用，同时运营商还保留对设备的特殊权限，无需使用针对单个设备的平台证书对应用进行签名，也无需作为系统应用进行预安装。</p>
+
+<h2 id="rules_on_uicc">UICC 规则</h2>
+
+<p>UICC 上的存储空间需兼容 <a href="http://www.globalplatform.org/specificationsdevice.asp">GlobalPlatform 安全元件访问控制规范</a>。卡上的应用标识符 (AID) 为 <code>A00000015141434C00</code>，并使用标准 GET DATA 命令来获取存储在卡上的规则。您可以通过无线 (OTA) 更新来更新这些规则。</p>
+
+<h3 id="data_hierarchy">数据层次结构</h3>
+<p>UICC 规则使用以下数据层次结构（括号中由字母和数字组成的二个字符组合是对象标记）。每个规则均为 REF-AR-DO (E2)，并包含 REF-DO 与 AR-DO 的连接：</p>
+
+<ul>
+  <li>REF-DO (E1) 包含一个 DeviceAppID-REF-DO 或 DeviceAppID-REF-DO 与 PKG-REF-DO 的连接。<ul>
+  <li>DeviceAppID-REF-DO (C1) 存储 SHA-1（20 字节）或 SHA-256（32 字节）证书签名。
+  </li><li>PKG-REF-DO (CA) 是在清单中定义的完整文件包名称字符串，为 ASCII 编码，最大长度是 127 字节。
+  </li></ul></li>
+  <li>AR-DO (E3) 已扩展为包含 PERM-AR-DO (DB)。PERM-AR-DO (DB) 是一个 8 字节的位掩码，表示 64 个独立的权限。</li>
+</ul>
+
+<p>如果 PKG-REF-DO 不存在，则由相关证书签名的任何应用均获得访问权限；否则，证书和文件包名称需相匹配。</p>
+
+<h3 id="rule_example">规则示例</h3>
+<p>应用名称为 <code>com.google.android.apps.myapp</code>，并且 SHA-1 证书的十六进制字符串形式为：</p>
+<pre>AB:CD:92:CB:B1:56:B2:80:FA:4E:14:29:A6:EC:EE:B6:E5:C1:BF:E4</pre>
+
+<p>UICC 上规则的十六进制字符串形式为：</p>
+<pre>
+E243 &lt;= 43 is value length in hex
+  E135
+    C114 ABCD92CBB156B280FA4E1429A6ECEEB6E5C1BFE4
+    CA1D 636F6D2E676F6F676C652E616E64726F69642E617070732E6D79617070
+  E30A
+    DB08 0000000000000001
+</pre>
+
+<h2 id="arf">访问规则文件 (ARF) 支持</h2>
+<p>Android 7.0 增加了对从访问规则文件 (ARF) 中读取运营商授权规则的支持。</p>
+<p>Android 平台会首先尝试选择访问规则小程序 (ARA) 应用标识符 (AID) <code>A00000015141434C00</code>。如果在通用集成电路卡 (UICC) 上找不到 AID，则 Android 会通过选择 PKCS15 AID <code>A000000063504B43532D3135</code> 回退到 ARF。然后，Android 会读取 <code>0x4300</code> 处的访问控制规则文件 (ACRF)，并查找具有 AID <code>FFFFFFFFFFFF</code> 的条目。具有不同 AID 的条目将被忽略，从而确保其他用例的规则可以同时存在。</p>
+<p>十六进制字符串形式的 ACRF 内容示例：</p>
+<pre>30 10 A0 08 04 06 FF FF FF FF FF FF 30 04 04 02 43 10</pre>
+
+<p>访问控制条件文件 (ACCF) 内容示例：</p>
+<pre>30 16 04 14 61 ED 37 7E 85 D3 86 A8 DF EE 6B 86 4B D8 5B 0B FA A5 AF 81
+</pre>
+
+<p>在上述示例中，<code>0x4310</code> 是 ACCF 的地址，该地址包含证书哈希值 <code>61:ED:37:7E:85:D3:86:A8:DF:EE:6B:86:4B:D8:5B:0B:FA:A5:AF:81</code>。由此证书签名的应用获得了运营商权限。</p>
+
+<h2 id="enabled_apis">已启用的 API</h2>
+
+<p>Android 支持以下 API。</p>
+
+<h3 id="telephonymanager">TelephonyManager</h3>
+
+<ul>
+<li>允许运营商应用向 UICC 请求挑战/响应的 API：<a href="https://developer.android.com/reference/android/telephony/TelephonyManager.html#getIccAuthentication(int,%20int,%20java.lang.String)"><code>getIccAuthentication</code></a>。
+</li>
+
+<li>用于检查发起呼叫的应用是否获得运营商权限的 API：<a href="http://developer.android.com/reference/android/telephony/TelephonyManager.html#hasCarrierPrivileges()"><code>hasCarrierPrivileges</code></a>。
+</li>
+
+<li>用于覆盖品牌和号码的 API：<ul>
+  <li><code>setOperatorBrandOverride</code></li>
+  <li><code>setLine1NumberForDisplay</code></li>
+  <li><code>setVoiceMailNumber</code></li>
+</ul></li>
+
+<li>用于进行直接 UICC 通信的 API：<ul>
+  <li><code>iccOpenLogicalChannel</code></li>
+  <li><code>iccCloseLogicalChannel</code></li>
+  <li><code>iccExchangeSimIO</code></li>
+  <li><code>iccTransmitApduLogicalChannel</code></li>
+  <li><code>iccTransmitApduBasicChannel</code></li>
+  <li><code>sendEnvelopeWithStatus</code></li>
+</ul></li>
+
+<li>将设备模式设置为全局的 API：<code>setPreferredNetworkTypeToGlobal</code>。</li>
+</ul>
+
+<h3 id="smsmanager">SmsManager</h3>
+
+<p>允许调用的应用创建新的传入短信的 API：<code>injectSmsPdu</code>。</p>
+
+<h3 id="carrierconfigmanager">CarrierConfigManager</h3>
+
+<p>用于通知配置已更改的 API：<code>notifyConfigChangedForSubId</code>。有关说明，请参阅<a href="/devices/tech/config/carrier.html">运营商配置</a>。
+</p>
+
+<h3 id="carriermessagingservice">CarrierMessagingService</h3>
+
+<p>当用户发送或接收新的短信和彩信时接收系统调用的服务。要扩展此类，请在您的清单文件中通过 <code>android.Manifest.permission#BIND_CARRIER_MESSAGING_SERVICE</code> 权限声明该服务，并附带一个包含 <code>#SERVICE_INTERFACE</code> 操作的 Intent 过滤器。API 包括：</p>
+<ul>
+  <li><code>onFilterSms</code></li>
+  <li><code>onSendTextSms</code></li>
+  <li><code>onSendDataSms</code></li>
+  <li><code>onSendMultipartTextSms</code></li>
+  <li><code>onSendMms</code></li>
+  <li><code>onDownloadMms</code></li>
+</ul>
+
+<h3 id="telephonyprovider">TelephonyProvider</h3>
+
+<p>允许对电话数据库进行修改（插入、删除、更新和查询）的内容提供程序 API。字段值在 <a href="https://developer.android.com/reference/android/provider/Telephony.Carriers.html"><code>Telephony.Carriers</code></a> 中进行定义；要了解更多详情，请参阅 developer.android.com 上的 <a href="https://developer.android.com/reference/android/provider/Telephony.html">Telephony</a> API 参考资料。</p>
+
+<h2 id="android_platform">Android 平台 </h2>
+
+<p>Android 平台会在检测到的 UICC 上构建内部 UICC 对象，该对象将运营商权限规则作为 UICC 的一部分包含在内。<a href="https://android.googlesource.com/platform/frameworks/opt/telephony/+/master/src/java/com/android/internal/telephony/uicc/UiccCarrierPrivilegeRules.java"><code>UiccCarrierPrivilegeRules.java</code></a> 会加载规则、在 UICC 卡上对规则进行解析，并将它们缓存在内存中。如果需要进行权限检查，<code>UiccCarrierPrivilegeRules</code> 会将来电者证书与其自身的规则逐一对比。如果 UICC 被移除，规则会连同 UICC 对象一起被销毁。</p>
+
+<h2 id="validation">验证</h2>
+<p>Android 7.0 CTS 包括针对 <code>CtsCarrierApiTestCases.apk</code> 中的运营商 API 的测试。由于此功能取决于 UICC 上的证书，因此您必须准备 UICC 以通过这些测试。</p>
+
+<h3 id="prepare_uicc">准备 UICC</h3>
+<p>默认情况下，<code>CtsCarrierApiTestCases.apk</code> 由 Android 开发者密钥进行签名，其哈希值为 <code>61:ED:37:7E:85:D3:86:A8:DF:EE:6B:86:4B:D8:5B:0B:FA:A5:AF:81</code>。如果 UICC 上的证书不匹配，那么测试也会输出预期的证书哈希值。</p>
+<p>输出示例：</p>
+<pre>
+junit.framework.AssertionFailedError: This test requires a SIM card with carrier privilege rule on it.
+Cert hash: 61ed377e85d386a8dfee6b864bd85b0bfaa5af81
+</pre>
+
+<p>要使用 <code>CtsCarrierApiTestCases.apk</code> 验证借助 CTS 的实现，您必须先获得一个开发者 UICC，且该 UICC 应具备正确的 UICC 规则或 ARF 支持。您可以要求您选择的 SIM 卡供应商为您准备一个开发者 UICC，且该 UICC 具有如本节所述的正确 ARF，然后使用该 UICC 运行测试。UICC 不需要有效移动网络服务来通过 CTS 测试。</p>
+
+<h3 id="run_tests">运行测试</h3>
+<p>为方便起见，Android 7.0 CTS 支持用来限制测试仅在配置了相同令牌的设备上运行的设备令牌。运营商 API CTS 测试支持设备令牌 <code>sim-card-with-certs</code>。例如，下面的设备令牌限制运营商 API 测试仅在 <code>abcd1234</code> 设备上运行：</p>
+<pre>cts-tradefed run cts  --device-token abcd1234:sim-card-with-certs</pre>
+
+<p>如果在不使用设备令牌的情况下运行测试，则测试将在所有设备上运行。</p>
+
+<h2 id="faq">常见问题解答</h2>
+
+<p><strong>如何在 UICC 上更新证书？</strong></p>
+
+<p><em>答：使用现有的卡 OTA 更新机制。</em></p>
+
+<p><strong>该规则是否可以与其他规则共存？</strong></p>
+
+<p><em>答：在 UICC 上可以出现具有相同 AID 的其他安全规则；Android 平台会自动过滤掉这些规则。</em></p>
+
+<p><strong>对于依赖 UICC 上的证书的应用，移除 UICC 会发生什么情况？</strong></p>
+
+<p><em>答：该应用将失去其权限，因为与 UICC 关联的规则会随 UICC 的移除而被销毁。</em></p>
+
+<p><strong>UICC 上的证书数量是否有限制？</strong>
+</p>
+
+<p><em>答：Android 平台不限制证书数量，但是由于检查过程是线性的，因此规则太多可能会造成检查延迟。</em></p>
+
+<p><strong>我们通过该方法可以支持的 API 数量是否有限制？
+</strong></p>
+
+<p><em>答：没有限制，但我们规定 API 必须与运营商相关。</em></p>
+
+<p><strong>有些 API 是否被禁止使用该方法？如果是，你们是如何执行禁用规则的？（例如，是否有测试可以验证哪些 API 适用该方法？）</strong></p>
+
+<p><em>答：请参阅 <a href="/compatibility/cdd.html">Android 兼容性定义文档 (CDD)</a> 的“API 行为兼容性”部分。我们有一些 CTS 测试可以确保 API 的权限模式保持不变。</em></p>
+
+<p><strong>UICC 如何使用多 SIM 卡功能？</strong></p>
+
+<p><em>答：它会使用用户设置的默认 SIM 卡。</em></p>
+
+<p><strong>UICC 是否会与其他 SE 访问技术（例如 SEEK）交互或重叠？</strong></p>
+<p><em>答：举例来说，SEEK 使用 UICC 上的同一 AID。因此，规则可以共存，并由 SEEK 或 UiccCarrierPrivileges 进行过滤。</em></p>
+
+<p><strong>何时适合检查运营商权限？</strong></p>
+<p><em>答：在 SIM 卡状态加载广播后。</em></p>
+
+<p><strong>OEM 能否禁用部分运营商 API？</strong></p>
+
+<p><em>答：不能。我们认为目前的 API 集合已是最小的集合，未来，我们计划使用位掩码来实现更精细的粒度控制。</em></p>
+
+<p><strong>setOperatorBrandOverride 是否会覆盖所有其他形式的运营商名称字符串？例如 SE13、UICC SPN 和基于网络的 NITZ 等。</strong>
+</p>
+
+<p><em>答：请参阅 <a href="http://developer.android.com/reference/android/telephony/TelephonyManager.html">TelephonyManager</a> 中的 SPN 条目
+</em></p>
+
+<p><strong>injectSmsPdu 方法调用的作用是什么？</strong></p>
+
+<p><em>答：该方法调用有助于将短信备份到云端或从云端恢复短信。injectSmsPdu 调用会启用恢复功能。</em></p>
+
+<p><strong>对于短信过滤，onFilterSms 调用是否基于短信 UDH 端口过滤？或者，运营商应用是否有权访问所有的传入短信？</strong></p>
+
+<p><em>答：运营商有权访问所有短信数据。</em></p>
+
+<p><strong>DeviceAppID-REF-DO 经扩展可支持 32 字节，这似乎与当前的 GP 规范（仅允许 0 或 20 字节）不兼容，你们为什么要做出这一更改？你们是否认为 SHA-1 不足以避免冲突？你们是否已向 GP 提出此更改建议，因为该规则可能无法向后兼容现有的 ARA-M/ARF？</strong></p>
+
+<p><em>答：为了提供能够满足未来需求的安全性，除了 SHA-1 之外，此项扩展还针对 DeviceAppID-REF-DO 引入 SHA-256，而目前 SHA-1 是 GP SEAC 标准中的唯一选项。因此我们强烈推荐使用 SHA-256。</em></p>
+
+<p><strong>如果 DeviceAppID 为 0（空），你们是否会真的将该规则应用于特定规则未涵盖的所有设备应用？</strong></p>
+
+<p><em>答：运营商 API 要求 deviceappid-ref-do 不为空。为空仅供满足测试用途，因此我们不建议在操作部署时留空。
+</em></p>
+
+<p><strong>根据你们的技术规范，在没有 DeviceAppID-REF-DO 的情况下，不得单独使用 PKG-REF-DO。但是在表 6-4 中，你们仍然扩展了 REF-DO 的定义。你们是否有意这样描述？如果在 REF-DO 中仅使用 PKG-REF-DO，代码会出现什么样的行为？</strong></p>
+
+<p><em>答：在最新版本中，我们移除了在 REF-DO 中将 PKG-REF-DO 作为单个值项的选项。PKG-REF-DO 只能与 DeviceAppID-REF-DO 一起使用。</em></p>
+
+<p><strong>假设我们可以授予所有基于运营商的权限，或者可以进行更精细的控制。那么可以用什么来定义位掩码和实际权限之间的映射？每个类一个权限？具体到每种方法一个权限？从长远来看，64 个独立权限是否足够？
+</strong></p>
+
+<p><em>答：这是留作将来使用。此外，欢迎向我们提出建议。</em></p>
+
+<p><strong>你们能否进一步具体地定义 DeviceAppID（Android 版）？由于这是发布者证书的 SHA-1（20 字节）哈希值，而发布者证书是用来为给定应用签名，因此该名称是否应该反映其用途？（该名称可能会让许多读者感到困惑，因为该规则将适用于使用这一发布者证书签名的所有应用。）</strong></p>
+
+<p><em>答：deviceAppID 存储证书已获得现有规范的支持。我们会尽量减少对规范的更改，以降低采用规范存在的障碍。有关详情，请参阅 <a href="#rules_on_uicc">UICC 规则</a>。</em></p>
+
+</body></html>

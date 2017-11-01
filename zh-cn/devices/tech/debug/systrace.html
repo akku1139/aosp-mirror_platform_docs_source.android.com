@@ -1,0 +1,173 @@
+<html devsite><head>
+    <title>了解 Systrace</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p class="caution"><strong>注意</strong>：如果您以前从未使用过 systrace，我们强烈建议您先阅读 <a href="https://developer.android.com/studio/profile/systrace.html">systrace 概览</a>，然后再继续。</p>
+
+<p>systrace 是分析 Android 设备性能的主要工具。不过，它实际上是其他工具的封装容器：它是 atrace 的主机端封装容器，是用于控制用户空间跟踪和设置 ftrace 的设备端可执行文件，也是 Linux 内核中的主要跟踪机制。systrace 使用 atrace 来启用跟踪，然后读取 ftrace 缓冲区并将其全部封装到一个独立的 HTML 查看器中<em></em><em></em>（虽然较新的内核支持 Linux 增强型柏克莱封包过滤器 (eBPF)，但以下文档内容仅适用于 3.18 内核（无 eFPF），因为 Pixel/Pixel XL 上使用的是 3.18 内核）。</p>
+
+<p>systrace 归 Google Android 和 Google Chrome 团队所有，且是作为 <a href="https://github.com/catapult-project/catapult">Catapult 项目</a>的一部分在开源环境中开发的。除 systrace 之外，Catapult 还包括其他有用的实用程序。例如，除了可由 systrace 或 atrace 直接启用的功能之外，ftrace 还提供了其他功能，并且包含一些对调试性能问题至关重要的高级功能（这些功能需要 root 访问权限，通常也需要新的内核）。</p>
+
+<h2 id="running_systrace">运行 systrace</h2>
+<p>要在 Pixel/Pixel XL 上调试抖动问题，请从以下命令开始：</p>
+
+<pre>$ ./systrace.py sched freq idle am wm gfx view sync binder_driver irq workq input -b 96000</pre>
+
+<p>当将该命令用于 GPU 活动和显示通道活动所需的附加跟踪点时，您将能够跟踪从用户输入直到屏幕上显示的帧。将缓冲区大小设为较大的值，以避免丢失事件（通常表现为一些 CPU 在跟踪记录中的某个点之后不包含任何事件）。</p>
+
+<p>在使用 systrace 的过程中，请记住，<strong>每个事件都是由 CPU 上的活动触发的</strong>。</p>
+
+<p class="note"><strong>注意</strong>：硬件中断不受 CPU 控制，且会在 ftrace 中触发事件，不过，向跟踪日志的实际提交操作是由中断处理程序完成的，如果您的中断已到达，而（例如）某个其他不良驱动程序已停用中断，则提交可能会延迟。因此，CPU 是关键要素。</p>
+
+<p>因为 systrace 构建于 ftrace 之上，而 ftrace 在 CPU 上运行，所以 CPU 上的活动必须写入用于记录硬件变化情况的 ftrace 缓冲区。这意味着，如果您想知道显示栅栏更改状态的原因，则可以查看在状态转换的确切点 CPU 上运行了哪些活动（在 CPU 上运行的某些活动会触发日志中出现这种更改）。此概念是使用 systrace 分析性能的基础。</p>
+
+<h2 id="example_1">示例：工作帧</h2>
+<p>该示例介绍了用于正常界面通道的 systrace。要按照示例操作，请<a href="perf_traces.zip">下载跟踪记录的 ZIP 文件</a>（包括本节中提及的其他跟踪记录），将文件解压缩，然后在浏览器中打开 systrace_tutorial.html 文件。系统会显示一条警告，提示 systrace 是一个大型文件；除非您在日常工作中使用 systrace，否则这个跟踪记录可能更完整，其中包含的信息比您以前在单个跟踪记录中看到的更多。</p>
+<p>对于一致的周期性工作负载（例如 TouchLatency），界面通道包含以下内容：</p>
+<p></p>
+<ol>
+<li>SurfaceFlinger 中的 EventThread 唤醒应用的界面线程，表明该渲染新帧了。</li>
+<li>应用使用 CPU 和 GPU 资源在界面线程、RenderThread 和 hwuiTasks 中渲染帧。这是界面占用的大部分容量。</li>
+<li>应用通过 Binder 将渲染帧发送到 SurfaceFlinger 并进入休眠状态。</li>
+<li>SurfaceFlinger 中的第二个 EventThread 唤醒 SurfaceFlinger，以触发构图和显示输出。如果 SurfaceFlinger 确定没有任何任务需要执行，它将返回休眠状态。</li>
+<li>SurfaceFlinger 通过 HWC/HWC2 或 GL 处理构图。HWC/HWC2 构图的速度更快且功率更低，但存在限制，具体取决于 SOC。这个步骤通常需要约 4 到 6 毫秒，但是可以与步骤 2 同步进行，因为 Android 应用始终会进行三重缓冲（虽然应用始终会进行三重缓冲，但 SurfaceFlinger 中可能只有一个待处理帧在等待，这样它就看起来与双重缓冲一样）。</li>
+<li>SurfaceFlinger 将通过供应商驱动程序将最终输出调度到显示部分，然后返回休眠状态，等待 EventThread 唤醒。</li>
+</ol>
+
+<p>下面我们详细介绍一下从 15409 毫秒开始的帧：</p>
+
+<p><img src="images/perf_trace_normal_pipeline.png"/></p>
+<p class="img-caption"><strong>图 1. </strong> 正常界面通道（EventThread 正在运行）。</p>
+
+<p>图 1 显示了一个由多个正常帧围绕的正常帧，因此对于理解界面通道的工作原理来说，它是一个很好的切入点。TouchLatency 的界面线程所在行在不同的时间显示为不同的颜色。柱形表示线程的不同状态：</p>
+
+<ul>
+<li><strong>灰色</strong>：正在休眠。</li>
+<li><strong>蓝色</strong>：可运行（它可以运行，但是调度程序尚未选择让它运行）。</li>
+<li><strong>绿色</strong>：正在活跃运行（调度程序认为它正在运行）。
+<p class="note"><strong>注意</strong>：中断处理程序并未在正常的单个 CPU 时间轴中显示，因此您有可能实际上是在线程运行时的某个阶段运行中断处理程序或 softirq。请检查跟踪记录的中断 (irq) 部分（在进程 0 下），以确认中断（而非标准线程）正在运行。</p>
+</li>
+<li><strong>红色</strong>：不可中断休眠（通常在内核中处于休眠锁定状态）。可以指示 I/O 负载，在调试性能问题时非常有用。</li>
+<li><strong>橙色</strong>：由于 I/O 负载而不可中断休眠。</li>
+</ul>
+
+<p>要查看不可中断休眠的原因（可从 <code>sched_blocked_reason</code> 跟踪点获取），请选择红色的不可中断休眠图块。</p>
+<p>当 EventThread 运行时，TouchLatency 的界面线程会变为可运行。要查看是什么唤醒的它，请点击蓝色部分：</p>
+
+<p><img src="images/perf_trace_tl.png"/></p>
+<p class="img-caption"><strong>图 2. </strong> TouchLatency 的界面线程。</p>
+
+<p>图 2 显示了 TouchLatency 的界面线程被与 EventThread 对应的 tid 6843 唤醒。界面线程被唤醒：</p>
+
+<p><img src="images/perf_trace_wake_render_enqueue.png"/></p>
+<p class="img-caption"><strong>图 3. </strong> 界面线程被唤醒、渲染一个帧，并将其加入队列以供 SurfaceFlinger 使用。</p>
+
+<p>如果跟踪记录中的 <code>binder_driver</code> 标记已启用，则您可以选择一个 Binder 事务，并查看该事务涉及的所有进程的相关信息：</p>
+
+<p><img src="images/perf_trace_binder_trans.png"/></p>
+<p class="img-caption"><strong>图 4. </strong> Binder 事务。</p>
+
+<p>图 4 显示了在 15423.65 毫秒，SurfaceFlinger 中的 Binder:6832_1 由于 tid 9579（即 TouchLatency 的 RenderThread）变为可运行。此外，您还可以在 Binder 事务的两侧看到 queueBuffer。</p>
+
+<p>在 SurfaceFlinger 端的 queueBuffer 期间，TouchLatency 中待处理帧的数量从 1 变为 2：</p>
+
+<p><img src="images/perf_trace_pending_frames.png"/></p>
+<p class="img-caption"><strong>图 5. </strong> 待处理帧从 1 个变为 2 个。</p>
+
+<p>图 5 显示了三重缓冲，其中两个帧已完成渲染，应用将很快开始渲染第三个帧。这是因为一些帧已经丢弃，所以应用保留两个待处理的帧而不是一个，以避免以后再丢弃帧。</p>
+
+<p>稍后，SurfaceFlinger 的主线程会被第二个 EventThread 唤醒，以便它可以将较早的待处理帧输出到显示部分：</p>
+
+<p><img src="images/perf_trace_sf_woken_et.png"/></p>
+<p class="img-caption"><strong>图 6. </strong> SurfaceFlinger 的主线程被第二个 EventThread 唤醒。</p>
+
+<p>SurfaceFlinger 首先锁定较早的待处理缓冲区，而这将导致待处理缓冲区的计数从 2 减为 1：</p>
+
+<p><img src="images/perf_trace_sf_latches_pend.png"/></p>
+<p class="img-caption"><strong>图 7. </strong> SurfaceFlinger 首先锁定较早的待处理缓冲区。</p>
+
+<p>锁定缓冲区后，SurfaceFlinger 会设置构图并将最终帧提交给显示部分（其中某些区段作为 <code>mdss</code> 跟踪点的一部分启用，因此它们可能不在您 SOC 的相应位置上）。</p>
+
+<p><img src="images/perf_trace_sf_comp_submit.png"/></p>
+<p class="img-caption"><strong>图 8. </strong> SurfaceFlinger 设置构图并提交最终帧。</p>
+
+<p>接下来，<code>mdss_fb0</code> 在 CPU 0 上被唤醒。<code>mdss_fb0</code> 是显示通道的内核线程，用于将渲染过的帧输出到显示部分。我们可以看到 <code>mdss_fb0</code> 位于跟踪记录中其自己所在行中的情形（向下滚动即可查看）。</p>
+
+<p><img src="images/perf_trace_wake_cpu0.png"/></p>
+<p class="img-caption"><strong>图 9</strong>. <code>mdss_fb0</code> 在 CPU 0 上被唤醒。</p>
+
+<p><code>mdss_fb0</code> 被唤醒，短暂运行，进入不可中断休眠状态，然后再次被唤醒。</p>
+
+<p class="note"><strong>注意</strong>：从此时起，跟踪记录将变得更为复杂，因为最后的工作会在 <code>mdss_fb0</code>、中断和工作队列函数之间划分。如果您需要该级别的详细信息，请参阅您的 SOC 的驱动程序堆栈的确切特性（因为了解 Pixel XL 上发生的活动可能对您并无帮助）。</p>
+
+<h2 id="example_2">示例：非工作帧</h2>
+<p>该示例介绍了用于调试 Pixel/Pixel XL 抖动问题的 systrace。要按照示例操作，请<a href="perf_traces.zip">下载跟踪记录的 ZIP 文件</a>（包括本节中提及的其他跟踪记录），将文件解压缩，然后在浏览器中打开 systrace_tutorial.html 文件。</p>
+
+<p>首次打开 systrace 时，您会看到如下内容：</p>
+
+<p><img src="images/perf_trace_tl_pxl.png"/></p>
+<p class="img-caption"><strong>图 10</strong>. 在 Pixel XL 上运行的 TouchLatency（大多数选项已启用，包括 mdss 和 kgsl 跟踪点）。</p>
+
+<p>查找卡顿时，请检查 SurfaceFlinger 下的 FrameMissed 行。FrameMissed 是一项可提升用户体验的改进，由硬件合成器 2 (HWC2) 提供。自 2016 年 12 月起，HWC2 只能用于 Pixel/Pixel XL；当您查看其他设备的 systrace 时，可能不会看到 FrameMissed 行。在任一情况下，FrameMissed 都会与具有以下特点的 SurfaceFlinger 相关联：缺少一个很常用的运行时，以及在 vsync 时的应用 (<code>com.prefabulated.touchlatency</code>) 存在未更改的待处理缓冲区计数：</p>
+
+<p><img src="images/perf_trace_fm_sf.png"/></p>
+<p class="img-caption"><strong>图 11</strong>. FrameMissed 与 SurfaceFlinger 的关联。</p>
+
+<p>图 11 显示了 15598.29 毫秒处的已丢失帧。SurfaceFlinger 在 vsync 间隔时间被短暂唤醒，并在未执行任何任务的情况下返回休眠状态，这意味着 SurfaceFlinger 确定不值得再次向显示部分发送帧。为什么？</p>
+
+<p>要了解在渲染此帧时通道是如何出现故障的，请先回顾上面的工作帧示例，了解正常界面通道是如何在 systrace 中出现的。准备就绪后，返回到丢失的帧并进行反推。请注意，SurfaceFlinger 被唤醒后立即进入休眠状态。查看来自 TouchLatency 的待处理帧的数量时，可以看到有两个帧（这是一条很好的线索，可帮助弄清楚发生的实际情况）。</p>
+
+<p><img src="images/perf_trace_sf_wake_sleep.png"/></p>
+<p class="img-caption"><strong>图 12. </strong> SurfaceFlinger 被唤醒后立即进入休眠状态。</p>
+
+<p>因为我们在 SurfaceFlinger 中有一些帧，所以这不是一个应用问题。此外，SurfaceFlinger 在正确的时间被唤醒，所以这也不是一个 SurfaceFlinger 问题。如果 SurfaceFlinger 和应用看起来都正常，那么这可能是一个驱动程序问题。</p>
+
+<p>因为启用了 <code>mdss</code> 和 <code>sync</code> 跟踪点，所以我们可以获得有关相应栅栏（在显示驱动程序和 SurfaceFlinger 之间共享，控制帧实际提交到显示部分的时间）的信息。我们关心的栅栏列于 <code>mdss_fb0_retire</code> 下，它指示帧实际在显示部分出现的时间。这些栅栏作为 <code>sync</code> 跟踪类别的一部分提供。哪些栅栏与 SurfaceFlinger 中的特定事件相对应，取决于您的 SOC 和驱动程序堆栈，因此请与您的 SOC 供应商联系，以了解您的跟踪记录中栅栏类别的含义。</p>
+
+<p><img src="images/perf_traces_fences.png"/></p>
+<p class="img-caption"><strong>图 13</strong>. <code>mdss_fb0_retire</code> 栅栏。</p>
+
+<p>图 13 显示的帧显示了 33 毫秒，而不是预期的 16.7 毫秒。图块前进到中途时，该帧应该被新帧替换，但实际上没有。请查看上一帧，看看是否可以找到蛛丝马迹：</p>
+
+<p><img src="images/perf_trace_frame_previous.png"/></p>
+<p class="img-caption"><strong>图 14. </strong> 被损坏帧的上一帧。</p>
+
+<p>图 14 显示了时长为 14.482 毫秒的一个帧。被损坏的两帧片段是 33.6 毫秒，这和我们预期的两帧时长大致接近（我们以 60Hz 渲染，每帧 16.7 毫秒，很接近）。但是 14.482 毫秒与 16.7 毫秒相去甚远，这表明显示通道存在严重错误。</p>
+
+<p>调查栅栏的确切结束位置，以确定是什么在控制它：</p>
+
+<p><img src="images/perf_trace_fence_end.png"/></p>
+<p class="img-caption"><strong>图 15. </strong> 调查栅栏的结束位置。</p>
+
+<p>工作队列包含一个 <code>__vsync_retire_work_handler</code>，它在栅栏发生变化时运行。通过浏览内核源代码，您可以看到它是显示驱动程序的一部分。它显然位于显示通道的关键路径上，所以必须以尽可能快的速度运行。它可运行约 70 微秒（不是很长的调度延迟），但它是一个工作队列，系统可能无法准确地排定其运行时间。</p>
+
+<p>检查上一帧，以确定它是否会导致该问题；有时抖动会随时间而累加，最终导致我们错过最后期限。</p>
+
+<p><img src="images/perf_trace_previous_frame.png"/></p>
+<p class="img-caption"><strong>图 16. </strong> 上一帧。</p>
+
+<p>kworker 上的可运行行不可见，因为当该行被选择时，查看器会将它变为白色，不过，通过统计数据，我们可以了解到问题所在：部分显示通道关键路径的 2.3 毫秒调度程序延迟时间<strong>很不乐观</strong>。在执行任何其他操作之前，我们应该先解决该问题，方法是：将显示通道关键路径的这一部分从工作队列（作为 <code>SCHED_OTHER</code> CFS 线程运行）移动到专用的 <code>SCHED_FIFO</code> kthread。这一功能需要时间保证，而工作队列不能（也不打算）提供这一保证。</p>
+
+<p>这是产生卡顿的原因吗？很难说这就是最终结论。在不易于诊断的情况下（如内核锁争用导致显示关键线程进入休眠状态），您通常无法直接通过跟踪记录了解问题的起因。这种抖动有可能是帧丢弃的原因吗？当然有可能。栅栏时间应该是 16.7 毫秒，但是在最终导致帧丢弃的帧中，栅栏时间与该值相去甚远（有一个 19 毫秒的栅栏，后接一个 14 毫秒的栅栏）。鉴于显示通道的耦合紧密程度，栅栏时间的上下抖动完全有可能导致最终丢弃帧。</p>
+
+<p>在此示例中，解决方案涉及将 <code>__vsync_retire_work_handler</code> 从工作队列转换为专用 kthread。这样一来，弹力球测试中的抖动情况得到显著改善，且卡顿问题也会明显减轻。随后的跟踪记录显示了非常接近 16.7 毫秒的栅栏时间。</p>
+
+</body></html>

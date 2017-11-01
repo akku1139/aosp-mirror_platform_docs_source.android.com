@@ -1,0 +1,304 @@
+<html devsite><head>
+    <title>测量电量值</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>设备制造商必须在 <code>/frameworks/base/core/res/res/xml/power_profile.xml</code> 中提供组件的电源配置文件。</p>
+
+<p>要确定电源配置文件的有关数值，请使用测量设备耗电量的硬件，并执行需要信息的各种操作。测量执行这些操作时的电量使用情况并计算各项值（在适当情况下与其他基准操作的电量消耗做对比所得的差异值）。
+</p>
+
+<p>电源配置文件的目的在于适当地估算电量消耗情况，电源配置文件的有关数值以电流（安培）表示。Android 框架用电流乘以子系统处于激活状态的时间，并计算毫安时值，然后将此值用于评估应用/子系统消耗的电池电量。</p>
+
+<p>运行 Android 7.0 及更高版本且配备蓝牙、调制解调器和 WLAN 控制器的设备可以提供从芯片组数据获得的其他电量值。</p>
+
+<h2 id="multiple-cpus">采用异构 CPU 的设备</h2>
+
+<p>设备电源配置文件（针对具备异构架构 CPU 核心的设备）必须包含以下额外字段：
+</p><ul>
+<li>每个集群的 CPU 总数（以 cpu.clusters.cores 表示）。</li>
+<li>每个集群支持的 CPU 速率。</li>
+<li>每个集群中处于激活状态的 CPU 耗电情况。</li>
+</ul>
+
+<p>为了区分集群中激活的 CPU 耗电量和所支持的 CPU 速率耗电量，需要将集群编号附加到数组名称上。集群编号按照 CPU 核心在内核设备树中的顺序分配。例如，在具备两 (2) 个集群，拥有四 (4) 个核心的异构架构中：</p>
+<ul>
+<li>cluster0 由 cpu0-3 组成</li>
+<li>cluster1 由 cpu4-7 组成</li>
+</ul>
+<p>当 Android 框架从位于 <code>/sys/devices/system/cpu/cpu&lt;number&gt;/cpufreq/stats</code> 中的 <code>sysfs</code> 文件中读取统计信息时，将使用以上 CPU 核心编号。
+
+</p><p>集群中激活的 CPU 以及速率示例：</p>
+
+<pre>
+&lt;array name="cpu.active.cluster0"&gt;
+&lt;value&gt;200&lt;/value&gt;
+&lt;value&gt;300&lt;/value&gt;
+&lt;value&gt;400&lt;/value&gt;
+&lt;/array&gt;
+&lt;array name="cpu.speeds.cluster0"&gt;
+&lt;value&gt;600000&lt;/value&gt;
+&lt;value&gt;800000&lt;/value&gt;
+&lt;value&gt;1200000&lt;/value&gt;
+&lt;/array&gt;
+
+&lt;array name="cpu.active.cluster1"&gt;
+&lt;value&gt;400&lt;/value&gt;
+&lt;value&gt;500&lt;/value&gt;
+&lt;value&gt;600&lt;/value&gt;
+&lt;/array&gt;
+&lt;array name="cpu.speeds.cluster1"&gt;
+&lt;value&gt;800000&lt;/value&gt;
+&lt;value&gt;1200000&lt;/value&gt;
+&lt;value&gt;1400000&lt;/value&gt;
+&lt;/array&gt;
+</pre>
+
+<h2 id="values">电量值</h2>
+<p>下表列出可供使用的电量值设置。要查看 AOSP 中的示例文件，请参阅 <a href="https://android.googlesource.com/platform/frameworks/base/+/master/core/res/res/xml/power_profile.xml">power_profile.xml</a>。</p>
+
+<table>
+<tbody><tr>
+  <th>名称</th>
+  <th>说明</th>
+  <th>示例值</th>
+  <th>备注</th>
+</tr>
+<tr>
+  <td>none</td>
+  <td>无</td>
+  <td>0</td>
+  <td></td>
+</tr>
+
+<tr>
+  <td>screen.on</td>
+  <td>屏幕以最低亮度打开时消耗的额外电量。</td>
+  <td>200 毫安</td>
+  <td>包括触摸控制器和显示屏背光。Android 的最低亮度并非是 0，而是倾向于设为 10% 或 20%。</td>
+</tr>
+
+<tr>
+  <td>screen.full</td>
+  <td>与处于最低亮度的屏幕相比，当屏幕处于最高亮度时消耗的额外电量。</td>
+  <td>100-300 毫安</td>
+  <td>将此值的分数（基于屏幕亮度）添加到 screen.on 值，用来计算屏幕耗电量。</td>
+</tr>
+
+<tr>
+  <td>wifi.on</td>
+  <td>当 WLAN 打开，但未接收、发送信号或执行扫描时消耗的额外电量。</td>
+  <td>2 毫安</td>
+  <td></td>
+</tr>
+
+<tr>
+  <td>wifi.active</td>
+  <td>通过 WLAN 发送或接收信号时消耗的额外电量。</td>
+  <td>31 毫安</td>
+  <td></td>
+</tr>
+
+<tr>
+  <td>wifi.scan</td>
+  <td>WLAN 正在扫描无线接入点时消耗的额外电量。</td>
+  <td>100 毫安</td>
+  <td></td>
+</tr>
+
+<tr>
+  <td>dsp.audio</td>
+  <td>当通过 DSP 进行音频解码/编码时消耗的额外电量。</td>
+  <td>14.1 毫安</td>
+  <td>预留以供日后使用。</td>
+</tr>
+
+<tr>
+  <td>dsp.video</td>
+  <td>当通过 DSP 进行视频解码时消耗的额外电量。</td>
+  <td>54 毫安</td>
+  <td>预留以供日后使用。</td>
+</tr>
+
+<tr>
+  <td>camera.avg</td>
+  <td>用于典型相机应用的相机子系统的平均电量消耗。</td>
+  <td>600 毫安</td>
+  <td>预期将此值作为当应用运行预览且每分钟捕获大约 10 张全分辨率照片时的粗略估算值。</td>
+</tr>
+
+<tr>
+  <td>camera.flashlight</td>
+  <td>当摄像头闪光模块开启时消耗的平均电量。</td>
+  <td>200 毫安</td>
+  <td></td>
+</tr>
+
+<tr>
+  <td>gps.on</td>
+  <td>GPS 获取信号时消耗的额外电量。</td>
+  <td>50 毫安</td>
+  <td></td>
+</tr>
+
+<tr>
+  <td>radio.active</td>
+  <td>蜂窝无线电发送/接收信号时消耗的额外电量。</td>
+  <td>100-300 毫安</td>
+  <td></td>
+</tr>
+
+<tr>
+  <td>radio.scanning</td>
+  <td>当移动网络无线装置寻呼发射塔时消耗的额外电量。</td>
+  <td>1.2 毫安</td>
+  <td></td>
+</tr>
+
+<tr>
+  <td>radio.on</td>
+  <td>当蜂窝无线电开启时消耗的额外电量。多值条目，每个信号强度（无信号、弱、良好、强）各有一个值。</td>
+  <td>1.2 mA</td>
+  <td>某些无线装置在搜索手机信号塔但未能检测到信号时会增加耗电量。随着信号强度的增加，这些值可能保持不变或变小。如果您只提供一个值，则所有强度都使用同一个值。如果您提供两个值，则第一个值在无信号时使用，第二个值用于所有其他信号强度，以此类推。</td>
+</tr>
+
+<tr>
+  <td>bluetooth.controller.idle</td>
+  <td>蓝牙控制器在空闲时的平均电流消耗量（毫安）。</td>
+  <td> - </td>
+  <td rowspan="4">这些值并不是通过预估获得的，而是从控制器的数据表中提取出来的。如果有多种接收或发送状态，则采用这些状态的平均值。此外，系统将即时收集数据以用于<a href="#le-bt-scans">低功耗 (LE) 和蓝牙扫描</a>。<br /><br />Android N 及更高版本不再将蓝牙电量值用于 bluetooth.active（通过蓝牙 A2DP 播放音频时使用）和 bluetooth.on（在蓝牙打开但处于空闲状态时使用）。</td>
+</tr>
+
+<tr>
+  <td>bluetooth.controller.rx</td>
+  <td>蓝牙控制器在接收信号时的平均电流消耗量（毫安）。</td>
+  <td> - </td>
+</tr>
+
+<tr>
+  <td>bluetooth.controller.tx</td>
+  <td>蓝牙控制器在发送信号时的平均电流消耗量（毫安）。</td>
+  <td> - </td>
+</tr>
+
+<tr>
+  <td>bluetooth.controller.voltage</td>
+  <td>蓝牙控制器的平均工作电压（毫伏）。</td>
+  <td> - </td>
+</tr>
+
+<tr>
+  <td>modem.controller.idle</td>
+  <td>调制解调控制器在空闲时的平均电流消耗量（毫安）。</td>
+  <td> - </td>
+  <td rowspan="4">这些值并不是通过预估获得的，而是从控制器的数据表中提取出来的。如果有多种接收或发送状态，则采用这些状态的平均值。</td>
+</tr>
+
+<tr>
+  <td>modem.controller.rx</td>
+  <td>调制解调控制器在接收信号时的平均电流消耗量（毫安）。</td>
+  <td> - </td>
+</tr>
+
+<tr>
+  <td>modem.controller.tx</td>
+  <td>调制解调控制器在发送信号时的平均电流消耗量（毫安）。</td>
+  <td> - </td>
+</tr>
+
+<tr>
+  <td>modem.controller.voltage</td>
+  <td>调制解调控制器的平均工作电压（毫伏）。</td>
+  <td> - </td>
+</tr>
+
+<tr>
+  <td>wifi.controller.idle</td>
+  <td>WLAN 控制器在空闲时的平均电流消耗量（毫安）。</td>
+  <td> - </td>
+  <td rowspan="4">这些值并不是通过预估获得的，而是从控制器的数据表中提取出来的。如果有多种接收或发送状态，则采用这些状态的平均值。</td>
+</tr>
+
+<tr>
+  <td>wifi.controller.rx</td>
+  <td>WLAN 控制器在接收信号时的平均电流消耗量（毫安）。</td>
+  <td> - </td>
+</tr>
+
+<tr>
+  <td>wifi.controller.tx</td>
+  <td>WLAN 控制器在发送信号时的平均电流消耗量（毫安）。</td>
+  <td> - </td>
+</tr>
+
+<tr>
+  <td>wifi.controller.voltage</td>
+  <td>WLAN 控制器的平均工作电压（毫伏）。</td>
+  <td> - </td>
+</tr>
+
+<tr>
+  <td>cpu.speeds</td>
+  <td>多值条目，以千赫 (KHz) 为单位列出每个 CPU 可能支持的速率。</td>
+  <td>125000 千赫、250000 千赫、500000 千赫、1000000 千赫、1500000 千赫</td>
+  <td>条目的数量和顺序必须与 cpu.active 中的毫安条目相一致。</td>
+</tr>
+
+<tr>
+  <td>cpu.idle</td>
+  <td>当 CPU（和 SoC）处于系统挂起状态时，系统消耗的总电量。</td>
+  <td>3 毫安</td>
+  <td></td>
+</tr>
+
+<tr>
+  <td>cpu.awake</td>
+  <td>当 CPU 处于调度空闲状态（内核空闲循环）时消耗的额外电量；系统没有处于系统挂起状态。</td>
+  <td>50 毫安</td>
+  <td>您的平台可能在不同的耗电水平上存在多种空闲状态；针对时间较长的调度空闲（几毫秒）可以选择一种有代表性的空闲状态。检查您的测量设备上的电量图，并选择 CPU 耗电量最低时的样本，丢弃当 CPU 退出空闲状态时的较高耗电量样本。</td>
+</tr>
+
+<tr>
+  <td>cpu.active</td>
+  <td>CPU 以不同速度运行时消耗的额外电量。</td>
+  <td>100 毫安、120 毫安、140 毫安、160 毫安、200 毫安</td>
+  <td>此值代表 CPU 供电通道以不同速率运行时消耗的电量。在内核中设定每个耗电量所允许的最大速率并限制 CPU 以该速率运行。条目的数量和顺序应与 cpu.speeds 中的条目的数量和顺序相一致。</td>
+</tr>
+
+<tr>
+  <td>cpu.clusters.cores</td>
+  <td>每个 CPU 集群所包含的核心数。</td>
+  <td>4、2</td>
+  <td>仅适用于具有<a href="#multiple-cpus">异构 CPU 架构</a>的设备。条目的数量和顺序应与适用于 cpu.active 和 cpu.speeds 的集群的条目的数量相一致。第一个条目表示 cluster0 中的 CPU 核心数，第二个条目表示 cluster1 中的 CPU 核心数，依此类推。</td>
+</tr>
+
+<tr>
+  <td>电池容量</td>
+  <td>总电池容量 （以毫安时为单位）。</td>
+  <td>3000 毫安时</td>
+  <td></td>
+</tr>
+
+</tbody></table>
+
+<h2 id="le-bt-scans">低功耗 (LE) 和蓝牙扫描</h2>
+<p>对于运行 Android 7.0 的设备，系统为低功耗 (LE) 扫描和蓝牙网络流量（例如：RFCOMM 和 L2CAP）收集数据并将这些活动与初始化应用相关联。蓝牙扫描与初始化扫描的应用有关，但批量扫描与后者无关（而是与蓝牙应用有关）。对于扫描 N 毫秒的应用，扫描耗时为 N 毫秒接收时间和 N 毫秒发射时间；所有剩余的控制器时间被分配至网络流量或蓝牙应用。</p>
+
+</body></html>

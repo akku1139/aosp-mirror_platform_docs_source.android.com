@@ -1,0 +1,103 @@
+<html devsite><head>
+    <title>运行时权限</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>Android 6.0 及更高版本中的 Android 应用权限模式旨在使权限更易于用户理解、更实用、更安全。该模式将需要危险权限（请参阅<a href="#affected-permissions">受影响的权限</a>）的 Android 应用从安装时权限模式转移至运行时权限模式：<em></em><em></em></p>
+
+<ul>
+<li><strong>安装时权限</strong>（Android 5.1 及更低版本）。<em></em>用户在安装或更新应用时，向应用授予危险权限。OEM/运营商可以在不通知用户的情况下，预先安装具有预授权的应用。</li>
+<li><strong>运行时权限</strong>（Android 6.0 及更高版本）。<em></em>用户在应用运行时向应用授予危险权限。应用决定何时申请权限（例如，在应用启动或用户访问特定功能时申请权限），但必须允许用户授予/拒绝授予应用访问特定权限组的权限。OEM/运营商可以预安装应用，但不得预先授予权限（请参阅<a href="#creating-exceptions">创建例外情况</a>）。</li>
+</ul>
+
+<p>运行时权限可以为用户提供应用正在寻求或已被授予的权限的额外上下文和可视性。运行时模式还鼓励开发者帮助用户了解应用请求权限的原因，并向用户透明展示授予或拒绝权限的好处和危害。</p>
+<p>用户可使用“设置”中的“应用”菜单撤消应用权限。</p>
+
+<h2 id="affected-permissions">受影响的权限</h2>
+
+<p>Android 6.0 及更高版本要求危险权限必须使用运行时权限模式。危险权限是具有更高风险的权限（例如 <code>READ_CALENDAR</code>），此类权限允许寻求授权的应用访问用户私人数据或获取可对用户造成不利影响的设备控制权。要查看危险权限列表，请运行以下命令：</p>
+<pre>
+adb shell pm list permissions -g -d
+</pre>
+
+<p>Android 6.0 及更高版本不会更改常规权限的行为（包括常规权限、系统权限和签名权限在内的所有非危险权限）。常规权限是具有较低风险的权限（例如 <code>SET_WALLPAPER</code>），它允许请求授权的应用访问隔离的应用级功能，对其他应用、系统或用户的风险非常小。在 Android 5.1 及更低版本中，系统在安装应用时，自动向请求授权的应用授予常规权限，并且无需提示用户进行批准。有关权限的详细信息，请参阅<a href="http://developer.android.com/guide/topics/manifest/permission-element.html">&lt;权限&gt;元件文档</a>。</p>
+
+<h2 id="requirements">要求</h2>
+
+<p>运行时权限模式适用于所有应用，包括预安装应用和在设置过程中提供给设备的应用。应用的软件要求如下：</p>
+<ul>
+<li>所有在 Android 6.0 及更高版本上运行的设备，其运行时权限模式必须一致。而此一致性可通过 Android 兼容性测试套件 (CTS) 测试来保证。</li>
+<li>应用必须提示用户在应用运行时授予权限。有关详情，请参阅<a href="#updating-apps">更新应用</a>。在少数例外情况下，可向默认应用和处理程序授予权限。这些默认应用和处理程序将提供设备预期操作所必需的基本设备功能（例如，设备中用于处理 <code>ACTION_CALL</code> 的默认拨号程序应用，可以获得访问电话的权限）。有关详情，请参阅<a href="#creating-exceptions">创建例外情况</a>。</li>
+<li>具有“危险权限”的预加载应用必须面向 API 23 级别，并保持运行时权限模式（即：应用安装期间的界面流程不应偏离 PackageInstaller 的 AOSP，且用户可以撤消预安装应用的危险权限授权等）。</li>
+<li>无头应用必须使用操作组件来请求权限，或与其他拥有必要权限的应用共享 UID。有关详情，请参阅<a href="#headless-apps">无头应用</a>。</li>
+</ul>
+
+<h2 id="permissions-migration">权限迁移</h2>
+
+<p>更新到 Android 6.0 或更高版本后，授予 Android 5.x 应用的权限仍然有效，但用户可以随时撤消此类权限。</p>
+
+<h2 id="integration">集成</h2>
+
+<p>在向 Android 6.0 及更高版本集成应用运行时权限模式时，必须先更新预安装应用，然后才能使用新模式。您也可以为核心功能的默认处理程序/提供程序定义例外情况，定义自定义权限，以及自定义 PackageInstaller 中使用的主题背景。</p>
+
+<h3 id="updating-apps">更新应用</h3>
+
+<p>系统映像上的应用和预安装应用不会自动被预先授予权限。我们建议您与预安装应用的开发者（OEM、运营商和第三方）合作，根据<a href="https://developer.android.com/training/permissions/index.html">开发者指南</a>对应用进行必要的修改。具体来说，您必须保证对预安装应用进行修改，以避免用户在撤消权限时造成应用的崩溃或其他问题。</p>
+
+<h4 id="preloaded-apps">预加载应用</h4>
+<p>使用危险权限的预加载应用必须采用 API 23 级或更高级别，并保持 Android 6.0 及更高版本的 AOSP 权限模式（即：应用安装期间界面流程不应偏离 PackageInstaller 的 AOSP 实现，且用户可以撤消预安装应用的危险权限等）。</p>
+
+<h4 id="headless-apps">无头应用</h4>
+<p>仅 Activity 可以请求权限；服务不能直接请求权限。</p>
+<ul>
+<li>在 Android 5.1 及更低版本中，无头应用无需使用 Activity 即可在安装或预安装时请求权限。</li>
+<li>在 Android 6.0 及更高版本中，无头应用必须使用以下方法之一请求权限：<ul>
+<li>添加 Activity 以请求权限（推荐使用）。</li>
+<li>与具有必要权限的其他应用共享 UID。仅当您需要将多个 APK 视作单个应用进行处理时，才推荐使用此方法。</li>
+</ul></li>
+</ul>
+<p>这样做是为了避免突兀的权限请求让用户迷惑。</p>
+
+<h3 id="customizing-package-install">自定义 PackageInstaller</h3>
+<p>如有需要，您可以更新 PackageInstaller 所用的默认设备主题背景，以此自定义权限界面<strong>主题背景</strong>（<code>Theme.DeviceDefault.Settings</code> 和 <code>Theme.DeviceDefault.Light.Dialog.NoActionBar</code>）。但是，由于一致性对应用开发者来说至关重要，您不可以自定义权限界面出现时的位置、定位和规则。</p>
+<p>要包含其他语言的<strong>字符串</strong>，请将此类字符串提交给 AOSP。</p>
+
+<h3 id="creating-exceptions">创建例外情况</h3>
+<p>通过使用 PackageManager 中的 <code>DefaultPermissionGrantPolicy.java</code>，您可以向核心操作系统功能的默认处理程序或提供程序进行预授权。例如：</p>
+
+<p><code>ACTION_CALL (Dialer) Default</code><br />
+<code>Phone, Contacts, SMS, Microphone</code></p>
+<p><code>SMS_DELIVER_ACTION (SMS/MMS) Default</code><br />
+<code>Phone, Contacts, SMS</code></p>
+
+<h3 id="defining-custom-perms">自定义权限</h3>
+<p>您可以将自定义权限和组定义为常规或危险级别，并将 OEM/运营商特有的权限添加到现有权限组中，该功能与 Android 5.x 和更低版本中的功能相同。<em></em><em></em></p>
+
+<p>在 Android 6.0 及更高版本中，如果您添加了新的危险权限，该权限的处理方式必须与其他危险权限的处理方式相同（在应用运行时请求权限，且用户可以撤消权限）。具体而言：</p>
+
+<ul>
+<li>您可以向当前组添加新权限，但不可以修改危险权限和危险权限组的 AOSP 映射（例如，您不能从组中删除权限再将该权限分配给其他组）。</li>
+<li>您可以向安装在设备上的应用添加新的权限组，但不能向 Android 平台清单中添加新的权限组。</li>
+</ul>
+
+<h2 id="testing-perms">测试权限</h2>
+<p>Android 含有兼容性测试套件 (CTS) 测试，可验证各个权限是否映射到正确的组中。Android 6.0 及更高版本中的 CTS 兼容性要求必须通过此类测试。</p>
+
+</body></html>

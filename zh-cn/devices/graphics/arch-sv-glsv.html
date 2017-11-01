@@ -1,0 +1,110 @@
+<html devsite><head>
+    <title>SurfaceView 和 GLSurfaceView</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>Android 应用框架界面是以使用 View 开头的对象层次结构为基础。所有界面元素都会经过一个复杂的测量和布局过程，该过程会将这些元素融入到矩形区域中，并且所有可见 View 对象都会渲染到一个由 SurfaceFlinger 创建的 Surface（在应用置于前台时，由 WindowManager 进行设置）。应用的界面线程会执行布局并渲染到单个缓冲区（不考虑 Layout 和 View 的数量以及 View 是否已经过硬件加速）。</p>
+
+<p>SurfaceView 采用与其他视图相同的参数，因此您可以为 SurfaceView 设置位置和大小，并在其周围填充其他元素。但是，当需要渲染时，内容会变得完全透明；SurfaceView 的 View 部分只是一个透明的占位符。</p>
+
+<p>当 SurfaceView 的 View 组件即将变得可见时，框架会要求 WindowManager 命令 SurfaceFlinger 创建一个新的 Surface。（这个过程并非同步发生，因此您应该提供回调，以便在 Surface 创建完毕后收到通知。）默认情况下，新的 Surface 将放置在应用界面 Surface 的后面，但可以替换默认的 Z 排序，将 Surface 放在顶层。</p>
+
+<p>渲染到该 Surface 上的内容将会由 SurfaceFlinger（而非应用）进行合成。这是 SurfaceView 的真正强大之处：您获得的 Surface 可以由单独的线程或单独的进程进行渲染，并与应用界面执行的任何渲染隔离开，而缓冲区可直接转至 SurfaceFlinger。您不能完全忽略界面线程，因为您仍然需要与 Activity 生命周期相协调，并且如果 View 的大小或位置发生变化，您可能需要调整某些内容，但是您可以拥有整个 Surface。与应用界面和其他图层的混合由 Hardware Composer 处理。</p>
+
+<p>新的 Surface 是 BufferQueue 的生产者端，其消费者是 SurfaceFlinger 层。您可以使用任意提供 BufferQueue 的机制（例如，提供 Surface 的 Canvas 函数）来更新 Surface，附加 EGLSurface 并使用 GLES 进行绘制，或者配置 MediaCodec 视频解码器以便于写入。</p>
+
+<h2 id="composition">合成与硬件缩放</h2>
+
+<p>我们来仔细研究一下 <code>dumpsys SurfaceFlinger</code>。当在 Nexus 5 上，以纵向方向在 Grafika 的“播放视频 (SurfaceView)”活动中播放电影时，采用以下输出；视频是 QVGA (320x240)：</p>
+<p></p><pre>
+    type    |          source crop              |           frame           name
+------------+-----------------------------------+--------------------------------
+        HWC | [    0.0,    0.0,  320.0,  240.0] | [   48,  411, 1032, 1149] SurfaceView
+        HWC | [    0.0,   75.0, 1080.0, 1776.0] | [    0,   75, 1080, 1776] com.android.grafika/com.android.grafika.PlayMovieSurfaceActivity
+        HWC | [    0.0,    0.0, 1080.0,   75.0] | [    0,    0, 1080,   75] StatusBar
+        HWC | [    0.0,    0.0, 1080.0,  144.0] | [    0, 1776, 1080, 1920] NavigationBar
+  FB TARGET | [    0.0,    0.0, 1080.0, 1920.0] | [    0,    0, 1080, 1920] HWC_FRAMEBUFFER_TARGET
+</pre><p></p>
+
+<ul>
+<li><strong>列表顺序</strong>是从后到前：SurfaceView 的 Surface 位于后面，应用界面层位于其上，其次是处于最前方的状态栏和导航栏。</li>
+<li><strong>源剪裁</strong>值表示 Surface 缓冲区中 SurfaceFlinger 将显示的部分。应用界面会获得一个与显示屏的完整尺寸 (1080x1920) 一样大的 Surface，但是由于渲染和合成将被状态栏和导航栏遮挡的像素毫无意义，因此将源剪裁为一个矩形（上自离顶部 75 个像素，下至离底部 144 个像素）。状态栏和导航栏的 Surface 较小，并且源剪裁描述了一个矩形（起点位于左上角 (0,0) 并且会横跨其内容）。</li>
+<li><strong>框架</strong>值指定在显示屏上显示像素的矩形。对于应用界面层，框架会与源剪裁匹配，因为我们会将与显示屏同样大小的图层的一部分复制（或叠加）到另一个与显示屏同样大小的图层中的相同位置。对于状态栏和导航栏，两者的框架矩形大小相同，但是位置经过调整，所以导航栏出现在屏幕底部。</li>
+<li><strong>SurfaceView 层</strong>容纳我们的视频内容。源剪裁与视频的大小相匹配，而 SurfaceFlinger 了解该信息，因为 MediaCodec 解码器（缓冲区生成器）正在将同样大小的缓冲区移出队列。框架矩形具有完全不同的尺寸：984x738。</li>
+</ul>
+
+<p>SurfaceFlinger 通过缩放（根据需要放大或缩小）缓冲区内容来填充框架矩形，以处理大小差异。之所以选择这种特定尺寸，是因为它具有与视频相同的宽高比 (4:3)，并且由于 View 布局的限制（为了美观，在屏幕边缘处留有一定的内边距），因此应尽可能地宽。</p>
+
+<p>如果您在同一 Surface 上开始播放不同的视频，底层 BufferQueue 会将缓冲区自动重新分配为新的大小，而 SurfaceFlinger 将调整源剪裁。如果新视频的宽高比不同，则应用需要强制重新布局 View 才能与之匹配，这将导致 WindowManager 通知 SurfaceFlinger 更新框架矩形。</p>
+
+<p>如果您通过其他方式（如 GLES）在 Surface 上进行渲染，则可以使用 <code>SurfaceHolder#setFixedSize()</code> 调用设置 Surface 尺寸。例如，您可以将游戏配置为始终采用 1280x720 的分辨率进行渲染，这将大大减少填充 2560x1440 平板电脑或 4K 电视机屏幕所需处理的像素数。显示处理器会处理缩放。如果您不希望给游戏加上水平或垂直黑边，您可以通过设置尺寸来调整游戏的宽高比，使窄尺寸为 720 像素，但长尺寸设置为维持物理显示屏的宽高比（例如，设置为 1152x720 来匹配 2560x1600 的显示屏）。有关此方法的示例，请参阅 Grafika 的“硬件缩放练习程序”活动。</p>
+
+<h2 id="glsurfaceview">GLSurfaceView</h2>
+
+<p>GLSurfaceView 类提供帮助程序类，用于管理 EGL 上下文、线程间通信以及与 Activity 生命周期的交互。这就是其功能。您无需使用 GLSurfaceView 来应用 GLES。</p>
+
+<p>例如，GLSurfaceView 创建一个渲染线程，并配置 EGL 上下文。当活动暂停时，状态将自动清除。大多数应用都不需要知道 EGL，便可通过 GESurfaceView 使用 GLES。</p>
+
+<p>在大多数情况下，GLSurfaceView 非常实用，可简化 GLES 的使用。但在某些情况下，却会造成妨碍。请在有用时使用，无用时弃用。</p>
+
+<h2 id="activity">SurfaceView 和 Activity 生命周期</h2>
+
+<p>当使用 SurfaceView 时，使用主界面线程之外的线程渲染 Surface 是很好的做法。不过，这样就会产生一些与线程和 Activity 生命周期之间的交互相关的问题。</p>
+
+<p>对于具有 SurfaceView 的 Activity，存在两个单独但相互依赖的状态机：</p>
+
+<ol>
+<li>状态为 onCreate/onResume/onPause 的应用</li>
+<li>已创建/更改/销毁的 Surface</li>
+</ol>
+
+<p>当 Activity 开始时，将按以下顺序获得回调：</p>
+
+<ul>
+<li>onCreate</li>
+<li>onResume</li>
+<li>surfaceCreated</li>
+<li>surfaceChanged</li>
+</ul>
+
+<p>如果回击，您将得到：</p>
+
+<ul>
+<li>onPause</li>
+<li>surfaceDestroyed（在 Surface 消失前调用）</li>
+</ul>
+
+<p>如果旋转屏幕，Activity 将被消解并重新创建，而您将获得整个周期。您可以通过检查 <code>isFinishing()</code> 告知屏幕快速重新启动。启动/停止 Activity 可能非常快速，从而可能导致 <code>surfaceCreated()</code> 实际上是在 <code>onPause()</code> 之后发生。</p>
+
+<p>如果您点按电源按钮锁定屏幕，则只会得到 <code>onPause()</code>（没有 <code>surfaceDestroyed()</code>）。Surface 仍处于活跃状态，并且渲染可以继续。如果您继续请求，甚至可以持续获得 Choreographer 事件。如果您使用强制变向的锁屏，则当设备未锁定时，您的 Activity 可能会重新启动；但如果没有，您可以使用与之前相同的 Surface 脱离屏幕锁定。</p>
+
+<p>当使用具有 SurfaceView 的单独渲染器线程时，会引发一个基本问题：线程寿命是否依赖 Surface 或 Activity 的寿命？答案取决于锁屏时您想要看到的情况：(1) 在 Activity 启动/停止时启动/停止线程，或 (2) 在 Surface 创建/销毁时启动/停止线程。</p>
+
+<p>选项 1 与应用生命周期交互良好。我们在 <code>onResume()</code> 中启动渲染器线程，并在 <code>onPause()</code> 中将其停止。当创建和配置线程时，会显得有点奇怪，因为有时 Surface 已经存在，有时不存在（例如，在使用电源按钮切换屏幕后，它仍然存在）。我们必须先等待 Surface 完成创建，然后再在线程中进行一些初始化操作，但是我们不能简单地在 <code>surfaceCreated()</code> 回调中进行操作，因为如果未重新创建 Surface，将不会再次触发。因此，我们需要查询或缓存 Surface 状态，并将其转发到渲染器线程。</p>
+
+<p class="note"><strong>注意</strong>：在线程之间传递对象时要小心。最好通过处理程序消息传递 Surface 或 SurfaceHolder（而不仅仅是将其填充到线程中），以避免多核系统出现问题。有关详细信息，请参阅 <a href="http://developer.android.com/training/articles/smp.html">Android SMP Primer</a>。</p>
+
+<p>选项 2 非常具有吸引力，因为 Surface 和渲染器在逻辑上互相交织。我们在创建 Surface 后启动线程，避免了一些线程间通信问题，也可轻松转发 Surface 已创建/更改的消息。当屏幕锁定时，我们需要确保渲染停止，并在未锁定时恢复渲染；要实现这一点，可能只需告知 Choreographer 停止调用框架绘图回调。当且仅当渲染器线程正在运行时，我们的 <code>onResume()</code> 才需要恢复回调。尽管如此，如果我们根据框架之间的已播放时长进行动画绘制，我们可能发现，在下一个事件到来前存在很大的差距；应使用一个明确的暂停/恢复消息。</p>
+
+<p class="note"><strong>注意</strong>：有关选项 2 的示例，请参阅 Grafika 的“硬件缩放练习程序”。</p>
+
+<p>这两个选项主要关注如何配置渲染器线程以及线程是否正在执行。一个相关问题是，终止 Activity 时（在 <code>onPause()</code> 或 <code>onSaveInstanceState()</code> 中）从线程中提取状态；在此情况下，选项 1 最有效，因为在渲染器线程加入后，不需要使用同步基元就可以访问其状态。</p>
+
+</body></html>

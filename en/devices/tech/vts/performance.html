@@ -1,0 +1,473 @@
+<html devsite>
+  <head>
+    <title>Performance Testing</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+
+<p>Android O includes binder and hwbinder performance tests for throughput and
+latency. While many scenarios exist for detecting perceptible performance
+problems, running such scenarios can be time consuming and results are often
+unavailable until after a system is integrated. Using the provided performance
+tests makes it easier to test during development, detect serious problems
+earlier, and improve user experience.</p>
+
+<p>Performance tests include the following four categories:</p>
+<ul>
+<li>binder throughput (available in
+<code>system/libhwbinder/vts/performance/Benchmark_binder.cpp</code>)</li>
+<li>binder latency (available in
+<code>frameworks/native/libs/binder/tests/schd-dbg.cpp</code>)</li>
+<li>hwbinder throughput (available in
+<code>system/libhwbinder/vts/performance/Benchmark.cpp</code>)</li>
+<li>hwbinder latency (available in
+<code>system/libhwbinder/vts/performance/Latency.cpp</code>)</li>
+</ul>
+
+<h2 id=about>About binder and hwbinder</h2>
+<p>Binder and hwbinder are Android inter-process communication (IPC)
+infrastructures that share the same Linux driver but have the following
+qualitative differences:</p>
+
+<table>
+<tr>
+<th>Aspect</th>
+<th>binder</th>
+<th>hwbinder</th>
+</tr>
+
+<tr>
+<td>Purpose</td>
+<td>Provide a general purpose IPC scheme for framework</td>
+<td>Communicate with hardware</td>
+</tr>
+
+<tr>
+<td>Property</td>
+<td>Optimized for Android framework usage</td>
+<td>Minimum overhead low latency</td>
+</tr>
+
+<tr>
+<td>Change scheduling policy for foreground/background</td>
+<td>Yes</td>
+<td>No</td>
+</tr>
+
+<tr>
+<td>Arguments passing</td>
+<td>Uses serialization supported by Parcel object</td>
+<td>Uses scatter buffers and avoids the overhead to copy data required for
+Parcel serialization</td>
+</tr>
+
+<tr>
+<td>Priority inheritance</td>
+<td>No</td>
+<td>Yes</td>
+</tr>
+
+</table>
+
+<h3 id=transactions>Binder and hwbinder processes</h2>
+<p>A systrace visualizer displays transactions as follows:</p>
+<img src="../images/treble_systrace_binder_processes.png">
+<figcaption><strong>Figure 1.</strong> Systrace visualization of binder
+processes.</figcaption>
+
+<p>In the above example:</p>
+<ul>
+<li>The four (4) schd-dbg processes are client processes.</li>
+<li>The four (4) binder processes are server processes (name starts with
+<strong>Binder</strong> and ends with a sequence number).</li>
+<li>A client process is always paired with a server process, which is dedicated
+to its client.</li>
+<li>All the client-server process pairs are scheduled independently by kernel
+concurrently.</li>
+</ul>
+
+<p>In CPU 1, the OS kernel executes the client to issue the request. It then
+uses the same CPU whenever possible to wake up a server process, handle the
+request, and context switch back after the request is complete.</p>
+
+<h3 id=throughput-diffs>Throughput vs. latency</h3>
+<p>In a perfect transaction, where the client and server process switch
+seamlessly, throughput and latency tests do not produce substantially different
+messages. However, when the OS kernel is handling an interrupt request (IRQ)
+from hardware, waiting for locks, or simply choosing not to handle a message
+immediately, a latency bubble can form.</p>
+
+<img src="../images/treble_latency_bubble.png">
+<figcaption><strong>Figure 2.</strong> Latency bubble due to differences in
+throughput and latency.</figcaption>
+
+<p>The throughput test generates a large number of transactions with different
+payload sizes, providing a good estimation for the regular transaction time (in
+best case scenarios) and the maximum throughput the binder can achieve.</p>
+
+<p>In contrast, the latency test performs no actions on the payload to minimize
+the regular transaction time. We can use transaction time to estimate the binder
+overhead, make statistics for the worst case, and calculate the ratio of
+transactions whose latency meets a specified deadline.</p>
+
+<h3 id=priority-inversions>Handling priority inversions</h3>
+<p>A priority inversion occurs when a thread with higher priority is logically
+waiting for a thread with lower priority. Real-time (RT) applications have a
+priority inversion problem:</p>
+
+<img src="../images/treble_priority_inv_rta.png">
+<figcaption><strong>Figure 3.</strong> Priority inversion in real-time
+applications.</figcaption>
+
+<p>When using Linux Completely Fair Scheduler (CFS) scheduling, a thread always
+has a chance to run even when other threads have a higher priority. As a result,
+applications with CFS scheduling handle priority inversion as expected behavior
+and not as a problem. In cases where the Android framework needs RT scheduling
+to guarantee the privilege of high priority threads however, priority inversion
+must be resolved.</p>
+
+<p>Example priority inversion during a binder transaction (RT thread is
+logically blocked by other CFS threads when waiting for a binder thread to
+service):</p>
+<img src="../images/treble_priority_inv_rta_blocked.png">
+<figcaption><strong>Figure 4.</strong> Priority inversion, blocked real-time
+threads.</figcaption>
+
+<p>To avoid blockages, you can use priority inheritance to temporarily escalate
+the Binder thread to a RT thread when it services a request from a RT client.
+Keep in mind that RT scheduling has limited resources and should be used
+carefully. In a system with <em>n</em> CPUs, the maximum number of current RT
+threads is also <em>n</em>; additional RT threads might need to wait (and thus
+miss their deadlines) if all CPUs are taken by other RT threads.</p>
+
+<p>To resolve all possible priority inversions, you could use priority
+inheritance for both binder and hwbinder. However, as binder is widely used
+across the system, enabling priority inheritance for binder transactions might
+spam the system with more RT threads than it can service.</p>
+
+<h2 id=throughput>Running throughput tests</h2>
+<p>The throughput test is run against binder/hwbinder transaction throughput. In
+a system that is not overloaded, latency bubbles are rare and their impact
+can be eliminated as long as the number of iterations is high enough.</p>
+
+<ul>
+<li>The <strong>binder</strong> throughput test is in
+<code>system/libhwbinder/vts/performance/Benchmark_binder.cpp</code>.</li>
+<li>The <strong>hwbinder</strong> throughput test is in
+<code>system/libhwbinder/vts/performance/Benchmark.cpp</code>.</li>
+</ul>
+
+<h3 id=throughput-results>Test results</h3>
+<p>Example throughput test results for transactions using different payload
+sizes:</p>
+
+<pre class="prettyprint">
+Benchmark                      Time          CPU           Iterations
+---------------------------------------------------------------------
+BM_sendVec_binderize/4         70302 ns      32820 ns      21054
+BM_sendVec_binderize/8         69974 ns      32700 ns      21296
+BM_sendVec_binderize/16        70079 ns      32750 ns      21365
+BM_sendVec_binderize/32        69907 ns      32686 ns      21310
+BM_sendVec_binderize/64        70338 ns      32810 ns      21398
+BM_sendVec_binderize/128       70012 ns      32768 ns      21377
+BM_sendVec_binderize/256       69836 ns      32740 ns      21329
+BM_sendVec_binderize/512       69986 ns      32830 ns      21296
+BM_sendVec_binderize/1024      69714 ns      32757 ns      21319
+BM_sendVec_binderize/2k        75002 ns      34520 ns      20305
+BM_sendVec_binderize/4k        81955 ns      39116 ns      17895
+BM_sendVec_binderize/8k        95316 ns      45710 ns      15350
+BM_sendVec_binderize/16k      112751 ns      54417 ns      12679
+BM_sendVec_binderize/32k      146642 ns      71339 ns       9901
+BM_sendVec_binderize/64k      214796 ns     104665 ns       6495
+</pre>
+
+<ul>
+<li><strong>Time</strong> indicates the round trip delay measured in real time.
+</li>
+<li><strong>CPU</strong> indicates the accumulated time when CPUs are scheduled
+for the test.</li>
+<li><strong>Iterations</strong> indicates the number of times the test function
+executed.</li>
+</ul>
+
+<p>For example, for an 8-byte payload:</p>
+
+<pre class="prettyprint">
+BM_sendVec_binderize/8         69974 ns      32700 ns      21296
+</pre>
+<p>… the maximum throughput the binder can achieve is calculated as:</p>
+<p><em>MAX throughput with 8-byte payload = (8 * 21296)/69974 ~=  2.423 b/ns ~=
+2.268 Gb/s</em></p>
+
+<h3 id=throughput-options>Test options</h3>
+<p>To get results in .json, run the test with the
+<code>--benchmark_format=json</code> argument:</p>
+
+<pre class="prettyprint">
+<code class="devsite-terminal">libhwbinder_benchmark --benchmark_format=json</code>
+{
+  "context": {
+    "date": "2017-05-17 08:32:47",
+    "num_cpus": 4,
+    "mhz_per_cpu": 19,
+    "cpu_scaling_enabled": true,
+    "library_build_type": "release"
+  },
+  "benchmarks": [
+    {
+      "name": "BM_sendVec_binderize/4",
+      "iterations": 32342,
+      "real_time": 47809,
+      "cpu_time": 21906,
+      "time_unit": "ns"
+    },
+   ….
+}
+</pre>
+
+<h2 id=latency>Running latency tests</h2>
+<p>The latency test measures the time it takes for the client to begin
+initializing the transaction, switch to the server process for handling, and
+receive the result. The test also looks for known bad scheduler behaviors that
+can negatively impact transaction latency, such as a scheduler that does not
+support priority inheritance or honor the sync flag.</p>
+
+<ul>
+<li>The binder latency test is in
+<code>frameworks/native/libs/binder/tests/schd-dbg.cpp</code>.</li>
+<li>The hwbinder latency test is in
+<code>system/libhwbinder/vts/performance/Latency.cpp</code>.</li>
+</ul>
+
+<h3 id=latency-results>Test results</h3>
+<p>Results (in .json) show statistics for average/best/worst latency and the
+number of deadlines missed.</p>
+
+<h3 id=latency-options>Test options</h3>
+<p>Latency tests take the following options:</p>
+
+<table>
+<tr>
+<th>Command</th>
+<th>Description</th>
+</tr>
+
+<tr>
+<td><code>-i <em>value</em></code></td>
+<td>Specify number of iterations.</td>
+</tr>
+
+<tr>
+<td><code>-pair <em>value</em></code></td>
+<td>Specify the number of process pairs.</td>
+</tr>
+
+<tr>
+<td><code>-deadline_us 2500</code></td>
+<td>Specify the deadline in us.</td>
+</tr>
+
+<tr>
+<td><code>-v</code></td>
+<td>Get verbose (debugging) output.</td>
+</tr>
+
+<tr>
+<td><code>-trace</code></td>
+<td>Halt the trace on a deadline hit.</td>
+</tr>
+
+</table>
+
+<p>The following sections detail each option, describe usage, and provide
+example results.</p>
+
+<h4 id=iterations>Specifying iterations</h4>
+<p>Example with a large number of iterations and verbose output disabled:</p>
+
+<pre class="prettyprint">
+<code class="devsite-terminal">libhwbinder_latency -i 5000 -pair 3</code>
+{
+"cfg":{"pair":3,"iterations":5000,"deadline_us":2500},
+"P0":{"SYNC":"GOOD","S":9352,"I":10000,"R":0.9352,
+  "other_ms":{ "avg":0.2 , "wst":2.8 , "bst":0.053, "miss":2, "meetR":0.9996},
+  "fifo_ms": { "avg":0.16, "wst":1.5 , "bst":0.067, "miss":0, "meetR":1}
+},
+"P1":{"SYNC":"GOOD","S":9334,"I":10000,"R":0.9334,
+  "other_ms":{ "avg":0.19, "wst":2.9 , "bst":0.055, "miss":2, "meetR":0.9996},
+  "fifo_ms": { "avg":0.16, "wst":3.1 , "bst":0.066, "miss":1, "meetR":0.9998}
+},
+"P2":{"SYNC":"GOOD","S":9369,"I":10000,"R":0.9369,
+  "other_ms":{ "avg":0.19, "wst":4.8 , "bst":0.055, "miss":6, "meetR":0.9988},
+  "fifo_ms": { "avg":0.15, "wst":1.8 , "bst":0.067, "miss":0, "meetR":1}
+},
+"inheritance": "PASS"
+}
+</pre>
+<p>These test results show the following:</p>
+
+<dl>
+<dt><strong><code>"pair":3</code></strong></dt>
+<dd>Creates one client and server pair.</dd>
+
+<dt><strong><code>"iterations": 5000</code></strong></dt>
+<dd>Includes 5000 iterations.</dd>
+
+<dt><strong><code>"deadline_us":2500</code></strong></dt>
+<dd>Deadline is 2500us (2.5ms); most transactions are expected to meet this
+value.</dd>
+
+<dt><strong><code>"I": 10000</code></strong></dt>
+<dd>A single test iteration includes two (2) transactions:
+<ul>
+ <li>One transaction by normal priority (<code>CFS other</code>)</li>
+ <li>One transaction by real time priority (<code>RT-fifo</code>)</li>
+</ul>
+5000 iterations equals a total of 10000 transactions.</dd>
+
+<dt><strong><code>"S": 9352</code></strong></dt>
+<dd>9352 of the transactions are synced in the same CPU.</dd>
+
+<dt><strong><code>"R": 0.9352</code></strong></dt>
+<dd>Indicates the ratio at which the client and server are synced together in
+the same CPU.</dd>
+
+<dt><strong><code>"other_ms":{ "avg":0.2 , "wst":2.8 , "bst":0.053, "miss":2,
+"meetR":0.9996}</code></strong></dt>
+<dd>The average (<code>avg</code>), worst (<code>wst</code>), and the best
+(<code>bst</code>) case for all transactions issued by a normal priority caller.
+Two transactions <code>miss</code> the deadline, making the meet ratio
+(<code>meetR</code>) 0.9996.</dd>
+
+<dt><strong><code>"fifo_ms": { "avg":0.16, "wst":1.5 , "bst":0.067, "miss":0,
+"meetR":1}</code></strong></dt>
+<dd>Similar to <code>other_ms</code>, but for transactions issued by client with
+<code>rt_fifo</code> priority. It's likely (but not required) that the
+<code>fifo_ms</code> has a better result than <code>other_ms</code>, with lower
+<code>avg</code> and <code>wst</code> values and a higher <code>meetR</code>
+(the difference can be even more significant with load in the background).</dd>
+
+</dl>
+
+<p class="note"><strong>Note:</strong> Background load may impact the throughput
+result and the <code>other_ms</code> tuple in the latency test. Only the
+<code>fifo_ms</code> may show similar results as long as the background load has
+a lower priority than <code>RT-fifo</code>.</p>
+
+<h4 id=pair-values>Specifying pair values</h4>
+<p>Each client process is paired with a server process dedicated for the client,
+and each pair may be scheduled independently to any CPU. However, the CPU
+migration should not happen during a transaction as long as the SYNC flag is
+<code>honor</code>.</p>
+
+<p>Ensure the system is not overloaded! While high latency in an overloaded
+system is expected, test results for an overloaded system do not provide useful
+information. To test a system with higher pressure, use <code>-pair
+#cpu-1</code> (or <code>-pair #cpu</code> with caution). Testing using
+<code>-pair <em>n</em></code> with <code><em>n</em> > #cpu</code> overloads the
+system and generates useless information.</p>
+
+<h4 id=deadline-values>Specifying deadline values</h4>
+<p>After extensive user scenario testing (running the latency test on a
+qualified product), we determined that 2.5ms is the deadline to meet. For new
+applications with higher requirements (such as 1000 photos/second), this
+deadline value will change.</p>
+
+<h4 id=verbose>Specifying verbose output</h4>
+<p>Using the <code>-v</code> option displays verbose output. Example:</p>
+
+<pre class="devsite-click-to-copy">
+<code class="devsite-terminal">libhwbinder_latency -i 1 -v</code>
+
+<div style="color: orange">--------------------------------------------------
+service      pid: 8674 tid: 8674 cpu: 1
+SCHED_OTHER 0</div>
+--------------------------------------------------
+main         pid: 8673 tid: 8673 cpu: 1
+
+--------------------------------------------------
+client       pid: 8677 tid: 8677 cpu: 0
+SCHED_OTHER 0
+
+<div style="color: blue">--------------------------------------------------
+fifo-caller  pid: 8677 tid: 8678 cpu: 0
+SCHED_FIFO  99
+
+--------------------------------------------------
+hwbinder     pid: 8674 tid: 8676 cpu: 0
+???         99</div>
+<div style="color: green">--------------------------------------------------
+other-caller pid: 8677 tid: 8677 cpu: 0
+SCHED_OTHER 0
+
+--------------------------------------------------
+hwbinder     pid: 8674 tid: 8676 cpu: 0
+SCHED_OTHER 0</div>
+</pre>
+
+<ul>
+<li>The <font style="color:orange">service thread</font> is created with a
+<code>SCHED_OTHER</code> priority and run in <code>CPU:1</code> with <code>pid
+8674</code>.</li>
+<li>The <font style="color:blue">first transaction</font> is then started by a
+<code>fifo-caller</code>. To service this transaction, the hwbinder upgrades the
+priority of server (<code>pid: 8674 tid: 8676</code>) to be 99 and also marks it
+with a transient scheduling class (printed as <code>???</code>). The scheduler
+then puts the server process in <code>CPU:0</code> to run and syncs it with the
+same CPU with its client.</li>
+<li>The <font style="color:green">second transaction</font> caller has a
+<code>SCHED_OTHER</code> priority. The server downgrades itself and services the
+caller with <code>SCHED_OTHER</code> priority.</li>
+</ul>
+
+<h4 id=trace>Using trace for debugging</h4>
+<p>You can specify the <code>-trace</code> option to debug latency issues. When
+used, the latency test stops the tracelog recording at the moment when bad
+latency is detected. Example:</p>
+
+<pre class="prettyprint">
+<code class="devsite-terminal">atrace --async_start -b 8000 -c sched idle workq binder_driver sync freq</code>
+<code class="devsite-terminal">libhwbinder_latency -deadline_us 50000 -trace -i 50000 -pair 3</code>
+deadline triggered: halt &mp; stop trace
+log:/sys/kernel/debug/tracing/trace
+</pre>
+
+<p>The following components can impact latency:</p>
+
+<ul>
+<li><strong>Android build mode</strong>. Eng mode is usually slower than
+userdebug mode.</li>
+<li><strong>Framework</strong>. How does the framework service use
+<code>ioctl</code> to config to the binder?</li>
+<li><strong>Binder driver</strong>. Does the driver support fine-grained
+locking? Does the driver contain all performance turning patches?
+<li><strong>Kernel version</strong>. The better real time capability the kernel
+has, the better the results.</li>
+<li><strong>Kernel config</strong>. Does the kernel config contain
+<code>DEBUG</code> configs such as <code>DEBUG_PREEMPT</code> and
+<code>DEBUG_SPIN_LOCK</code>?</li>
+<li><strong>Kernel scheduler</strong>. Does the kernel have an Energy-Aware
+scheduler (EAS) or Heterogeneous Multi-Processing (HMP) scheduler? Are there
+kernel drivers (<code>cpu-freq</code> driver, <code>cpu-idle</code> driver,
+<code>cpu-hotplug</code>, etc.) that impact the scheduler?</li>
+</ul>
+
+  </body>
+</html>

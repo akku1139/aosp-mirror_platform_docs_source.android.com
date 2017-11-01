@@ -1,0 +1,62 @@
+<html devsite><head>
+    <title>汽车</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<img style="float: right; margin: 0px 15px 15px 15px;" src="../images/ape_fwk_hal_vehicle.png" alt="Android 车载 HAL 图标"/>
+
+<p>借助各种总线拓扑，很多汽车子系统都可以实现互连以及与车载信息娱乐 (IVI) 系统的连接。根据制造商不同，所提供的确切总线类型和协议也有很大差异（甚至同一品牌的不同车型之间也是如此）；示例包括控制器区域网络 (CAN) 总线、本地互联网络 (LIN) 总线、媒体导向系统传输 (MOST) 总线以及汽车级以太网和 TCP/IP 网络（例如 BroadR-Reach）。
+</p>
+<p>Android Automotive 的硬件抽象层 (HAL) 为 Android 框架提供了一致的接口（无需考虑物理传输层）。此车载 HAL 是用于开发 Android Automotive 实现的接口。</p>
+<p>系统集成人员可以将特定于功能的平台 HAL 接口（如 HVAC）与特定于技术的网络接口（如 CAN 总线）连接，以实现车载 HAL 模块。典型的实现可能包括运行专有实时操作系统 (RTOS) 的专用微控制器单元（MCU，用于 CAN 总线访问或类似操作），该微控制器单元可通过串行链路连接到运行 Android Automotive 的 CPU。除了专用的 MCU，您还可以将总线访问作为虚拟 CPU 来实现。只要实现符合车载 HAL 的接口要求，每个合作伙伴都可以选择适合硬件的架构。</p>
+
+<h2 id="arch">架构</h2>
+<p>车载 HAL 是汽车与车辆网络服务之间的接口定义：</p>
+
+<img src="../images/vehicle_hal_arch.png" alt="Android 车载 HAL 架构"/>
+<p class="img-caption"><strong>图 1</strong>. 车载 HAL 与 Android Automotive 架构</p>
+
+<ul>
+<li><strong>Car API</strong>：包含 CarHvacManager、CarSensorManager 和 CarCameraManager 等 API。如需详细了解受支持的 API，请参阅 <code>/platform/packages/services/Car/car-lib</code>。</li>
+<li><strong>CarService</strong>：位于 <code>/platform/packages/services/Car/</code>。</li>
+<li><strong>VehicleNetworkService</strong>：通过内置安全机制来控制车载 HAL。仅限系统组件使用（第三方应用等非系统组件应使用汽车 API）。原始设备制造商 (OEM) 可以通过 <code>vns_policy.xml</code> 和 <code>vendor_vns_policy.xml</code> 控制访问权限。位于 <code>/platform/packages/services/Car/vehicle_network_service/</code>；要查看用于访问车辆网络的库，请参阅 <code>/platform/packages/services/Car/libvehiclenetwork/</code>。</li>
+<li><strong>车载 HAL</strong>：定义 OEM 可以实现的车辆属性的接口。包含属性元数据（例如，车辆属性是否为 int 以及允许使用哪些更改模式）。位于 <code>hardware/libhardware/include/hardware/vehicle.h</code>。要了解基本参考实现的相关信息，请参阅 <code>hardware/libhardware/modules/vehicle/</code>。</li>
+</ul>
+<p>有关更多详情，请参阅<a href="/devices/automotive/properties.html">车辆属性</a>。
+
+</p><h2 id="security">安全性</h2>
+<p>车载 HAL 支持 3 个级别的数据访问安全性：</p>
+<ul>
+<li>仅限系统（由 <code>vns_policy.xml</code> 控制）</li>
+<li>允许拥有权限的应用进行访问（通过汽车服务）</li>
+<li>无需任何权限即可访问（通过汽车服务）</li>
+</ul>
+<p>仅允许部分系统组件直接访问车辆属性，而车辆网络服务是把关程序。大多数应用都需要通过汽车服务的额外把关（例如，只有系统应用可以控制 HVAC，因为系统权限只能授予系统应用）。</p>
+
+<h2 id="validation">验证</h2>
+<p>AOSP 包含开发过程中使用的以下测试资源：</p>
+<ul>
+<li><code>hardware/libhardware/tests/vehicle/vehicle-hal-tool.c</code><br />
+加载车载 HAL 并执行简单操作的命令行原生工具。它有助于系统在开发的早期阶段启动并运行。</li>
+<li><code>packages/services/Car/tests/carservice_test/</code><br />包含使用模拟车载 HAL 属性进行的汽车服务测试。每个属性的预期行为都会在测试中实现，这是了解预期行为的绝佳起点。</li>
+<li><code>hardware/libhardware/modules/vehicle/</code><br />基本参考实现。</li>
+</ul>
+
+</body></html>

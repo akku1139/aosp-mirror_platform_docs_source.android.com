@@ -1,0 +1,47 @@
+<html devsite><head>
+    <title>内核网络单元测试</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>从 Android 5.0 开始，要使 Android 网络堆栈在 Linux 内核中正常运行，开发者需要在近期内曾向上游进行过多次提交，或开发者有多次提交尚未送达上游。手动验证要求的内核功能或跟踪缺失的提交并不容易，因此，Android 团队打算共享他们使用的测试，以确保内核按预期运行。</p>
+
+<h2 id="purpose">为何要运行测试？</h2> <p>运行这些测试的原因主要有 3 个：</p> <ol> <li>设备上使用的 Linux 内核的确切版本通常是特定于设备的，如果不运行测试，就很难了解某一版本的内核运行是否正常。</li> <li>将内核补丁程序向前移植和向后移植到不同的内核版本或不同的设备树，可能会导致出现一些细微的问题；如果不运行测试，则很难发现这种问题。例如，在开发过程中，某些设备的初始版本具有从 Android-3.4 向前移植（而非从 Android-3.10 中挑选）的 UID 路由补丁程序，因而导致行为不正常。</li> <li>新的网络功能可能需要借助新的内核功能或内核错误修复来实现。</li> </ol> <p>如果测试没有通过，则设备的网络堆栈会运行异常，从而导致出现用户可见的连接错误，例如 WLAN 网络断开连接。设备还可能会无法通过 Android 兼容性测试套件 (CTS) 测试。</p>
+
+<h2 id="using">使用测试</h2> <p>测试会使用 <a href="http://user-mode-linux.sourceforge.net/">User-Mode Linux</a> 来启动内核，如同 Linux 主机上的一个进程。请参阅<a href="https://source.android.com/source/initializing.html">构建编译环境</a>，查看合适的操作系统版本。单元测试框架会使用适当的磁盘映像启动内核，并从主机文件系统运行测试。测试使用 Python 2.x 进行编写，并使用 TAP 接口来测试内核行为和套接字 API。</p>
+
+<h3 id="compiling">针对 ARCH=um 编译内核</h3> <p>要运行测试，则必须针对 <code>ARCH=um SUBARCH=x86_64</code> 编译内核。这是一个受支持的基础架构上游，位于通用 Android 内核树（例如 <code>android-3.10</code>、<code>android-3.18</code>）中。但是，有时设备内核不会在这种模式下进行编译，因为设备树会在通用文件中包含特定于设备或特定于硬件的代码（例如 <code>sys/exit.c</code>）。</p> <p>在很多情况下，确保特定于硬件的代码位于 <code>#ifdef</code> 之后就足够了。通常，这应该是配置选项中的 <code>#ifdef</code>，用于控制与代码相关的特定功能。如果没有这样的配置选项，则将特定于硬件的代码放在 <code>#ifndef CONFIG_UML</code> 块中。</p> <p>一般来说，这项修复应该由内核树提供者（例如，芯片组供应商或 SoC 供应商）负责。我们正在与原始设备制造商 (OEM) 和供应商合作，确保当前和未来的内核将针对 <code>ARCH=um
+SUBARCH=x86_64</code> 进行编译，而无需进行任何更改。</p>
+
+<h3 id="running">运行测试</h3> <p>测试位于 <a href="https://android.googlesource.com/kernel/tests/+/master/net/test"><code>kernel/tests/net/test</code></a> 下。建议您<b>从 AOSP master 运行</b>测试，因为它们是最新的；在某些情况下，指定的 Android 版本正常运行所必需的内核功能尚未在给定版本中进行全面测试。有关如何运行测试的信息，请参阅<a href="https://android.googlesource.com/kernel/tests/+/master/net/test/README">内核网络测试自述文件</a>。总而言之，从您的内核树顶部运行：</p>
+
+<pre>  &lt;android tree&gt;/kernel/tests/net/test/run_net_test.sh all_tests.sh</pre>
+
+<h3 id="passing">通过测试</h3> <p>内核网络测试 Python 源文件包含注释，这些注释会指定通过测试所必需的已知内核提交。在常见内核树中，至少 AOSP 中的 <a href="https://android-review.googlesource.com/#/q/project:kernel/common"><code>kernel/common</code></a> 项目中的 <code>android-3.10</code> 和 <code>android-3.18</code> 分支应该通过测试。因此，在由 3.10 或 3.18 派生的内核树上通过测试在很大程度上而言就是从这些树中挑选补丁程序。</p>
+
+<h2 id="contributing">做出贡献</h2>
+
+<h3 id="reporting">报告问题</h3> <p>请使用<a href="https://code.google.com/p/android/issues/list?q=label%3AComponent-Networking">组件网络</a>标签在 <a href="https://code.google.com/p/android/issues/entry?template=Developer%20bug%20report">Android 问题跟踪器</a>中报告内核网络测试的任何问题。</p>
+
+<h3 id="documenting">记录提交并添加测试</h3> <p>请如上文所述报告问题；如果可能，请在发生以下情况时上传更改以修复问题：</p> <ul> <li>测试没有在通用内核树上通过</li> <li>您发现在源代码注释中没有提及某项必要的提交</li>
+<li>需要进行重大更改才能在上游内核通过测试</li>
+<li>您认为测试是多余指定的，或者未来的内核测试会失败</li> <li>您希望添加更多测试或扩大现有测试的覆盖面</li>
+</ul>
+
+</body></html>

@@ -1,0 +1,750 @@
+<html devsite>
+  <head>
+    <title>A/B (Seamless) System Updates</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>A/B system updates, also known as seamless updates, ensure a workable booting
+system remains on the disk during an
+<a href="/devices/tech/ota/index.html">over-the-air (OTA) update</a>. This
+approach reduces the likelihood of an inactive device after an update, which
+means fewer device replacements and device reflashes at repair and warranty
+centers. Other commercial-grade operating systems such as
+<a href="https://www.chromium.org/chromium-os">ChromeOS</a> also use A/B updates
+successfully.</p>
+
+<p>A/B system updates provide the following benefits:</p>
+
+<ul>
+<li>OTA updates can occur while the system is running, without interrupting the
+user (including app optimizations that occur after a reboot). This means users
+can continue to use their devices during an OTA&mdash;the only downtime during
+an update is when the device reboots into the updated disk partition.</li>
+<li>If an OTA fails, the device boots into the pre-OTA disk partition and
+remains usable. The download of the OTA can be attempted again.</li>
+<li>Any errors (such as I/O errors) affect only the <strong>unused</strong>
+partition set and can be retried. Such errors also become less likely because
+the I/O load is deliberately low to avoid degrading the user experience.</li>
+<li>Updates can be streamed to A/B devices, removing the need to download the
+package before installing it. Streaming means it's not necessary for the
+user to have enough free space to store the update package on <code>/data</code>
+or <code>/cache</code>.
+<li>The cache partition is no longer used to store OTA update packages, so there
+is no need for sizing the cache partition.</li>
+<li><a href="/security/verifiedboot/dm-verity.html">dm-verity</a> guarantees a
+device will boot an uncorrupted image. If a device doesn't boot due to a bad OTA
+or dm-verity issue, the device can reboot into an old image. (Android
+<a href="/security/verifiedboot/">Verified Boot</a> does not require A/B
+updates.)</li>
+</ul>
+
+<h2 id=overview>About A/B system updates</h2>
+
+<p>A/B system updates affect the following:</p>
+
+<ul>
+<li>Partition selection (slots), the <code>update_engine</code> daemon, and
+bootloader interactions (described below)</li>
+<li>Build process and OTA update package generation (described in
+<a href="/devices/tech/ota/ab_implement.html">Implementing A/B Updates</a>)</li>
+</ul>
+
+<aside class="note"><strong>Note:</strong> A/B system updates implemented through
+OTA are recommended for new devices only.</aside>
+
+<h3 id=slots>Partition selection (slots)</h3>
+
+<p>A/B system updates use two sets of partitions referred to as <em>slots</em>
+(normally slot A and slot B). The system runs from the <em>current</em> slot
+while the partitions in the <em>unused</em> slot are not accessed by the running
+system during normal operation. This approach makes updates fault resistant by
+keeping the unused slot as a fallback: If an error occurs during or immediately
+after an update, the system can rollback to the old slot and continue to have a
+working system. To achieve this goal, no partition used by the <em>current</em>
+slot should be updated as part of the OTA update (including partitions for which
+there is only one copy).</p>
+
+<p>Each slot has a <em>bootable</em> attribute that states whether the slot
+contains a correct system from which the device can boot. The current slot is
+bootable when the system is running, but the other slot may have an old (still
+correct) version of the system, a newer version, or invalid data. Regardless of
+what the <em>current</em> slot is, there is one slot that is the <em>active</em>
+slot (the one the bootloader will boot form on the next boot) or the
+<em>preferred</em> slot.</p>
+
+Each slot also has a <em>successful</em> attribute set by the user space, which
+is relevant only if the slot is also bootable. A successful slot should be able
+to boot, run, and update itself. A bootable slot that was not marked as
+successful (after several attempts were made to boot from it) should be marked
+as unbootable by the bootloader, including changing the active slot to another
+bootable slot (normally to the slot running immediately before the attempt to
+boot into the new, active one). The specific details of the interface are
+defined in
+<code><a href="https://android.googlesource.com/platform/hardware/libhardware/+/master/include/hardware/boot_control.h" class="external-link">boot_control.h</a></code>.
+</p>
+
+<h3 id="update-engine">Update engine daemon</h3>
+
+<p>A/B system updates use a background daemon called <code>update_engine</code>
+to prepare the system to boot into a new, updated version. This daemon can
+perform the following actions:</p>
+
+<ul>
+<li>Read from the current slot A/B partitions and write any data to the unused
+slot A/B partitions as instructed by the OTA package.</li>
+<li>Call the <code>boot_control</code> interface in a pre-defined workflow.</li>
+<li>Run a <em>post-install</em> program from the <em>new</em> partition after
+writing all the unused slot partitions, as instructed by the OTA package. (For
+details, see <a href="#post-installation">Post-installation</a>).</li>
+</ul>
+
+<p>As the <code>update_engine</code> daemon is not involved in the boot process
+itself, it is limited in what it can do during an update by the
+<a href="/security/selinux/">SELinux</a> policies and features in the
+<em>current</em> slot (such policies and features can't be updated until the
+system boots into a new version). To maintain a robust system, the update
+process <strong>should not</strong> modify the partition table, the contents of
+partitions in the current slot, or the contents of non-A/B partitions that can't
+be wiped with a factory reset.</p>
+
+<p>The <code>update_engine</code> source is located in
+<code><a href="https://android.googlesource.com/platform/system/update_engine/" class="external">system/update_engine</a></code>.
+The A/B OTA dexopt files are split between <code>installd</code> and a package
+manager:</p>
+<ul>
+<li><code><a href="https://android.googlesource.com/platform/frameworks/native/+/master/cmds/installd/" class="external-link">frameworks/native/cmds/installd/</a></code>ota*
+includes the postinstall script, the binary for chroot, the installd clone that
+calls dex2oat, the post-OTA move-artifacts script, and the rc file for the move
+script.</li>
+<li><code><a href="https://android.googlesource.com/platform/frameworks/base/+/master/services/core/java/com/android/server/pm/OtaDexoptService.java" class="external-link">frameworks/base/services/core/java/com/android/server/pm/OtaDexoptService.java</a></code>
+(plus <code><a href="https://android.googlesource.com/platform/frameworks/base/+/master/services/core/java/com/android/server/pm/OtaDexoptShellCommand.java" class="external-link">OtaDexoptShellCommand</a></code>)
+is the package manager that prepares dex2oat commands for applications.</li>
+</ul>
+
+<p>For a working example, refer to
+<code><a href="https://android.googlesource.com/device/google/marlin/+/nougat-dr1-release/device-common.mk" class="external-link">/device/google/marlin/device-common.mk</a></code>.
+</p>
+
+<h3 id="bootloader-interactions">Bootloader interactions</h3>
+
+<p>The <code>boot_control</code> HAL is used by <code>update_engine</code> (and
+possibly other daemons) to instruct the bootloader what to boot from. Common
+example scenarios and their associated states include the following:</p>
+
+<ul>
+  <li>
+    <strong>Normal case</strong>: The system is running from its current slot,
+    either slot A or B. No updates have been applied so far. The system's
+    current slot is bootable, successful, and the active slot.
+  </li>
+  <li>
+    <strong>Update in progress</strong>: The system is running from slot B, so
+    slot B is the bootable, successful, and active slot. Slot A was marked as
+    unbootable since the contents of slot A are being updated but not yet
+    completed. A reboot in this state should continue booting from slot B.
+  </li>
+  <li>
+    <strong>Update applied, reboot pending</strong>: The system is running from
+    slot B, slot B is bootable and successful, but slot A was marked as active
+    (and therefore is marked as bootable). Slot A is not yet marked as
+    successful and some number of attempts to boot from slot A should be made by
+    the bootloader.
+  </li>
+  <li>
+    <strong>System rebooted into new update</strong>: The system is running from
+    slot A for the first time, slot B is still bootable and successful while
+    slot A is only bootable, and still active but not successful. A user space
+    daemon should mark slot A as successful after some checks are made.
+  </li>
+</ul>
+
+<h3 id="streaming-updates">Streaming update support</h3>
+<p>User devices don't always have enough space on <code>/data</code> to download
+the update package. As neither OEMs nor users want to waste space on a
+<code>/cache</code> partition, some users go without updates because the device
+has nowhere to store the update package. To address this issue, Android 8.0
+added support for streaming A/B updates that write blocks directly to the B
+partition as they are downloaded, without having to store the blocks on
+<code>/data</code>. Streaming A/B updates need almost no temporary storage and
+require just enough storage for roughly 100 KiB of metadata.</p>
+
+<p>To enable streaming updates in Android 7.1, cherrypick the following
+patches:</p>
+<ul>
+<li>
+<a href="https://android-review.googlesource.com/333624" class="external">Allow
+to cancel a proxy resolution request</a></li>
+<li>
+<a href="https://android-review.googlesource.com/333625" class="external">Fix
+terminating a transfer while resolving proxies</a></li>
+<li>
+<a href="https://android-review.googlesource.com/333626" class="external">Add
+unittest for TerminateTransfer between ranges</a></li>
+<li>
+<a href="https://android-review.googlesource.com/333627" class="external">Cleanup
+the RetryTimeoutCallback()</a></li>
+</ul>
+
+<p>These patches are required to support streaming A/B updates in Android 7.1
+whether using <a href="https://www.android.com/gms/">Google Mobile Services
+(GMS)</a> or any other update client.</p>
+
+<h2 id="life-of-an-a-b-update">Life of an A/B update</h2>
+
+<p>The update process starts when an OTA package (referred to in code as a
+<em>payload</em>) is available for downloading. Policies in the device may defer
+the payload download and application based on battery level, user activity,
+charging status, or other policies. In addition, because the update runs in the
+background, users might not know an update is in progress. All of this means the
+update process might be interrupted at any point due to policies, unexpected
+reboots, or user actions.</p>
+
+<p>Optionally, metadata in the OTA package itself indicates the update can be
+streamed; the same package can also be used for non-streaming installation. The
+server may use the metadata to tell the client it's streaming so the client will
+hand off the OTA to <code>update_engine</code> correctly. Device manufacturers
+with their own server and client can enable streaming updates by ensuring the
+server identifies the update is streaming (or assumes all updates are streaming)
+and the client makes the correct call to <code>update_engine</code> for
+streaming. Manufacturers can use the fact that the package is of the streaming
+variant to send a flag to the client to trigger hand off to the framework side
+as streaming.</p>
+
+<p>After a payload is available, the update process is as follows:</p>
+
+<table>
+<tr>
+<th>Step</th>
+<th>Activities</th>
+</tr>
+<tr>
+<td>1</td>
+<td>The current slot (or "source slot") is marked as successful (if not already
+marked) with <code>markBootSuccessful()</code>.</td>
+</tr>
+<tr>
+<td>2</td>
+<td>The unused slot (or "target slot") is marked as unbootable by calling the
+function <code>setSlotAsUnbootable()</code>. The current slot is always marked
+as successful at the beginning of the update to prevent the bootloader from
+falling back to the unused slot, which will soon have invalid data. If the
+system has reached the point where it can start applying an update, the current
+slot is marked as successful even if other major components are broken (such as
+the UI in a crash loop) as it is possible to push new software to fix these
+problems.
+<br><br>
+The update payload is an opaque blob with the instructions to update to the new
+version. The update payload consists of the following:
+<ul>
+<li><em>Metadata</em>. A relatively small portion of the update payload, the
+metadata contains a list of operations to produce and verify the new version on
+the target slot. For example, an operation could decompress a certain blob and
+write it to specific blocks in a target partition, or read from a source
+partition, apply a binary patch, and write to certain blocks in a target
+partition.</li>
+<li><em>Extra data</em>. As the bulk of the update payload, the extra data
+associated with the operations consists of the compressed blob or binary patch
+in these examples.</li>
+</ul>
+</td>
+</tr>
+<tr>
+<td>3</td>
+<td>The payload metadata is downloaded.</td>
+</tr>
+<tr>
+<td>4</td>
+<td>For each operation defined in the metadata, in order, the associated data
+(if any) is downloaded to memory, the operation is applied, and the associated
+memory is discarded.</td>
+</tr>
+<tr>
+<td>5</td>
+<td>The whole partitions are re-read and verified against the expected hash.
+</td>
+</tr>
+<tr>
+<td>6</td>
+<td>The post-install step (if any) is run. In the case of an error during the
+execution of any step, the update fails and is re-attempted with possibly a
+different payload. If all the steps so far have succeeded, the update succeeds
+and the last step is executed.</td>
+</tr>
+<tr>
+<td>7</td>
+<td>The <em>unused slot</em> is marked as active by calling
+<code>setActiveBootSlot()</code>. Marking the unused slot as active doesn't mean
+it will finish booting. The bootloader (or system itself) can switch the active
+slot back if it doesn't read a successful state.</td>
+</tr>
+<tr>
+<td>8</td>
+<td>Post-installation (described below) involves running a program from the
+"new update" version while still running in the old version. If defined in the
+OTA package, this step is <strong>mandatory</strong> and the program must return
+with exit code <code>0</code>; otherwise, the update fails.</td>
+</tr>
+</table>
+
+<aside class="note"><strong>Note:</strong> Steps 3 and 4 take most of the update
+time as they involve writing and downloading large amounts of data, and are
+likely to be interrupted for reasons of policy or reboot.</aside>
+
+<h3 id="post-installation">Post-installation</h3>
+
+<p>For every partition where a post-install step is defined,
+<code>update_engine</code> mounts the new partition into a specific location and
+executes the program specified in the OTA relative to the mounted partition. For
+example, if the post-install program is defined as
+<code>usr/bin/postinstall</code> in the system partition, this partition from
+the unused slot will be mounted in a fixed location (such as
+<code>/postinstall_mount</code>) and the
+<code>/postinstall_mount/usr/bin/postinstall</code> command is executed.</p>
+
+<p>For post-installation to succeed, the old kernel must be able to:</p>
+
+<ul>
+<li><strong>Mount the new filesystem format</strong>. The filesystem type cannot
+change unless there's support for it in the old kernel, including details such
+as the compression algorithm used if using a compressed filesystem (i.e.
+SquashFS).</li>
+<li><strong>Understand the new partition's post-install program format</strong>.
+If using an Executable and Linkable Format (ELF) binary, it should be compatible
+with the old kernel (e.g. a 64-bit new program running on an old 32-bit kernel
+if the architecture switched from 32- to 64-bit builds). Unless the loader
+(<code>ld</code>) is instructed to use other paths or build a static binary,
+libraries will be loaded from the old system image and not the new one.</li>
+</ul>
+
+<p>For example, you could use a shell script as a post-install program
+(interpreted by the old system's shell binary with a <code>#!</code> marker at
+the top), then set up library paths from the new environment for executing a
+more complex binary post-install program. Alternatively, you could run the
+post-install step from a dedicated smaller partition to enable the filesystem
+format in the main system partition to be updated without incurring backward
+compatibility issues or stepping-stone updates; this would allow users to update
+directly to the latest version from a factory image.</p>
+
+<p>The new post-install program is limited by the SELinux policies defined in
+the old system. As such, the post-install step is suitable for performing tasks
+required by design on a given device or other best-effort tasks (i.e. updating
+the A/B-capable firmware or bootloader, preparing copies of databases for the
+new version, etc.). The post-install step is <strong>not suitable</strong> for
+one-off bug fixes before reboot that require unforeseen permissions.</p>
+
+<p>The selected post-install program runs in the <code>postinstall</code>
+SELinux context. All the files in the new mounted partition will be tagged with
+<code>postinstall_file</code>, regardless of what their attributes are after
+rebooting into that new system. Changes to the SELinux attributes in the new
+system won't impact the post-install step. If the post-install program needs
+extra permissions, those must be added to the post-install context.</p>
+
+<h2 id=faq>Frequently asked questions</h2>
+
+<h3>Has Google used A/B OTAs on any devices?</h3>
+
+<p>Yes. The marketing name for A/B updates is <em>seamless updates</em>. Pixel
+and Pixel XL phones from October 2016 shipped with A/B, and all Chromebooks use
+the same <code>update_engine</code> implementation of A/B. The necessary
+platform code implementation is public in Android 7.1 and higher.</p>
+
+<h3>Why are A/B OTAs better?</h3>
+
+<p>A/B OTAs provide a better user experience when taking updates. Measurements
+from monthly security updates show this feature has already proven a success: As
+of May 2017, 95% of Pixel owners are running the latest security update after a
+month compared to 87% of Nexus users, and Pixel users update sooner than Nexus
+users. Failures to update blocks during an OTA no longer result in a device that
+won't boot; until the new system image has successfully booted, Android retains
+the ability to fall back to the previous working system image.</p>
+
+<h3>How did A/B affect the 2016 Pixel partition sizes?</h3>
+
+<p>The following table contains details on the shipping A/B configuration versus
+the internally-tested non-A/B configuration:</p>
+
+<table>
+  <tbody>
+    <tr>
+      <th>Pixel partition sizes</th>
+      <th width="33%">A/B</th>
+      <th width="33%">Non-A/B</th>
+    </tr>
+    <tr>
+      <td>Bootloader</td>
+      <td>50*2</td>
+      <td>50</td>
+    </tr>
+    <tr>
+      <td>Boot</td>
+      <td>32*2</td>
+      <td>32</td>
+    </tr>
+    <tr>
+      <td>Recovery</td>
+      <td>0</td>
+      <td>32</td>
+    </tr>
+    <tr>
+      <td>Cache</td>
+      <td>0</td>
+      <td>100</td>
+    </tr>
+    <tr>
+      <td>Radio</td>
+      <td>70*2</td>
+      <td>70</td>
+    </tr>
+    <tr>
+      <td>Vendor</td>
+      <td>300*2</td>
+      <td>300</td>
+    </tr>
+    <tr>
+      <td>System</td>
+      <td>2048*2</td>
+      <td>4096</td>
+    </tr>
+    <tr>
+      <td><strong>Total</strong></td>
+      <td><strong>5000</strong></td>
+      <td><strong>4680</strong></td>
+    </tr>
+  </tbody>
+</table>
+
+<p>A/B updates require an increase of only 320 MiB in flash, with a savings of
+32MiB from removing the recovery partition and another 100MiB preserved by
+removing the cache partition. This balances the cost of the B partitions for
+the bootloader, the boot partition, and the radio partition. The vendor
+partition doubled in size (the vast majority of the size increase). Pixel's
+A/B system image is half the size of the original non-A/B system image.
+</p>
+
+<p>For the Pixel A/B and non-A/B variants tested internally (only A/B shipped),
+the space used differed by only 320MiB. On a 32GiB device, this is just under
+1%. For a 16GiB device this would be less than 2%, and for an 8GiB device almost
+4% (assuming all three devices had the same system image).</p>
+
+<h3>Why didn't you use SquashFS?</h3>
+
+<p>We experimented with SquashFS but weren't able to achieve the performance
+desired for a high-end device. We don't use or recommend SquashFS for handheld
+devices.</p>
+
+<p>More specifically, SquashFS provided about 50% size savings on the system
+partition, but the overwhelming majority of the files that compressed well were
+the precompiled .odex files. Those files had very high compression ratios
+(approaching 80%), but the compression ratio for the rest of the system
+partition was much lower. In addition, SquashFS in Android 7.0 raised the
+following performance concerns:</p>
+
+<ul>
+  <li>Pixel has very fast flash compared to earlier devices but not a huge
+    number of spare CPU cycles, so reading fewer bytes from flash but needing
+    more CPU for I/O was a potential bottleneck.</li>
+  <li>I/O changes that perform well on an artificial benchmark run on an
+    unloaded system sometimes don't work well on real-world use cases under
+    real-world load (such as crypto on Nexus 6).</li>
+  <li>Benchmarking showed 85% regressions in some places.</li>
+  </ul>
+
+<p>As SquashFS matures and adds features to reduce CPU impact (such as a
+whitelist of commonly-accessed files that shouldn't be compressed), we will
+continue to evaluate it and offer recommendations to device manufacturers.</p>
+
+<h3>How did you halve the size of the system partition without SquashFS?</h3>
+
+<p>Applications are stored in .apk files, which are actually ZIP archives. Each
+.apk file has inside it one or more .dex files containing portable Dalvik
+bytecode. An .odex file (optimized .dex) lives separately from the .apk file
+and can contain machine code specific to the device. If an .odex file is
+available, Android can run applications at ahead-of-time compiled speeds
+without having to wait for the code to be compiled each time the application is
+launched. An .odex file isn't strictly necessary: Android can actually run the
+.dex code directly via interpretation or Just-In-Time (JIT) compilation, but an
+.odex file provides the best combination of launch speed and run-time speed if
+space is available.</p>
+
+<p>Example: For the installed-files.txt from a Nexus 6P running Android 7.1 with
+a total system image size of 2628MiB (2755792836 bytes), the breakdown of the
+largest contributors to overall system image size by file type is as follows:
+</p>
+
+<table>
+<tbody>
+<tr>
+<td>.odex</td>
+<td>1391770312 bytes</td>
+<td>50.5%</td>
+</tr>
+<tr>
+<td>.apk</td>
+<td>846878259 bytes</td>
+<td>30.7%</td>
+</tr>
+<tr>
+<td>.so (native C/C++ code)</td>
+<td>202162479 bytes</td>
+<td>7.3%</td>
+</tr>
+<tr>
+<td>.oat files/.art images</td>
+<td>163892188 bytes</td>
+<td>5.9%</td>
+</tr>
+<tr>
+<td>Fonts</td>
+<td>38952361 bytes</td>
+<td>1.4%</td>
+</tr>
+<tr>
+<td>icu locale data</td>
+<td>27468687 bytes</td>
+<td>0.9%</td>
+</tr>
+</tbody>
+</table>
+
+<p>These figures are similar for other devices too, so on Nexus/Pixel
+devices, .odex files take up approximately half the system partition. This meant
+we could continue to use ext4 but write the .odex files to the B partition
+at the factory and then copy them to <code>/data</code> on first boot. The
+actual storage used with ext4 A/B is identical to SquashFS A/B, because if we
+had used SquashFS we would have shipped the preopted .odex files on system_a
+instead of system_b.</p>
+
+<h3>Doesn't copying .odex files to /data mean the space saved on /system is
+lost on /data?</h3>
+
+<p>Not exactly. On Pixel, most of the space taken by .odex files is for apps,
+which typically exist on <code>/data</code>. These apps take Google Play
+updates, so the .apk and .odex files on the system image are unused for most of
+the life of the device. Such files can be excluded entirely and replaced by
+small, profile-driven .odex files when the user actually uses each app (thus
+requiring no space for apps the user doesn't use). For details, refer to the
+Google I/O 2016 talk <a href="https://www.youtube.com/watch?v=fwMM6g7wpQ8">The
+Evolution of Art</a>.</p>
+
+<p>The comparison is difficult for a few key reasons:</p>
+<ul>
+<li>Apps updated by Google Play have always had their .odex files on
+<code>/data</code> as soon as they receive their first update.</li>
+<li>Apps the user doesn't run don't need an .odex file at all.</li>
+<li>Profile-driven compilation generates smaller .odex files than ahead-of-time
+compilation (because the former optimizes only performance-critical code).</li>
+</ul>
+
+<p>For details on the tuning options available to OEMs, see
+<a href="/devices/tech/dalvik/configure.html">Configuring ART</a>.</p>
+
+<h3>Aren't there two copies of the .odex files on /data?</h3>
+
+<p>It's a little more complicated ... After the new system image has been
+written, the new version of dex2oat is run against the new .dex files to
+generate the new .odex files. This occurs while the old system is still running,
+so the old and new .odex files are both on <code>/data</code> at the same time.
+</p>
+
+<p>The code in OtaDexoptService
+(<code><a href="https://android.googlesource.com/platform/frameworks/base/+/nougat-mr1-release/services/core/java/com/android/server/pm/OtaDexoptService.java#200" class="external">frameworks/base/+/nougat-mr1-release/services/core/java/com/android/server/pm/OtaDexoptService.java#200</a></code>)
+calls <code>getAvailableSpace</code> before optimizing each package to avoid
+over-filling <code>/data</code>. Note that <em>available</em> here is still
+conservative: it's the amount of space left <em>before</em> hitting the usual
+system low space threshold (measured as both a percentage and a byte count). So
+if <code>/data</code> is full, there won't be two copies of every .odex file.
+The same code also has a BULK_DELETE_THRESHOLD: If the device gets that close
+to filling the available space (as just described), the .odex files belonging to
+apps that aren't used are removed. That's another case without two copies of
+every .odex file.</p>
+
+<p>In the worst case where <code>/data</code> is completely full, the update
+waits until the device has rebooted into the new system and no longer needs the
+old system's .odex files. The PackageManager handles this:
+(<code><a href="https://android.googlesource.com/platform/frameworks/base/+/nougat-mr1-release/services/core/java/com/android/server/pm/PackageManagerService.java#7215" class="external">frameworks/base/+/nougat-mr1-release/services/core/java/com/android/server/pm/PackageManagerService.java#7215</a></code>). After the new system has
+successfully booted, <code>installd</code>
+(<code><a href="https://android.googlesource.com/platform/frameworks/native/+/nougat-mr1-release/cmds/installd/commands.cpp#2192" class="external">frameworks/native/+/nougat-mr1-release/cmds/installd/commands.cpp#2192</a></code>)
+can remove the .odex files that were used by the old system, returning the
+device back to the steady state where there's only one copy.</p>
+
+<p>So, while it is possible that <code>/data</code> contains two copies of all
+the .odex files, (a) this is temporary and (b) only occurs if you had plenty of
+free space on <code>/data</code> anyway. Except during an update, there's only
+one copy. And as part of ART's general robustness features, it will never fill
+<code>/data</code> with .odex files anyway (because that would be a problem on a
+non-A/B system too).</p>
+
+<h3>Doesn't all this writing/copying increase flash wear?</h3>
+
+<p>Only a small portion of flash is rewritten: a full Pixel system update
+writes about 2.3GiB. (Apps are also recompiled, but that's true of non-A/B
+too.) Traditionally, block-based full OTAs wrote a similar amount of data, so
+flash wear rates should be similar.</p>
+
+<h3>Does flashing two system partitions increase factory flashing time?</h3>
+
+<p>No. Pixel didn't increase in system image size (it merely divided the space
+across two partitions).</p>
+
+<h3>Doesn't keeping .odex files on B make rebooting after factory data reset
+slow?</h3>
+
+<p>Yes. If you've actually used a device, taken an OTA, and performed a factory
+data reset, the first reboot will be slower than it would otherwise be (1m40s vs
+40s on a Pixel XL) because the .odex files will have been lost from B after the
+first OTA and so can't be copied to <code>/data</code>. That's the trade-off.</p>
+
+<p>Factory data reset should be a rare operation when compared to regular boot
+so the time taken is less important. (This doesn't affect users or reviewers who
+get their device from the factory, because in that case the B partition is
+available.) Use of the JIT compiler means we don't need to recompile
+<em>everything</em>, so it's not as bad as you might think. It's also possible
+to mark apps as requiring ahead-of-time compilation using
+<code>coreApp="true"</code> in the manifest:
+(<code><a href="https://android.googlesource.com/platform/frameworks/base/+/nougat-mr1-release/packages/SystemUI/AndroidManifest.xml#23" class="external">frameworks/base/+/nougat-mr1-release/packages/SystemUI/AndroidManifest.xml#23</a></code>).
+This is currently used by <code>system_server</code> because it's not allowed to
+JIT for security reasons.</p>
+
+<h3>Doesn't keeping .odex files on /data rather than /system make rebooting
+after an OTA slow?</h3>
+
+<p>No. As explained above, the new dex2oat is run while the old system image is
+still running to generate the files that will be needed by the new system. The
+update isn't considered available until that work has been done.</p>
+
+<h3>Can (should) we ship a 32GiB A/B device? 16GiB? 8GiB?</h3>
+
+<p>32GiB works well as it was proven on Pixel, and 320MiB out of 16GiB means a
+reduction of 2%. Similarly, 320MiB out of 8GiB a reduction of 4%. Obviously
+A/B would not be the recommended choice on devices with 4GiB, as the 320MiB
+overhead is almost 10% of the total available space.</p>
+
+<h3>Does AVB2.0 require A/B OTAs?</h3>
+
+<p>No. Android <a href="/security/verifiedboot/">Verified Boot</a> has always
+required block-based updates, but not necessarily A/B updates.</p>
+
+<h3>Do A/B OTAs require AVB2.0?</h3>
+
+<p>No.</p>
+
+<h3>Do A/B OTAs break AVB2.0's rollback protection?</h3>
+
+<p>No. There's some confusion here because if an A/B system fails to boot into
+the new system image it will (after some number of retries determined by your
+bootloader) automatically revert to the "previous" system image. The key point
+here though is that "previous" in the A/B sense is actually still the "current"
+system image. As soon as the device successfully boots a new image, rollback
+protection kicks in and ensures that you can't go back. But until you've
+actually successfully booted the new image, rollback protection doesn't
+consider it to be the current system image.</p>
+
+<h3>If you're installing an update while the system is running, isn't that
+slow?</h3>
+
+<p>With non-A/B updates, the aim is to install the update as quickly as
+possible because the user is waiting and unable to use their device while the
+update is applied. With A/B updates, the opposite is true; because the user is
+still using their device, as little impact as possible is the goal, so the
+update is deliberately slow. Via logic in the Java system update client (which
+for Google is GmsCore, the core package provided by GMS), Android also attempts
+to choose a time when the users aren't using their devices at all. The platform
+supports pausing/resuming the update, and the client can use that to pause the
+update if the user starts to use the device and resume it when the device is
+idle again.</p>
+
+<p>There are two phases while taking an OTA, shown clearly in the UI as
+<em>Step 1 of 2</em> and <em>Step 2 of 2</em> under the progress bar. Step 1
+corresponds with writing the data blocks, while step 2 is pre-compiling the
+.dex files. These two phases are quite different in terms of performance
+impact. The first phase is simple I/O. This requires little in the way of
+resources (RAM, CPU, I/O) because it's just slowly copying blocks around.</p>
+
+<p>The second phase runs dex2oat to precompile the new system image. This
+obviously has less clear bounds on its requirements because it compiles actual
+apps. And there's obviously much more work involved in compiling a large and
+complex app than a small and simple app; whereas in phase 1 there are no disk
+blocks that are larger or more complex than others.</p>
+
+<p>The process is similar to when Google Play installs an app update in the
+background before showing the <em>5 apps updated</em> notification, as has been
+done for years.</p>
+
+<h3>What if a user is actually waiting for the update?</h3>
+
+<p>The current implementation in GmsCore doesn't distinguish between background
+updates and user-initiated updates but may do so in the future. In the case
+where the user explicitly asked for the update to be installed or is watching
+the update progress screen, we'll prioritize the update work on the assumption
+that they're actively waiting for it to finish.</p>
+
+<h3>What happens if there's a failure to apply an update?</h3>
+
+<p>With non-A/B updates, if an update failed to apply, the user was usually
+left with an unusable device. The only exception was if the failure occurred
+before an application had even started (because the package failed to verify,
+say). With A/B updates, a failure to apply an update does not affect the
+currently running system. The update can simply be retried later.</p>
+
+<h3>What does GmsCore do?</h3>
+
+<p>In Google's A/B implementation, the platform APIs and
+<code>update_engine</code> provide the mechanism while GmsCore provides the
+policy. That is, the platform knows <em>how</em> to apply an A/B update and all
+that code is in AOSP (as mentioned above); but it's GmsCore that decides
+<em>what</em> and <em>when</em> to apply.</p>
+
+<p>If you’re not using GmsCore, you can write your own replacement using the
+same platform APIs. The platform Java API for controlling
+<code>update_engine</code> is <code>android.os.UpdateEngine</code>:
+<code><a href="https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/os/UpdateEngine.java" class="external-link">frameworks/base/core/java/android/os/UpdateEngine.java</a></code>.
+Callers can provide an <code>UpdateEngineCallback</code> to be notified of status
+updates:
+<code><a href="https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/os/UpdateEngineCallback.java" class="external-link">frameworks/base/+/master/core/java/android/os/UpdateEngineCallback.java</a></code>.
+Refer to the reference files for the core classes to use the interface.</p>
+
+<h3>Which systems on a chip (SoCs) support A/B?</h3>
+
+<p>As of 2017-03-15, we have the following information:</p>
+<table class="style0">
+<tbody>
+<tr>
+<td></td>
+<td><strong>Android 7.x Release</strong></td>
+<td><strong>Android 8.x Release</strong></td>
+</tr>
+<tr>
+<td><strong>Qualcomm</strong></td>
+<td>Depending on OEM requests </td>
+<td>All chipsets will get support</td>
+</tr>
+<tr>
+<td><strong>Mediatek</strong></td>
+<td>Depending on OEM requests</td>
+<td>All chipsets will get support</td>
+</tr>
+</tbody>
+</table>
+
+<p>For details on schedules, check with your SoC contacts. For SoCs not listed
+above, reach out to your SoC directly.</p>
+
+  </body>
+</html>

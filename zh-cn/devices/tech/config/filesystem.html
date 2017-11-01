@@ -1,0 +1,136 @@
+<html devsite><head>
+    <title>文件 DAC 配置</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>早期版本的 Android 使用不可扩展的系统配置文件，导致设备制造商无法通过添加具名二进制文件来指定所有权、访问模式或可执行权限的自主访问控制 (DAC)。设置这种限制的原因是为了支持 Linux 内核 3.14 及更高版本，这些版本通过 <code>CAP_SUSPEND_BLOCK</code> 功能启用唤醒锁定；要保持此唤醒锁定（从而在文件系统中设置此功能），需要合作伙伴提供的 GPS 守护进程。</p>
+
+<p>从 Android 6.0 开始，<code>fs_config</code> 和相关结构定义 (<code>system/core/include/private/android_filesystem_config.h</code>) 位于 <code>system/core/libcutils/fs_config.c</code> 中，可以由安装在 <code>/system/etc/fs_config_dirs</code> 和 <code>/system/etc/fs_config_files</code> 中的二进制文件进行更新或替换。为明确起见，Android 针对目录和文件采用单独的匹配和解析规则（可以使用其它全局表达式），并在两个不同的表格中处理目录和文件。<code>system/core/libcutils/fs_config.c</code> 中的结构定义不仅允许运行时读取目录和文件，而且主机在构建时也可以使用相同的文件来构建文件系统映像，比方说 <code>${OUT}/system/etc/fs_config_dirs</code> 和 <code>${OUT}/system/etc/fs_config_files</code>。</p>
+
+<h2 id="gen-files">生成替换文件</h2>
+
+<p>您可以使用 <code>build/tools/fs_config</code> 中的 <code>fs_config_generate</code> 工具生成相应的二进制文件 <code>/system/etc/fs_config_dirs</code> 和 <code>/system/etc/fs_config_files</code>。该工具使用 <code>libcutils</code> 库函数 (<code>fs_config_generate()</code>) 管理放入缓冲区内的 DAC 需求，并为头文件定义规则来规定 DAC 规则的用法。</p>
+
+<p>要使用此工具，请在 <code>device/<em>vendor</em>/<em>device</em>/android_filesystem_config.h</code> 中创建头文件作为替换。该文件必须使用 <code>system/core/include/private/android_filesystem_config.h</code> 中定义的 <code>structure fs_path_config</code> 格式，并对目录和文件符号进行以下结构初始化：</p>
+<ul>
+<li>对于目录，请使用 <code>android<strong>_device</strong>_dirs[]</code>。</li>
+<li>对于文件，请使用 <code>android<strong>_device</strong>_files[]</code>。</li>
+</ul>
+
+<p>在不使用 <code>android_device_dirs[]</code> 和 <code>android_device_files[]</code> 时，您可以定义 <code>NO_ANDROID_FILESYSTEM_CONFIG_DEVICE_DIRS</code> 和 <code>NO_ANDROID_FILESYSTEM_CONFIG_DEVICE_FILES</code>（请参见下面的<a href="#example">示例</a>）。</p>
+
+<p>您还可以使用单板配置中的 <code>TARGET_ANDROID_FILESYSTEM_CONFIG_H</code> 指定强制基本名称为 <code>android_filesystem_config.h</code> 的替换文件。
+
+</p><h2 id="include-files">包含的文件</h2>
+
+<p><code>PRODUCT_PACKAGES</code> 必须包含 <code>fs_config_dirs</code> 和/或 <code>fs_config_files</code>，才能分别将它们安装到 <code>/system/etc/fs_config_dirs</code> 和 <code>/system/etc/fs_config_files</code>。</p>
+
+<p>构建系统会在 <code>BoardConfig.mk</code> 所在的 <code>$(TARGET_DEVICE_DIR)</code> 中搜索自定义 <code>android_filesystem_config.h</code>。如果此文件位于其他位置，请设置单板配置变量 <code>TARGET_ANDROID_FILESYSTEM_CONFIG_H</code> 来指向该位置。</p>
+
+<h2 id="configuring">配置</h2>
+<p>要在 Android 6.0 及更高版本中配置文件系统，请按以下步骤操作：</p>
+
+<ol>
+<li>创建 <code>$(TARGET_DEVICE_DIR)/android_filesystem_config.h</code> 文件。</li>
+<li>将 <code>fs_config_dirs</code> 和/或 <code>fs_config_files</code> 添加到单板配置文件（例如 <code>$(TARGET_DEVICE_DIR)/device.mk</code>）中的 <code>PRODUCT_PACKAGES </code>。</li>
+</ol>
+
+<h2 id="migration-concerns">迁移问题</h2>
+<p>将系统配置从 Android 5.0 及更早版本中迁出会造成干扰。在规划此类迁移时，请注意以下事项：</p>
+<ul>
+<li>Android 6.0 会移除部分头文件、结构和内嵌定义。</li>
+<li>Android 6.0 需要引用 <code>libcutils</code>，而不是直接从 <code>system/core/include/private/android_filesystem_config.h</code> 运行。依赖于 <code>system/code/include/private_filesystem_config.h</code> 的文件/目录结构或者 <code>fs_config</code> 的设备制造商私有可执行文件必须添加 <code>libcutils</code> 库依赖关系。</li>
+<li>Android 6.0 需要使用 <code>system/core/include/private/android_filesystem_config.h</code> 的设备制造商私有分支副本，该副本应包含有关现有目标的附加内容，以便移至 <code>device/<em>vendor</em>/<em>device</em>/android_filesystem_config.h</code>。
+</li>
+<li>由于 Android 保留将 SELinux 强制访问控制 (MAC) 应用于目标系统中配置文件的权利，因此包含使用 <code>fs_config()</code> 的自定义目标可执行文件的实现必须确保具有访问权限。</li>
+</ul>
+
+<h2 id="example">示例</h2>
+
+<p>此示例展示了用于替换 <code>system/bin/glgps</code> 守护进程以在 <code>device/<em>vendor</em>/<em>device</em></code> 目录中添加唤醒锁定支持的补丁。请注意以下几点：</p>
+
+<ul>
+<li>每个结构条目都包含模式、uid、gid、功能和名称。
+已自动包含 <code>system/core/include/private/android_filesystem_config.h</code> 来提供清单 #defines（<code>AID_ROOT</code>、<code>AID_SHELL</code>、<code>CAP_BLOCK_SUSPEND</code>）。</li>
+<li><code>android_device_files[]</code> 区段包含在未指定时禁止访问 <code>system/etc/fs_config_dirs</code> 的操作，其作用是在缺少目录替换内容时提供额外 DAC 保护。但此保护的强度较弱；如果有人拥有超过 <code>/system</code> 的控制权，那么他通常可以执行任何操作。</li>
+</ul>
+
+<pre>
+diff --git a/android_filesystem_config.h b/android_filesystem_config.h
+new file mode 100644
+index 0000000..874195f
+--- /dev/null
++++ b/android_filesystem_config.h
+@@ -0,0 +1,36 @@
++/*
++ * Copyright (C) 2015 The Android Open Source Project
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
++ * implied. See the License for the specific language governing
++ * permissions and limitations under the License.
++ */
++
++/* This file is used to define the properties of the filesystem
++** images generated by build tools (eg: mkbootfs) and
++** by the device side of adb.
++*/
++
++#define NO_ANDROID_FILESYSTEM_CONFIG_DEVICE_DIRS
++/* static const struct fs_path_config android_device_dirs[] = { }; */
++
++/* Rules for files.
++** These rules are applied based on "first match", so they
++** should start with the most specific path and work their
++** way up to the root. Prefixes ending in * denotes wildcard
++** and will allow partial matches.
++*/
++static const struct fs_path_config android_device_files[] = {
++  { 00755, AID_ROOT, AID_SHELL, (1ULL &lt;&lt; CAP_BLOCK_SUSPEND),
+"system/bin/glgps" },
++#ifdef NO_ANDROID_FILESYSTEM_CONFIG_DEVICE_DIRS
++  { 00000, AID_ROOT, AID_ROOT, 0, "system/etc/fs_config_dirs" },
++#endif
++};
+
+diff --git a/device.mk b/device.mk
+index 0c71d21..235c1a7 100644
+--- a/device.mk
++++ b/device.mk
+@@ -18,7 +18,8 @@ PRODUCT_PACKAGES := \
+     libwpa_client \
+     hostapd \
+     wpa_supplicant \
+-    wpa_supplicant.conf
++    wpa_supplicant.conf \
++    fs_config_files
+
+ ifeq ($(TARGET_PREBUILT_KERNEL),)
+ ifeq ($(USE_SVELTE_KERNEL), true)
+</pre>
+
+</body></html>

@@ -1,0 +1,186 @@
+<html devsite><head>
+    <title>专为缩短延迟时间进行设计</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>
+Android 4.1 版本更改了内部框架，缩短了音频输出路径的<a href="http://en.wikipedia.org/wiki/Low_latency">延迟时间</a>。该版本还对公开客户端 API 或 HAL API 进行了细微更改。本文档介绍了初始设计，此设计也在不断发展。充分了解这一设计应该有助于设备的原始设备制造商 (OEM) 和 SoC 供应商在其特定设备和芯片组上正确地实施此设计。本文不适用于应用开发者。
+</p>
+
+<h2 id="trackCreation">创建音轨</h2>
+
+<p>
+客户端可以选择性地在 AudioTrack C++ 构造函数或 <code>AudioTrack::set()</code> 的 <code>audio_output_flags_t</code> 参数中设置位 <code>AUDIO_OUTPUT_FLAG_FAST</code>。目前能执行此操作的客户端仅包括：
+</p>
+
+<ul>
+<li>基于 <a href="https://developer.android.com/ndk/guides/audio/opensl/index.html">OpenSL ES</a> 或 <a href="https://developer.android.com/ndk/guides/audio/aaudio/aaudio.html">AAudio</a> 的 Android 原生音频</li>
+<li><a href="http://developer.android.com/reference/android/media/SoundPool.html">android.media.SoundPool</a></li>
+<li><a href="http://developer.android.com/reference/android/media/ToneGenerator.html">android.media.ToneGenerator</a></li>
+</ul>
+
+<p>
+AudioTrack C++ 实现会审核 <code>AUDIO_OUTPUT_FLAG_FAST</code> 请求，并且可以选择性地拒绝客户端级别的请求。如果它决定传递该请求，则会使用 <code>IAudioTrack</code> 工厂方法 <code>IAudioFlinger::createTrack()</code> 的 <code>track_flags_t</code> 参数的 <code>TRACK_FAST</code> 位来实现。
+</p>
+
+<p>
+AudioFlinger 音频服务器会审核 <code>TRACK_FAST</code> 请求，并且可以选择性地拒绝服务器级别的请求。它通过共享存储器控制块的位 <code>CBLK_FAST</code> 通知客户端是否已接受该请求。
+</p>
+
+<p>
+影响决定的因素包括：
+</p>
+
+<ul>
+<li>此输出的快速混音器线程分布（见下文）</li>
+<li>音轨采样率</li>
+<li>为音轨执行回调处理程序的客户端线程分布</li>
+<li>音轨缓冲区的大小</li>
+<li>可用的快速音轨槽（见下文）</li>
+</ul>
+
+<p>
+如果客户端的请求被接受，则称为“快速音轨”，否则称为“常规音轨”。
+</p>
+
+<h2 id="mixerThreads">混音器线程</h2>
+
+<p>
+AudioFlinger 在创建常规混音器线程时，会决定是否也要创建快速混音器线程。常规混音器和快速混音器都不与特定的音轨相关联，而是与一组音轨相关联。一直都会存在一个常规混音器线程。快速混音器线程（如果存在）的运行优先级低于常规混音器线程并在其控制下运行。
+</p>
+
+<h3 id="fastMixer">快速混音器</h3>
+
+<h4>功能</h4>
+
+<p>
+快速混音器线程具备以下功能：
+</p>
+
+<ul>
+<li>对常规混音器的子混音和最多 7 个客户端快速音轨进行混音</li>
+<li>每条音轨的衰减</li>
+</ul>
+
+<p>
+删减的功能：
+</p>
+
+<ul>
+<li>每条音轨的采样率转换</li>
+<li>每条音轨的效果</li>
+<li>每次混音的效果</li>
+</ul>
+
+<h4>周期</h4>
+
+<p>
+快速混音器按周期运行，推荐周期为 2 到 3 毫秒 (ms)，但如果有调度稳定性需求，则可采用略久的 5 毫秒为周期。之所以选择这个数字，是为了确保在考虑完整的缓冲区流水线的情况下，总延迟时间大约为 10 毫秒。可以采用更小的值，但这样可能导致功耗增加以及出现异常，具体取决于 CPU 调度的可预测性。也可以采用更大的值（最高 20 毫秒），但这样会导致总延迟时间降级，因此应避免采用。
+</p>
+
+<h4>调度</h4>
+
+<p>
+快速混音器以较高的 <code>SCHED_FIFO</code> 优先级运行。它只需要很短的 CPU 时间，但必须经常运行并且具有低调度抖动。
+<a href="http://en.wikipedia.org/wiki/Jitter">抖动</a>表示周期时间的变化：它是实际周期时间与预计周期时间之间的差值。运行太迟会因欠载而导致异常。运行过早则会因从快速音轨中提取数据时音轨尚未提供数据而导致异常。
+</p>
+
+<h4>屏蔽</h4>
+
+<p>
+在理想情况下，除了在 HAL <code>write()</code> 时，快速混音器线程不会屏蔽。快速混音器内的其他屏蔽事件将被视为错误。尤其要避免互斥情况。相反，应使用<a href="http://en.wikipedia.org/wiki/Non-blocking_algorithm">非屏蔽算法</a>（也称为无锁算法）。有关此主题的更多信息，请参阅<a href="avoiding_pi.html">避免优先级反转</a>。
+</p>
+
+<h4>与其他组件的关系</h4>
+
+<p>
+快速混音器几乎不与客户端直接交互。尤其是，快速混音器看不到 Binder 级别的操作，但它确实会访问客户端的共享存储器控制块。
+</p>
+
+<p>
+快速混音器通过状态队列接收来自常规混音器的命令。
+</p>
+
+<p>
+除了提取音轨数据，快速混音器通过常规混音器与客户端进行交互。
+</p>
+
+<p>
+快速混音器的主接收器是音频 HAL。
+</p>
+
+<h3 id="normalMixer">常规混音器</h3>
+
+<h4>功能</h4>
+
+<p>
+已启用所有功能：
+</p>
+
+<ul>
+<li>最多 32 条音轨</li>
+<li>每条音轨的衰减</li>
+<li>每条音轨的采样率转换</li>
+<li>效果处理</li>
+</ul>
+
+<h4>周期</h4>
+
+<p>
+该周期被计算为快速混音器周期（大于等于 20 毫秒）的第一个整数倍数。
+</p>
+
+<h4>调度</h4>
+
+<p>
+常规混音器以较高的 <code>SCHED_OTHER</code> 优先级运行。
+</p>
+
+<h4>屏蔽</h4>
+
+<p>
+允许常规混音器屏蔽，并且通常在各种互斥体以及屏蔽管中发生屏蔽，以写入其子混音。
+</p>
+
+<h4>与其他组件的关系</h4>
+
+<p>
+常规混音器与外界广泛互动，包括 Binder 线程、音频策略管理器、快速混音器线程和客户端音轨。
+</p>
+
+<p>
+常规混音器的接收器是快速混音器音轨 0 的屏蔽管。
+</p>
+
+<h2 id="flags">标记</h2>
+
+<p>
+<code>AUDIO_OUTPUT_FLAG_FAST</code> 位是一个提示。无法保证满足要求。
+</p>
+
+<p>
+<code>AUDIO_OUTPUT_FLAG_FAST</code> 是一个客户端级别的概念。它不会出现在服务器中。
+</p>
+
+<p>
+<code>TRACK_FAST</code> 是一个客户端到服务器的概念。
+</p>
+
+</body></html>
