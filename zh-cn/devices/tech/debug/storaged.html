@@ -1,0 +1,69 @@
+<html devsite><head>
+    <title>实现 storaged</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>Android O 添加了对 <code>storaged</code> 的支持，它是一个 Android 本机守护进程，可在 Android 设备上收集和发布存储指标。</p>
+
+<ul>
+<li>对于日常磁盘统计信息，<code>storaged</code> 会定期解析 <code>/sys/block/mmcblk0/stat</code>（eMMC 存储设备）或 <code>/sys/block/sda/stat</code>（非 eMMC 设备）。</li>
+
+<li>对于 eMMC 生命周期，<code>storaged</code> 会解析 <code>/d/mmc0/mmc0:001/ext_csd</code>（如果可用）。</li>
+
+<li>对于应用 I/O 问题，<code>storaged</code> 会定期遍历 <code>/proc/uid_io/stats</code> 并维护已解析的数据，包括来自所有应用（不仅仅是正在运行的应用）的数据。<code>dumpsys</code> 可以调用 <code>storaged</code>，以在错误报告中记录应用 I/O 使用情况。</li>
+</ul>
+
+<p>磁盘统计信息（包括已终止的磁盘统计信息）和 eMMC 信息会记录到 Android 事件日志中，而平台登记服务会从此处收集日志。</p>
+
+<p><code>storaged</code> 操作会自动发生，并且完全由 Android 框架处理，因此您无需执行任何实现工作。本页介绍了 <code>storaged</code>（包括新接口）的设计以及如何使用它从内核获取 I/O 状态。</p>
+
+<h2 id="storaged-design">storaged 设计</h2>
+
+<p>出于计算和权限的灵活性考虑，<code>storaged</code> 是作为会返回每个 UID 的 I/O 信息的内核模块实现的（而不是使用标准 <code>proc/PID/io</code>）。每个 I/O 请求的原始 I/O 数据仍然在内核 <code>task_struct</code> 中存储和更新，且该内核会记录进程的退出时间，因此不会错过自上一次 <code>storaged</code> 轮询事件以来的 I/O 使用情况。</p>
+
+<p>只有当框架通知该模块关于 UID 前台/后台切换的情况或 <code>storaged</code> 守护进程请求报告时，它才会读取原始数据并进行处理。届时，该模块会从内核导出一个文件节点，用于与框架和 <code>storaged</code> 守护进程进行通信。</p>
+
+<p><code>storaged</code> 引入了 <code>/proc/uid_io/stats</code> 接口，它可为系统中的每个 UID 返回 I/O 统计信息列表。格式为：</p>
+
+<pre>&lt;uid&gt;: &lt;foreground read bytes&gt; &lt;foreground write bytes&gt; &lt;foreground read chars&gt; &lt;foreground write chars&gt; &lt;background read bytes&gt; &lt;background write bytes&gt; &lt;background read chars&gt; &lt;background write chars&gt;
+</pre>
+
+<ul>
+<li>读/写字节是来自存储设备的 I/O 事件。</li>
+<li>读/写字符（也以字节为单位）是由读/写系统调用请求的数据。</li>
+</ul>
+
+<h2 id="getting-i-o-status-from-the-kernel">从内核获取 I/O 状态</h2>
+
+<p>要从内核转储 I/O 使用情况，请使用带有 <strong><code>-u</code></strong> 选项的 <code>storaged</code> 命令。</p>
+
+<p>命令：<code>storaged -u</code></p>
+
+<p>命令输出格式：<code>name/uid fg_rchar fg_wchar fg_rbytes fg_wbytes
+bg_rchar bg_wchar bg_rbytes bg_wbytes fg_fsync bg_fsync</code></p>
+
+<p class="note"><strong>注意</strong>：此输出类似于 <code>proc/uid_io/stats</code> 的输出。这是因为 <code>storaged</code> 会处理来自 <code>/proc/uid_io/stats</code> 的数据并生成自己的数据。</p>
+
+<p>输出示例：</p>
+
+<pre>com.google.android.backuptransport  2269  60  0  0  1719845663  143912573  149065728  184180736
+com.android.vending  2170  60  0  0  219904796  38693092  174436352  18944000</pre>
+
+</body></html>
