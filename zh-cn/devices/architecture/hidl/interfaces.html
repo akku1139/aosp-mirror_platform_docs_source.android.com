@@ -1,0 +1,156 @@
+<html devsite><head>
+    <title>接口和软件包</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>HIDL 是围绕接口进行编译的，接口是面向对象的语言使用的一种用来定义行为的抽象类型。每个接口都是软件包的一部分。</p>
+
+<h2 id="packages">软件包</h2>
+
+<p>软件包名称可以具有子级，例如 <code>package.subpackage</code>。已发布的 HIDL 软件包的根目录是 <code>hardware/interfaces</code> 或 <code>vendor/vendorName</code>（例如 Pixel 设备的 <code>vendor/google</code>）。软件包名称在根目录下形成一个或多个子目录；定义软件包的所有文件都位于同一目录下。例如，<code>package android.hardware.example.extension.light@2.0</code> 可以在 <code>hardware/interfaces/example/extension/light/2.0</code> 下找到。</p>
+
+<p>下表列出了软件包前缀和位置：</p>
+<table>
+<tbody>
+
+<tr>
+<th>软件包前缀</th>
+<th>位置</th>
+</tr>
+
+<tr>
+<td><code>android.hardware.*</code></td>
+<td><code>hardware/interfaces/*</code></td>
+</tr>
+
+<tr>
+<td><code>android.frameworks.*</code></td>
+<td><code>frameworks/hardware/interfaces/*</code></td>
+</tr>
+
+<tr>
+<td><code>android.system.*</code></td>
+<td><code>system/hardware/interfaces/*</code></td>
+</tr>
+
+<tr>
+<td><code>android.hidl.*</code></td>
+<td><code>system/libhidl/transport/*</code></td>
+</tr>
+
+</tbody>
+</table>
+
+<p>软件包目录种包含扩展名为 <code>.hal</code> 的文件。每个文件均必须包含一个指定文件所属的软件包和版本的 <code>package</code> 语句。文件 <code>types.hal</code>（如果存在）并不定义接口，而是定义软件包中每个接口可以访问的数据类型。</p>
+
+<h2 id="interface-def">接口定义</h2>
+<p>除了 <code>types.hal</code> 之外，其他 <code>.hal</code> 文件均定义一个接口。例如，接口的定义通常如下所示：</p>
+
+<pre class="prettyprint">
+interface IBar extends IFoo { // IFoo is another interface
+    // embedded types
+    struct MyStruct {/*...*/};
+
+    // interface methods
+    create(int32_t id) generates (MyStruct s);
+    close();
+};
+</pre>
+
+<p>不含显式 <code>extends</code> 声明的接口会从 <code>android.hidl.base@1.0::IBase</code>（类似于 Java 中的 <code>java.lang.Object</code>）隐式扩展。隐式导入的 IBase 接口声明了多种不应也不能在用户定义的接口中重新声明或以其他方式使用的预留方法。这些方法包括：</p>
+
+<ul>
+<li><code>ping</code></li>
+<li><code>interfaceChain</code></li>
+<li><code>interfaceDescriptor</code></li>
+<li><code>notifySyspropsChanged</code></li>
+<li><code>linkToDeath</code></li>
+<li><code>unlinkToDeath</code></li><li><code>setHALInstrumentation</code></li>
+<li><code>getDebugInfo</code></li>
+<li><code>debug</code></li>
+<li><code>getHashChain</code></li>
+</ul>
+
+<h2 id="import">导入</h2>
+<p><code>import</code> 语句是用于访问其他软件包中的软件包接口和类型的 HIDL 机制。<code>import</code> 语句本身涉及两个实体：</p>
+
+<ul>
+<li>导入实体：可以是软件包或接口；<em></em></li>
+<li>被导入实体：也可以是软件包或接口。<em></em></li>
+</ul>
+
+<p>导入实体由 <code>import</code> 语句的位置决定。当该语句位于软件包的 <code>types.hal</code> 中时，导入的内容对整个软件包是可见的；这是软件包级导入。<em></em>当该语句位于接口文件中时，导入实体是接口本身；这是接口级导入。<em></em></p>
+
+<p>被导入实体由 <code>import</code> 关键字后面的值决定。该值不必是完全限定名称；如果某个组成部分被删除了，系统会自动使用当前软件包中的信息填充该组成部分。
+对于完全限定值，支持的导入情形有以下几种：</p>
+
+<ul>
+<li><strong>完整软件包导入</strong>。如果该值是一个软件包名称和版本（语法见下文），则系统会将整个软件包导入至导入实体中。</li>
+<li><strong>部分导入</strong>。
+<ul>
+<li>如果该值是一个接口，则系统会将该软件包的 <code>types.hal</code> 和该接口导入至导入实体中。</li>
+<li>如果该值是一个在 <code>types.hal</code> 定义的 UDT，则系统仅会将该 UDT 导入至导入实体中（不导入 <code>types.hal</code> 中的其他类型）。</li>
+</ul>
+</li><li><strong>仅类型导入</strong>。如果该值将上文所述的“部分导入”的语法与关键字 <code>types</code> 而不是接口名称配合使用，则系统仅会导入指定软件包的 <code>types.hal</code> 中的 UDT。</li>
+</ul>
+
+<p>导入实体可以访问以下各项的组合：</p>
+<ul>
+<li><code>types.hal</code> 中定义的被导入的软件包的常见 UDT；</li>
+<li>被导入的软件包的接口（完整软件包导入）或指定接口（部分导入），以便调用它们、向其传递句柄和/或从其继承句柄。</li>
+</ul>
+
+<p>导入语句使用完全限定类型名称语法来提供被导入的软件包或接口的名称和版本：</p>
+
+<pre class="prettyprint">
+import android.hardware.nfc@1.0;            // import a whole package
+import android.hardware.example@1.0::IQuux; // import an interface and types.hal
+import android.hardware.example@1.0::types; // import just types.hal
+</pre>
+
+<h2 id="inheritance">接口继承</h2>
+
+<p>接口可以是之前定义的接口的扩展。扩展可以是以下三种类型中的一种：</p>
+<ul>
+<li>接口可以向其他接口添加功能，并按原样纳入其 API。</li>
+<li>软件包可以向其他软件包添加功能，并按原样纳入其 API。</li>
+<li>接口可以从软件包或特定接口导入类型。</li>
+</ul>
+
+<p>接口只能扩展一个其他接口（不支持多重继承）。具有非零 Minor 版本号的软件包中的每个接口必须扩展一个以前版本的软件包中的接口。例如，如果 4.0 版本的软件包 <code>derivative</code> 中的接口 <code>IBar</code> 是基于（扩展了）1.2 版本的软件包 <code>original</code> 中的接口 <code>IFoo</code>，并且您又创建了 1.3 版本的软件包 <code>original</code>，则 4.1 版本的 <code>IBar</code> 不能扩展 1.3 版本的 <code>IFoo</code>。相反，4.1 版本的 <code>IBar</code> 必须扩展 4.0 版本的 <code>IBar</code>，因为后者是与 1.2 版本的 <code>IFoo</code> 绑定的。
+如果需要，5.0 版本的 <code>IBar</code> 可以扩展 1.3 版本的 <code>IFoo</code>。</p>
+
+<p>接口扩展并不意味着生成的代码中存在代码库依赖关系或跨 HAL 包含关系，接口扩展只是在 HIDL 级别导入数据结构和方法定义。HAL 中的每个方法必须在相应 HAL 中实现。</p>
+
+<h2 id="vendor-ext">供应商扩展</h2>
+<p>在某些情况下，供应商扩展会作为以下基础对象的子类予以实现：代表其扩展的核心接口的基础对象。同一对象会同时在基础 HAL 名称和版本下，以及扩展的（供应商）HAL 名称和版本下注册。</p>
+
+<h2 id="version">版本编号</h2>
+<p>软件包分版本，且接口的版本和其软件包的版本相同。版本用两个整数表示：major.minor。<em></em><em></em></p>
+<ul>
+<li><strong>Major 版本</strong>不向后兼容。递增 Major 版本号会将 Minor 版本重置为 0。</li>
+<li><strong>Minor 版本</strong>向后兼容。如果递增 Minor 版本号，则意味着较新版本完全向后兼容之前的版本。您可以添加新的数据结构和方法，但不能更改现有的数据结构或方法签名。</li>
+</ul>
+
+<p>为实现与框架的更广泛的兼容性，可同时在一台设备上提供 HAL 的多个 Major 版本。虽然同时也可以在一台设备上提供多个 Minor 版本，但是由于 Minor 版本向后兼容，因此不必在最新 Minor 版本以外，为各个 Major 版本提供其他额外支持。</p>
+
+<p>有关版本编号和供应商扩展的更多详细信息，请参阅 <a href="/devices/architecture/hidl/versioning">HIDL 版本编号</a>。</p>
+
+</body></html>
