@@ -1,0 +1,87 @@
+<html devsite><head>
+    <title>在内核级别优化 SquashFS</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+    <p>
+    SquashFS 是 Linux 的只读压缩文件系统。该文件系统设计为只读，因此适合在系统分区上使用。很多 Android 设备都可以通过对其系统分区使用此文件系统来获益；例如，以下设备：
+    </p><ul>
+    <li>存储容量小的设备，例如 Android Watch。
+    </li><li>闪存缓慢的设备（压缩可减少块 I/O 的数量）。</li></ul>
+    <p>
+    遗憾的是，SquashFS 的性能落后于 ext4。
+    </p>
+    <h2 id="optimizations">优化</h2>
+    <p>
+    为提高 SquashFS 的性能，已经实现下列优化。
+    </p>
+    <h3 id="reduce-the-memory-usage-and-memcpy">减少内存使用量和 memcpy 调用次数</h3>
+    <p>
+    读取块（默认为 128K）时，SquashFS 会尝试抓取包含此块的所有页面。
+    </p>
+    <p>
+    如果某个页面是最新页面或已被锁定，则 SquashFS 会转而分配一个完整块，提交读取请求，然后将其内容复制到这些页面。
+    </p>
+    <p>
+    这种方法效果极其低效；一段时间后，页面缓存可能包含最新页面，即使相邻页面并非最新页面也是如此。
+    </p>
+    <p>
+    代码现在能够处理有孔（即缺少页面）的块。这通过以下方式来提高性能：
+    </p><ul>
+      <li>减少 <code>memcpy</code> 调用次数
+    </li><li>减少内存分配</li></ul>
+    <h3 id="asynchronous-reads">异步读取</h3>
+    <p>
+    SquashFS 仍使用已弃用的 <code>ll_rw_block()</code> 函数。使用这种方法存在两个问题：
+    </p><ul>
+    <li>顾名思义，该函数会等待读取完成之后再返回结果。这是多余的，因为 <code>.readpage()</code> 已在页面锁上等待。此外，我们需要一个异步机制来高效实现 <code>.readpages()</code>。
+    </li><li>合并读取请求完全取决于 I/O 调度程序。
+    <code>ll_rw_block()</code> 只会为每个缓冲区创建一个请求。在应该合并哪些信息方面，SquashFS 包含的信息比 I/O 调度程序多。此外，合并请求意味着我们对 I/O 调度程序的依赖会有所减少。</li></ul>
+    <p>
+    因此，<code>ll_rw_block()</code> 函数已被 <code>submit_bio()</code> 替换。
+    </p>
+    <h3 id="readpages-prefetching">Readpages（预先抓取）</h3>
+    <p>
+    SquashFS 不会实现 <code>.readpages()</code>，因此内核会反复调用 <code>.readpage()</code>。
+    </p>
+    <p>
+    由于我们的读取请求是异步的，因此内核可以使用其异步预读机制真正预先抓取页面。
+    </p>
+    <h3 id="optimize-reading-uncompressed-blocks">优化未压缩块的读取操作</h3>
+    <p>
+    Android 之类的现代系统包含大量经过压缩的文件。因此，映像包含大量无法压缩的块。
+    </p>
+    <p>
+    SquashFS 使用相同的逻辑处理压缩和未压缩的块：当 SquashFS 需要读取一个页面时，它实际上读取的是一个完整块（默认为 128k）。
+    虽然对于压缩块，这是必需的；但对于未压缩的块，这只是在浪费资源。
+    </p>
+    <p>
+    SquashFS 现在只读取预读算法建议的内容，而不会读取一个完整块。
+    </p>
+    <p>
+    这极大地提高了随机读取的性能。
+    </p>
+    <h2 id="code">代码</h2>
+    <p>
+    AOSP 中提供 SquashFS 代码优化：
+    </p><ul>
+    <li><a href="https://android-review.googlesource.com/#/q/topic:squashfs">https://android-review.googlesource.com/#/q/topic:squashfs</a></li></ul>
+
+</body></html>

@@ -1,0 +1,174 @@
+<html devsite><head>
+    <title>供应商原生开发套件 (VNDK)</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>供应商原生开发套件 (VNDK) 是专门用来让供应商实现其 HAL 的一组库。VNDK 包含在 <code>system.img</code> 中，并在运行时与供应商代码动态关联。</p>
+
+<h2 id="why-vndk">为何要使用 VNDK？</h2>
+<p>Android O 支持 Framework-Only 更新，在此类更新中，系统分区可以升级到最新版本，而供应商分区保持不变。这意味着在不同时间编译的二进制文件必须能够相互配合使用；VNDK 为 Android 版本迭代时发生的 API/ABI 变更所导致的问题提供了解决途径。</p>
+
+<p>Framework-Only 更新面临着以下挑战：</p>
+
+<ul>
+<li><strong>框架模块与供应商模块之间的依赖关系</strong>。在 Android O 之前的版本中，两种模块可以互相关联。但是，来自供应商模块的依赖关系对框架模块开发施加了不必要的限制。</li>
+<li><strong>AOSP 库的扩展</strong>。Android O 要求所有 Android 设备在系统分区被替换为标准 AOSP 系统映像时，都可以通过 CTS 测试。不过，当供应商扩展 AOSP 库以提高性能或为其 HIDL 实现添加额外的功能时，使用标准 AOSP 系统映像来刷写系统分区可能会破坏供应商的 HIDL 实现（有关如何防止此类破坏的指南，请参阅 <a href="/devices/architecture/vndk/extensions.html">VNDK 扩展</a>）。</li>
+</ul>
+
+<p>为了克服这些挑战，Android O 引入了几项技术，例如 VNDK（如本部分中所述）、<a href="/devices/architecture/hidl/index.html">HIDL</a>、hwbinder、<a href="/devices/architecture/dto/index.html">设备树叠加层</a>和 sepolicy 叠加层。</p>
+
+<h2 id="resources">VNDK 资源</h2>
+<p>本部分包含以下 VNDK 资源：</p>
+<ul>
+<li><em><a href="#vndk-concepts">VNDK 概念</a></em>（参见下文）介绍了框架共享库、Same-Process HAL (SP-HAL) 和 VNDK 术语。
+</li>
+<li><em><a href="/devices/architecture/vndk/extensions.html">VNDK 扩展</a></em>对供应商专属更改进行了分类。例如，具有供应商模块所依赖的扩展功能的库必须复制到供应商分区中，但禁止进行 ABI 不兼容的更改。</li>
+<li><em><a href="/devices/architecture/vndk/deftool.html">VNDK 定义工具</a></em>可帮助您将源代码树迁移到 Android O。</li>
+<li><em><a href="/devices/architecture/vndk/linker-namespace.html">链接器命名空间</a></em>提供对共享库关联的精细控制。
+</li>
+<li><em><a href="/devices/architecture/vndk/dir-rules-sepolicy.html">目录、规则和 sepolicy</a></em> 定义了运行 Android O 的设备的目录布局，以及 VNDK 规则和关联的 sepolicy。</li>
+<li><em><a href="../images/vndk_design_android_o.pdf">Android O 中的 VDNK 设计</a></em>演示文稿阐述了 Android O 中使用的 VDNK 基本概念。</li>
+</ul>
+
+<h2 id="concepts">VNDK 概念</h2>
+<p>在理想的 Android O 环境中，框架进程不加载供应商共享库，所有供应商进程仅加载供应商共享库（和一部分框架共享库），而框架进程与供应商进程之间的通信由 HIDL 和硬件 binder 控制。</p>
+
+<p>这样的环境存在以下可能：来自框架共享库的稳定、公共 API 可能不足以满足供应商模块开发者的需求（尽管 API 在不同的 Android 版本之间会有所变化），要防止出现这种情况，供应商进程需要能够访问一部分框架共享库。此外，由于性能要求可能会导致折中方案，因此必须区别对待某些对响应时间要求严格的 HAL。</p>
+
+<p>以下部分详细介绍了 VNDK 如何处理适用于供应商的框架共享库以及 Same-Process HAL (SP-HAL)。</p>
+
+<h3 id="framework-shared-libraries">适用于供应商的框架共享库</h3>
+<p>本部分介绍了供应商进程可访问的共享库的分类标准。要让供应商模块在多个 Android 版本上皆可正常工作，有以下两种方法：</p>
+
+<ol>
+<li><strong>让框架共享库的 ABI/API 保持稳定</strong>。新的框架模块和旧的供应商模块可以使用同一共享库，以减少内存占用和存储空间占用。此外，通过使用同一共享库，还可以避免一些双重加载问题。不过，保持稳定的 ABI/API 的开发成本很高，因此让每个框架共享库导出的所有 ABI/API 都保持稳定是不现实的。</li>
+<li><strong>复制旧的框架共享库</strong>。此方法会严重限制边信道，即在框架模块与供应商模块之间进行通信的所有机制，包括（但不限于）binder、套接字、管道、共享内存、共享文件和系统属性。除非通信协议被冻结且保持稳定（例如通过 hwbinder 的 HIDL），否则不能进行通信。双重加载共享库也可能会导致出现问题；例如，如果将新库创建的对象传递到旧库的函数中，则可能会出错，因为这些库可能会以不同的方式解读该对象。</li>
+</ol>
+
+<p>根据共享库的特性不同，使用的方法也有差异。因此，框架共享库可分为以下三个子类别：</p>
+
+<ul>
+<li><em></em><em></em><em></em>LL-NDK 和 SP-NDK 是已知稳定的框架共享库。它们的开发者致力于保持其 API/ABI 的稳定性。
+ <ul>
+ <li>LL-NDK 包含以下库：<code>libandroid_net.so</code>、<code>libc.so</code>、<code>libstdc++.so</code>、<code>libdl.so</code>、<code>liblog.so</code>、<code>libm.so</code>、<code>libz.so</code> 和 <code>libvndksupport.so</code>。</li>
+ <li>SP-NDK 包含以下库：<code>libEGL.so</code>、<code>libGLESv1_CM.so</code>、<code>libGLESv2.so</code>、<code>libGLESv3.so</code>、<code>libvulkan.so</code>、<code>libnativewindow.so</code> 和 <code>libsync.so</code>。</li>
+ </ul>
+</li>
+<li><em></em><em></em>符合条件的 VNDK 库 (VNDK) 是指可以安全复制两次的框架共享库。<em></em><em></em>框架模块和供应商模块可以与其各自的库副本相关联。框架共享库只有满足以下条件才能成为符合条件的 VNDK 库：
+ <ul>
+ <li>不向框架发送或从框架接收 IPC。</li>
+ <li>与 ART 虚拟机无关。</li>
+ <li>不读取/写入文件格式不稳定的文件/分区。</li>
+ <li>没有需要法律审查的特殊软件许可。</li>
+ <li>其代码所有者不反对供应商使用该库。</li>
+ </ul>
+</li>
+<li><em></em><em></em>框架专用库 (FWK-ONLY) 是指不属于上述类别的框架共享库。此类库具有以下特点：
+ <ul>
+ <li>被视为框架内部实现细节。</li>
+ <li>不得由供应商模块访问。</li>
+ <li>具有不稳定的 ABI/API，无 API/ABI 兼容性保证。</li>
+ <li>不会被复制。</li>
+ </ul>
+</li>
+</ul>
+
+<h3 id="sp-hal">Same-Process HAL (SP-HAL)</h3>
+<p>
+<em></em><em></em><em></em><em></em>Same-Process HAL (SP-HAL) 是一组预先确定的 HAL，作为供应商共享库进行实现，并被加载到框架进程中。SP-HAL 由链接器命名空间（控制共享库可见的库和符号）进行隔离。SP-HAL 必须仅依赖于 LL-NDK、SP-NDK 和 VNDK-SP。<em></em><em></em><em></em></p>
+
+<p>VNDK-SP 是一部分预定义的符合条件的 VNDK 库。我们会仔细审查 VNDK-SP 库，以确保将 VNDK-SP 库双重加载到框架进程中不会导致问题。SP-HAL 和 VNDK-SP 均由 Google 定义。</p>
+
+<p>以下库是经过批准的 SP-HAL：</p>
+
+<ul>
+<li><code>libGLESv2_${driver}.so</code></li>
+<li><code>libGLESv1_CM_${driver}.so</code></li>
+<li><code>libEGL_${driver}.so</code></li>
+<li><code>vulkan.${driver}.so</code></li>
+<li><code>android.hardware.renderscript@1.0-impl.so</code></li>
+<li><code>android.hardware.graphics.mapper@2.0-impl.so</code></li>
+</ul>
+
+<p>以下库是 SP-HAL 可以访问的 VNDK-SP 库：
+</p>
+
+<ul>
+<li><code>android.hardware.graphics.allocator@2.0.so</code></li>
+<li><code>android.hardware.graphics.common@1.0.so</code></li>
+<li><code>android.hardware.graphics.mapper@2.0.so</code></li>
+<li><code>android.hardware.renderscript@1.0.so</code> (Renderscript)</li>
+<li><code>libRS_internal.so</code> (Renderscript)</li>
+<li><code>libbase.so</code></li>
+<li><code>libc++.so</code></li>
+<li><code>libcutils.so</code></li>
+<li><code>libhardware.so</code></li>
+<li><code>libhidlbase.so</code></li>
+<li><code>libhidltransport.so</code></li>
+<li><code>libhwbinder.so</code></li>
+<li><code>libutils.so</code></li>
+</ul>
+
+<p>
+以下 VNDK-SP 依赖项 (VNDK-SP-Indirect) 对 SP-HAL 不可见：
+<em></em><em></em></p><ul>
+<li><code>libRSCpuRef.so</code> (Renderscript)</li>
+<li><code>libRSDriver.so</code> (Renderscript)</li>
+<li><code>libbacktrace.so</code></li>
+<li><code>libblas.so</code> (Renderscript)</li>
+<li><code>libbcinfo.so</code> (Renderscript)</li>
+<li><code>liblzma.so</code></li>
+<li><code>libunwind.so</code></li>
+</ul>
+
+<p>以下私有 VNDK-SP 依赖项 (VNDK-SP-Indirect-Private) 对所有供应商模块均不可见：<em></em></p>
+
+<ul>
+<li><code>libcompiler_rt.so</code> (Renderscript)</li>
+</ul>
+
+<p>以下是具有 RS 例外的框架专用库 (FWK-ONLY-RS)：<em></em></p>
+<ul>
+<li><code>libft2.so</code> (Renderscript)</li>
+<li><code>libmediandk.so</code> (Renderscript)</li>
+</ul>
+
+<h2 id="vndk-terminology">VNDK 术语</h2>
+<ul>
+<li><em></em><em></em><em></em>模块是指共享库或可执行文件。</li>
+<li><em></em><em></em>进程是指可执行文件产生的操作系统任务。</li>
+<li><em></em>以“框架”打头的术语是指与<strong>系统</strong>分区相关的概念。</li>
+<li><em></em>以“供应商”打头的术语是指与<strong>供应商</strong>分区相关的概念。</li>
+</ul>
+
+<p>例如：</p>
+<ul>
+<li><em></em>框架可执行文件是指 <code>/system/bin</code> 或 <code>/system/xbin</code> 中的可执行文件。</li>
+<li><em></em>框架共享库是指 <code>/system/lib[64]</code> 下的共享库。</li>
+<li><em></em><em></em><em></em>框架模块是指框架共享库和框架可执行文件。</li>
+<li><em></em><em></em>框架进程是指框架可执行文件（例如 <code>/system/bin/app_process</code>）产生的进程。</li>
+<li><em></em>供应商可执行文件是指 <code>/vendor/bin</code> 中的可执行文件。
+</li><li><em></em>供应商共享库是指 <code>/vendor/lib[64]</code> 下的共享库。</li>
+<li><em></em><em></em><em></em>供应商模块是指供应商可执行文件和供应商共享库。</li>
+<li><em></em><em></em>供应商进程是指供应商可执行文件（例如 </li>
+<code>/vendor/bin/android.hardware.camera.provider@2.4-service</code>）产生的进程。
+</ul>
+
+</body></html>

@@ -1,0 +1,152 @@
+<html devsite><head>
+    <title>目录、规则和 sepolicy</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>本页面将介绍运行 Android O 的设备的目录布局，以及 VNDK 规则和关联的 sepolicy。</p>
+
+<h2 id="directory">目录布局</h2>
+<p><em></em>退化目录布局由以下目录组成：</p>
+<ul>
+<li><code>/system/lib[64]</code> 包含所有框架共享库，具体包括 LL-NDK、SP-NDK、VNDK 和框架专用库（包括 LL-NDK-Indirect、SP-NDK-Indirect 以及一些与 VNDK-SP 中的库同名的库）。</li>
+<li><code>/system/lib[64]/vndk-sp</code> 包含适用于 Same-Process HAL 的 VNDK-SP 库。</li>
+<li><code>/vendor/lib[64]</code> 包含扩展后的 VNDK 库（DXUA 或 DXUX VNDK 库）、Same-Process HAL 实现和其他供应商共享库。</li>
+<li><code>/vendor/lib[64]/vndk-sp</code> 可能会包含 VNDK-SP 库所使用的其他库。</li>
+</ul>
+
+<p>供应商模块从 <code>/system/lib[64]</code> 中加载 VNDK 库。</p>
+
+<h2 id="rules">VNDK 规则</h2>
+<p>本部分提供了完整的 VNDK 规则列表。</p>
+
+<ul>
+<li>框架进程不得从供应商分区加载非 SP-HAL 共享库（Android O 中并未严格地强制实施此规则，但未来版本中会这么做）。
+</li>
+<li>供应商进程不得从系统分区加载非 LL-NDK 库、非 SP-NDK 库、非 VNDK-SP 库和非 VNDK 库（Android O 中并未严格地强制实施此规则，但未来版本中会这么做）。</li>
+
+<p class="note"><strong>注意</strong>：要想从未来版本（比 Android O 更高的版本）的 Framework-Only OTA 中受益，就不得在搭载 Android O 的设备中违反此规则。</p>
+
+<li>已安装的 VNDK 库必须是由 Google 定义的合格 VNDK 库的子集。</li>
+<li>SP-HAL 和 SP-HAL-Dep 的外部依赖项必须仅限于 LL-NDK 库、SP-NDK 库或由 Google 定义的 VNDK-SP 库。
+ <ul>
+ <li>SP-HAL 共享库的依赖项必须仅限于 LL-NDK 库、SP-NDK 库、SP-NDK 库、由 Google 定义的 VNDK-SP 库、其他 SP-HAL 库和/或可标记为 SP-HAL-Dep 库的其他供应商共享库。</li>
+ <li>只有当供应商共享库不是 AOSP 库，且其依赖项仅限于 LL-NDK 库、SP-NDK 库、由 Google 定义的 VNDK-SP 库、SP-HAL 库和/或其他 SP-HAL-Dep 库时，才可标记为 SP-HAL-Dep 库。</li>
+ </ul>
+</li>
+<li>VNDK-SP 必须保持独立。在 Android O 中，<code>libRS_internal.so</code> 会被系统以特殊方式处理，但在未来版本中，其处理方式会被重新考虑。</li>
+<li>不得通过非 HIDL 接口（包括但不限于 Binder、套接字、共享内存、文件等）进行框架-供应商通信。</li>
+<li>系统分区必须足够大，以便容纳所有符合条件的 VNDK 库的两个副本，以及不符合条件的框架共享库的一个副本。</li>
+</ul>
+
+<h2 id="sepolicy">sepolicy</h2>
+<p>本部分中介绍的框架进程对应于 sepolicy 中的 <code>coredomain</code>，而供应商进程对应于 <code>non-coredomain</code>。例如，<code>/dev/binder</code> 只能在 <code>coredomain</code> 中被访问，而 <code>/dev/vndbinder</code> 只能在非 <code>coredomain</code> 中被访问。</p>
+
+<p>类似政策会限制对系统分区和供应商分区上的共享库的访问。下表列出了访问不同类别的共享库时所需的权限：</p>
+
+<table>
+  <tbody><tr>
+   <th style="width:35%">类别</th>
+   <th>分区</th>
+   <th>是否可从<br /> coredomain 访问</th>
+   <th>是否可从<br />非 coredomain 访问</th>
+  </tr>
+  <tr>
+   <td>LL-NDK</td>
+   <td>系统</td>
+   <td>是</td>
+   <td>是</td>
+  </tr>
+  <tr>
+   <td>LL-NDK-Indirect</td>
+   <td>系统</td>
+   <td>是</td>
+   <td>是</td>
+  </tr>
+  <tr>
+   <td>SP-NDK</td>
+   <td>系统</td>
+   <td>是</td>
+   <td>是</td>
+  </tr>
+  <tr>
+   <td>SP-NDK-Indirect</td>
+   <td>系统</td>
+   <td>是</td>
+   <td>是</td>
+  </tr>
+  <tr>
+   <td>VNDK-SP/VNDK-SP-Indirect/VNDK-SP-Indirect-Private</td>
+   <td>系统</td>
+   <td>是</td>
+   <td>是</td>
+  </tr>
+  <tr>
+   <td>VNDK-SP-Ext/VNDK-SP-Indirect-Ext</td>
+   <td>供应商</td>
+   <td>是</td>
+   <td>是</td>
+  </tr>
+  <tr>
+   <td>VNDK</td>
+   <td>系统</td>
+   <td>是</td>
+   <td>是</td>
+  </tr>
+  <tr>
+   <td>VNDK-Ext</td>
+   <td>供应商</td>
+   <td>否</td>
+   <td>是</td>
+  </tr>
+  <tr>
+   <td>FWK-ONLY</td>
+   <td>系统</td>
+   <td>是</td>
+   <td>否</td>
+  </tr>
+  <tr>
+   <td>FWK-ONLY-RS</td>
+   <td>系统</td>
+   <td>是</td>
+   <td>否</td>
+  </tr>
+  <tr>
+   <td>SP-HAL</td>
+   <td>供应商</td>
+   <td>是</td>
+   <td>是</td>
+  </tr>
+  <tr>
+   <td>SP-HAL-Dep</td>
+   <td>供应商</td>
+   <td>是</td>
+   <td>是</td>
+  </tr>
+  <tr>
+   <td>VND-ONLY</td>
+   <td>供应商</td>
+   <td>否</td>
+   <td>是</td>
+  </tr>
+</tbody></table>
+
+<p>LL-NDK-Indirect、SP-NDK-Indirect、VNDK-SP-Indirect 和 VNDK-SP-Indirect-Private 必须从这两个域中都可访问，因为非 <code>coredomain</code> 会间接访问这些库。同样，SP-HAL-Dep 必须可从 <code>coredomain</code> 访问，因为 SP-HAL 依赖该域。</p>
+
+</body></html>
