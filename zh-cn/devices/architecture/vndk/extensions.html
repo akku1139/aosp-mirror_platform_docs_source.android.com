@@ -1,0 +1,106 @@
+<html devsite><head>
+    <title>VNDK 扩展</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>Android 设备制造商会出于各种原因而更改 AOSP 库的源代码。一些供应商会为了提高性能而重新实现 AOSP 库中的函数，另一些供应商则会向 AOSP 库添加新钩子、新 API 或新功能。本部分将介绍一些准则，以说明如何在不破坏 CTS/VTS 的前提下扩展 AOSP 库。</p>
+
+<h2 id="drop-in-replacement">简易替换</h2>
+<p>所有修改后的共享库都必须与其 AOSP 副本保持<strong>二进制兼容</strong>，且可以<strong>简易替换</strong>该副本。所有现有的 AOSP 用户都必须能在不进行重新编译的情况下使用修改后的共享库。此要求有以下几点含义：</p>
+<ul>
+<li>不得移除 AOSP 函数。</li>
+<li>不得更改面向用户提供的结构。</li>
+<li>不得强化函数的前提条件。</li>
+<li>函数必须提供等效功能。</li>
+<li>不得削弱函数的后置条件。</li>
+</ul>
+
+<h2 id="extended-module-classifications">扩展后的模块分类</h2>
+<p>按模块所<strong>定义</strong>和<strong>使用</strong>的功能对其进行分类。</p>
+<p class="note"><strong>注意</strong>：此处之所以使用“功能”一词而未使用 API/ABI，是因为可在不更改任何 API/ABI 的情况下添加功能。<em></em></p>
+
+<p>根据模块中定义的功能，可将模块分为 <strong>DA 模块</strong>和 <strong>DX 模块</strong>：</p>
+<ul>
+<li><em></em>Defining-only-AOSP 模块（DA 模块）不会定义 AOSP 副本中未包含的新功能。
+ <ul>
+ <li><em>示例 1：</em> 一个未经修改且完整无缺的 AOSP 库即是一个 DA 模块。</li>
+ <li><em>示例 2：</em> 如果供应商使用 SIMD 指令重写 <code>libcrypto.so</code> 中的函数（不添加新函数），那么修改后的 <code>libcrypto.so</code> 将是一个 DA 模块。
+ </li>
+ </ul>
+</li>
+<li><em></em>Defining-Extension 模块（DX 模块）要么会定义新功能，要么没有 AOSP 副本。
+ <ul>
+ <li><em>示例 1：</em> 如果供应商向 <code>libjpeg.so</code> 添加一个 helper 函数以访问某些内部数据，那么修改后的 <code>libjpeg.so</code> 将是一个 DX 库，而这个新增函数将是该库的扩展部分。</li>
+ <li><em>示例 2：</em> 如果供应商定义了一个名为 <code>libfoo.so</code> 的非 AOSP 库，那么 <code>libfoo.so</code> 将是一个 DX 库。</li>
+ </ul>
+</li>
+</ul>
+
+<p>根据模块所使用的功能，可将模块分为 <strong>UA 模块</strong>和 <strong>UX 模块</strong>。</p>
+<ul>
+<li><em></em>Using-only-AOSP（UA 模块）仅会在其实现过程中使用 AOSP 功能。它们不依赖任何非 AOSP 扩展功能。
+ <ul>
+ <li><em>示例 1：</em> 一个未经修改且完整无缺的 AOSP 库即是一个 UA 模块。</li>
+ <li><em>示例 2：</em> 如果修改后的共享库 <code>libjpeg.so</code> 仅依赖其他 AOSP API，那么它将是一个 UA 模块。</li>
+ </ul>
+</li>
+<li><em></em>Using-Extension 模块（UX 模块）会在其实现过程中依赖某些非 AOSP 功能。
+ <ul>
+ <li><em>示例 1：</em> 如果修改后的 <code>libjpeg.so</code> 依赖另一个名为 <code>libjpeg_turbo2.so</code> 的非 AOSP 库，那么修改后的 <code>libjpeg.so</code> 将是一个 UX 模块。</li>
+ <li><em>示例 2：</em> 如果供应商向其修改后的 <code>libexif.so</code> 添加了一个新函数，并且其修改后的 <code>libjpeg.so</code> 使用 <code>libexif.so</code> 中的这个新增函数，那么修改后的 <code>libjpeg.so</code> 将是一个 UX 模块。</li>
+ </ul>
+</li>
+</ul>
+
+<p>定义的功能和使用的功能相互独立：</p>
+<table>
+  <tbody><tr>
+   <td rowspan="2" colspan="2" class="columns"></td>
+   <th colspan="2">使用的功能</th>
+  </tr>
+  <tr>
+   <td>Only AOSP (UA)</td>
+   <td>Extended (UX)</td>
+  </tr>
+  <tr>
+   <th rowspan="2">定义的功能</th>
+   <td>Only AOSP (DA)</td>
+   <td>DAUA</td>
+   <td>DAUX</td>
+  </tr>
+  <tr>
+   <td>Extended (DX)</td>
+   <td>DXUA</td>
+   <td>DXUX</td>
+  </tr>
+</tbody></table>
+
+<h2 id="vndk-extension-mechanism">VNDK 扩展机制</h2>
+<p>
+由于同名的 AOSP 库不包含扩展功能，因此依赖扩展功能的供应商模块将无法正常工作。如果供应商模块直接或间接依赖扩展功能，则供应商应将 DAUX、DXUA 和 DXUX 共享库复制到供应商分区（供应商进程始终都会先在供应商分区中查找共享库）。但是，由于不得复制 LL-NDK 和 SP-NDK 库，因此供应商模块不得依赖由修改后的 LL-NDK 和 SP-NDK 库定义的扩展功能。
+</p>
+<p>
+当系统分区被 AOSP 系统映像覆盖时，如果相应的 AOSP 库可以提供相同的功能，且供应商模块可以继续正常工作，DAUA 共享库便可保留在系统分区上。
+</p>
+<p>
+简易替换非常重要，因为 AOSP 系统映像中未经修改的 VNDK 库将会在名称冲突时与修改后的共享库关联。如果以 API/ABI 不兼容的方式修改 AOSP 库，那么 AOSP 系统映像中的 AOSP 库可能会无法进行关联或会出现未定义的行为。
+</p>
+
+</body></html>
