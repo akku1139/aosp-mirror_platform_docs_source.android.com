@@ -20,10 +20,10 @@
       limitations under the License.
   -->
 
-<p>两对兼容性矩阵和清单目的是在 <a href="/devices/tech/ota/index.html">OTA</a> 时进行协调，以验证框架和供应商实现是否可以相互协同工作。当框架兼容性矩阵与设备清单之间以及框架清单与设备兼容性矩阵之间匹配时，便成功通过此验证。下面几部分将详细介绍各种组件使用的匹配规则。</p>
+<p>两对兼容性矩阵和清单旨在 <a href="/devices/tech/ota/index.html">OTA</a> 时进行协调，以验证框架和供应商实现是否可以相互协同工作。当框架兼容性矩阵与设备清单之间以及框架清单与设备兼容性矩阵之间匹配时，便成功通过此验证。下面几部分将详细介绍各种组件使用的匹配规则。</p>
 
 <h2 id="hals">HAL 匹配</h2>
-<p>HAL 匹配规则可以识别清单文件中认为受相应兼容性矩阵的所有者支持的 <code>hal</code> 元素的版本。</p>
+<p>HAL 匹配规则可以识别清单文件中被视为受相应兼容性矩阵的所有者支持的 <code>hal</code> 元素的版本。</p>
 <ul>
 <li>多个 <code>version</code> 元素使用 <strong>OR</strong> 进行连接（请参见下面的相机示例）。</li>
 <li>多个同名的 <code>&lt;hal&gt;</code> 元素使用 <strong>AND</strong> 进行连接。</li>
@@ -98,21 +98,21 @@ android.hardware.drm@2.z::ICryptoFactory/default       //where z &gt;= 0
 </pre>
 
 <h2 id="kernel">内核匹配</h2>
-<p>框架兼容性矩阵的 <code>&lt;kernel&gt;</code> 部分说明了框架对设备上 Linux 内核的需求。该信息用于在 OTA 时与设备的 VINTF 对象报告的内核相关<a href="/devices/architecture/vintf/objects.html#runtime-collectible-information">信息</a>进行匹配。</p>
+<p>框架兼容性矩阵的 <code>&lt;kernel&gt;</code> 部分说明了框架对设备上 Linux 内核的要求。该信息用于在 OTA 时与设备的 VINTF 对象报告的内核相关<a href="/devices/architecture/vintf/objects.html#runtime-collectible-information">信息</a>进行匹配。</p>
 
 <p>矩阵可以包括多个 <code>&lt;kernel&gt;</code> 部分，每个部分使用不同的 <code>version</code> 属性，格式如下：</p>
 
 <pre class="prettyprint">${ver}.${major_rev}.${kernel_minor_rev}</pre>
 
 <p>OTA 只会将具有相同 <code>${ver}</code> 和 <code>${major_rev}</code> 的 <code>&lt;kernel&gt;</code> 部分视为设备内核（即 <code>version="${ver}.${major_rev}.${matrix_minor_rev}")</code>），而忽略其他部分。此外，内核的次要修订版本必须是兼容性矩阵 (<code>${kernel_minor_rev} &gt;=
-${matrix_minor_rev}</code>) 中的值。如果没有 <code>&lt;kernel&gt;</code> 部分满足这些需求，则不匹配。</p>
+${matrix_minor_rev}</code>) 中的值。如果没有 <code>&lt;kernel&gt;</code> 部分满足这些要求，则不匹配。</p>
 
 <p>如果 <code>&lt;kernel&gt;</code> 部分匹配，则该过程接下来会尝试将 <code>config</code> 元素与 <code>/proc/config.gz</code> 进行匹配。对于兼容性矩阵中的每个配置元素，系统将查找 <code>/proc/config.gz</code> 以查看该配置是否存在。如果某个配置项在匹配的 <code>&lt;kernel&gt;</code> 部分的兼容性矩阵中设置为 <code>n</code>，便不得在 <code>/proc/config.gz</code> 中出现。最后，不在兼容性矩阵中的配置项不一定会包含在 <code>/proc/config.gz</code> 中。
 </p>
 
 <p>匹配示例：</p>
 <ul>
-<li><code>&lt;value type="string"&gt;bar&lt;/value&gt;</code> 与 <code>"bar"</code> 匹配。引号在兼容性矩阵中会被省略，但会包含在 <code>/proc/config.gz</code> 中。</li>
+<li><code>&lt;value type="string"&gt;bar&lt;/value&gt;</code> 与 <code>"bar"</code> 匹配。引号在兼容性矩阵中会被忽略，但会包含在 <code>/proc/config.gz</code> 中。</li>
 <li><code>&lt;value type="int"&gt;4096&lt;/value&gt;</code> 与 <code>4096</code>、<code>0x1000</code> 或 <code>0X1000</code> 匹配。</li>
 <li><code>&lt;value type="int"&gt;0x1000&lt;/value&gt;</code> 与 <code>4096</code>、<code>0x1000</code> 或 <code>0X1000</code> 匹配。</li>
 <li><code>&lt;value type="int"&gt;0X1000&lt;/value&gt;</code> 与 <code>4096</code>、<code>0x1000</code> 或 <code>0X1000</code> 匹配。</li>
@@ -157,15 +157,14 @@ ${matrix_minor_rev}</code>) 中的值。如果没有 <code>&lt;kernel&gt;</code>
 
 <p>首先匹配内核版本。如果 <code>uname()</code> 中的设备报告：</p>
 <ul>
-<li>3.10.73（除非有一个单独的内核部分在 <code>x &lt;= 73</code> 的情况下包含 <code>&lt;kernel version="3.10.x"&gt;</code>，否则与矩阵不匹配）</li>
+<li>3.10.73（除非有一个含有 <code>&lt;kernel version="3.10.x"&gt;</code> 的单独内核部分且其中的 <code>x &lt;= 73</code>，否则与矩阵不匹配）</li>
 <li>3.18.50（与矩阵不匹配，小于 <code>version</code>）</li>
 <li>3.18.51（与矩阵匹配）</li>
 <li>3.18.52（与矩阵匹配）</li>
-<li>4.1.22（除非有一个含有 <code>&lt;kernel version="4.1.x"&gt;</code> 的单独内核部分且其中的 <code>x &lt;= 22</code>，否则与矩阵不匹配）
-</li>
+<li>4.1.22（除非有一个含有 <code>&lt;kernel version="4.1.x"&gt;</code> 的单独内核部分且其中的 <code>x &lt;= 22</code>，否则与矩阵不匹配）</li>
 </ul>
 
-<p>选择适当的 <code>&lt;kernel&gt;</code> 部分后，对于值不为 <code>n</code> 的每个 <code>&lt;config&gt;</code> 项，我们预计对应条目会存在于 <code>/proc/config.gz</code> 中；对于值为 <code>n</code> 的每个 <code>&lt;config&gt;</code> 项，我们预计对应条目不会存在于 <code>/proc/config.gz</code> 中。我们预计 <code>&lt;value&gt;</code> 的内容与等号后面的文本（包括引号）完全匹配，直到换行符或 <code>#</code>，前导和行尾空格被截断。</p>
+<p>选择适当的 <code>&lt;kernel&gt;</code> 部分后，对于值不为 <code>n</code> 的每个 <code>&lt;config&gt;</code> 项，我们预计对应条目会存在于 <code>/proc/config.gz</code> 中；对于值为 <code>n</code> 的每个 <code>&lt;config&gt;</code> 项，我们预计对应条目不会存在于 <code>/proc/config.gz</code> 中。我们预计 <code>&lt;value&gt;</code> 的内容与等号后面的文本（包括引号）完全匹配，直到换行符或 <code>#</code>，开头和结尾的空格被截断。</p>
 
 <p>以下内核配置是成功匹配的示例：</p>
 
@@ -194,7 +193,7 @@ CONFIG_EMPTY=1   # mismatch; expects ""
 <h2 id="se-policy">SE 策略匹配</h2>
 <p>SE 策略需要以下匹配：</p>
 <ul>
-<li><code>&lt;sepolicy-version&gt;</code> 定义每个主要版本的次要版本的封闭范围。设备报告的 sepolicy 版本必须属于这些范围之一才能与框架兼容。匹配规则类似于 HAL 版本；如果 sepolicy 版本高于或等于范围内的最低版本，则匹配。最高版本仅供参考。</li>
+<li><code>&lt;sepolicy-version&gt;</code> 定义了每个主要版本的次要版本的封闭范围。设备报告的 sepolicy 版本必须属于这些范围之一才能与框架兼容。匹配规则类似于 HAL 版本；如果 sepolicy 版本高于或等于范围内的最低版本，则匹配。最高版本仅供参考。</li>
 <li><code>&lt;kernel-sepolicy-version&gt;</code>（即 policydb 版本）必须与设备报告的 <code>security_policyvers()</code> 完全匹配。
 </li>
 </ul>
