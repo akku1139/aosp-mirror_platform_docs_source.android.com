@@ -49,9 +49,9 @@ scontext=u:r:shell:s0 tcontext=u:r:netd:s0 tclass=unix_stream_socket
 </li></ul>
 
 <p>下面是另一个示例：</p>
-
+<pre class="devsite-terminal devsite-click-to-copy">adb shell su root dmesg | grep 'avc: '</pre>
+<p>输出：</p>
 <pre>
-$ adb shell su root dmesg | grep 'avc: '
 &lt;5&gt; type=1400 audit: avc:  denied  { read write } for  pid=177
 comm="rmt_storage" name="mem" dev="tmpfs" ino=6004 scontext=u:r:rmt:s0
 tcontext=u:object_r:kmem_device:s0 tclass=chr_file
@@ -60,38 +60,42 @@ tcontext=u:object_r:kmem_device:s0 tclass=chr_file
 <p>以下是此拒绝事件的关键元素：</p>
 
 <ul>
-  <li>操作 - 试图进行的操作使用括号突出显示：<code>read write</code> 或 <code>setenforce</code>。<em></em>
-  </li><li>操作方 - <code>scontext</code>（来源环境）条目表示操作方，在该示例中是<code> rmt_storage</code> 守护进程。<em></em>
-  </li><li>对象 - <code>tcontext</code>（目标环境）条目表示正在对哪个对象执行操作，在该示例中是 kmem。<em></em>
-  </li><li>结果 - <code>tclass</code>（目标类别）条目表示操作对象的类型，在该示例中是 <code>chr_file</code>（字符设备）。<em></em>
+  <li><em></em>操作 - 试图进行的操作使用括号突出显示：<code>read write</code> 或 <code>setenforce</code>。
+  </li><li><em></em>操作方 - <code>scontext</code>（来源环境）条目表示操作方，在该示例中是<code> rmt_storage</code> 守护进程。
+  </li><li><em></em>对象 - <code>tcontext</code>（目标环境）条目表示正在对哪个对象执行操作，在该示例中是 kmem。
+  </li><li><em></em>结果 - <code>tclass</code>（目标类别）条目表示操作对象的类型，在该示例中是 <code>chr_file</code>（字符设备）。
 </li></ul>
 
 <h2 id="switching_to_permissive">切换到宽容模式</h2>
 
 <p class="caution"><strong>重要提示</strong>：生产设备不支持宽容模式。CTS 测试可确认是否已启用强制模式。</p>
 
-<p>要通过 ADB 将设备的 SELinux 执行模式切换到全局宽容模式，请以根用户的身份执行以下命令：</p>
-
-<pre>
-$ adb shell su root setenforce 0
+<p>SELinux 强制模式可以在 userdebug 或 eng 版本中通过 ADB 启用。为此，请先运行 <code>adb root</code> 以将 ADB 切换为 root 权限。然后，要停用 SELinux 强制模式，请运行以下命令：
+</p><pre class="devsite-terminal devsite-click-to-copy">
+adb shell setenforce 0
 </pre>
 
 <p>或在内核命令行中输入以下命令（在设备启动初期）：</p>
 
-<pre>
-androidboot.selinux=permissive
-androidboot.selinux=enforcing
+<pre class="devsite-click-to-copy">
+<code class="devsite-terminal">androidboot.selinux=permissive</code>
+<code class="devsite-terminal">androidboot.selinux=enforcing</code>
 </pre>
 
 <h2 id="using_audit2allow">使用 audit2allow</h2>
 
-<p><code>selinux/policycoreutils/audit2allow</code> 工具可以获取 <code>dmesg</code> 拒绝事件并将其转换成相应的 SELinux 政策声明。因此，该工具有助于大幅加快 SELinux 开发速度。<code>audit2allow</code> 会作为 Android 源代码树的一部分被移植到设备上，并会在您基于源代码编译 Android 时自动进行编译。</p>
+<p><code>selinux/policycoreutils/audit2allow</code> 工具可以获取 <code>dmesg</code> 拒绝事件并将其转换成相应的 SELinux 政策声明。因此，该工具有助于大幅加快 SELinux 开发速度。
+<code>audit2allow</code> 会作为 Android 源代码树的一部分被移植到设备上，并会在您基于源代码编译 Android 时自动进行编译。</p>
 
 <p>要使用该工具，请运行以下命令：</p>
 
-<pre>
-$ adb shell su root dmesg | audit2allow -p $OUT/root/sepolicy
+<pre class="devsite-click-to-copy">
+<code class="devsite-terminal">adb pull /sys/fs/selinux/policy</code>
+<code class="devsite-terminal">adb logcat -b all -d | audit2allow -p policy</code>
 </pre>
+
+<p class="note"><strong>注意</strong>：运行这些命令不会更改 bugreport.txt，因为所有日志都已经存在，包括上次重新启动之前存在的日志。在运行 OTA 或开发闪存的设备上，旧的和新的违规行为会混合在一起，直到下一次重新启动。要解决此问题，请重新启动设备，或者从您的错误报告中过滤出 LAST_KMSG 和 LAST_LOGCAT。
+</p>
 
 <p>不过，在检查各种潜在增加项是否存在越界权限时务必要谨慎。例如，为 audit2allow 馈送之前显示的 <code>rmt_storage</code> 拒绝事件会导致以下建议的 SELinux 政策声明：</p>
 
@@ -102,6 +106,6 @@ allow shell kernel:security setenforce;
 allow rmt kmem_device:chr_file { read write };
 </pre>
 
-<p>这会授予 <code>rmt</code> 向内核内存写入内容的权限，从而形成明显的安全漏洞。通常情况下，<code>audit2allow</code> 声明只是一个起点，在这之后，可能还需要更改来源域以及目标的标签，并纳入适当的宏，才能获得好的政策。有时，要解决正在检查的拒绝事件，不应对政策进行任何更改，而是应更改违规的应用。</p>
+<p>这会授予 <code>rmt</code> 向内核内存写入内容的权限，从而形成明显的安全漏洞。通常情况下，<code>audit2allow</code> 声明只是一个起点。在使用这些声明之后，您可能需要更改来源域和目标的标签，并纳入适当的宏，才能获得好的政策。有时，要解决正在检查的拒绝事件，不应对政策进行任何更改；而是应更改违规的应用。</p>
 
 </body></html>
