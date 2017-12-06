@@ -1,0 +1,153 @@
+<html devsite>
+  <head>
+    <title>Implementing TEXTCLASSIFIER</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<h2 id="overview">Overview</h2>
+
+<p>
+Android 8.1 introduces the TextClassfier API that uses machine learning
+techniques to help developers classify text:
+</p>
+
+
+<pre
+class="prettyprint">TextClassificationManager tcm =
+    context.getSystemService(TextClassificationManager.class);
+TextClassifier classifier = tcm.getTextClassifier();
+TextSelection selection = classifier.suggestSelection(...);
+TextClassification classification = classifier.classifyText(...);
+</pre>
+<p>
+Developers may choose to set a custom text classifier:
+</p>
+<p>
+ <code>tcm.setTextClassifier(customTextClassifier);</code>
+</p>
+<p>
+But if an app developer sets the text classifier to null, a system default text
+classifier is returned for <code>getTextClassifier()</code>.
+</p>
+<p>
+See: <code>android.view.textclassifier.TextClassifierImpl</code>
+</p>
+<p>
+TextView and WebView use the TextClassifier for smart selection and smart text
+share features:
+</p>
+
+<img src="/devices/tech/display/images/textclassifier.png">
+<p class="img-caption">
+  <b>Figure 1.</b> TEXTCLASSIFIER usage.
+</p>
+
+<h2 id="textclassifier-neural-net-models">TextClassifier neural-net models</h2>
+<p>
+The Android Open Source Project (AOSP) features a number of neural network
+models for classifying text. Each model file is trained for a single language.
+You may choose to install any combination of models. The models are defined in:
+</p>
+<p>
+<code>external/libtextclassifier/Android.mk</code>
+</p>
+
+<h2 id="pre-installing-language-models-on-devices">Pre-installing language
+models on devices</h2>
+<p>
+You may specify a bundle of language models and install them on a device:
+</p>
+
+
+<pre
+class="prettyprint"># -----------------------
+# Smart Selection bundles
+# -----------------------
+
+include $(CLEAR_VARS)
+LOCAL_MODULE           := textclassifier.smartselection.bundle1
+LOCAL_REQUIRED_MODULES := textclassifier.smartselection.en.model
+LOCAL_REQUIRED_MODULES += textclassifier.smartselection.es.model
+LOCAL_REQUIRED_MODULES += textclassifier.smartselection.de.model
+LOCAL_REQUIRED_MODULES += textclassifier.smartselection.fr.model
+include $(BUILD_STATIC_LIBRARY)
+</pre>
+
+<p>
+For example, in <code>device/google/marlin/device-common.mk</code>
+</p>
+
+
+<pre
+class="prettyprint"># TextClassifier smart selection model files
+PRODUCT_PACKAGES += \
+    textclassifier.smartselection.bundle1
+</pre>
+
+<h2 id="inspecting-installed-language-modules">Inspecting installed language
+modules</h2>
+<p>
+Use ADB to list the files in the directory:
+</p>
+
+
+<pre
+class="prettyprint">$ adb shell ls -l /etc/textclassifier
+-rw-r--r-- 1 root root ... textclassifier.smartselection.de.model
+-rw-r--r-- 1 root root ... textclassifier.smartselection.en.model
+-rw-r--r-- 1 root root ... textclassifier.smartselection.es.model
+-rw-r--r-- 1 root root ... textclassifier.smartselection.fr.model
+</pre>
+
+<h2 id="gservices-model-updates">Model updates</h2>
+
+<p>
+Models can be updated either by having a new model included as part of a system image update,
+or dynamically via having a system component that would trigger an update through the
+System <code>API ACTION_UPDATE_SMART_SELECTION</code> intent. By broadcasting this System API
+intent, the framework is able to update the language model of the currently set language.
+The models themselves contain the supported
+language and a version number so the latest appropriate model is used.
+</p>
+
+<p>
+So you don't need to preload models for all languages because they can be added later.
+If no model file is found for the specified language, text classification will return no-op values.
+</p>
+
+<h2 id="compatibility-test-suite-tests">Compatibility Test Suite tests</h2>
+<p>
+The associated Android Compatibility Test Suite (CTS) tests can be found in:
+</p>
+<p>
+<code>cts/tests/tests/view/src/android/view/textclassifier/cts/TextClassificationManagerTest.java</code>
+</p>
+<p>
+<code>cts/tests/tests/widget/src/android/widget/cts/TextViewTest.java</code>
+</p>
+
+<ul>
+<li><code>testSmartSelection</code></li>
+<li><code>testSmartSelection_dragSelection</code></li>
+<li><code>testSmartSelection_resetSelection</code></li>
+</ul>
+
+</body>
+</html>

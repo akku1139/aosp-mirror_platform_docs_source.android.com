@@ -42,7 +42,7 @@
 <li>确保内核命令行参数包含中以下额外参数：
 <pre class="devsite-click-to-copy">
 <code class="devsite-terminal">skip_initramfs rootwait ro init=/init root="/dev/dm-0 dm=system none ro,0 1 android-verity &lt;public-key-id&gt; &lt;path-to-system-partition&gt;"</code></pre>
-…其中 <code>&lt;public-key-id&gt;</code> 值是用于验证 verity 表签名的公钥 ID（要了解详情，请参阅 <a href="/security/verifiedboot/dm-verity.html">dm-verity</a>）。</li>
+…其中 <code>&lt;public-key-id&gt;</code> 值是用于验证 verity 表签名的公钥 ID（有关详情，请参阅 <a href="/security/verifiedboot/dm-verity.html">dm-verity</a>）。</li>
 <li>将包含公钥的 .X509 证书添加到系统密钥环：
  <ol>
  <li>将设置为 <code>.der</code> 格式的 .X509 证书复制到 <code>kernel</code> 的根目录。如果 .X509 证书的格式为 <code>.pem</code> 文件，请使用以下 <code>openssl</code> 命令将证书格式从 <code>.pem</code> 转换为 <code>.der</code>：
@@ -108,7 +108,7 @@ Android: 7e4333f9bba00adfe0ede979e28ed1920492b40f: X509.RSA 0492b40f []
 
 <h2 id="partitions">设置分区（插槽）</h2>
 <p>A/B 设备不需要恢复分区或缓存分区，因为 Android 已不再使用这些分区。数据分区现在用于存储下载的 OTA 软件包，而恢复映像代码位于启动分区。
-A/B 化的所有分区应命名如下（插槽始终被命名为 <code>a</code>、<code>b</code> 等）：<code>boot_a</code>、<code>boot_b</code>、<code>system_a</code>、<code>system_b</code>、<code>vendor_a</code>、<code>vendor_b</code>。</p>
+A/B 化的所有分区都应按以下方法命名（插槽始终被命名为 <code>a</code>、<code>b</code> 等）：<code>boot_a</code>、<code>boot_b</code>、<code>system_a</code>、<code>system_b</code>、<code>vendor_a</code>、<code>vendor_b</code>。</p>
 
 <h3 id="cache">缓存</h3>
 
@@ -123,14 +123,14 @@ A/B 化的所有分区应命名如下（插槽始终被命名为 <code>a</code>�
 
 <h3 id="fstab">Fstab</h3>
 
-<p><code>slotselect</code> 参数<strong>必须</strong>位于 A/B 化分区的行中。例如：</p>
+<p><code>slotselect</code> 参数<strong>必须</strong>位于 A/B 化分区对应的行中。例如：</p>
 
 <pre class="devsite-click-to-copy">
 &lt;path-to-block-device&gt;/vendor  /vendor  ext4  ro
 wait,verify=&lt;path-to-block-device&gt;/metadata,slotselect
 </pre>
 
-<p>不应选择名称为 <code>vendor</code> 的分区，而应选择分区 <code>vendor_a</code> 或 <code>vendor_b</code> 并将其装载到 <code>/vendor</code> 装载点上。</p>
+<p>不得将任何分区命名为 <code>vendor</code>，而应选择 <code>vendor_a</code> 或 <code>vendor_b</code> 分区并将其装载到 <code>/vendor</code> 装载点上。</p>
 
 <h3 id="kernel-slot-arguments">内核插槽参数</h3>
 
@@ -160,7 +160,7 @@ wait,verify=&lt;path-to-block-device&gt;/metadata,slotselect
 
 <h2 id="ota-package-generation">生成 OTA 软件包</h2>
 
-<p><a href="/devices/tech/ota/tools.html">OTA 软件包工具</a>遵循与非 A/B 设备一样的命令。<code>target_files.zip</code> 文件必须通过为 A/B 目标定义构建变量生成。OTA 软件包工具会自动识别并生成格式适用于 A/B 更新程序的软件包。</p>
+<p><a href="/devices/tech/ota/tools.html">OTA 软件包工具</a>遵循用于非 A/B 设备的相同命令。<code>target_files.zip</code> 文件必须通过为 A/B 目标定义构建变量生成。OTA 软件包工具会自动识别并生成格式适用于 A/B 更新程序的软件包。</p>
 
 <p>例如：</p>
 <ul>
@@ -180,7 +180,7 @@ wait,verify=&lt;path-to-block-device&gt;/metadata,slotselect
 
 <h2 id="configuration">配置分区</h2>
 
-<p><code>update_engine</code> 可以更新同一磁盘中定义的任何一对 A/B 分区。一对分区有一个公共前缀（例如 <code>system</code> 或 <code>boot</code>）及按插槽划分的后缀（例如 <code>_a</code>）。有效负荷生成器为其定义更新的分区列表由 <code>AB_OTA_PARTITIONS</code> make 变量配置。</p>
+<p><code>update_engine</code> 可以更新同一磁盘中定义的任何一对 A/B 分区。一对分区共用一个前缀（例如 <code>system</code> 或 <code>boot</code>），每个插槽设置一个后缀（例如 <code>_a</code>）。有效负载生成器为其定义更新的分区列表由 <code>AB_OTA_PARTITIONS</code> make 变量配置。</p>
 
 <p>例如，如果磁盘中有一对分区 <code>bootloader_a</code> 和 <code>booloader_b</code>（<code>_a</code> 和 <code>_b</code> 为插槽后缀），则您可以通过在产品或单板配置中指定以下变量来更新这些分区：</p>
 
@@ -195,7 +195,7 @@ AB_OTA_PARTITIONS := \
 
 <h2 id="post-install">配置安装后步骤</h2>
 
-<p>对于每个已更新的分区，您可以使用一组键值对配置不同的安装后步骤。要在新映像中运行位于 <code>/system/usr/bin/postinst</code> 的程序，请指定与系统分区中相应文件系统的根目录对应的路径。</p>
+<p>对于每个已更新的分区，您可以使用一组键值对配置不同的安装后步骤。要在新映像中运行位于 <code>/system/usr/bin/postinst</code> 的程序，请相对于系统分区中的文件系统的根目录来指定路径。</p>
 
 <p>例如，<code>usr/bin/postinst</code> 的对应路径为 <code>system/usr/bin/postinst</code>（如果未使用 RAM 磁盘）。此外，请指定要传递到 <code>mount(2)</code> 系统调用的文件系统类型。
 将以下内容添加到产品或设备的 <code>.mk</code> 文件（如果适用）：</p>
@@ -209,7 +209,7 @@ AB_OTA_POSTINSTALL_CONFIG += \
 
 <h2 id="compilation">编译</h2>
 <p>出于安全考虑，<code>system_server</code> 无法使用<a href="/devices/tech/dalvik/jit-compiler">即时 (JIT)</a> 编译。
-这意味着，您必须至少为 <code>system_server</code> 及其依赖项提前编译 odex 文件；对其他所有内容的编译则是可选的。</p>
+这意味着，您必须至少为 <code>system_server</code> 及其依赖项提前编译 odex 文件；其他内容则可以先不编译。</p>
 
 <p>要在后台编译应用，您必须将以下内容添加到产品的设备配置（位于产品的 device.mk 中）：</p>
 
@@ -231,6 +231,6 @@ AB_OTA_POSTINSTALL_CONFIG += \
 </li>
 </ol>
 
-<p>要获取将预选文件安装到未使用的第二个系统分区中的相关帮助，请参阅 <a href="/devices/tech/dalvik/configure.html#other_odex">DEX_PREOPT 文件的首次启动安装</a>。</p>
+<p>要获取有关将预选文件安装到未使用的第二个系统分区的帮助，请参阅 <a href="/devices/tech/dalvik/configure.html#other_odex">DEX_PREOPT 文件的首次启动安装</a>。</p>
 
 </body></html>
