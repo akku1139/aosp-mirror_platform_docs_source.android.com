@@ -1,0 +1,134 @@
+<html devsite><head>
+    <title>软件包</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p class="note"><strong>注意：</strong>本部分使用 <code>.hal</code> 示例文件来说明 HIDL 语言结构如何映射到 C++。</p>
+
+<p>HIDL 接口软件包位于 <code>hardware/interfaces</code> 或 <code>vendor/</code> 目录下（少数例外情况除外）。<code>hardware/interfaces</code> 顶层会直接映射到 <code>android.hardware</code> 软件包命名空间；版本是软件包（而不是接口）命名空间下的子目录。</p>
+
+<p><code>hidl-gen</code> 编译器会将 <code>.hal</code> 文件编译成一组 <code>.h</code> 和 <code>.cpp</code> 文件。这些自动生成的文件可用来编译客户端/服务器实现链接到的共享库。用于编译此共享库的 <code>Android.bp</code> 文件由 <code>hardware/interfaces/update-makefiles.sh</code> 脚本自动生成。每次将新软件包添加到 <code>hardware/interfaces</code> 或在现有软件包中添加/移除 <code>.hal</code> 文件时，您都必须重新运行该脚本，以确保生成的共享库是最新的。</p>
+
+<p>例如，<code>IFoo.hal</code> 示例文件应该位于 <code>hardware/interfaces/samples/1.0</code> 下。<code><strong>IFoo.hal</strong></code> 示例文件可以在 <strong>samples</strong> 软件包中创建一个 IFoo 接口：</p>
+
+<pre class="prettyprint">
+package android.hardware.samples@1.0;
+interface IFoo {
+    struct Foo {
+       int64_t someValue;
+       handle  myHandle;
+    };
+
+    someMethod() generates (vec&lt;uint32_t&gt;);
+    anotherMethod(Foo foo) generates (int32_t ret);
+};
+</pre>
+
+<h2 id="generated-files">生成的文件</h2>
+
+<p>HIDL 软件包中自动生成的文件会链接到与软件包同名的单个共享库（例如 <code>android.hardware.samples@1.0</code>）。该共享库还会导出单个标头 <code>IFoo.h</code>，用于包含在客户端和服务器中。绑定式模式使用 <code>hidl-gen</code> 编译器并以 <code>IFoo.hal</code> 接口文件作为输入，它具有以下自动生成的文件：</p>
+
+<p><img src="../images/treble_cpp_compiler_generated_files.png"/></p>
+<p><strong>图 1.</strong> 由编译器生成的文件。</p>
+
+<ul>
+<li><code><strong>IFoo.h</strong></code> - 描述 C++ 类中的纯 <code>IFoo</code> 接口；它包含 <code>IFoo.hal</code> 文件中的 <code>IFoo</code> 接口中所定义的方法和类型，必要时会转换为 C++ 类型。<strong>不包含</strong>与用于实现此接口的 RPC 机制（例如 <code>HwBinder</code>）相关的详细信息。类的命名空间包含软件包名称和版本号，例如 <code>::android::hardware::samples::IFoo::V1_0</code>。客户端和服务器都包含此标头：客户端用它来调用方法，服务器用它来实现这些方法。</li>
+<li><code><strong>IHwFoo.h</strong></code> - 头文件，其中包含用于对接口中使用的数据类型进行序列化的函数的声明。开发者不得直接包含其标头（它不包含任何类）。</li>
+<li><code><strong>BpFoo.h</strong></code> - 从 <code>IFoo</code> 继承的类，可描述接口的 <code>HwBinder</code> 代理（客户端）实现。开发者不得直接引用此类。</li>
+<li><code><strong>BnFoo.h</strong></code> - <strong></strong>保存对 <code>IFoo</code> 实现的引用的类，可描述接口的 <code>HwBinder</code> 存根（服务器端）实现。开发者不得直接引用此类。</li>
+<li><code><strong>FooAll.cpp</strong></code> - 包含 <code>HwBinder</code> 代理和 <code>HwBinder</code> 存根的实现的类。当客户端调用接口方法时，代理会自动从客户端封送参数，并将事务发送到绑定内核驱动程序，该内核驱动程序会将事务传送到另一端的存根（该存根随后会调用实际的服务器实现）。</li>
+</ul>
+
+<p>这些文件的结构类似于由 <code>aidl-cpp</code> 生成的文件（有关详细信息，请参见 <a href="/devices/architecture/hidl/index.html">HIDL 概览</a>中的“直通模式”）。独立于 HIDL 使用的 RPC 机制的唯一一个自动生成的文件是 <code>IFoo.h</code>，其他所有文件都与 HIDL 使用的 HwBinder RPC 机制相关联。因此，客户端和服务器实现<strong>不得直接引用除 <code>IFoo</code> 之外的任何内容</strong>。为了满足这项要求，请只包含 <code>IFoo.h</code> 并链接到生成的共享库。</p>
+
+<p class="note"><strong>注意</strong>：HwBinder 只是一种可能的传输机制，未来可能会添加新的传输机制。</p>
+
+<h2 id="link-libraries">链接到共享库</h2>
+<p>使用软件包中的任何接口的客户端或服务器必须在下面的<strong>其中一 (1) 个</strong>位置包含该软件包的共享库：</p>
+
+<ul>
+<li>在 <strong>Android.mk</strong> 中：<pre class="prettyprint">
+LOCAL_SHARED_LIBRARIES += android.hardware.samples@1.0
+</pre>
+</li>
+
+<li>在 <strong>Android.bp</strong> 中：<pre class="prettyprint">
+shared_libs: [
+    /* ... */
+    "android.hardware.samples@1.0",
+],
+</pre>
+</li>
+</ul>
+
+<p>对于特定的库：</p>
+
+<table>
+
+<tbody><tr>
+<th><code>libhidlbase</code></th>
+<td>包含标准 HIDL 数据类型。除非您的接口只包含直接映射到 C++ 基元的基元，否则您还必须链接到此库：<pre class="prettyprint">
+
+LOCAL_SHARED_LIBRARIES += libhidlbase
+</pre>
+</td>
+</tr>
+
+<tr>
+<th><code>libhidltransport</code></th>
+<td>通过不同的 RPC/IPC 机制处理 HIDL 调用的传输。您必须始终链接到此库：<pre class="prettyprint">
+
+LOCAL_SHARED_LIBRARIES += libhidltransport
+</pre>
+</td>
+</tr>
+
+<tr>
+<th><code>libhwbinder</code></th>
+<td>您还必须链接到此库：<pre class="prettyprint">
+
+LOCAL_SHARED_LIBRARIES += libhwbinder
+</pre>
+</td>
+</tr>
+
+<tr>
+<th><code>libfmq</code></th>
+<td>要使用快速消息队列 IPC，您还必须链接到此库。
+<pre class="prettyprint">
+
+LOCAL_SHARED_LIBRARIES += libfmq
+</pre>
+</td>
+</tr>
+
+</tbody>
+</table>
+
+<h2 id="namespaces">命名空间</h2>
+<p>HIDL 函数和类型（如 <code>Return&lt;T&gt;</code> 和 <code>Void()</code>）已在命名空间 <code>::android::hardware</code> 中进行声明。软件包的 C++ 命名空间由软件包的名称和版本号确定。例如，<code>hardware/interfaces</code> 下版本为 1.2 的软件包 <strong>mypackage</strong> 具有以下特质：</p>
+
+<ul>
+<li><strong>C++ 命名空间</strong>是 <code>::android::hardware::mypackage::V1_2</code></li>
+<li>该软件包中 <code>IMyInterface</code> 的<strong>完全限定名称</strong>是 <code>::android::hardware::mypackage::V1_2::IMyInterface</code>（<code>IMyInterface</code> 是一个标识符，而不是命名空间的一部分）。</li>
+<li>在软件包的 <code>types.hal</code> 文件中定义的<strong>类型</strong>标识为 <code>::android::hardware::mypackage::V1_2::MyPackageType</code></li>
+</ul>
+
+</body></html>

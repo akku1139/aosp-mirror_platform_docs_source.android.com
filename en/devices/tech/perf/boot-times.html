@@ -254,9 +254,10 @@ us uncover many meaningful bugs in some Android device drivers).
 <p>
 Many processes launch during boot, but only components in critical path
 (bootloader > kernel > init > file system mount > zygote > system server)
-directly affect boot time. Use the early kernel log to identify
-peripheral/components that are not critical to the start init process, then
-delay those peripherals/components until later in the boot process.
+directly affect boot time. Profile <strong>initcall</strong> during kernel
+booting to identify peripheral/components that are not critical to the
+start init process, then delay those peripherals/components until later
+in the boot process.
 </p>
 
 <h2 id="optimizing-i-o-efficiency">Optimizing I/O efficiency</h2>
@@ -455,6 +456,49 @@ trigger (by default, zygote is launched at class main, which is much later than
 zygote-start). When doing this, make sure to allow zygote to run in all CPUs (as
 the wrong cpuset setting may force zygote to run in specific CPUs).
 </p>
+
+<h3 id="disable-power-saving">Disable power saving</h3>
+
+<p>
+During device booting, power saving setting for components like UFS and/or CPU
+governor can be disabled.
+</p>
+<p class="aside"><strong>Caution:</strong> Power saving should be enabled in
+charger mode for efficiency.</p>
+
+<pre
+class="prettyprint">
+on init
+    # Disable UFS powersaving
+    write /sys/devices/soc/${ro.boot.bootdevice}/clkscale_enable 0
+    write /sys/devices/soc/${ro.boot.bootdevice}/clkgate_enable 0
+    write /sys/devices/soc/${ro.boot.bootdevice}/hibern8_on_idle_enable 0
+    write /sys/module/lpm_levels/parameters/sleep_disabled Y
+on property:sys.boot_completed=1
+    # Enable UFS powersaving
+    write /sys/devices/soc/${ro.boot.bootdevice}/clkscale_enable 1
+    write /sys/devices/soc/${ro.boot.bootdevice}/clkgate_enable 1
+    write /sys/devices/soc/${ro.boot.bootdevice}/hibern8_on_idle_enable 1
+    write /sys/module/lpm_levels/parameters/sleep_disabled N
+on charger
+    # Enable UFS powersaving
+    write /sys/devices/soc/${ro.boot.bootdevice}/clkscale_enable 1
+    write /sys/devices/soc/${ro.boot.bootdevice}/clkgate_enable 1
+    write /sys/devices/soc/${ro.boot.bootdevice}/hibern8_on_idle_enable 1
+    write /sys/class/typec/port0/port_type sink
+    write /sys/module/lpm_levels/parameters/sleep_disabled N</pre>
+
+<h3 id="defer-non-critical-initialization">Defer non-critical initialization</h3>
+
+<p>
+Non-critical initialization such as ZRAM can be deferred to boot_complete.
+</p>
+
+<pre
+class="prettyprint">
+on property:sys.boot_completed=1
+   # Enable ZRAM on boot_complete
+   swapon_all /vendor/etc/fstab.${ro.hardware}</pre>
 
 <h2 id="optimizing-boot-animation">Optimizing boot animation</h2>
 

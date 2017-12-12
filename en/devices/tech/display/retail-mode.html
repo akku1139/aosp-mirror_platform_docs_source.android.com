@@ -21,34 +21,131 @@
       limitations under the License.
   -->
 
-
-
 <p>
 Android 7.1.1 and later offer system-level support for retail mode so
-users may readily examine the devices in action. This feature enables anyone in
-a retail environment to get a quick, safe, and consistent demonstration of an
-Android device and significantly reduce the cost and complexity of a retail mode
-for OEMs so that demonstration units are commonplace.
+users may readily examine the devices in action. Android 8.1 revises
+this support to create demo users via Device Policy Manager. This
+allows much greater OEM customization to the standard retail mode.
 </p>
 
-<h2 id="key-use-cases">Key use cases</h2>
+<h2 id=android-8-1-and-later>Android 8.1 and later</h2>
 
+<p>
+Through Device Policy Manager, Android 8.1 supports demonstrating
+device functionality to users in retail stores. While Device Policy Manager's
+APIs can be used on versions prior to 8.1, demo-type users cannot be created
+with <a href="https://developer.android.com/reference/android/app/admin/DevicePolicyManager.html#createAndManageUser(android.content.ComponentName, java.lang.String, android.content.ComponentName, android.os.PersistableBundle, int)">
+createAndManageUser</a> prior to 8.1.
+</p>
+
+<h3 id="implementation">Implementation</h3>
+
+<h4 id="provisioning">Provisioning</h4>
+<p>
+Set <code>Settings.Global.DEVICE_DEMO_MODE</code> to 1 prior to
+provisioning to indicate that the device should enter retail mode. System
+Server will use this flag to manage aspects of retail mode, such as power
+profile. In addition, retail employees must grant device ownership to the
+demo application. Once a consumer setup is complete, device owners cannot
+be set.
+</p>
+
+<h4 id="create-demo-app">Creating the demo application</h4>
+<p>
+Device owner apps do not need elevated privileges or pre-installation on the
+system image. They are mostly implmented like traditional apps, with the
+following differences:
+</p>
 <ul>
-<li>Any off-the-shelf Android device can be set to retail mode by adding a
-single demo video to the build.
-<li>All devices have a video highlighting the unique features of the device.
-<li>Devices work in both online and offline environments.
-<li>Device are self maintaining, requiring minimal interaction by
-employees.</li></ul>
+  <li>All device owner apps must extend the <code>DeviceAdminReceiver</code>
+component, which serves as the authorization token for all Device Policy
+Manager APIs. The component must hold the <code>android.permission.BIND_DEVICE_ADMIN</code>
+permission, include the requested special policies as metadata, and filter the
+<code>android.app.action.PROFILE_PROVISIONING_COMPLETE</code> and
+ <code>android.app.action.DEVICE_ADMIN_ENABLED</code> intents.</li>
+  <li>The <code>DevicePolicyManager#MAKE_USER_DEMO</code> flag, which is set
+to create special demo-type users, is a hidden API. This flag is a constant 0x4.</li>
+  <li>Device ownership can be assigned only via Managed Provisioning.</li>
+</ul>
 
-<h2 id="lifecycle">Lifecycle</h2>
+<h4 id="device-policy-manager">Device Policy Manager</h4>
+<p>
+Device Policy Manager APIs grant all Device Owner (DO) and Profile Owner (PO)
+rights, except for installing packages, which is automatically allowed. A PO
+affiliated with a DO can use an AIDL interface to access rights that are only
+granted to the DO. Functionality available includes:
+</p>
+<ul>
+ <li>Create users. Users created through the DevicePolicyManager are
+automatically set as PO.</li>
+ <li>Switch users.</li>
+ <li>Set the permission policy to <code>PERMISSION_POLICY_AUTO_GRANT</code>
+which will automatically grant all runtime permissions. Permissions can also be
+granted more narrowly: a single permission to a single app. This does not
+apply to Appops permissions, which users must still grant on a per-user,
+per-app basis.</li>
+ <li>Add user restrictions. Restrictions relevant to retail mode may include,
+but are not limited to:
+   <ul>
+     <li><code>DISALLOW_MODIFY_ACCOUNTS</code></li>
+     <li><code>DISALLOW_USB_FILE_TRANSFER</code></li>
+     <li><code>DISALLOW_DEBUGGING_FEATURES</code></li>
+     <li><code>DISALLOW_CONFIG_WIFI</code></li>
+     <li><code>DISALLOW_CONFIG_BLUETOOTH</code></li>
+     <li><code>DISALLOW_INSTALL_UNKNOWN_SOURCES</code></li>
+     <li><code>DISALLOW_CONFIG_MOBILE_NETWORKS</code></li>
+   </ul>
+ </li>
+ <li>Enable automatic system updates. Devices will automatically download and apply
+OTA updates.</li>
+ <li>Set LockTask allowed packages.</li>
+ <li>Factory reset the device.</li>
+ <li>Disable the keyguard.</li>
+ <li>Prevent setting passwords / fingerprints.</li>
+ <li>Control Wi-fi network changes. When used with the <code>DISALLOW_CONFIG_WIFI</code>
+user restriction, device owner apps can control access to the wifi network selection
+setting.</li>
+ <li>Reboot the device.</li>
+ <li>Install packages through <a href="https://developer.android.com/reference/android/content/pm/PackageInstaller.html">
+PackageInstaller</a>.</li>
+ <li>Set a whitelisted set of <a href="https://developer.android.com/reference/android/provider/Settings.Global.html">
+Settings.Global</a>, <a href="https://developer.android.com/reference/android/provider/Settings.Secure.html">
+Settings.Secure</a>, and <a href="https://developer.android.com/reference/android/provider/Settings.System.html">
+Settings.System</a> settings.</li>
+ <li>Block packages from being uninstalled.</li>
+</ul>
+
+<h3 id="examples-additional-resources">Examples and additional resources</h3>
+<ul>
+ <li><a href="/devices/tech/admin/multi-user">
+Android Developer definitions</a> of users, profiles, and accounts</li>
+ <li><a href="https://developer.android.com/reference/android/app/admin/DevicePolicyManager.html">
+Device Policy Manager API documentation</a></li>
+ <li><a href="https://developer.android.com/samples/DeviceOwner/index.html">
+Sample Device Owner app</a></li>
+</ul>
+
+<h3 id="validation">Validation</h3>
+<p>
+CTS does not cover Retail Demo Mode because it is an optional feature. Testing
+should be conducted manually or with unit tests for the demo application.
+</p>
+
+<h2 id="retail-demo-mode-8-and-earlier">Android 8.0 and earlier</h2>
+
+<p>
+Android 7.1.1 introduced retail demo mode and provided a simple API to play a
+demonstration video. This implementation was removed in Android 8.1.
+</p>
+
+<h3 id="lifecycle">Lifecycle</h3>
 
 <img src="/devices/tech/display/images/retail-demo-flow.png" alt="retail demo mode flow" width="XXX" id="retail-demo-flow" />
 <p class="img-caption">
   <strong>Figure 1.</strong> Retail demonstration mode option in Language selection
 </p>
 
-<h3 id="setup-wizard-suw">Setup Wizard (SUW)</h3>
+<h4 id="setup-wizard-suw">Setup Wizard (SUW)</h4>
 
 <p>
 Retail employees can enable retail mode directly from the first screen of any setup
@@ -64,7 +161,7 @@ available.  Once selected, the device finishes SUW with an abbreviated flow.
 selection
 </p>
 
-<h3 id="guest-session">Guest session</h3>
+<h4 id="guest-session">Guest session</h4>
 
 <p>
 When the device enters retail mode, it switches to a new demo user and
@@ -125,14 +222,14 @@ settings, including:
   <li>Language
   <li>Accessibility</li></ul>
 
-<h3 id="exiting-retail-mode">Exiting retail mode</h3>
+<h4 id="exiting-retail-mode">Exiting retail mode</h4>
 
 <p>
 In order to exit retail mode, retail employees must factory reset the device
 from the boot loader.
 </p>
 
-<h2 id="examples-and-source">Examples and source</h2>
+<h3 id="examples-and-source">Examples and source</h3>
 
 <p>
 Find the custom launcher that plays a video in a loop within:</p>
@@ -140,9 +237,9 @@ Find the custom launcher that plays a video in a loop within:</p>
 /packages/apps/RetailDemo
 </pre>
 
-<h2 id="implementation">Implementation</h2>
+<h3 id="implementation">Implementation</h3>
 
-<h3 id="enabling-retaildemomodeservice">Enabling RetailDemoModeService</h3>
+<h4 id="enabling-retaildemomodeservice">Enabling RetailDemoModeService</h4>
 
 <p>
 Setup wizard sets a Global setting <code>Global.DEVICE_DEMO_MODE=true</code> to
@@ -153,8 +250,8 @@ disables SUW.  System Server and SystemUI also use this flag to manage aspects
 of retail mode.
 </p>
 
-<h3 id="setting-custom-launcher-or-video-player">Setting custom launcher or
-video player</h3>
+<h4 id="setting-custom-launcher-or-video-player">Setting custom launcher or
+video player</h4>
 
 <p>
 An OEM specifies a custom launcher by overriding the framework resource
@@ -207,7 +304,7 @@ To set retail mode-specific settings, use:
 timeout default but is configurable.
 </p>
 
-<h3 id="finding-sample-images">Finding sample images</h3>
+<h4 id="finding-sample-images">Finding sample images</h4>
 
 <p>
 This feature places sample photos in a special folder that is visible to any
@@ -215,7 +312,7 @@ gallery app. The photos are available only in demo mode and cannot be modified
 by the demo user as they are in a protected directory.
 </p>
 
-<h3 id="preventing-google-accounts">Preventing Google accounts</h3>
+<h4 id="preventing-google-accounts">Preventing Google accounts</h4>
 
 <p>
 Certain restrictions are set in the guest user, similar to managed
@@ -232,14 +329,14 @@ general problem not unique to retail mode. It is likely already solved for
 enterprise use cases.
 </p>
 
-<h3 id="customizing-the-system-launcher">Customizing the system launcher</h3>
+<h4 id="customizing-the-system-launcher">Customizing the system launcher</h4>
 
 <p>
 OEMs are free to choose their layout but should include apps that function well
 on the home screen and hotseat.
 </p>
 
-<h3 id="Customizing-built-in-apps">Customizing built-in apps for retail demo mode</h3>
+<h4 id="Customizing-built-in-apps">Customizing built-in apps for retail demo mode</h4>
 
 <p>
 Built-in apps may have their experience for retail demo mode customized by
@@ -247,7 +344,7 @@ calling the API <code>UserManager.isDemoUser()</code> to see if the app is
 launched in a demo environment.
 </p>
 
-<h3 id="following-demo-video-guidelines">Following demo video guidelines</h3>
+<h4 id="following-demo-video-guidelines">Following demo video guidelines</h4>
 
 <p>
 Demonstration videos should be in portrait layout (or natural orientation of the
@@ -255,16 +352,16 @@ device, if tablet) and can be any length greater than five seconds. Content
 should not result in burn-in, since it will be played 24/7 when on display.
 </p>
 
-<h2 id="maintenance">Maintenance</h2>
+<h3 id="maintenance">Maintenance</h3>
 
-<h3 id="bringing-the-device-out-of-retail-mode">Bringing the device out of
-retail mode</h3>
+<h4 id="bringing-the-device-out-of-retail-mode">Bringing the device out of
+retail mode</h4>
 
 <p>
 This can be done only by factory resetting from the boot loader.
 </p>
 
-<h3 id="auto-ota-of-system-software">Auto-OTA of system software</h3>
+<h4 id="auto-ota-of-system-software">Auto-OTA of system software</h4>
 
 <p>
 By default, when retail mode is enabled, device policy is set to over-the-air
@@ -280,7 +377,7 @@ subsequent factory reset will result in an inability to go back into retail
 mode.
 </p>
 
-<h3 id="updating-demo-video-via-the-web">Updating demo video via the web</h3>
+<h4 id="updating-demo-video-via-the-web">Updating demo video via the web</h4>
 
 <p>
 The RetailDemo app in <code>/packages/apps/RetailDemo</code> has the ability to

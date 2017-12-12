@@ -35,8 +35,8 @@ interface. For example, the C++ call for service registration defined in each
 interface is:</p>
 
 <pre class="prettyprint">
-registerAsService();
-registerAsService("another_foo_service");  // if needed
+status_t status = myFoo->registerAsService();
+status_t anotherStatus = anotherFoo->registerAsService("another_foo_service");  // if needed
 </pre>
 
 <p>The version of a HIDL interface is included in the interface itself. It is
@@ -51,8 +51,12 @@ into the server.</p>
 version, calling <code>getService</code> on the desired HAL class:</p>
 
 <pre class="prettyprint">
+// C++
 sp&lt;V1_1::IFooService&gt; service = V1_1::IFooService::getService();
 sp&lt;V1_1::IFooService&gt; alternateService = 1_1::IFooService::getService("another_foo_service");
+// Java
+V1_1.IFooService; service = V1_1.IFooService.getService(true /* retry */);
+V1_1.IFooService; alternateService = 1_1.IFooService.getService("another", true /* retry */);
 </pre>
 
 <p>Each version of a HIDL interface is treated as a separate interface. Thus,
@@ -68,6 +72,16 @@ returned interface. For an interface <code>IFoo</code> in package
 <code>IFoo::getService</code> always use the transport method declared for
 <code>android.hardware.foo</code> in the device manifest if the entry exists;
 and if the transport method is not available, nullptr is returned.</p>
+
+<p> In some cases, it may be necessary to continue immediately even without
+getting the service. This can happen (for instance) when a client wants to
+manage service notifications itself or in a diagnostic program (such as
+<code>atrace</code>) which needs to get all hwservices and retrieve them. In
+this case, additional APIs are provided such as <code>tryGetService</code> in C++ or
+<code>getService("instance-name", false)</code> in Java. The legacy API
+<code>getService</code> provided in Java also must be used with service
+notifications. Using this API does not avoid the race condition where a server
+registers itself after the client requests it with one of these no-retry APIs.</p>
 
 <h2 id=death>Service death notifications</h2>
 <p>Clients who want to be notified when a service dies can receive death

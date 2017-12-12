@@ -1,0 +1,270 @@
+<html devsite><head>
+    <title>数据类型</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>本部分介绍了 HIDL 数据类型。有关实现详情，请参阅 <a href="/devices/architecture/hidl-cpp/index.html">HIDL C++</a>（对于 C++ 实现）或 <a href="/devices/architecture/hidl-java/index.html">HIDL Java</a>（对于 Java 实现）。</p>
+
+<p>与 C++ 的相似之处包括：</p>
+<ul>
+<li><code>structs</code> 使用 C++ 语法；<code>unions</code> 默认支持 C++ 语法。结构体和联合都必须具有名称；不支持匿名结构体和联合。
+</li>
+<li>HIDL 中允许使用 typedef（和在 C++ 中一样）。</li>
+<li>允许使用 C++ 样式的备注，并且此类备注会被复制到生成的标头文件中。
+</li>
+</ul>
+
+<p>与 Java 的相似之处包括：</p>
+<ul>
+<li>对于每个文件，HIDL 都会定义一个 Java 样式的命名空间，并且这些命名空间必须以 <code>android.hardware.</code> 开头。生成的 C++ 命名空间为 <code>::android::hardware::…</code>。</li>
+<li>文件的所有定义都包含在一个 Java 样式的 <code>interface</code> 封装容器中。</li>
+<li>HIDL 数组声明遵循 Java 样式，而非 C++ 样式。例如：
+<pre class="prettyprint">
+struct Point {
+    int32_t x;
+    int32_t y;
+};
+Point[3] triangle;   // sized array
+</pre>
+</li>
+<li>备注类似于 javadoc 格式。</li>
+</ul>
+
+<h2 id="represent">数据表示法</h2>
+<p>包含<a href="http://en.cppreference.com/w/cpp/language/data_members#Standard_layout">标准布局</a>（简旧数据类型相关要求的子集）的 <code>struct</code> 或 <code>union</code> 在生成的 C++ 代码中具有一致的内存布局，这是由 <code>struct</code> 和 <code>union</code> 成员上的显式对齐属性强制执行的。</p>
+
+<p>基本的 HIDL 类型以及 <code>enum</code> 和 <code>bitfield</code> 类型（始终从基本类型派生而来）会映射到标准 C++ 类型，例如 <a href="http://en.cppreference.com/w/cpp/types/integer">cstdint</a> 中的 <code>std::uint32_t</code>。</p>
+
+<p>由于 Java 不支持未签名的类型，因此未签名的 HIDL 类型会映射到相应的已签名 Java 类型。结构体会映射到 Java 类；数组会映射到 Java 数组；Java 目前不支持联合。<em></em><em></em><em></em>字符串在内部以 UTF8 格式存储。<em></em>由于 Java 仅支持 UTF16 字符串，因此发送到或来自 Java 实现的字符串值会进行转换；在重新转换回来后，字符串值可能不会与原来的值完全相同，这是因为字符集并非总能顺畅映射。</p>
+
+<p>在 C++ 中通过 IPC 接收的数据会被标记为 <code>const</code>，并存储在仅在函数调用期间存在的只读内存中。在 Java 中通过 IPC 接收的数据已被复制到 Java 对象中，因此无需额外的复制操作即可保留下来（可以对其进行修改）。</p>
+
+<h2 id="annotations">注释</h2>
+<p>可以将 Java 样式的注释添加到类型声明中。注释由 HIDL 编译器的供应商测试套件 (VTS) 后端解析，但 HIDL 编译器实际上并不理解任何此类经过解析的注释。经过解析的 VTS 注释将由 VTS 编译器 (VTSC) 处理。</p>
+
+<p>注释使用 Java 语法：<code>@annotation</code>、<code>@annotation(value)</code> 或 <code>@annotation(id=value, id=value…)</code>，其中值可以是常量表达式、字符串或在 <code>{}</code> 中列出的一系列值，正如在 Java 中一样。可以将多个名称相同的注释附加到同一项内容。</p>
+
+<h2 id="forward">前向声明</h2>
+<p>在 HIDL 中，结构体不能采用前向声明，因此无法实现用户定义的自指数据类型（例如，您不能在 HIDL 中描述关联的列表，也不能描述树）。大多数现有（Android O 之前的）HAL 都对使用前向声明有限制，这种限制可以通过重新排列数据结构声明来移除。</p>
+
+<p>由于存在这种限制，因此可以通过简单的深层复制按值复制数据结构，而无需跟踪可以在一个自指数据结构中出现多次的指针值。如果将同一项数据传递两次（例如，使用两个方法参数或使用两个指向该数据的 <code>vec&lt;T&gt;</code>），则会生成并传送两个单独的副本。</p>
+
+<h2 id="nested">嵌套式声明</h2>
+<p>HIDL 支持根据需要嵌套任意多层的声明（有一种例外情况，请见下方的备注）。例如：</p>
+
+<pre class="prettyprint">
+interface IFoo {
+    uint32_t[3][4][5][6] multidimArray;
+
+    vec&lt;vec&lt;vec&lt;int8_t&gt;&gt;&gt; multidimVector;
+
+    vec&lt;bool[4]&gt; arrayVec;
+
+    struct foo {
+        struct bar {
+            uint32_t val;
+        };
+        bar b;
+    }
+    struct baz {
+        foo f;
+        foo.bar fb; // HIDL uses dots to access nested type names
+    }
+    …
+</pre>
+
+<p>例外情况是：接口类型只能嵌入到 <code>vec&lt;T&gt;</code> 中，并且只能嵌套一层（无 <code>vec&lt;vec&lt;IFoo&gt;&gt;</code>）。</p>
+
+<h2 id="raw-pointer">原始指针语法</h2>
+<p>HIDL 语言不使用 <strong>*</strong>，并且不支持 C/C++ 原始指针的全面灵活性。要详细了解 HIDL 如何封装指针和数组/向量，请参阅 <a href="#vec">vec &lt;T&gt; 模板</a>。</p>
+
+<h2 id="interfaces">接口</h2>
+<p><code>interface</code> 关键字有以下两种用途。</p>
+
+<ul>
+<li>打开 .hal 文件中接口的定义。</li>
+<li>可用作结构体/联合字段、方法参数和返回项中的特殊类型。该关键字会被视为一般接口，与 <code>android.hidl.base@1.0::IBase</code> 同义。</li>
+</ul>
+
+<p>例如，<code>IServiceManager</code> 具有以下方法：</p>
+<pre class="prettyprint">
+get(string fqName, string name) generates (interface service);
+</pre>
+
+<p>该方法可按名称查找某个接口。<em></em>此外，该方法与使用 <code>android.hidl.base@1.0::IBase</code> 替换接口完全一样。
+</p>
+
+<p>接口只能以两种方式传递：作为顶级参数，或作为 <code>vec&lt;IMyInterface&gt;</code> 的成员。它们不能是嵌套式向量、结构体、数组或联合的成员。</p>
+
+<h2 id="mqdescriptor">MQDescriptorSync 和 MQDescriptorUnsync</h2>
+<p><code>MQDescriptorSync</code> 和 <code>MQDescriptorUnsync</code> 类型用于在 HIDL 接口内传递已同步或未同步的快速消息队列 (FMQ) 描述符。要了解详情，请参阅 <a href="/devices/architecture/hidl-cpp/index.html">HIDL C++</a>（Java 中不支持 FMQ）。</p>
+
+<h2 id="memory">memory 类型</h2>
+<p><code>memory</code> 类型用于表示 HIDL 中未映射的共享内存。只有 C++ 支持该类型。可以在接收端使用这种类型的值来初始化 <code>IMemory</code> 对象，从而映射内存并使其可用。要了解详情，请参阅 <a href="/devices/architecture/hidl-cpp/index.html">HIDL C++</a>。</p>
+
+<p class="warning"><strong>警告</strong>：位于共享内存中的结构化数据所属的类型必须符合以下条件：其格式在传递 <code>memory</code> 的接口版本的生命周期内绝不会改变。否则，HAL 可能会发生严重的兼容性问题。</p>
+
+<h2 id="pointer">pointer 类型</h2>
+<p><code>pointer</code> 类型仅供 HIDL 内部使用。</p>
+
+<h2 id="bitfield">bitfield &lt;T&gt; 类型模板</h2>
+<p><code>bitfield&lt;T&gt;</code>（其中的 <code>T</code> 是<a href="#enum">用户定义的枚举</a>）表明值是在 <code>T</code> 中定义的枚举值的按位“或”值。在生成的代码中，<code>bitfield&lt;T&gt;</code> 会显示为 T 的基础类型。例如：</p>
+
+<pre class="prettyprint">
+enum Flag : uint8_t {
+    HAS_FOO = 1 &lt;&lt; 0,
+    HAS_BAR = 1 &lt;&lt; 1,
+    HAS_BAZ = 1 &lt;&lt; 2
+};
+typedef bitfield&lt;Flag&gt; Flags;
+setFlags(Flags flags) generates (bool success);
+</pre>
+
+<p>编译器会按照处理 <code>uint8_t</code> 的相同方式处理 Flag 类型。</p>
+
+<p>为什么不使用 <code>(u)int8_t</code>/<code>(u)int16_t</code>/<code>(u)int32_t</code>/<code>(u)int64_t</code>？
+使用 <code>bitfield</code> 可向读取器提供额外的 HAL 信息，读取器现在知道 <code>setFlags</code> 采用 Flag 的按位“或”值（即知道使用 int16_t 调用 <code>setFlags</code> 是无效的）。如果没有 <code>bitfield</code>，则该信息仅通过文档传达。此外，VTS 实际上可以检查标记的值是否为 Flag 的按位“或”值。
+</p>
+
+<h2 id="handle-primitive">句柄基本类型</h2>
+
+<p class="warning"><strong>警告</strong>：任何类型的地址（即使是物理设备地址）都不能是本机句柄的一部分。在进程之间传递该信息很危险，会导致进程容易受到攻击。在进程之间传递的任何值都必须先经过验证，然后才能用于在进程内查找分配的内存。否则，错误的句柄可能会导致内存访问错误或内存损坏。</p>
+
+<p>HIDL 语义是按值复制，这意味着参数会被复制。所有大型数据或需要在进程之间共享的数据（例如同步栅栏）都是通过传递指向以下持久对象的文件描述符进行处理：针对共享内存的 <code>ashmem</code>、实际文件或可隐藏在文件描述符后的任何其他内容。Binder 驱动程序会将文件描述符复制到其他进程。</p>
+
+<h3 id="handle_t">native_handle_t</h3>
+<p>Android 支持 <code>native_handle_t</code>（在 <code>libcutils</code> 中定义的一般句柄概念）。</p>
+
+<pre class="prettyprint">
+typedef struct native_handle
+{
+  int version;        /* sizeof(native_handle_t) */
+  int numFds;         /* number of file-descriptors at &amp;data[0] */
+  int numInts;        /* number of ints at &amp;data[numFds] */
+  int data[0];        /* numFds + numInts ints */
+} native_handle_t;
+</pre>
+
+<p>本机句柄是整数和文件描述符的集合（按值传递）。单个文件描述符可存储在既没有整数也没有单个文件描述符的本机句柄中。使用封装有 <code>handle</code> 基本类型的本机句柄传递句柄可确保相应的本机句柄直接包含在 HIDL 中。</p>
+
+<p><code>native_handle_t</code> 的大小可变，因此无法直接包含在结构体中。句柄字段会生成指向单独分配的 <code>native_handle_t</code> 的指针。</p>
+
+<p>在早期版本的 Android 中，本机句柄是使用相同的函数创建的，这些函数位于 <a href="https://android.googlesource.com/platform/system/core/+/master/libcutils/native_handle.c">libcutils</a> 中。在 Android O 中，这些函数现在被复制到了 <code>android::hardware::hidl</code> 命名空间或移动到了 NDK。HIDL 自动生成的代码会自动对这些函数进行序列化和反序列化，而无需用户编写的代码参与。</p>
+
+<h3 id="ownership">句柄和文件描述符所有权</h3>
+<p>当您调用传递（或返回）<code>hidl_handle</code> 对象（复合类型的顶级或一部分）的 HIDL 接口方法时，其中包含的文件描述符的所有权如下所述：</p>
+
+<ul>
+<li>将 <code>hidl_handle</code> 对象作为参数传递时，调用程序会保留对其封装的 <code>native_handle_t</code> 中包含的文件描述符的所有权，并且调用程序必须在对这些文件描述符的相关操作完成后将其关闭。同样，返回 <code>hidl_handle</code> 对象（通过将其传递到 <code>_cb</code> 函数）时，返回相应对象的进程保留对其封装的 <code>native_handle_t</code> 中包含的文件描述符的所有权，并且该进程必须在对这些文件描述符的相关操作完成后将其关闭。</li>
+<li>接收 <code>hidl_handle</code> 对象时，<strong>transport</strong> 是其封装的 <code>native_handle_t</code> 中的文件描述符的所有者；接收器可在事务回调期间按原样使用这些描述符，但如果想要在回调完成之后继续使用这些文件描述符，则必须克隆相应的本机句柄。事务完成时，transport 将自动 <code>close()</code> 文件描述符。</li>
+</ul>
+
+<p>HIDL 不支持在 Java 中使用句柄（因为 Java 根本不支持句柄）。</p>
+
+<h2 id="sized-arrays">有大小的数组</h2>
+<p>对于 HIDL 结构体中有大小的数组，其元素可以是结构体可包含的任何类型：</p>
+
+<pre class="prettyprint">
+struct foo {
+uint32_t[3] x; // array is contained in foo
+};
+</pre>
+
+<h2 id="strings">字符串</h2>
+<p>字符串在 C++ 和 Java 中的显示方式不同，但基础传输存储类型是 C++ 结构。要了解详情，请参阅 <a href="/devices/architecture/hidl-cpp/types.html">HIDL C++ 数据类型</a>或 <a href="/devices/architecture/hidl-java/types.html">HIDL Java 数据类型</a>。
+</p>
+
+<p class="note"><strong>注意</strong>：通过 HIDL 接口将字符串传递到 Java 或从 Java 传递字符串（包括从 Java 传递到 Java）将会导致字符集转换，而此项转换可能无法精确保留原始编码。</p>
+
+<h2 id="vec">vec&lt;T&gt; 类型模板</h2>
+<p><code>vec&lt;T&gt;</code> 模板用于表示包含 <code>T</code> 的实例且大小可变的缓冲区。<code>T</code> 可以是任何由 HIDL 提供的或由用户定义的类型，句柄除外。（<code>vec&lt;T&gt;</code> 的 <code>vec&lt;&gt;</code> 将指向 <code>vec&lt;T&gt;</code> 结构体数组，而不是指向内部 T 缓冲区数组。）</p>
+
+<p><code>T</code> 可以是以下项之一：</p>
+<ul>
+<li>基本类型（例如 uint32_t）</li>
+<li>字符串</li>
+<li>用户定义的枚举</li>
+<li>用户定义的结构体</li>
+<li>接口，或 <code>interface</code> 关键字（<code>vec&lt;IFoo&gt;</code>，<code>vec&lt;interface&gt;</code> 仅在作为顶级参数时受支持）</li>
+<li>句柄</li>
+<li>bitfield&lt;U&gt;</li>
+<li>vec&lt;U&gt;，其中 U 可以是此列表中的任何一项，接口除外（例如，<code>vec&lt;vec&lt;IFoo&gt;&gt;</code> 不受支持）</li>
+<li>U[]（有大小的 U 数组），其中 U 可以是此列表中的任何一项，接口除外</li>
+</ul>
+
+<h2 id="user">用户定义的类型</h2>
+<p>本部分介绍了用户定义的类型。</p>
+
+<h3 id="enum">枚举</h3>
+<p>HIDL 不支持匿名枚举。另一方面，HIDL 中的枚举与 C++11 类似：</p>
+<pre class="prettyprint">
+enum name : type { enumerator , enumerator = constexpr , …  }
+</pre>
+
+<p>枚举是以 HIDL 中的一种基本类型定义的，或被定义为其他枚举的扩展。例如：</p>
+<pre class="prettyprint">
+enum Color : uint32_t { RED = 0, GREEN, BLUE = 2 } // GREEN == 1
+</pre>
+
+<p>枚举的值通过冒号语法（而不是像嵌套式类型一样使用点语法）引用。语法是 <code>Type:VALUE_NAME</code>。如果在相同的枚举类型或子类型中引用枚举的值，则无需指定类型。例如：</p>
+<pre class="prettyprint">
+enum Grayscale : uint32_t { BLACK = 0, WHITE = BLACK + 1 };
+enum Color : Grayscale { RED = WHITE + 1 };
+enum Unrelated : uint32_t { FOO = Color:RED + 1 };
+</pre>
+
+<h3 id="struct">结构体</h3>
+<p>HIDL 不支持匿名结构体。另一方面，HIDL 中的结构体与 C 非常类似。</p>
+
+<p>HIDL 不支持完全包含在结构体内且长度可变的数据结构。这包括 C/C++ 中有时用作结构体最后一个字段且长度不定的数组（有时会看到其大小为 <code>[0]</code>）。HIDL <code>vec&lt;T&gt;</code> 表示数据存储在单独的缓冲区中且大小动态变化的数组；此类实例由 <code>struct</code> 中的 <code>vec&lt;T&gt;</code> 的实例表示。
+</p>
+
+<p>同样，<code>string</code> 可包含在 <code>struct</code> 中（关联的缓冲区是相互独立的）。在生成的 C++ 代码中，HIDL 句柄类型的实例通过指向实际本机句柄的指针来表示，因为基础数据类型的实例的长度可变。</p>
+
+<h3 id="union">联合</h3>
+<p>HIDL 不支持匿名联合。另一方面，联合与 C 类似。</p>
+
+<p>联合不能包含修正类型（指针、文件描述符、Binder 对象，等等）。它们不需要特殊字段或关联的类型，只需通过 <code>memcpy()</code> 或等效函数即可复制。联合不能直接包含（或通过其他数据结构包含）需要设置 Binder 偏移量（即句柄或 Binder 接口引用）的任何内容。例如：</p>
+
+<pre class="prettyprint">
+union UnionType {
+uint32_t a;
+//  vec&lt;uint32_t&gt; r;  // Error: can't contain a vec&lt;T&gt;
+uint8_t b;1
+};
+fun8(UnionType info); // Legal
+</pre>
+
+<p>联合还可以在结构体中进行声明。例如：</p>
+<pre class="prettyprint">
+struct MyStruct {
+    union MyUnion {
+      uint32_t a;
+      uint8_t b;
+    }; // declares type but not member
+
+    union MyUnion2 {
+      uint32_t a;
+      uint8_t b;
+    } data; // declares type but not member
+  }
+</pre>
+
+</body></html>
