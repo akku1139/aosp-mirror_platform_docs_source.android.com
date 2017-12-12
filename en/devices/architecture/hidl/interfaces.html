@@ -75,7 +75,7 @@ interface in the package.</p>
 
 <h2 id=interface-def>Interface definition</h2>
 <p>Aside from <code>types.hal</code>, every other <code>.hal</code> file defines
-an interface. For example, an interface is typically defined as follows:</p>
+an interface. An interface is typically defined as follows:</p>
 
 <pre class="prettyprint">
 interface IBar extends IFoo { // IFoo is another interface
@@ -101,7 +101,7 @@ include:</p>
 <li><code>interfaceDescriptor</code></li>
 <li><code>notifySyspropsChanged</code></li>
 <li><code>linkToDeath</code></li>
-<li><code>unlinkToDeath</code></li
+<li><code>unlinkToDeath</code></li>
 <li><code>setHALInstrumentation</code></li>
 <li><code>getDebugInfo</code></li>
 <li><code>debug</code></li>
@@ -136,13 +136,13 @@ For fully-qualified values, the following import cases are supported:</p>
 <li><strong>Whole-package imports</strong>. If the value is a package name and a
 version (syntax described below), then the entire package is imported into the
 importing entity.</li>
-<li><strong>Partial imports</strong>.
+<li><strong>Partial imports</strong>. If the value is:
 <ul>
-<li>If the value is an interface, the package's <code>types.hal</code> and that
-interface are imported into the importing entity.</li>
-<li>If the value is an UDT defined in <code>types.hal</code>, then only that UDT
-is imported into the importing entity (other types in <code>types.hal</code> are
-not imported).</li>
+<li>An interface, the package's <code>types.hal</code> and that interface are
+imported into the importing entity.</li>
+<li>A UDT defined in <code>types.hal</code>, then only that UDT is imported into
+the importing entity (other types in <code>types.hal</code> are not imported).
+</li>
 </ul>
 <li><strong>Types-only imports</strong>. If the value uses the syntax of a
 partial import described above, but with the keyword <code>types</code> instead
@@ -208,7 +208,7 @@ be registered under the base HAL name and version, and under the extension's
 Versions are expressed in two integers, <em>major</em>.<em>minor</em>.</p>
 <ul>
 <li><strong>Major</strong> versions are not backwards compatible. Incrementing
-the major version number resets the minor version to 0.</li>
+the major version number resets the minor version number to 0.</li>
 <li><strong>Minor</strong> versions are backwards compatible. Incrementing the
 minor number indicates the newer version is fully backward compatible with the
 previous version. New data structures and methods can be added, but no existing
@@ -219,10 +219,98 @@ data structures or method signatures may be changed.</li>
 can be present on a device simultaneously. While multiple minor versions can
 also be present on a device, as minor versions are backwards compatible no
 reason exists to support more than the latest minor version for each major
-version.</p>
-
-<p>For more details on versioning and vendor extensions, see
+version. For more details on versioning and vendor extensions, see
 <a href="/devices/architecture/hidl/versioning">HIDL Versioning</a>.</p>
+
+<h2 id="interface-layout-summary">Interface layout summary</h2>
+<p>This section summarizes how to manage a HIDL interface package (such as
+<code>hardware/interfaces</code>) and consolidates information presented
+throughout the HIDL section. Before reading, ensure you are familiar with
+<a href="/devices/architecture/hidl/versioning">HIDL Versioning</a>, the hashing
+concepts in <a href="/devices/architecture/hidl/hashing#hidl-gen">Hashing with
+hidl-gen</a>, the details of <a href="/devices/architecture/hidl/">working with
+HIDL in general</a>, and the following definitions:</p>
+
+<table>
+<thead>
+<tr>
+<th width="30%">Term</th>
+<th>Definition</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Application Binary Interface (ABI)</td>
+<td>Application programming interface + any binary linkages required.</td>
+</tr>
+<tr>
+<td>Fully-qualified name (fqName)</td>
+<td>Name to distinguish a hidl type. Example:
+<code>android.hardware.foo@1.0::IFoo</code>.</td>
+</tr>
+<tr>
+<td>Package</td>
+<td>Package containing a HIDL interface and types. Example:
+<code>android.hardware.foo@1.0</code>.</td>
+</tr>
+<tr>
+<td> Package root</td>
+<td>Root package that contains the HIDL interfaces. Example: the HIDL interface
+<code>android.hardware</code> is in the package root
+<code>android.hardware.foo@1.0</code>.</td>
+</tr>
+<tr>
+<td>Package root path</td>
+<td>Location in the Android source tree where a package root maps to.</td>
+</tr>
+</tbody>
+</table>
+
+<p>For more definitions, see HIDL
+<a href="/devices/architecture/hidl/#terms">Terminology</a>.
+</p>
+
+<h3 id="file-found">Every file can be found from the package root mapping and
+its fully-qualified name</h3>
+<p>Package roots are specified to <code>hidl-gen</code> as the argument
+<code>-r android.hardware:hardware/interfaces</code>. For example, if the
+package is <code>vendor.awesome.foo@1.0::IFoo</code> and <code>hidl-gen</code>
+is sent <code>-r vendor.awesome:some/device/independent/path/interfaces</code>,
+then the interface file should be located in
+<code>$ANDROID_BUILD_TOP/some/device/independent/path/interfaces/foo/1.0/IFoo.hal</code>.
+</p>
+<p>In practice, it is recommended for a vendor or OEM named <code>awesome</code>
+to put their standard interfaces in <code>vendor.awesome</code>. After a package
+path has been selected, it must not be changed as this is baked into the ABI of
+the interface.</p>
+
+<h3 id="package-path-mapping">Package path mapping should be unique</h3>
+<p>For example, if you have <code>-rsome.package:$PATH_A</code> and
+<code>-rsome.package:$PATH_B</code>, <code>$PATH_A</code> must be equal to
+<code>$PATH_B</code> for a consistent interface directory (this also makes
+<a href="/devices/architecture/hidl/versioning">versioning interfaces</a> much
+easier).</p>
+
+<h3 id="package-root-version">Package root must have a versioning file</h3>
+<p>If you create a package path such as
+<code>-r vendor.awesome:vendor/awesome/interfaces</code>, you should also
+create the file
+<code>$ANDROID_BUILD_TOP/vendor/awesome/interfaces/current.txt</code>, which
+should contain hashes of interfaces made using the <code>-Lhash</code> option in
+<code>hidl-gen</code> (this is discussed extensively in
+<a href="/devices/architecture/hidl/hashing#hidl-gen">Hashing with
+hidl-gen</a>).</p>
+
+<aside class="caution"><strong>Caution:</strong> Manage all changes carefully!
+The <a href="/devices/tech/vts/">Vendor Test Suite (VTS)</a> will fail if an
+interface is not frozen, and ABI-incompatible changes to an interface will cause
+framework-only OTAs to fail.</aside>
+
+<h3 id="interfaces-device-dependent">Interfaces go in device-independent
+locations</h3>
+<p>In practice, it is recommended to share interfaces between branches. This
+allows for maximum code re-usage and maximum testing of code across different
+devices and use cases.</p>
 
   </body>
 </html>

@@ -1,0 +1,126 @@
+<html devsite><head>
+    <title>接口哈希</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>本文档介绍了 HIDL 接口哈希，该哈希是一种旨在防止意外更改接口并确保接口更改经过全面审查的机制。这种机制是必需的，因为 HIDL 接口带有版本编号，也就是说，接口一经发布便不得再更改，但不会影响应用二进制接口 (ABI) 的情况（例如更正备注）除外。</p>
+
+<h2 id="layout">布局</h2>
+<p>每个软件包根目录（即映射到 <code>hardware/interfaces</code> 的 <code>android.hardware</code> 或映射到 <code>vendor/foo/hardware/interfaces</code> 的 <code>vendor.foo</code>）都必须包含一个列出所有已发布 HIDL 接口文件的 <code>current.txt</code> 文件。</p>
+
+<pre class="prettyprint">
+# current.txt files support comments starting with a ‘#' character
+# this file, for instance, would be vendor/foo/hardware/interfaces/current.txt
+
+# Each line has a SHA-256 hash followed by the name of an interface.
+# They have been shortened in this doc for brevity but they are
+# 64 characters in length in an actual current.txt file.
+d4ed2f0e...995f9ec4 vendor.awesome.foo@1.0::IFoo # comments can also go here
+
+# types.hal files are also noted in types.hal files
+c84da9f5...f8ea2648 vendor.awesome.foo@1.0::types
+
+# Multiple hashes can be in the file for the same interface. This can be used
+# to note how ABI sustaining changes were made to the interface.
+# For instance, here is another hash for IFoo:
+
+# Fixes type where "FooCallback" was misspelled in comment on "FooStruct"
+822998d7...74d63b8c vendor.awesome.foo@1.0::IFoo
+</pre>
+
+<p class="note"><strong>注意</strong>：为了便于跟踪各个哈希的来源，Google 将 HIDL <code>current.txt</code> 文件分为不同的部分：第一部分已在 Android O 中发布，第二部分将在 Android O MR1 中发布。<em></em><em></em>我们强烈建议在您的 <code>current.txt</code> 文件中使用类似布局。</p>
+
+<h2 id="hidl-gen">使用 hidl-gen 添加哈希</h2>
+<p>您可以手动将哈希添加到 <code>current.txt</code> 文件中，也可以使用 <code>hidl-gen</code> 添加。以下代码段提供了可与 <code>hidl-gen</code> 搭配使用来管理 <code>current.txt</code> 文件的命令示例（哈希已缩短）：</p>
+
+<pre class="devsite-click-to-copy">
+<code class="devsite-terminal">hidl-gen -L hash -r vendor.awesome:vendor/awesome/hardware/interfaces -r android.hardware:hardware/interfaces -r android.hidl:system/libhidl/transport vendor.awesome.nfc@1.0::types</code>
+9626fd18...f9d298a6 vendor.awesome.nfc@1.0::types
+<code class="devsite-terminal">hidl-gen -L hash -r vendor.awesome:vendor/awesome/hardware/interfaces -r android.hardware:hardware/interfaces -r android.hidl:system/libhidl/transport vendor.awesome.nfc@1.0::INfc</code>
+07ac2dc9...11e3cf57 vendor.awesome.nfc@1.0::INfc
+<code class="devsite-terminal">hidl-gen -L hash -r vendor.awesome:vendor/awesome/hardware/interfaces -r android.hardware:hardware/interfaces -r android.hidl:system/libhidl/transport vendor.awesome.nfc@1.0</code>
+9626fd18...f9d298a6 vendor.awesome.nfc@1.0::types
+07ac2dc9...11e3cf57 vendor.awesome.nfc@1.0::INfc
+f2fe5442...72655de6 vendor.awesome.nfc@1.0::INfcClientCallback
+<code class="devsite-terminal">hidl-gen -L hash -r vendor.awesome:vendor/awesome/hardware/interfaces -r android.hardware:hardware/interfaces -r android.hidl:system/libhidl/transport vendor.awesome.nfc@1.0 &gt;&gt; vendor/awesome/hardware/interfaces/current.txt</code>
+</pre>
+
+<p class="warning"><strong>警告</strong>：请勿更换之前发布的接口的哈希。如要更改此类接口，请向 <code>current.txt</code> 文件的末尾添加新的哈希。要了解详情，请参阅 <a href="#abi-stability">ABI 稳定性</a>。</p>
+
+<p><code>hidl-gen</code> 生成的每个接口定义库都包含哈希，通过调用 <code>IBase::getHashChain</code> 可检索这些哈希。<code>hidl-gen</code> 编译接口时，会检查 HAL 软件包根目录中的 <code>current.txt</code> 文件，以查看 HAL 是否已被更改：</p>
+
+<ul>
+<li>如果没有找到 HAL 的哈希，则接口会被视为未发布（处于开发阶段），并且编译会继续进行。</li>
+<li>如果找到了相应哈希，则会对照当前接口对其进行检查：
+<ul>
+<li>如果接口与哈希匹配，则编译会继续进行。</li>
+<li>如果接口与哈希不匹配，则编译会暂停，因为这意味着之前发布的接口会被更改。
+<ul>
+<li>如要进行保留 ABI 的更改（请参阅 <a href="#abi-stability">ABI 稳定性</a>），必须先修改 <code>current.txt</code> 文件，然后编译才能继续进行。</li>
+<li>所有其他更改都应在接口的 minor 或 major 版本升级中进行。</li>
+</ul></li></ul></li></ul>
+
+<h2 id="abi-stability">ABI 稳定性</h2>
+<aside class="key-point"><strong>要点</strong>：请仔细阅读并理解本部分。</aside>
+
+<p>应用二进制接口 (ABI) 包括二进制关联/调用规范/等等。如果 ABI/API 发生更改，则相应接口就不再适用于使用官方接口编译的常规 <code>system.img</code>。</p>
+
+<p>确保接口带有版本编号且 ABI 稳定<strong>至关重要</strong>，具体原因有如下几个：</p>
+
+<ul>
+<li>可确保您的实现能够通过供应商测试套件 (VTS) 测试，通过该测试后您将能够正常进行仅限框架的 OTA。</li>
+<li>作为原始设备制造商 (OEM)，您将能够提供简单易用且符合规定的板级支持包 (BSP)。</li>
+<li>有助于您跟踪哪些接口可以发布。将 <code>current.txt</code> 视为接口目录的映射，您将能够查看软件包根目录中提供的所有接口的历史记录和状态。</li>
+</ul>
+
+<p>对于在 <code>current.txt</code> 中已有条目的接口，为其添加新的哈希时，请务必仅添加表示负责维持 ABI 稳定性的接口的哈希。请查看以下更改类型：
+</p>
+
+<table>
+<tbody>
+
+<tr>
+<th>允许的更改</th>
+<td>
+<ul>
+<li>更改备注（除非这会更改方法的含义）。</li>
+<li>更改参数的名称。</li>
+<li>更改返回参数的名称。</li>
+<li>更改注释。</li>
+</ul>
+</td>
+</tr>
+
+<tr>
+<th>不允许的更改</th>
+<td>
+<ul>
+<li>重新排列参数、方法等…</li>
+<li>在接口的任意位置添加方法/结构体字段/等等…</li>
+<li>会破坏 C++ vtable 的任何更改。</li>
+<li>等等…</li>
+</ul>
+</td>
+</tr>
+
+</tbody>
+</table>
+
+</body></html>

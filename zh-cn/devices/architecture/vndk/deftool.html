@@ -1,0 +1,367 @@
+<html devsite><head>
+    <title>VNDK 定义工具</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>
+VNDK 定义工具可帮助供应商将其源代码树迁移到 Android O 环境。该工具会先扫描系统映像及供应商映像中的二进制文件，然后解析依赖关系。若有模块依赖关系图为依据，该工具还可检测出不符合 VNDK 概念的行为，以及为在分区之间移动模块提供洞见/建议。如果指定了 AOSP 系统映像，VNDK 定义工具便可将您的系统映像与 AOSP 系统映像进行比较，从而确定扩展后的库。
+</p>
+<p>
+本部分将介绍 VNDK 定义工具常用的 3 个命令：
+</p>
+<ul>
+<li><code>vndk</code>：为 Android O 中的编译系统临时解决方法计算 VNDK_SP_LIBRARIES、VNDK_SP_EXT_LIBRARIES 和 EXTRA_VENDOR_LIBRARIES。</li>
+<li><code>check-dep</code>：检查是否有违规模块依赖关系（从供应商模块指向不符合条件的框架共享库）。</li>
+<li><code>deps</code>：显示共享库与可执行文件之间的依赖关系。</li>
+</ul>
+
+<p>要详细了解高级命令用法，请参阅 VNDK 定义工具代码库中的 <a href="https://android.googlesource.com/platform/development/+/master/vndk/tools/definition-tool/README.md" class="external">README.md</a> 文件。</p>
+
+<h2 id="vndk">vndk</h2>
+<p><code>vndk</code> 子命令会从系统分区和供应商分区加载共享库和可执行文件，然后解析模块依赖关系，从而确定必须被复制到 <code>/system/lib[64]/vndk-sp</code> 和 <code>/vendor/lib[64]</code> 的库。<code>vndk</code> 子命令包含以下选项：</p>
+
+<table>
+  <tbody><tr>
+   <th>选项</th>
+   <th>说明</th>
+  </tr>
+  <tr>
+   <td><code>--system</code>
+   </td>
+   <td>指向一个包含将会存放在系统分区中的文件的目录。
+   </td>
+  </tr>
+  <tr>
+   <td><code>--vendor</code>
+   </td>
+   <td>指向一个包含将会存放在供应商分区中的文件的目录。
+   </td>
+  </tr>
+  <tr>
+   <td><code>--aosp-system</code>
+   </td>
+   <td>指向一个包含将会存放在 AOSP 系统映像中的文件的目录。
+   </td>
+  </tr>
+  <tr>
+   <td><code>--load-extra-deps</code>
+   </td>
+   <td>指向一个描述隐式依赖项（例如 <code>dlopen()</code>）的文件。
+   </td>
+  </tr>
+</tbody></table>
+
+<p>例如，要计算 VNDK 库集，请运行以下 <code>vndk</code> 子命令：</p>
+
+<pre class="prettyprint">
+<code class="devsite-terminal">./vndk_definition_tool.py vndk \</code>
+    --system ${ANDROID_PRODUCT_OUT}/system \
+    --vendor ${ANDROID_PRODUCT_OUT}/vendor \
+    --aosp-system ${ANDROID_PRODUCT_OUT}/../generic_arm64_ab/system\
+    --load-extra-deps dlopen.dep
+</pre>
+
+<p>请使用简单的文件格式指定额外的依赖关系。每行表示一项依赖关系，其中冒号前面的文件依赖冒号后面的文件。例如：</p>
+
+<pre class="prettyprint">/system/lib/libart.so: /system/lib/libart-compiler.so</pre>
+
+<p>通过此行，VNDK 定义工具可得知 <code>libart.so</code> 依赖 <code>libart-compiler.so</code>。
+</p>
+
+<h3 id="installation-destination">安装目标位置</h3>
+<p>VNDK 定义工具会列出以下类别的库及相应的安装目录：</p>
+
+<table>
+  <tbody><tr>
+   <th>类别</th>
+   <th>目录</th>
+  </tr>
+  <tr>
+   <td>vndk_sp
+   </td>
+   <td>必须安装到 <code>/system/lib[64]/vndk-sp</code>
+   </td>
+  </tr>
+  <tr>
+   <td>vndk_sp_ext
+   </td>
+   <td>必须安装到 <code>/vendor/lib[64]/vndk-sp</code>
+   </td>
+  </tr>
+  <tr>
+   <td>extra_vendor_libs
+   </td>
+   <td>必须安装到 <code>/vendor/lib[64]</code>
+   </td>
+  </tr>
+</tbody></table>
+
+<h3 id="build-system-templates">编译系统模板</h3>
+<p>在收集了 VNDK 定义工具的输出信息之后，供应商可以创建一个 <code>Android.mk</code> 并填充 <code>VNDK_SP_LIBRARIES</code>、<code>VNDK_SP_EXT_LIBRARIES</code> 和 <code>EXTRA_VENDOR_LIBRARIES</code>，以自动执行相应进程，将库复制到指定的安装目标位置。</p>
+
+<pre class="prettyprint">ifneq ($(filter $(YOUR_DEVICE_NAME),$(TARGET_DEVICE)),)
+VNDK_SP_LIBRARIES := ##_VNDK_SP_##
+VNDK_SP_EXT_LIBRARIES := ##_VNDK_SP_EXT_##
+EXTRA_VENDOR_LIBRARIES := ##_EXTRA_VENDOR_LIBS_##
+
+#-------------------------------------------------------------------------------
+# VNDK Modules
+#-------------------------------------------------------------------------------
+LOCAL_PATH := $(call my-dir)
+
+define define-vndk-lib
+include $$(CLEAR_VARS)
+LOCAL_MODULE := $1.$2
+LOCAL_MODULE_CLASS := SHARED_LIBRARIES
+LOCAL_PREBUILT_MODULE_FILE := $$(TARGET_OUT_INTERMEDIATE_LIBRARIES)/$1.so
+LOCAL_STRIP_MODULE := false
+LOCAL_MULTILIB := first
+LOCAL_MODULE_TAGS := optional
+LOCAL_INSTALLED_MODULE_STEM := $1.so
+LOCAL_MODULE_SUFFIX := .so
+LOCAL_MODULE_RELATIVE_PATH := $3
+LOCAL_VENDOR_MODULE := $4
+include $$(BUILD_PREBUILT)
+
+ifneq ($$(TARGET_2ND_ARCH),)
+ifneq ($$(TARGET_TRANSLATE_2ND_ARCH),true)
+include $$(CLEAR_VARS)
+LOCAL_MODULE := $1.$2
+LOCAL_MODULE_CLASS := SHARED_LIBRARIES
+LOCAL_PREBUILT_MODULE_FILE := $$($$(TARGET_2ND_ARCH_VAR_PREFIX)TARGET_OUT_INTERMEDIATE_LIBRARIES)/$1.so
+LOCAL_STRIP_MODULE := false
+LOCAL_MULTILIB := 32
+LOCAL_MODULE_TAGS := optional
+LOCAL_INSTALLED_MODULE_STEM := $1.so
+LOCAL_MODULE_SUFFIX := .so
+LOCAL_MODULE_RELATIVE_PATH := $3
+LOCAL_VENDOR_MODULE := $4
+include $$(BUILD_PREBUILT)
+endif  # TARGET_TRANSLATE_2ND_ARCH is not true
+endif  # TARGET_2ND_ARCH is not empty
+endef
+
+$(foreach lib,$(VNDK_SP_LIBRARIES),\
+    $(eval $(call define-vndk-lib,$(lib),vndk-sp-gen,vndk-sp,)))
+$(foreach lib,$(VNDK_SP_EXT_LIBRARIES),\
+    $(eval $(call define-vndk-lib,$(lib),vndk-sp-ext-gen,vndk-sp,true)))
+$(foreach lib,$(EXTRA_VENDOR_LIBRARIES),\
+    $(eval $(call define-vndk-lib,$(lib),vndk-ext-gen,,true)))
+
+#-------------------------------------------------------------------------------
+# Phony Package
+#-------------------------------------------------------------------------------
+
+include $(CLEAR_VARS)
+LOCAL_MODULE := $(YOUR_DEVICE_NAME)-vndk
+LOCAL_MODULE_TAGS := optional
+LOCAL_REQUIRED_MODULES := \
+    $(addsuffix .vndk-sp-gen,$(VNDK_SP_LIBRARIES)) \
+    $(addsuffix .vndk-sp-ext-gen,$(VNDK_SP_EXT_LIBRARIES)) \
+    $(addsuffix .vndk-ext-gen,$(EXTRA_VENDOR_LIBRARIES))
+include $(BUILD_PHONY_PACKAGE)
+
+endif  # ifneq ($(filter $(YOUR_DEVICE_NAME),$(TARGET_DEVICE)),)
+</pre>
+
+<h2 id="check-dep">check-dep</h2>
+<p><code>check-dep</code> 子命令会扫描供应商模块并检查其依赖关系。如果它检测到违规行为，就会显示违规的依赖库和符号用法：</p>
+
+<pre class="prettyprint">
+<code class="devsite-terminal">./vndk_definition_tool.py check-dep \</code>
+    --system ${ANDROID_PRODUCT_OUT}/system \
+    --vendor ${ANDROID_PRODUCT_OUT}/vendor \
+    --tag-file eligible-list.csv \
+    --module-info ${ANDROID_PRODUCT_OUT}/module-info.json \
+    1&gt; check_dep.txt \
+    2&gt; check_dep_err.txt
+</pre>
+
+<p>例如，下方的输出信息示例表明，存在一项从 <code>libRS_internal.so</code> 指向 <code>libmediandk.so</code> 的违规依赖关系：</p>
+
+<pre class="prettyprint">
+/system/lib/libRS_internal.so
+        MODULE_PATH: frameworks/rs
+        /system/lib/libmediandk.so
+                AImageReader_acquireNextImage
+                AImageReader_delete
+                AImageReader_getWindow
+                AImageReader_new
+                AImageReader_setImageListener
+</pre>
+
+<p><code>check-dep</code> 子命令包含以下选项：</p>
+
+<table>
+  <tbody><tr>
+   <th style="width:25%">选项</th>
+   <th>说明</th>
+  </tr>
+  <tr>
+   <td><code>--tag-file</code>
+   </td>
+   <td>必须引用一个符合条件的库标记文件（如下文所述），即一个由 Google 提供的描述框架共享库类别的电子表格。
+   </td>
+  </tr>
+  <tr>
+   <td><code>--module-info</code>
+   </td>
+   <td>指向由 Android 编译系统生成的 <code>module-info.json</code>。该选项可帮助 VNDK 定义工具将二进制模块与源代码关联。
+   </td>
+  </tr>
+</tbody></table>
+
+<h3 id="eligible-library-tag-file">符合条件的库标记文件</h3>
+<p>Google 会提供一个符合条件的 VNDK 电子表格（例如 <code>eligible-list.csv</code>），该电子表格会标记可由供应商模块使用的框架共享库：</p>
+
+<table>
+  <tbody><tr>
+   <th style="width:25%">标记</th>
+   <th>说明</th>
+  </tr>
+  <tr>
+   <td>LL-NDK</td>
+   <td>可由框架模块和供应商模块使用的低级 NDK 库。</td>
+  </tr>
+  <tr>
+   <td>LL-NDK-Indirect</td>
+   <td>LL-NDK 库的私有依赖项。供应商模块不得直接访问此类库。</td>
+  </tr>
+  <tr>
+   <td>SP-NDK</td>
+   <td>可由框架模块和供应商模块使用的 Same-Process NDK 库。</td>
+  </tr>
+  <tr>
+   <td>SP-NDK-Indirect</td>
+   <td>SP-NDK 库的私有依赖项。供应商模块不得直接访问此类库。</td>
+  </tr>
+  <tr>
+   <td>VNDK-SP</td>
+   <td>SP-HAL 框架共享库依赖项。</td>
+  </tr>
+  <tr>
+   <td>VNDK-SP-Indirect</td>
+   <td>SP-HAL 无法直接访问但其他供应商模块（SP-HAL 和 SP-HAL-Dep 除外）可以访问的 VNDK-SP 依赖项</td>
+  </tr>
+  <tr>
+   <td>VNDK-SP-Indirect-Private</td>
+   <td>所有供应商模块都无法直接访问的 VNDK-SP 依赖项。</td>
+  </tr>
+  <tr>
+   <td>VNDK</td>
+   <td>面向供应商模块（SP-HAL 和 SP-HAL-Dep 除外）提供的框架共享库。</td>
+  </tr>
+  <tr>
+   <td>FWK-ONLY</td>
+   <td>供应商模块不得（直接或间接）访问、仅限框架使用的共享库。</td>
+  </tr>
+  <tr>
+   <td>FWK-ONLY-RS</td>
+   <td>供应商模块不得访问（RS 用途除外）、仅限框架使用的共享库。</td>
+  </tr>
+</tbody></table>
+
+<p>下表描述了适用于供应商共享库的标记：</p>
+
+<table>
+  <tbody><tr>
+   <th style="width:25%">标记</th>
+   <th>说明</th>
+  </tr>
+  <tr>
+   <td>SP-HAL</td>
+   <td>Same-Process HAL 实现共享库。</td>
+  </tr>
+  <tr>
+   <td>SP-HAL-Dep</td>
+   <td>SP-HAL 供应商共享库依赖项（也称为 SP-HAL 依赖项，不包括 LL-NDK、SP-NDK 和 VNDK-SP）</td>
+  </tr>
+  <tr>
+   <td>VND-ONLY</td>
+   <td>框架模块不可见且不得访问的共享库。所复制的扩展后 VNDK 库也将被标记为 VND-ONLY。</td>
+  </tr>
+</tbody></table>
+
+<p>标记之间的关系：</p>
+
+<img src="../images/treble_vndk_design.png"/>
+<figcaption><strong>图 1.</strong> 标记之间的关系。</figcaption>
+
+<h2 id="deps">deps</h2>
+<p>为了对库依赖项进行调试，<code>deps</code> 子命令会显示以下模块依赖关系：</p>
+
+<pre class="prettyprint">
+<code class="devsite-terminal">./vndk_definition_tool.py deps \</code>
+    --system ${ANDROID_PRODUCT_OUT}/system \
+    --vendor ${ANDROID_PRODUCT_OUT}/vendor
+</pre>
+
+<p>输出信息由多行内容组成。不含制表符的行会另起一部分。包含制表符的行则依赖前一部分。例如：</p>
+
+<pre class="prettyprint">
+/system/lib/ld-android.so
+/system/lib/libc.so
+        /system/lib/libdl.so
+</pre>
+
+<p>此输出信息表明：<code>ld-android.so</code> 没有依赖项，而 <code>libc.so</code> 依赖 <code>libdl.so</code>。</p>
+
+<p>如果指定了 <code>--revert</code> 选项，<code>deps</code> 子命令就会显示<strong>库的使用情况</strong>（反向依赖关系）：</p>
+
+<pre class="prettyprint">
+<code class="devsite-terminal">./vndk_definition_tool.py deps \</code>
+    --revert \
+    --system ${ANDROID_PRODUCT_OUT}/system \
+    --vendor ${ANDROID_PRODUCT_OUT}/vendor</pre>
+
+<p>例如：</p>
+
+<pre class="prettyprint">
+/system/lib/ld-android.so
+        /system/lib/libdl.so
+        </pre>
+
+<p>此输出信息表明：<code>libdl.so</code> 使用了 <code>ld-android.so</code>，即 <code>libdl.so</code> 依赖 <code>ld-android.so</code>。另外，此输出信息还表明 <code>libdl.so</code> 是 <code>ld-android.so</code> 的唯一使用者。</p>
+
+<p>如果指定了 <code>--symbol</code> 选项，<code>deps</code> 子命令便会显示用到的符号：</p>
+
+<pre class="prettyprint">
+<code class="devsite-terminal">./vndk_definition_tool.py deps \</code>
+    --symbol \
+    --system ${ANDROID_PRODUCT_OUT}/system \
+    --vendor ${ANDROID_PRODUCT_OUT}/vendor
+    </pre>
+
+<p>例如：</p>
+
+<pre class="prettyprint">
+/system/lib/libc.so
+        /system/lib/libdl.so
+                android_get_application_target_sdk_version
+                dl_unwind_find_exidx
+                dlclose
+                dlerror
+                dlopen
+                dlsym
+</pre>
+
+<p>此输出信息表明 <code>libc.so</code> 依赖从 <code>libdl.so</code> 导出的 6 个函数。如果同时指定了 <code>--symbol</code> 选项和 <code>--revert</code> 选项，该子命令则会显示使用者所用的符号。</p>
+
+</body></html>

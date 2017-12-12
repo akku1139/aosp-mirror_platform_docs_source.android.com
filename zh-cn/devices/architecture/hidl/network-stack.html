@@ -1,0 +1,116 @@
+<html devsite><head>
+    <title>网络堆栈配置工具</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+<p>Android 操作系统中包含标准的 Linux 网络实用程序，例如 <code>ifconfig</code>、<code>ip</code> 和 <code>ip6tables</code>。这些实用程序位于系统映像中，并支持对整个 Linux 网络堆栈进行配置。在运行 Android 7.x 及更低版本的设备上，供应商代码可以直接调用此类二进制文件，这会导致以下问题：</p>
+
+<ul>
+<li>由于网络实用程序在系统映像中更新，因此无法提供稳定的实现。</li>
+<li>网络实用程序的范围非常广泛，因此难以在保证行为可预测的情况下不断改进系统映像。</li>
+</ul>
+
+<p>在运行 Android 8.0 的设备上，供应商分区可在系统分区接收更新时保持不变。为了实现这一点，Android 8.0 不仅提供定义稳定的带版本接口的功能，同时还使用了 SELinux 限制，以便在供应商映像与系统映像之间保持已知良好的相互依赖关系。</p>
+
+<p>供应商可以使用平台提供的网络配置实用程序来配置 Linux 网络堆栈，但这些实用程序并未包含 HIDL 接口封装容器。为定义这类接口，Android 8.0 中纳入了 <code>netutils-wrapper-1.0</code> 工具。
+</p>
+
+<h2 id="netutils-wrapper">Netutils 封装容器</h2>
+<p><code>netutils</code> 封装容器实用程序提供了一部分未受系统分区更新影响的 Linux 网络堆栈配置。Android 8.0 中包含版本 1.0 的封装容器，借助它，您可以传递与所封装的实用程序（安装在系统分区的 <code>/system/bin</code> 中）相同的参数，如下所示：</p>
+
+<pre class="prettyprint">
+u:object_r:system_file:s0           /system/bin/ip-wrapper-1.0 -&gt; netutils-wrapper-1.0
+u:object_r:system_file:s0           /system/bin/ip6tables-wrapper-1.0 -&gt; netutils-wrapper-1.0
+u:object_r:system_file:s0           /system/bin/iptables-wrapper-1.0 -&gt; netutils-wrapper-1.0
+u:object_r:system_file:s0           /system/bin/ndc-wrapper-1.0 -&gt; netutils-wrapper-1.0
+u:object_r:netutils_wrapper_exec:s0 /system/bin/netutils-wrapper-1.0
+u:object_r:system_file:s0           /system/bin/tc-wrapper-1.0 -&gt; netutils-wrapper-1.0
+</pre>
+
+<p>符号链接显示由 <code>netutils</code> 封装容器封装的网络实用程序，其中包括：</p>
+<ul>
+<li><code>ip</code></li>
+<li><code>iptables</code></li>
+<li><code>ip6tables</code></li>
+<li><code>ndc</code></li>
+<li><code>tc</code></li>
+</ul>
+
+<p>要在 Android 8.0 及更高版本中使用这些实用程序，供应商实现必须遵循以下规则：</p>
+<ul>
+<li>供应商进程不得直接执行 <code>/system/bin/netutils-wrapper-1.0</code>，否则会导致错误。</li>
+<li><code>netutils-wrapper-1.0</code> 封装的所有实用程序必须使用其符号链接启动。例如，将以前执行该操作的供应商代码 (<code>/system/bin/ip &lt;FOO&gt; &lt;BAR&gt;</code>) 更改为 <code>/system/bin/ip-wrapper-1.0 &lt;FOO&gt; &lt;BAR&gt;</code>。</li>
+<li>平台 SELinux 政策禁止执行不包含网域转换的封装容器。此规则不得更改，可在 <a href="/compatibility/cts.html">Android 兼容性测试套件 (CTS)</a> 中进行测试。
+</li>
+<li>平台 SELinux 政策还禁止直接执行来自供应商进程的实用程序（例如，<code>/system/bin/ip &lt;FOO&gt; &lt;BAR&gt;</code>）。此规则不得更改，可在 CTS 中进行测试。</li>
+<li>需要启动封装容器的所有供应商网域（进程）必须在 SELinux 政策中添加以下网域转换规则：<code>domain_auto_trans(<var>VENDOR-DOMAIN-NAME</var>, netutils_wrapper_exec,
+netutils_wrapper)</code>。</li>
+</ul>
+
+<aside class="note"><strong>注意</strong>：要详细了解 Android 8.0 SELinux，请参阅 <a href="/security/selinux/images/SELinux_Treble.pdf">SELinux for Android 8.0</a>。</aside>
+
+<h2 id="netutils-wrapper-filters">Netutils 封装容器过滤器</h2>
+<p>封装的实用程序几乎可用于配置 Linux 网络堆栈的任何方面。不过，为了确保可以维护稳定的接口并允许对系统分区进行更新，只能执行某些命令行参数组合；其他命令将被拒绝。</p>
+
+<h3 id="vendor-interfaces-and-chains">供应商接口和链</h3>
+<p>封装容器有<em></em>一个概念称为“供应商接口”。供应商接口通常是指由供应商代码管理的接口，例如移动数据网络接口。通常，其他类型的接口（如 WLAN）由 HAL 和框架管理。封装容器按名称（使用正则表达式）识别供应商接口，且允许供应商代码对其执行多种操作。目前，供应商接口包括以下接口：</p>
+<ul>
+<li>名称以“oem”后跟数字结尾的接口，例如 <code>oem0</code> 或 <code>r_oem1234</code>。</li>
+<li>当前 SOC 和 OEM 实现使用的接口，如 <code>rmnet_data[0-9]</code>。</li>
+</ul>
+
+<p>通常由框架管理的接口的名称（例如 <code>wlan0</code>）一律不是供应商接口。</p>
+
+<p>封装容器还有<em></em>一个相似的概念称为“供应商链”。供应商链在 <code>iptables</code> 命令中使用，也按名称识别。目前，供应商链包括以下链：</p>
+<ul>
+<li>以 <code>oem_</code> 开头的链。</li>
+<li>当前 SOC 和 OEM 实现使用的链，例如以 <code>nm_</code> 或 <code>qcom_</code> 开头的链。</li>
+</ul>
+
+<h3 id="allowed-commands">允许执行的命令</h3>
+<p>下面列出了当前允许执行的命令。系统通过一组正则表达式对执行的命令行实施限制。有关详情，请参阅 <code>system/netd/netutils_wrappers/NetUtilsWrapper-1.0.cpp</code>。</p>
+
+<h4 id="ip">ip</h4>
+<p><code>ip</code> 命令用于配置 IP 地址、路由、IPsec 加密以及多种其他网络参数。封装容器允许执行以下命令：</p>
+<ul>
+<li>从供应商管理的接口添加和移除 IP 地址。</li>
+<li>配置 IPsec 加密。</li>
+</ul>
+
+<h4 id="iptables-ip6tables">iptables/ip6tables</h4>
+<p><code>iptables</code> 和 <code>ip6tables</code> 命令用于配置防火墙、数据包处理、NAT 和其他按数据包处理。封装容器允许执行以下命令：</p>
+<ul>
+<li>添加和删除供应商链。</li>
+<li>在引用进入 (<code>-i</code>) 或离开 (<code>-o</code>) 供应商接口的数据包的任何链中添加和删除规则。</li>
+<li>从任何其他链的任意一点跳转到供应商链。</li>
+</ul>
+
+<h4 id="ndc">ndc</h4>
+<p><code>ndc</code> 用于与在 Android 设备上执行大部分网络配置的 <code>netd</code> 守护进程通信。封装容器允许执行以下命令：</p>
+<ul>
+<li>创建和销毁 OEM 网络 (<code>oemXX</code>)。</li>
+<li>向 OEM 网络添加供应商管理的接口。</li>
+<li>向 OEM 网络添加路由。</li>
+<li>在全局范围内和供应商接口上启用或停用 IP 转发。</li>
+</ul>
+
+<h4 id="tc">tc</h4>
+<p><code>tc</code> 命令用于配置供应商接口上的流量队列和调整。</p>
+
+</body></html>

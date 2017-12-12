@@ -1,0 +1,724 @@
+<html devsite>
+  <head>
+    <title>Time Zone Rules</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>Android 8.1 provides a new mechanism for OEMs to push updated time zone rules
+data to devices without requiring a system update. This mechanism enables users
+to receive timely updates (thus extending the useful lifetime of an Android
+device) and enables OEMs to test time zone updates independently of system image
+updates.</p>
+
+<p>The Android core libraries team will provide the necessary data files for
+updating time zone rules on a stock Android device. OEMs can choose to use these
+data files when creating time zone updates for their devices or can create their
+own data files if preferred. In all cases, OEMs retain control over the quality
+assurance/testing, timing, and launch of time zone rule updates for their
+supported devices.</p>
+
+<h2 id="source-code">Android time zone source code and data</h2>
+<p>All stock Android devices, even those not using this feature, need time zone
+rules data and must ship with a default set of time zone rules data in the
+<code>/system</code> partition. This data is then used by code from the
+following libraries in the Android source tree: </p>
+
+<ul>
+<li>Managed code from <code>libcore/</code> (e.g.
+<code>java.util.TimeZone</code>) uses <code>tzdata</code> and
+<code>tzlookup.xml</code> files.</li>
+<li>Native library code in <code>bionic/</code> (e.g. for <code>mktime</code>,
+localtime system calls) uses the <code>tzdata</code> file.</li>
+<li>ICU4J/ICU4C library code in <code>external/icu/</code> uses the icu .dat
+file.</li>
+</ul>
+
+<p>These libraries are configured to be aware of overlay files that may be
+present in the <code>/data/misc/zoneinfo/current</code> directory. Overlay files
+are expected to contain improved time zone rules data thereby enabling devices
+to be updated without changing <code>/system</code>.</p>
+
+<p>Android system components that need time zone rule data check the following
+locations first:</p>
+
+<ul>
+<li><code>libcore/</code> and <code>bionic/</code> code use the
+<code>/data</code> copy of the <code>tzdata</code> and <code>tzlookup.xml</code>
+files.</li>
+<li>ICU4J/ICU4C code use the files in <code>/data</code> and fallback to
+<code>/system</code> files for data that isn't present (for formats, localized
+strings, etc.).</li>
+</ul>
+
+<h2 id="distro-files">Distro files</h2>
+<p>Distro .zip files contain the data files needed to populate the
+<code>/data/misc/zoneinfo/current</code> directory. The distro file also
+contains metadata that allows devices to detect versioning issues.</p>
+<p>The distro file format is Android-release dependent because the contents
+change with the ICU version, Android platform requirements,
+etc. Android provides distro files for supported Android releases for every IANA
+update (in addition to updating the platform system files). To keep their
+devices up to date, OEMs can choose to take this distro file or create their own
+distro file using the Android source tree (which contains the scripts and other
+files needed to generate distro files).</p>
+
+<h2>Time zone update components</h2>
+<p>A time zone rules update involves the transmission of a distro file to a
+device and the safe installation of the files contained within. Transfer and
+installation requires the following:</p>
+
+<ul>
+<li>Platform service functionality
+(<a href="https://android.googlesource.com/platform/frameworks/base/+/master/services/core/java/com/android/server/timezone/RulesManagerService.java">timezone.RulesManagerService</a>),
+which is disabled by default. OEMs must enable the functionality via
+configuration. The RulesManagerService runs in the system server process and
+stages time zone update operations by writing to
+<code>/data/misc/zoneinfo/staged</code>. It can also replace or delete already
+staged operations.</li>
+<li>
+<a href="https://android.googlesource.com/platform/packages/apps/TimeZoneUpdater/">Time
+Zone Updater</a>, a non-updateable system application (aka the <em>Updater
+App</em>). OEMs must include this application in the system image of devices
+using the feature.</li>
+<li>OEM
+<a href="https://android.googlesource.com/platform/packages/apps/TimeZoneData/">Time
+Zone Data</a>, an updateable system application (aka the <em>Data App</em>)
+that carries the distro file to the device and makes it available to the Updater
+App. OEMs must include this application in the system image of devices using the
+feature.</li>
+<li>
+<a href="https://android.googlesource.com/platform/system/timezone/+/master/tzdatacheck/">tzdatacheck</a>,
+a boot-time binary required for the correct and safe operation of time zone
+updates.</li>
+</ul>
+
+<p>The Android source tree contains generic source code for the above
+components, which the OEM can choose to use without modification.
+<a href="https://android.googlesource.com/platform/packages/apps/TimeZoneData/+/master/testing/">Test
+code</a> is provided to enable OEMs to automatically check that they have
+enabled the feature correctly.</p>
+
+<h3 id="distro-install">Distro installation</h3>
+<p>The distro installation process includes the following steps:</p>
+
+<ol>
+<li><strong>Data App is updated</strong> via an app store download or
+sideload. The system server process (via
+<code>timezone.RulesManagerServer/timezone.PackageTracker</code> classes)
+watches for changes to the configured, OEM-specific, Data App package
+name.
+<figure>
+<img src="images/tz_data_app_updates.png" alt="Data app updates"
+id="data-app-updates" />
+<figcaption><strong>Figure 1.</strong> Data App updates.</figcaption></figure>
+</li>
+<li><strong>System server process triggers an update check</strong> by
+broadcasting a targeted intent with a unique, single-use token to the Updater
+App. The system server keeps track of the most recent token it generated so it
+can later tell when the most recent check it triggered has completed; any other
+tokens are ignored.
+<figure>
+<img src="images/tz_trigger_update.png" alt="Trigger update"
+id="trigger-update" />
+<figcaption><strong>Figure 2.</strong> Trigger update check.</figcaption>
+</figure>
+</li>
+<li><strong>Update check</strong>, in which the Updater App performs the
+following tasks:
+<ul>
+<li>Queries the current device state by calling the RulesManagerService.
+<figure>
+<img src="images/tz_call_rulesmanagerservice.png" alt="Call RulesManagerService"
+id="call-rulesmanagerservice" />
+<figcaption><strong>Figure 3.</strong> Data App updates, calling
+RulesManagerService.</figcaption></figure>
+</li>
+<li>Queries the Data App by querying a well-defined ContentProvider URL and
+column specs to get information about the distro:
+<figure>
+<img src="images/tz_get_info_distro.png" alt="Get distro information"
+id="get-distro-info" />
+<figcaption><strong>Figure 4.</strong> Data App updates, get info about distro.
+</figcaption></figure>
+</li>
+</ul>
+<li><strong>Updater App takes the appropriate action</strong> based on the
+information it has. Available actions include:
+<ul>
+<li><em>Request an installation</em>. Distro data is read from the Data App
+and is passed to the RulesManagerService in the system server. The
+RulesManagerService re-confirms the distro format version and content is
+appropriate for the device and stages the install.</li>
+<li><em>Request an uninstall</em> (this is rare). For example, if the updated
+.apk in <code>/data</code> is being disabled or uninstalled and the device is
+returning to the version present in <code>/system</code>.</li>
+<li><em>Do nothing</em>. Occurs when the Data App distro is found to be invalid.
+</li>
+</ul>
+In all cases, the Updated App calls the RulesManagerService with the check token
+so the system server knows the check is complete and successful.
+<figure>
+<img src="images/tz_check_complete.png" alt="Check complete"
+id="check-complete" />
+<figcaption><strong>Figure 5.</strong> Check complete.</figcaption></figure>
+</li>
+<li><strong>Reboot and tzdatacheck</strong>. When the device next boots,
+the tzdatacheck binary executes any staged operation. The tzdatacheck binary can
+perform the following tasks:
+<ul>
+<li>Execute the staged operation by handling the creation, replacement,
+and/or deletion of the <code>/data/misc/zoneinfo/current</code> files before
+other system components have opened and started to use the files.</li>
+<li>Check the files in <code>/data</code> are correct for the current platform
+version, which might not be the case if the device has just received a system update
+and the distro format version has changed.</li>
+<li>Ensure the IANA rules version is the same or newer than the version in
+<code>/system</code>. This protects against a system update leaving a device
+with older time zone rules data than is present in the <code>/system</code>
+image.
+</li>
+</ul>
+</li>
+</ol>
+
+<h3 id="reliability">Reliability</h3>
+<p>The end-to-end installation process is asynchronous and split across three OS
+processes. At any point during the installation, the device may lose power, run
+out of disk space, etc., causing the installation check to not complete
+successfully. In the best unsuccessful case, the Updater App is able to inform
+the system server it was unsuccessful; in the worst unsuccessful case, the
+RulesManagerService receives no call at all.</p>
+<p>To handle this, the system server code keeps track of whether a triggered
+update check  has completed and what the last checked version code of the Data
+App is. When the device is idle and charging, the system server code can check
+the current state. If it discovers an incomplete update check or unexpected Data
+App version, it spontaneously triggers an update check.</p>
+
+<h3 id="security">Security</h3>
+<p>When enabled, the RulesManagerService code in the system server performs
+several checks to ensure the system is safe to use.</p>
+<ul>
+<li>Problems that indicate a badly configured system image will prevent a
+device booting; examples include a bad Updater or Data App configuration or the
+Updater or Data App not being in <code>/system/priv-app</code>.</li>
+<li>Problems that indicate a bad Data App has been installed will not prevent a
+device booting but will prevent an update check being triggered; examples
+include a lack of required system permissions or the Data App doesn't expose a
+ContentProvider on the expected URI.</li>
+</ul>
+
+<p>File permissions for the <code>/data/misc/zoneinfo</code> directories are
+enforced via SELinux rules. As with any APK, the Data App must be signed by the
+same key used to sign the <code>/system/priv-app</code> version. The Data App is
+expected to have a dedicated, OEM-specific package name and key.</p>
+
+<h2 id="integrating">Integrating time zone updates</h2>
+<p>To enable the time zone update feature, OEMs typically:</p>
+<ul>
+<li>Create their own Data App.</li>
+<li>Include the Updater and Data Apps in the system image build.</li>
+<li>Configure the system server to enable the RulesManagerService.</li>
+</ul>
+
+<h3 id="preparing">Preparing</h3>
+<p>Before starting, review the following policy, quality assurance, and security
+considerations:</p>
+<ul>
+<li>OEMs should create a dedicated app-specific signing key for their Data
+App.</li>
+<li>OEMs should create a release and versioning strategy for time zone updates
+to understand which devices are going to be updated and how they will ensure
+updates are only installed on devices that need them. For example, OEMs may want
+to have a single Data App for all their devices or may choose to have different
+Data Apps for different devices. The decision impacts the choice of package
+name, possibly the version codes used, and the QA strategy.</li>
+<li>OEMs should understand whether they want to use stock Android timezone data
+from AOSP or create their own.</li>
+</ul>
+
+<h3 id="creating-data-app">Creating a Data App</h3>
+<p>AOSP includes all source code and build rules needed to create a Data App in
+<code>packages/apps/TimeZoneData</code>, with instructions and example templates
+for <code>AndroidManifest.xml</code> and other files located in
+<code>packages/apps/TimeZoneData/oem_template</code>. Example templates include
+both a build target for the real Data App .apk file and extra targets for
+creating test versions of the Data App.</p>
+<p>OEMs can customize the Data App with their own icon, name, translations,
+etc. However, as the  Data App cannot be launched, the icon appears only in the
+<em>Settings &gt; Apps</em> screen.</p>
+<p>The Data App is intended to be built with a <strong>tapas</strong> build
+that produces .apks suitable to be added to the system image (for the initial
+release) and signed and distributed via an app store (for subsequent updates).
+For details on using tapas, see <a href="#building-tapas">Building the Data app
+using tapas</a>.</p>
+
+<aside class="note"><strong>Note:</strong> Securely signing APKs and key
+management is outside of the scope of this article.</aside>
+
+<p>OEMs must install the Data App prebuilt in the system image of a device in
+<code>/system/priv-app</code>. To include prebuilt .apks (generated by the tapas
+build process) in the system image, OEMs can copy the example files in
+<code>packages/apps/TimeZoneData/oem_template/data_app_prebuilt</code>. The
+example templates also include build targets for including test versions of the
+Data App in test suites.</p>
+
+<h3 id="including">Including the Updater and Data Apps in the system image</h3>
+<p>OEMs must place the Updater and Data App .apk files in the
+<code>/system/priv-app</code> directory of the system image. To do this, the
+system image build must explicitly include the Updater App and Data App prebuilt
+targets.</p>
+<p>The Updater App should be signed with the platform key and included as any
+other system app. The target is defined in
+<code>packages/apps/TimeZoneUpdater</code> as <code>TimeZoneUpdater</code>. The
+Data App inclusion is OEM-specific and depends on the target name chosen for the
+prebuild.</p>
+
+<h3 id="configuring-system-server">Configuring the system server</h3>
+<p>To enable time zone updates, OEMs can configure the system server by
+overriding configuration properties defined in
+<code>frameworks/base/core/res/res/values/config.xml</code>.</p>
+
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th width="20%">Override Required?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<pre class="prettyprint">config_enableUpdateableTimeZoneRules</pre>
+Must be set to true to enable the RulesManagerService.</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td><pre class="prettyprint">config_timeZoneRulesUpdateTrackingEnabled</pre>
+Must be set to true to have the system listen for changes to the Data App.</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td><pre class="prettyprint">config_timeZoneRulesDataPackage</pre>
+Package name of the OEM-specific Data App.</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td><pre class="prettyprint">config_timeZoneRulesUpdaterPackage</pre>
+Configured for the default Updater App. Change only when providing a different
+Updater App implementation.</td>
+<td>No</td>
+</tr>
+<tr>
+<td><pre class="prettyprint">config_timeZoneRulesCheckTimeMillisAllowed</pre>
+Time allowed between an update check being triggered by the RulesManagerService
+and an install, uninstall, or do nothing response. After this point, a
+spontaneous reliability trigger may be generated.</td>
+<td>No</td>
+</tr>
+<tr>
+<td><pre class="prettyprint">config_timeZoneRulesCheckRetryCount</pre>
+The number of sequential unsuccessful update checks allowed before the
+RulesManagerService stops generating more.</td>
+<td>No</td>
+</tr>
+</tbody>
+</table>
+
+<p>Configuration overrides should be in the system image (not vendor or other)
+as a misconfigured device can refuse to boot. If the configuration overrides
+were in <code>/vendor</code>, updating to a system image without a Data App (or
+with different Data App/Updater App package names) would be considered a
+misconfiguration.</p>
+
+<h3 id="xts-testing">xTS testing</h3>
+<p>xTS refers to any OEM-specific test suite that is similar to standard Android
+test suites using Tradefed (such as CTS and VTS). OEMs that have such test
+suites can add the Android time zone update tests provided in the following
+locations:</p>
+
+<ul>
+<li><code>packages/apps/TimeZoneData/testing/xts</code>. Includes the code
+needed for basic automated functional testing.</li>
+<li><code>packages/apps/TimeZoneData/oem_template/xts</code>. Contains a sample
+directory structure for including tests in a Tradefed-like xTS suite. As with
+other template directories, OEMs are expected to copy and customize to their
+needs.</li>
+<li><code>packages/apps/TimeZoneData/oem_template/data_app_prebuilt</code>.
+Contains build-time configuration for including the pre-built test .apk files
+required by the test.</li>
+</ul>
+
+<aside class="note"><strong>Note:</strong> Setting up an OEM-specific test suite
+is outside of the scope of this article.</aside>
+
+<h2 id="creating-updates">Creating time zone updates</h2>
+<p>When IANA releases a new set of time zone rules, the Android core libraries
+team generates patches to update releases in AOSP. OEMs using the stock Android
+system and distro files can pick up these commits, use them to create a new
+version of their Data App, then release the new version to update their devices
+in production.</p>
+
+<aside class="note"><strong>Note:</strong> The following steps do not describe
+how to update the base data files in the <code>/system</code> image, which is
+required when preparing the factory image or system updates. That process also
+generates the distro file for inclusion in the Data app. For instructions on
+updating the platform files, refer to
+<code>/system/timezone/README.android</code>.</aside>
+
+<p>Because Data Apps contain distro files closely tied to Android versions,
+OEMs must create a new version of the Data App for <em>every</em> supported
+Android release an OEM wants to update. For example, if an OEM wants to provide
+updates for O-MR1, P, and Q devices, they must complete the process three
+times.</p>
+
+<h3 id="step1">Step 1: Updating system/timezone and external/icu data files</h3>
+<p>In this step, OEMs take stock Android commits for
+<code>system/timezone</code> and <code>external/icu</code> from the
+<em>release</em>-dev branches in AOSP and apply those commits to their copy of
+the Android source code.</p>
+<p>The system/timezone AOSP patch contains updated files in
+<code>system/timezone/input_data</code> and
+<code>system/timezone/output_data</code>. OEMs who need to make additional local
+fixes can modify the input files then use the files in
+<code>system/timezone/input_data</code> and <code>external/icu</code> to
+generate files in <code>output_data</code>.</p>
+<p>The most important file is
+<code>system/timezone/output_data/distro/distro.zip</code>, which is
+automatically included when the Data App .apk is built.</p>
+
+<h3 id="step2">Step 2: Updating the version code of the Data App</h3>
+<p>In this step, OEMs update the version code of the Data App. The build
+automatically picks up the <code>distro.zip</code>, but the new version of the
+Data App must have a new version code so it is recognized as new and is used to
+replace a pre-loaded Data App or a Data App installed on a device by a previous
+update.</p>
+<p>When building the Data App using files copied from
+<code>package/apps/TimeZoneData/oem_template/data_app</code>, you can find the
+version code/version name applied to the .apk in the <code>Android.mk</code>:
+</p>
+
+<pre class="prettyprint">
+TIME_ZONE_DATA_APP_VERSION_CODE :=
+TIME_ZONE_DATA_APP_VERSION_NAME :=
+</pre>
+
+<p>Similar entries can be found in <code>testing/Android.mk</code> (however, the
+test version codes must be higher than the system image version). For details,
+see the <a href="#example-version-code-strategy">example version code strategy
+scheme</a>; if the example scheme or a similar scheme is used, the test
+version codes do not need to be updated because they are guaranteed to be higher
+than the real version codes.</p>
+
+<h3 id="step3">Step 3: Rebuild, sign, test, and release</h3>
+<p>In this step, OEMs rebuild the .apk files using tapas, sign the generated
+.apk files, then test and release the .apks:</p>
+<ul>
+<li>For unreleased devices (or when preparing a system update for a
+released device), submit the new .apk files in the Data App prebuilt directory
+to ensure the system image and xTS tests have the latest .apks. OEMs should test
+the new file works correctly (i.e. it passes CTS and any OEM-specific automated
+and manual tests).</li>
+<li>For released devices that no longer receive system updates, the signed .apk
+might only be released via an app store.</li>
+</ul>
+<p>OEMs are entirely responsible for quality assurance and testing the updated
+Data App on their devices before release.</p>
+
+<h2 id="version-code-strategy">Data App version code strategy</h2>
+<p>The Data App must have a
+<a href="https://developer.android.com/google/play/publishing/multiple-apks.html#VersionCodes">suitable
+versioning strategy</a> to ensure that devices receive the correct .apk
+files. For example, if a system update is received that contains an older .apk
+than one downloaded from the app store, the app store version should be
+retained.</p>
+<p>The .apk version code should include the following information:</p>
+<ul>
+<li>Distro format version (major + minor)</li>
+<li>An incrementing (opaque) version number</li>
+</ul>
+<p>Currently, platform API level is strongly correlated to distro format version
+because each API level is usually associated with a new version of ICU (which
+makes the distro files incompatible). In the future, Android may change this so
+that a distro file can work across multiple Android platform releases (and API
+level is not used in the Data App version code scheme).</p>
+
+<h3 id="example-version-code-strategy">Example version code strategy</h3>
+<p>This example versioning number scheme ensures that higher distro format
+versions beat lower distro format versions. The <code>AndroidManifest.xml</code>
+uses <code>android:minSdkVersion</code> to ensure old devices don't receive
+versions with a higher distro format version than they can handle.</p>
+
+<figure>
+<img src="images/tz_version_check.png" alt="Version check"
+id="version-check" />
+<figcaption><strong>Figure 6.</strong> Example version code strategy.
+</figcaption></figure>
+
+<table>
+<thead>
+<tr>
+<th>Example</th>
+<th width="20%">Value</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Y</strong></td>
+<td>Reserved</td>
+<td>Allows for future alternative schemes and/or test APKs. It will initially
+be (implicitly) 0. Because the underlying type is a signed 32-bit int type,
+this scheme supports up to two future numbering scheme revisions.</td>
+</tr>
+<tr>
+<td><strong>01</strong></td>
+<td>Major format version</td>
+<td>Tracks the 3 decimal digit major format version. The distro format supports
+3 decimal digits but only 2 digits are used here. It is unlikely 100 will
+be reached given the expected major increment per API level. Major version
+1 == API level 27.</td>
+</tr>
+<tr>
+<td><strong>1</strong></td>
+<td>Minor format version</td>
+<td>Tracks the 3 decimal digit minor format version. The distro format supports
+3 decimal digits but only 1 digit is used here. It is unlikely 10 will be
+reached.</td>
+</tr>
+<tr>
+<td><strong>X</strong></td>
+<td>Reserved</td>
+<td>Is 0 for production releases (and may be different for test APKs).</td>
+</tr>
+<tr>
+<td><strong>ZZZZZ</strong></td>
+<td>Opaque version number</td>
+<td>Decimal number allocated on demand. Includes gaps to allow interstitial
+updates to be made if required.</td>
+</tr>
+</tbody>
+</table>
+
+<p>The scheme could be packed better if binary were used instead of decimal, but
+this scheme has the advantage of being human-readable. If the full number range
+is exhausted, future releases could change the Data App package name and start
+again.</p>
+
+<p>Version name will be a human-readable representation of the details, e.g.:
+<code>major=001,minor=001,iana=2017a, revision=1,respin=2</code>. Examples:</p>
+
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Version code</th>
+<th>minSdkVersion</th>
+<th>{Major format version}.{Minor format version}.{IANA rules
+version}.{Revision}</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>11000010</td>
+<td>O-MR1</td>
+<td>major=001,minor=001,iana=2017a,revision=1</td>
+</tr>
+<tr>
+<td>2</td>
+<td>21000010</td>
+<td>P</td>
+<td>major=002,minor=001,iana=2017a,revision=1</td>
+</tr>
+<tr>
+<td>3</td>
+<td>11000020</td>
+<td>O-MR1</td>
+<td>major=001,minor=001,iana=2017a,revision=2</td>
+</tr>
+<tr>
+<td>4</td>
+<td>11000030</td>
+<td>O-MR1</td>
+<td>major=001,minor=001,iana=2017b,revision=1</td>
+</tr>
+<tr>
+<td>5</td>
+<td>21000020</td>
+<td>P</td>
+<td>major=002,minor=001,iana=2017b,revision=1</td>
+</tr>
+<tr>
+<td>6</td>
+<td>11000040</td>
+<td>O-MR1</td>
+<td>major=001,minor=001,iana=2018a,revision=1</td>
+</tr>
+<tr>
+<td>7</td>
+<td>21000030</td>
+<td>P</td>
+<td>major=002,minor=001,iana=2018a,revision=1</td>
+</tr>
+<tr>
+<td>8</td>
+<td>1123456789</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr>
+<td>9</td>
+<td>11000021</td>
+<td>O-MR1</td>
+<td>major=001,minor=001,iana=2017a,revision=2,respin=2</td>
+</tr>
+</tbody>
+</table>
+
+<ul>
+<li>Examples 1 and 2 show two .apk versions for the same 2017a IANA release
+with different major format versions. 2 is numerically higher than 1, which is
+needed to ensure that newer devices receive the higher format versions. The
+minSdkVersion ensures the P version will not be supplied to O devices.</li>
+<li>Example 3 is an example revision/fix for 1 and is numerically higher than 1.
+</li>
+<li>Examples 4 and 5 show the 2017b releases for O-MR1 and P. Being numerically
+higher, they replace prior IANA releases/Android revisions of their respective
+predecessors.</li>
+<li>Examples 6 and 7 show the 2018a releases for O-MR1 and P.</li>
+<li>Example 8 demonstrates the use of Y to completely replace the Y=0 scheme.
+</li>
+<li>Example 9 demonstrates the use of the gap left between 3 and 4 to re-spin
+the apk.</li>
+</ul>
+
+<p>As each device will ship with a default, appropriately versioned .apk in the
+system image, there is no risk of an O-MR1 version being installed on a P device
+because it will have a lower version number than a P system image version. A
+device with an O-MR1 version installed in <code>/data</code> that then receives
+a system update to P will use the <code>/system</code> version in preference to
+the O-MR1 version in<code> /data</code> because the P version will always be
+higher than any app intended for O-MR1.</p>
+
+<h2 id="building-tapas">Building the Data App using tapas</h2>
+<p>OEMs are responsible for managing most aspects of the time zone Data App and
+configuring the system image correctly. The Data App is intended to be built
+with a <strong>tapas</strong> build that produces .apks suitable to be added to
+the system image (for the initial release) and signed and distributed via an app
+store (for subsequent updates).<p>
+<p><strong>Tapas</strong> is a slimmed-down version of the Android build
+system that uses a reduced source tree to produce distributable versions of
+apps. OEMs familiar with the normal Android build system will recognize the
+build files from the normal Android platform build.</p>
+
+<h3 id="creating-manifest">Creating the manifest</h3>
+<p>A reduced source tree is usually achieved with a custom manifest file that
+refers only to the Git projects needed by the build system and for building the
+app. After following the instructions in
+<a href="#creating-data-app">Creating a Data App</a>, OEMs should have at
+least two OEM-specific git projects created by using the template files under
+<code>packages/apps/TimeZoneData/oem_template</code>:</p>
+
+<ul>
+<li>One git project contains application files such as the manifest and the
+build files required to create the application .apk file (e.g.
+<code>vendor/<em>oem</em>/apps/TimeZoneData</code>). This project also contains
+build rules for test APKs that can be used by xTS tests.</li>
+<li>One git project contains the signed .apk files produced by the app build for
+inclusion in the system image build and xTS tests.</li>
+</ul>
+
+<p>The app build leverages several other git projects that are shared with the
+platform build or contain OEM-independent code libraries.</p>
+<p>The following manifest snippet contains the minimal set of git projects
+needed to support an O-MR1 build of the time zone Data App (future versions of
+Android will have different lists or may even change the build system). OEMs
+must add their OEM-specific git projects (which typically include a project that
+contains the signing certificate) to this manifest, and may configure different
+branches accordingly.</p>
+
+<pre class="prettyprint">
+   &lt;!-- Tapas Build --&gt;
+    &lt;project
+        path="build"
+        name="platform/build"&gt;
+        &lt;copyfile src="core/root.mk" dest="Makefile" /&gt;
+    &lt;/project&gt;
+    &lt;project
+        path="prebuilts/build-tools"
+        name="platform/prebuilts/build-tools"
+        clone-depth="1" /&gt;
+    &lt;project
+        path="prebuilts/go/linux-x86"
+        name="platform/prebuilts/go/linux-x86"
+        clone-depth="1" /&gt;
+    &lt;project
+        path="build/blueprint"
+        name="platform/build/blueprint" /&gt;
+    &lt;project
+        path="build/kati"
+        name="platform/build/kati" /&gt;
+    &lt;project
+        path="build/soong"
+        name="platform/build/soong"&gt;
+        &lt;linkfile src="root.bp" dest="Android.bp" /&gt;
+        &lt;linkfile src="bootstrap.bash" dest="bootstrap.bash" /&gt;
+    &lt;/project&gt;
+
+    &lt;!-- SDK for system / public API stubs --&gt;
+    &lt;project
+        path="prebuilts/sdk"
+        name="platform/prebuilts/sdk"
+        clone-depth="1" /&gt;
+    &lt;!-- App source --&gt;
+    &lt;project
+        path="system/timezone"
+        name="platform/system/timezone" /&gt;
+    &lt;project
+        path="packages/apps/TimeZoneData"
+        name="platform/packages/apps/TimeZoneData" /&gt;
+    &lt;!-- Enable repohooks --&gt;
+    &lt;project
+        path="tools/repohooks"
+        name="platform/tools/repohooks"
+        revision="master"
+        clone_depth="1" /&gt;
+    &lt;repo-hooks
+        in-project="platform/tools/repohooks"
+        enabled-list="pre-upload" /&gt;
+</pre>
+
+<h3 id="running-tapas">Running the tapas build</h3>
+<p>After the source tree is established, invoke the <strong>tapas</strong> build
+using the following commands:</p>
+
+<pre class="devsite-click-to-copy">
+<code class="devsite-terminal">source build/envsetup.sh</code>
+<code class="devsite-terminal">tapas</code>
+<code class="devsite-terminal">make -j30 showcommands dist TARGET_BUILD_APPS='TimeZoneData TimeZoneData_test1 TimeZoneData_test2'  TARGET_BUILD_VARIANT=userdebug</code>
+</pre>
+
+<p>A successful build generates files in the <code>out/dist</code> directory for
+testing. These files can be placed into the prebuilts directory for inclusion in
+the system image and/or distributed via an app store for compatible
+devices.</p>
+
+</body>
+</html>
