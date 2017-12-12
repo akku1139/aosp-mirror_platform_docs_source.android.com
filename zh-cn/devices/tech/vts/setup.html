@@ -1,0 +1,117 @@
+<html devsite><head>
+    <title>VTS 信息中心设置</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>VTS 信息中心提供了用于查看来自 VTS 持续集成系统的测试结果的用户后端和界面。它利用测试状态通知等工具为由测试驱动的开发提供支持，帮助开发者在开发周期中找出存在回归问题的方面并加以预防（包括测试监控和分类支持）。
+</p>
+
+<p>
+VTS 信息中心的界面支持 VTS 基础架构提供的新功能（如原生代码覆盖率），并通过持续的性能监控，为开发性能经过优化且特点突出的工具提供帮助。
+</p>
+
+<h2 id="requirements">要求</h2>
+<p>要使用 VTS 信息中心，必须使用以下服务：</p>
+<ul>
+<li><a href="https://maven.apache.org/">Apache Maven</a>，用于构建和部署</li>
+<li><a href="https://cloud.google.com/appengine">Google Cloud App Engine</a>，用于网络服务托管</li>
+<li><a href="https://cloud.google.com/datastore/docs/">Google Cloud Datastore</a>，用于存储</li>
+<li><a href="http://www.stackdriver.com/">Google Stackdriver</a>，用于监控</li>
+</ul>
+
+<p>要查看<a href="/devices/architecture/testing/ui.html#coverage">测试覆盖率</a>，需要使用一个与源代码服务器（如 Gerrit）对接的 REST API，这样网络服务就可以根据现有访问控制列表提取原始源代码。
+</p>
+
+<h2 id="arch">架构</h2>
+<p>VTS 信息中心采用以下架构：</p>
+<img src="../images/treble_vts_dash_arch.png" title="VTS 信息中心架构"/>
+<figcaption><strong>图 1</strong>. VTS 信息中心架构。</figcaption>
+
+<p>测试状态结果通过 REST 接口持续上传到 Cloud Datastore 数据库。VTS 运行程序会自动处理结果并利用 Protobuf 格式将它们序列化。
+</p>
+<p>网络 servlet 是用户的主要访问点，可传送和处理来自 Datastore 数据库的数据。servlet 包括：用于传送所有测试的主要 servlet；用于管理用户收藏的偏好 servlet；用于填充测试表的结果 servlet；用于准备分析数据的图表 servlet；以及用于准备客户端的覆盖率数据的覆盖率 servlet。
+</p>
+<p>每个测试模块都有各自的 Datastore 祖先实体树，且测试结果会根据测试开始时间的 Unix 时间戳编入索引。数据库中的覆盖率数据会作为计数矢量（即原始源代码文件中的每一行的计数矢量）以及用于从源代码服务器提前源代码的识别信息随测试结果一起存储。
+</p>
+<p>通知服务运行时会使用任务队列、识别测试用例状态变化以及向订阅者发出通知。状态信息存储在状态表中，以跟踪数据新鲜度和现有故障。这样一来，通知服务便可以提供有关各个测试用例故障和修复情况的丰富信息。
+</p>
+
+<h2 id="code-structure">代码结构</h2>
+<p>VTS 信息中心基本组件包括在 Java 中实现的 servlet、前端 JSP、CSS 样式表和配置文件。以下列表详细介绍了这些组件的位置和说明（所有路径均指相对于 <code>test/vts/web/dashboard</code> 的路径）：</p>
+<ul>
+<li><code>pom.xml</code><br />其中定义了环境变量和依赖关系的设置文件。</li>
+<li><code>src/main/java/com/android/vts/api/</code><br />包含通过 REST 与数据进行交互的端点。</li>
+<li><code>src/main/java/com/android/vts/entity/</code><br />包含 Datastore 实体的 Java 模型。</li>
+<li><code>src/main/java/com/android/vts/proto/</code><br />包含用于 Protobuf 的 Java 文件，其中包括 <code>VtsReportMessage.java</code>（用于说明 VTS 测试结果的 Protobuf 类型的 Java 实现）。</li>
+<li><code>src/main/java/com/android/vts/servlet/</code><br />包含用于 servlet 的 Java 文件。</li>
+<li><code>src/main/java/com/android/vts/util/</code><br />包含用于 servlet 所用实用函数和类的 Java 文件。</li>
+<li><code>src/test/java/com/android/vts/</code><br />包含 servlet 和 utils 的界面测试。</li>
+<li><code>src/main/webapp/</code><br />包含与界面相关的文件（JSP、CSS、XML）：<ul>
+ <li><code>js/</code>：包含网页使用的 JavaScript 文件。</li>
+ <li><code>WEB-INF/</code>：包含配置和界面文件。</li>
+ <li><code>jsp/</code>：包含每个网页的 JSP 文件。</li>
+ </ul>
+</li>
+<li><code>appengine-web.xml</code><br />环境变量在其中加载到变量中的设置文件。</li>
+<li><code>web.xml</code><br />其中定义了 servlet 映射和安全限制的设置文件。</li>
+<li><code>cron.xml</code><br />用于定义预定任务（即通知服务）的设置文件。</li>
+</ul>
+
+<h2 id="setup">设置信息中心</h2>
+<p>要设置 VTS 信息中心，请执行以下操作：</p>
+<ol>
+<li>创建 Google Cloud App Engine 项目。</li>
+<li>通过安装以下各项设置部署主机：<ul>
+ <li>Java 8</li>
+ <li>Google App Engine SDK</li>
+ <li>Maven</li>
+ </ul>
+</li>
+<li>在 Google Cloud API Manager 中生成 OAuth 2.0 客户端 ID。</li>
+<li>创建服务帐号和密钥文件。</li>
+<li>将电子邮件地址添加到 App Engine Email API 授权发件人列表。</li>
+<li>设置 Google Analytics（分析）帐号。</li>
+<li>在信息中心 <code>pom.xml</code> 中指定环境变量：
+ <ul>
+ <li>使用 OAuth 2.0 ID（在第 3 步中生成）设置客户端 ID。</li>
+ <li>使用密钥文件（在第 4 步中创建）中包含的标识符设置服务客户端 ID。</li>
+ <li>指定用于发送提醒的发件人电子邮件地址（在第 5 步添加）。</li>
+ <li>指定将向其发送所有电子邮件的电子邮件域名。</li>
+ <li>指定 Gerrit REST 服务器的地址。</li>
+ <li>指定要用于 Gerrit REST 服务器的 OAuth 2.0 范围。</li>
+ <li>指定 Google Analytics（分析）ID（在第 6 步中设置）。</li>
+ <li>构建和部署项目。</li>
+ </ul>
+</li>
+<li>在终端运行 <code>mvn clean appengine:update</code>。</li>
+</ol>
+
+<p>要详细了解信息中心设置和配置，请参阅 <a href="https://codelabs.developers.google.com/codelabs/android-vts">Android VTS 代码实验室</a>。
+</p>
+
+<h2 id="security">安全注意事项</h2>
+<p>要获取全面的覆盖率信息，需要用到原始源代码。但是，部分代码可能属于敏感信息，增加额外的网关可能会导致现有访问控制列表遭到利用。
+</p>
+<p>为消除这种威胁，信息中心会直接处理覆盖率矢量（即执行计数的矢量，会映射到源代码文件中的行），而不是提供包含覆盖率信息的源代码。除了覆盖率矢量，信息中心还会接收 Git 项目名称和路径，以便客户端可以通过外部源代码 API 提取代码。客户端浏览器会收到这些信息，并使用采用 JavaScript 的跨域资源共享 (CORS) 来查询源代码服务器是否有相应原始源代码；收到的代码会与覆盖率矢量相合并以生成结果。
+</p>
+<p>这种方法不会扩大受攻击面，因为信息中心会利用用户的 Cookie 对外部服务进行身份验证。无权直接访问源代码的用户无法利用信息中心查看敏感信息。
+</p>
+
+</body></html>

@@ -1,0 +1,2053 @@
+<html devsite><head>
+    <title>HCI 要求</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+
+  <body>
+  <!--
+     Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License"); you may
+      not use this file except in compliance with the License.  You may obtain a
+      copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+      WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+      License for the specific language governing permissions and limitations
+      under the License.
+  -->
+
+      <p>主机控制器接口 (HCI) 用于与蓝牙控制器交互。</p>
+
+      <p>本文档列出了蓝牙 (BT) 和蓝牙低功耗 (BLE) HCI 的要求，旨在让主机 BT 堆栈供应商和 BT 控制器供应商了解，必须遵循这些平台要求才能使用下面所述的功能集。</p>
+
+      <p>本文档将“蓝牙核心 4.1 规范”简称为“规范”。<a href="https://www.bluetooth.org/en-us/specification/adopted-specifications">蓝牙 SIG 网站</a>上提供了蓝牙核心 4.1 规范以及其他正式文档。</p>
+
+      <h2 id="general-design-overview">总体设计概览</h2>
+
+        <h3 id="chip-capabilities-and-configuration">芯片功能和配置</h3>
+
+          <p>作为一个开放平台，Android 汇集了各种软件版本、原始设备制造商 (OEM)、供应商以及平台和芯片功能。</p>
+
+          <p>本文档介绍了一种可让 BT 控制器提供其功能（不在标准的蓝牙核心 4.1 规范内）的设计理念，以此来管理不断变化的格局以及迁移。然后，主机 BT 堆栈可以使用这些功能来确定要启用的功能。</p>
+
+        <h3 id="supporting-open-standards">支持开放式标准</h3>
+          <p>Android 的一个目标是支持那些在蓝牙规范中获得正式批准的开放式标准。如果下文所述的某项功能在未来蓝牙规范的标准 HCI 方法中可用，那么我们就倾向于将该方法设为默认方法。</p>
+
+      <h2 id="vendor-specific-capabilities">特定于供应商的功能</h2>
+        <p>特定于供应商的命令：<code>LE_Get_Vendor_Capabilities_Command</code></p>
+
+        <p>OpCode 命令字段 (OCF)：0x153</p>
+        <table>
+          <tbody><tr>
+            <th>命令参数</th>
+            <th>大小</th>
+            <th>用途</th>
+          </tr>
+          <tr>
+            <td></td>
+            <td>不适用</td>
+            <td>空命令参数列表</td>
+          </tr>
+        </tbody></table>
+
+        <p>系统将针对此命令生成一个命令完成事件。</p>
+
+        <table>
+          <tbody><tr>
+            <th>返回参数</th>
+            <th>大小</th>
+            <th>用途</th>
+          </tr>
+          <tr>
+            <td><code>Status</code></td>
+            <td>1 个八位字节</td>
+            <td>命令完成状态</td>
+          </tr>
+          <tr>
+            <td><code>max_advt_instances</code></td>
+            <td>1 个八位字节</td>
+            <td>支持的广告实例数量</td>
+          </tr>
+          <tr>
+            <td><code>offloaded_resolution_of_private-address</code></td>
+            <td>1 个八位字节</td>
+            <td>RPA 的 BT 芯片功能。<br />如果芯片支持，则需要主机启用。<br />
+              0 = 不能<br />
+              1 = 能</td>
+          </tr>
+          <tr>
+            <td><code>total_scan_results_storage</code></td>
+            <td>2 个八位字节</td>
+            <td>用于扫描结果的存储空间（以字节为单位）</td>
+          </tr>
+          <tr>
+            <td><code>max_irk_list_sz</code></td>
+            <td>1 个八位字节</td>
+            <td>固件中支持的 IRK 条目数量</td>
+          </tr>
+          <tr>
+            <td><code>filtering_support</code></td>
+            <td>1 个八位字节</td>
+            <td>支持在控制器中进行过滤<br />
+              0 = 不支持<br />
+              1 = 支持</td>
+          </tr>
+          <tr>
+            <td><code>max_filter</code></td>
+            <td>1 个八位字节</td>
+            <td>支持的过滤器数量</td>
+          </tr>
+          <tr>
+            <td><code>activity_energy_info_support</code></td>
+            <td>1 个八位字节</td>
+            <td>支持报告活动和功耗信息<br />
+              0 = 不能<br />
+              1 = 能</td>
+          </tr>
+          <tr>
+            <td><code>version_supported</code></td>
+            <td>2 个八位字节<br />
+              [0x00, 0x60]</td>
+            <td>指定支持的 Google 功能规范的版本<br />
+              字节[0] = 主要版本号<br />
+              字节[1] = 次要版本号</td>
+          </tr>
+          <tr>
+            <td><code>total_num_of_advt_tracked</code></td>
+            <td>2 个八位字节</td>
+            <td>出于 <code>OnLost</code>/<code>OnFound</code> 目的跟踪的广告主的总数</td>
+          </tr>
+          <tr>
+            <td><code>extended_scan_support</code></td>
+            <td>1 个八位字节</td>
+            <td>支持更长的扫描时段和间隔</td>
+          </tr>
+          <tr>
+            <td><code>debug_logging_supported</code></td>
+            <td>1 个八位字节</td>
+            <td>支持从控制器记录二进制文件调试信息</td>
+          </tr>
+          <tr>
+            <td><code>LE_address_generation_offloading_support</code></td>
+            <td>1 个八位字节</td>
+            <td>0 = 不支持<br />
+              1 = 支持</td>
+          </tr>
+        </tbody></table>
+
+        <p><code>max_advt_instances parameter</code> 表示控制器中的广告实例的总数。<code>advt_instance</code> ID 的范围是 0 到 <code>max_advt_instances</code>-1。</p>
+
+        <p>ID 等于 0 的广告实例将映射到现有（默认/标准）HCI 实例。在默认/标准 HCI 接口上运行时，应使用标准的 HCI 命令集。</p>
+
+      <h2 id="multi-advertiser-support">多广告主支持</h2>
+
+        <p>多广告主支持的目标如下：</p>
+
+        <ul>
+          <li>能够支持多个广告 (<code>max_advt_instances</code>)</li> <li>提供不同的传输功率以支持不同的范围</li> <li>支持不同的广告内容</li>
+          <li>针对每位个广告主进行个性化回复</li>
+          <li>保护每位广告主的隐私（不可跟踪）</li>
+          <li>可连接</li>
+        </ul>
+
+        <p>为了确保此规范接近现有标准，我们提供了下列特定于供应商的命令。它们派生自蓝牙核心 4.1 规范。</p>
+
+        <h3 id="le_multi_advt_command">LE_Multi_Advt_Command</h3>
+          <p>OCF：0x154</p>
+
+          <table>
+            <tbody><tr>
+              <th>命令参数</th>
+              <th>大小</th>
+              <th>用途</th>
+            </tr>
+            <tr>
+              <td><code>Multi_advt_opcode</code></td>
+              <td>1 个八位字节</td>
+              <td>0x01 - <code>Set_Advt_Param_Multi_Sub_Cmd</code><br />
+                0x02 - <code>Set_Advt_Data_Multi_Sub_Cmd</code><br />
+                0x03 - <code>Set_Scan_Resp_Data_Multi_Sub_Cmd</code><br />
+                0x04 - <code>Set_Random_Addr_Multi_Sub_Cmd</code><br />
+                0x05 - <code>Set_Advt_Enable_Multi_Sub_Cmd</code></td>
+            </tr>
+          </tbody></table>
+
+          <p>系统将针对此命令生成一个命令完成事件。</p>
+
+          <table>
+            <tbody><tr>
+              <th>返回参数</th>
+              <th>大小</th>
+              <th>用途</th>
+            </tr>
+            <tr>
+              <td><code>Status</code></td>
+              <td>1 个八位字节</td>
+              <td>命令完成状态</td>
+            </tr>
+            <tr>
+              <td><code>Multi_advt_opcode</code></td>
+              <td>1 个八位字节</td>
+              <td>0x01 - <code>Set_Advt_Param_Multi_Command</code><br />
+                0x02 - <code>Set_Advt_Data_Multi_Command</code><br />
+                0x03 - <code>Set_Scan_Resp_Data_Multi_Command</code><br />
+                0x04 - <code>Set_Random_Addr_Multi_Command</code><br />
+                0x05 - <code>Set_Advt_Enable_Multi_Command</code></td>
+            </tr>
+          </tbody></table>
+
+          <h4 id="le_multi_advt_command-set_advt_param_multi_sub_cmd">
+            LE_Multi_Advt_Command：Set_Advt_Param_Multi_Sub_Cmd</h4>
+
+            <p>基础参考：蓝牙核心 4.1 规范，第 964 页（LE 设置广告参数命令）</p>
+
+            <p>子 OCF：0x01</p>
+
+            <table>
+              <tbody><tr>
+                <th>子命令参数</th>
+                <th>大小</th>
+                <th>用途</th>
+              </tr>
+              <tr>
+                <td><code>Advertising_Interval_Min</code></td>
+                <td>按规范</td>
+                <td>按规范</td>
+              </tr>
+              <tr>
+                <td><code>Advertising_Interval_Max</code></td>
+                <td>按规范</td>
+                <td>按规范</td>
+              </tr>
+              <tr>
+                <td><code>Advertising_Type</code></td>
+                <td>按规范</td>
+                <td>按规范</td>
+              </tr>
+              <tr>
+                <td><code>Own_Address_Type</code></td>
+                <td>按规范</td>
+                <td>按规范</td>
+              </tr>
+              <tr>
+                <td><code>Own_Address</code></td>
+                <td>按规范</td>
+                <td>按规范</td>
+              </tr>
+              <tr>
+                <td><code>Direct_Address_Type</code></td>
+                <td>按规范</td>
+                <td>按规范</td>
+              </tr>
+              <tr>
+                <td><code>Direct_Address</code></td>
+                <td>按规范</td>
+                <td>按规范</td>
+              </tr>
+              <tr>
+                <td><code>Advertising_Channel_Map</code></td>
+                <td>按规范</td>
+                <td>按规范</td>
+              </tr>
+              <tr>
+                <td><code>Adverstising_Filter_Policy</code></td>
+                <td>按规范</td>
+                <td>按规范</td>
+              </tr>
+              <tr>
+                <td><code>Advertising_Instance</code></td>
+                <td>1 个八位字节</td>
+                <td>指定上述参数对实例的适用性</td>
+              </tr>
+              <tr>
+                <td><code>Tx_power</code></td>
+                <td>1 个八位字节</td>
+                <td>Transmit_Power<br />
+                  单位 - 以 dBm 为单位（有符号整数）<br />
+                  范围（-70 到 +20）</td>
+              </tr>
+            </tbody></table>
+
+            <p>在设置此多广告实例时，<code>Own_Address</code> 参数可以是主机配置的地址。这样，在传输第一个信标时能够获得一个可解析私有地址。无论采用何种连接，实例上的广告都会继续。主机 BT 堆栈可以发出命令，以在建立连接后开始在实例上投放广告。</p>
+
+            <p>系统将按照上述命令，针对此命令生成一个命令完成事件，如蓝牙核心 4.1 规范中所规定。如果广告实例或 <code>Tx_Power</code> 参数无效，则控制器会使用非成功（无效参数）代码响应。</p>
+
+            <table>
+              <tbody><tr>
+                <th>返回参数</th>
+                <th>大小</th>
+                <th>用途</th>
+              </tr>
+              <tr>
+                <td><code>Status</code></td>
+                <td>1 个八位字节</td>
+                <td>命令完成状态</td>
+              </tr>
+              <tr>
+                <td><code>Multi_advt_opcode</code></td>
+                <td>1 个八位字节</td>
+                <td>0x01 [<code>Set_Advt_Param_Multi_Sub_Cmd]</code></td>
+              </tr>
+            </tbody></table>
+
+          <h4 id="le_multi_advt_command-set_advt_data_multi_sub_cmd">LE_Multi_Advt_Command：Set_Advt_Data_Multi_Sub_Cmd</h4>
+
+            <p>基础参考：蓝牙核心 4.1 规范，第 969 页（LE 设置广告数据命令）</p>
+
+            <p>子 OCF：0x02</p>
+
+            <table>
+              <tbody><tr>
+                <th>子命令参数</th>
+                <th>大小</th>
+                <th>用途</th>
+              </tr>
+              <tr>
+                <td><code>Advertising_Data_Length</code></td>
+                <td>按规范</td>
+                <td>按规范</td>
+              </tr>
+              <tr>
+                <td><code>Advertising_Data</code></td>
+                <td>按规范</td>
+                <td>按规范</td>
+              </tr>
+              <tr>
+                <td><code>Advertising_Instance</code></td>
+                <td>1 个八位字节</td>
+                <td>指定上述参数对实例的适用性</td>
+              </tr>
+            </tbody></table>
+
+            <p>系统将按照上述命令，针对此命令生成一个命令完成事件，如蓝牙核心 4.1 规范中所规定。如果广告实例或 <code>Tx_Power</code> 参数无效，则控制器会使用非成功代码响应。</p>
+
+            <table>
+              <tbody><tr>
+                <th>返回参数</th>
+                <th>大小</th>
+                <th>用途</th>
+              </tr>
+              <tr>
+                <td><code>Status</code></td>
+                <td>1 个八位字节</td>
+                <td>命令完成状态</td>
+              </tr>
+              <tr>
+                <td><code>Multi_advt_opcode</code></td>
+                <td>1 个八位字节</td>
+                <td>0x02 [<code>Set_Advt_Data_Multi_Sub_Cmd]</code></td>
+              </tr>
+            </tbody></table>
+
+          <h4 id="le_multi_advt_command-set_scan_resp_data_multi_sub_cmd">LE_Multi_Advt_Command：Set_Scan_Resp_Data_Multi_Sub_Cmd</h4>
+
+            <p>基础参考：蓝牙核心 4.1 规范，第 970 页（LE 设置扫描响应数据命令）</p>
+
+            <p>子 OCF：0x03</p>
+
+            <table>
+              <tbody><tr>
+                <th>子命令参数</th>
+                <th>大小</th>
+                <th>用途</th>
+              </tr>
+              <tr>
+                <td><code>Scan_Response_Data_Length</code></td>
+                <td>按规范</td>
+                <td>按规范</td>
+              </tr>
+              <tr>
+                <td><code>Scan_Response_Data</code></td>
+                <td>按规范</td>
+                <td>按规范</td>
+              </tr>
+              <tr>
+                <td><code>Advertising_Instance</code></td>
+                <td>1 个八位字节</td>
+                <td>指定上述参数对实例的适用性</td>
+              </tr>
+            </tbody></table>
+
+            <p>系统将按照上述命令，针对此命令生成一个命令完成事件，如蓝牙核心 4.1 规范中所规定。如果广告实例或 <code>Tx_Power</code> 参数无效，则控制器会使用非成功代码（无效参数）响应。</p>
+
+            <table>
+              <tbody><tr>
+                <th>返回参数</th>
+                <th>大小</th>
+                <th>用途</th>
+              </tr>
+              <tr>
+                <td><code>Status</code></td>
+                <td>1 个八位字节</td>
+                <td>命令完成状态</td>
+              </tr>
+              <tr>
+                <td><code>Multi_advt_opcode</code></td>
+                <td>1 个八位字节</td>
+                <td>0x03 [<code>Set_Scan_Resp_Data_Multi_Sub_Cmd]</code></td>
+              </tr>
+            </tbody></table>
+
+          <h4 id="le_multi_advt_command-set_random_addr_multi_sub_cmd">LE_Multi_Advt_Command：Set_Random_Addr_Multi_Sub_Cmd</h4>
+            <p>基础参考：蓝牙核心 4.1 规范，第 963 页（LE 设置随机地址命令）</p>
+
+            <p>子 OCF：0x04</p>
+
+            <table>
+              <tbody><tr>
+                <th>子命令参数</th>
+                <th>大小</th>
+                <th>用途</th>
+              </tr>
+              <tr>
+                <td><code>Random Address</code></td>
+                <td>按规范</td>
+                <td>按规范</td>
+              </tr>
+              <tr>
+                <td><code>Advertising_Instance</code></td>
+                <td>1 个八位字节</td>
+                <td>指定上述参数对实例的适用性</td>
+              </tr>
+            </tbody></table>
+
+            <p>系统将针对此命令生成一个命令完成事件。</p>
+
+            <table>
+              <tbody><tr>
+                <th>返回参数</th>
+                <th>大小</th>
+                <th>用途</th>
+              </tr>
+              <tr>
+                <td><code>Status</code></td>
+                <td>1 个八位字节</td>
+                <td>命令完成状态</td>
+              </tr>
+              <tr>
+                <td><code>Multi_advt_opcode</code></td>
+                <td>1 个八位字节</td>
+                <td>0x04 [<code>Set_Random_Addr_Multi_Sub_Cmd]</code></td>
+              </tr>
+            </tbody></table>
+
+          <h4 id="le_multi_advt_command-set_advt_enable_multi_sub_cmd">LE_Multi_Advt_Command：Set_Advt_Enable_Multi_Sub_Cmd</h4>
+            <p>基础参考：蓝牙核心 4.1 规范，第 971 页（该核心规范中的 LE 设置广告启用命令）</p>
+
+            <p>OCF：0x05</p>
+
+            <table>
+              <tbody><tr>
+                <th>子命令参数</th>
+                <th>大小</th>
+                <th>用途</th>
+              </tr>
+              <tr>
+                <td><code>Advertising_Enable</code></td>
+                <td>1 个八位字节</td>
+                <td>1 表示启用。任何其他值均表示停用。</td>
+              </tr>
+              <tr>
+                <td><code>Advertising_Instance</code></td>
+                <td>1 个八位字节</td>
+                <td>指定上述参数对实例的适用性。实例 0 表示标准 HCI 实例。</td>
+              </tr>
+            </tbody></table>
+
+            <p>系统将针对此命令生成一个命令完成事件。</p>
+
+            <table>
+              <tbody><tr>
+                <th>返回参数</th>
+                <th>大小</th>
+                <th>用途</th>
+              </tr>
+              <tr>
+                <td><code>Status</code></td>
+                <td>1 个八位字节</td>
+                <td>命令完成状态</td>
+              </tr>
+              <tr>
+                <td><code>Multi_advt_opcode</code></td>
+                <td>1 个八位字节</td>
+                <td>0x05 [<code>Set_Advt_Enable_Multi_Sub_Cmd]</code></td>
+              </tr>
+            </tbody></table>
+
+      <h2 id="offloaded-resolution-of-private-address">分流解析私有地址</h2>
+        <p>此功能可在控制器固件或硬件中解析私有地址，从而提供以下优势：
+        </p>
+
+        <ul>
+          <li>缩短主机在解析私有地址时的延迟时间</li>
+          <li>通过避免唤醒主机来节省电量</li>
+        </ul>
+
+        <h3 id="le_set_rpa_timeout">LE_Set_RPA_Timeout</h3>
+          <p>OCF：0x15C</p>
+
+          <table>
+            <tbody><tr>
+              <th>命令参数</th>
+              <th>大小</th>
+              <th>用途</th>
+            </tr>
+            <tr>
+              <td><code>LE_local_IRK</code></td>
+              <td>16 个八位字节</td>
+              <td>本地设备 IRK 用于生成可解析的随机地址。</td>
+            </tr>
+            <tr>
+              <td><code>tRPA_min</code></td>
+              <td>2 个八位字节</td>
+              <td>最短 RPA 生成超时时间（以秒为单位）。
+                控制器必须在超时期间或超时之后，针对任何广告/扫描/连接事件生成新的可解析地址。<br />
+                有效范围：300-1800</td>
+            </tr>
+            <tr>
+              <td><code>tRPA_max</code></td>
+              <td>2 个八位字节</td>
+              <td>最长 RPA 生成超时时间（以秒为单位）。
+                控制器必须在超时期间或超时之前，针对任何广告/扫描/连接事件生成新的可解析地址。<br />
+                有效范围：<code>tRPA_min</code>-1800</td>
+            </tr>
+          </tbody></table>
+
+          <table>
+            <tbody><tr>
+              <th>返回参数</th>
+              <th>大小</th>
+              <th>用途</th>
+            </tr>
+            <tr>
+              <td><code>Status</code></td>
+              <td>1 个八位字节</td>
+              <td>命令的状态。<br />
+                <br />
+                建议的 HCI 状态值：<br />
+                0x00 成功<br />
+                0x01 未知命令（如果不受支持）<br />
+                0x12 无效的命令参数（如果任意参数不在指定范围内）</td>
+            </tr>
+          </tbody></table>
+
+        <h3 id="le_rpa_offload_command">LE_RPA_offload_Command</h3>
+          <p>OCF：0x155</p>
+
+          <table>
+            <tbody><tr>
+              <th>命令参数</th>
+              <th>大小</th>
+              <th>用途</th>
+            </tr>
+            <tr>
+              <td><code>RPA_offload_opcode</code></td>
+              <td>1 个八位字节</td>
+              <td>0x1 - 启用特定于客户的功能<br />
+                0x2 - 将 IRK 添加到列表中<br />
+                0x3 - 从列表中移除 IRK<br />
+                0x4 - 清除 IRK 列表<br />
+                0x5 - 读取 IRK 列表条目</td>
+            </tr>
+          </tbody></table>
+
+          <p>系统将针对此命令生成一个命令完成事件。</p>
+
+          <table>
+            <tbody><tr>
+              <th>返回参数</th>
+              <th>大小</th>
+              <th>用途</th>
+            </tr>
+            <tr>
+              <td><code>Status</code></td>
+              <td>1 个八位字节</td>
+              <td>命令完成状态</td>
+            </tr>
+            <tr>
+              <td><code>Event_RPA_offload_opcode</code></td>
+              <td>1 个八位字节</td>
+              <td>0x1 - 启用特定于客户的功能<br />
+                0x2 - 将 IRK 添加到列表中<br />
+                0x3 - 从列表中移除 IRK<br />
+                0x4 - 清除 IRK 列表<br />
+                0x5 - 读取 IRK 列表条目</td>
+            </tr>
+          </tbody></table>
+
+          <h4 id="le_rpa_offload-enable_cust_specific_sub_command">LE_RPA_offload：Enable_cust_specific_sub_Command</h4>
+            <p>子 OCF：0x01</p>
+
+            <table>
+              <tbody><tr>
+                <th>子命令参数</th>
+                <th>大小</th>
+                <th>用途</th>
+              </tr>
+              <tr>
+                <td><code>enable_customer_specific_feature_set</code></td>
+                <td>1 个八位字节</td>
+                <td>0x01 - 启用分流 RPA 功能<br />
+                  0x00 - 停用分流 RPA 功能</td>
+              </tr>
+            </tbody></table>
+
+            <p>RPA 分流需要由主机根据芯片功能启用。请参阅 <code>LE_Get_Vendor_Capabilities_Command</code>。每个芯片在固件中可以具有不同的 <code>max_irk_list_sz</code>。</p>
+
+            <p>系统将针对此命令生成一个命令完成事件。
+            </p>
+
+            <table>
+              <tbody><tr>
+                <th>返回参数</th>
+                <th>大小</th>
+                <th>用途</th>
+              </tr>
+              <tr>
+                <td><code>Status</code></td>
+                <td>1 个八位字节</td>
+                <td>命令完成状态</td>
+              </tr>
+              <tr>
+                <td><code>Event_cust_specific_feature_opcode</code></td>
+                <td>1 个八位字节</td>
+                <td>0x01 [启用特定于客户的功能]</td>
+              </tr>
+            </tbody></table>
+
+          <h4 id="le_rpa_offload-add_irk_to_list_sub_command">LE_RPA_offload：Add_IRK_to_list_sub_Command</h4>
+            <p>子 OCF：0x02</p>
+            <table>
+              <tbody><tr>
+                <th>子命令参数</th>
+                <th>大小</th>
+                <th>用途</th>
+              </tr>
+              <tr>
+                <td><code>LE_IRK</code></td>
+                <td>16 个八位字节</td>
+                <td>LE IRK（第 1 个字节 LSB）</td>
+              </tr>
+              <tr>
+                <td><code>Address_Type</code></td>
+                <td>1 个八位字节</td>
+                <td>0：公开地址<br />
+                1：随机地址</td>
+              </tr>
+              <tr>
+                <td><code>LE_Device_Address</code></td>
+                <td>6 个八位字节</td>
+                <td>与 IRK 相关联的公开地址或随机地址（第 1 个字节 LSB）</td>
+              </tr>
+            </tbody></table>
+
+            <p>系统将针对此命令生成一个命令完成事件。</p>
+
+            <table>
+              <tbody><tr>
+                <th>返回参数</th>
+                <th>大小</th>
+                <th>用途</th>
+              </tr>
+              <tr>
+                <td><code>Status</code></td>
+                <td>1 个八位字节</td>
+                <td>命令完成状态</td>
+              </tr>
+              <tr>
+                <td><code>Event_cust_specific_feature_opcode</code></td>
+                <td>1 个八位字节</td>
+                <td>0x02 [将 IRK 添加到列表中]</td>
+              </tr>
+              <tr>
+                <td><code>LE_IrkList_AvailableSpaces</code></td>
+                <td>1 个八位字节</td>
+                <td>完成当前操作后可用的 IRL 列表条目</td>
+              </tr>
+            </tbody></table>
+
+          <h4 id="le_rpa_offload-remove_irk_to_list_sub_command">LE_RPA_offload：Remove_IRK_to_list_sub_Command</h4>
+            <p>子 OCF：0x03</p>
+
+            <table>
+              <tbody><tr>
+                <th>子命令参数</th>
+                <th>大小</th>
+                <th>用途</th>
+              </tr>
+              <tr>
+                <td><code>Address_Type</code></td>
+                <td>1 个八位字节</td>
+                <td>0：公开地址<br />
+                  1：随机地址</td>
+              </tr>
+              <tr>
+                <td><code>LE_Device_Address</code></td>
+                <td>6 个八位字节</td>
+                <td>与 IRK 相关联的公开地址或随机地址</td>
+              </tr>
+            </tbody></table>
+
+            <p>系统将针对此命令生成一个命令完成事件。</p>
+
+            <table>
+              <tbody><tr>
+                <th>返回参数</th>
+                <th>大小</th>
+                <th>用途</th>
+              </tr>
+              <tr>
+                <td><code>Status</code></td>
+                <td>1 个八位字节</td>
+                <td>命令完成状态</td>
+              </tr>
+              <tr>
+                <td><code>Event_cust_specific_feature_opcode</code></td>
+                <td>1 个八位字节</td>
+                <td>0x03 [从列表中移除 IRK]</td>
+              </tr>
+              <tr>
+                <td><code>LE_IrkList_AvailableSpaces</code></td>
+                <td>1 个八位字节</td>
+                <td>完成当前操作后可用的 IRL 列表条目</td>
+              </tr>
+            </tbody></table>
+
+          <h4 id="le_rpa_offload-clear_irk_list_sub_command">LE_RPA_offload：Clear_IRK_list_sub_Command</h4>
+            <p>子 OCF：0x04</p>
+            <table>
+              <tbody><tr>
+                <th>子命令参数</th>
+                <th>大小</th>
+                <th>用途</th>
+              </tr>
+              <tr>
+                <td>无</td>
+                <td></td>
+                <td></td>
+              </tr>
+            </tbody></table>
+
+            <p>系统将针对此命令生成一个命令完成事件。</p>
+
+            <table>
+              <tbody><tr>
+                <th>返回参数</th>
+                <th>大小</th>
+                <th>用途</th>
+              </tr>
+              <tr>
+                <td><code>Status</code></td>
+                <td>1 个八位字节</td>
+                <td>命令完成状态</td>
+              </tr>
+              <tr>
+                <td><code>Event_cust_specific_feature_opcode</code></td>
+                <td>1 个八位字节</td>
+                <td>0x04 [清除 IRK 列表]</td>
+              </tr>
+              <tr>
+                <td><code>LE_IrkList_AvailableSpaces</code></td>
+                <td>1 个八位字节</td>
+                <td>完成当前操作 [<code>max_irk_list_sz]</code> 后可用的 IRL 列表条目</td>
+              </tr>
+            </tbody></table>
+
+          <h4 id="le_rpa_offload-read_irk_list_sub_command">LE_RPA_offload：Read_IRK_list_sub_Command</h4>
+            <p>子 OCF：0x05</p>
+
+            <table>
+              <tbody><tr>
+                <th>子命令参数</th>
+                <th>大小</th>
+                <th>用途</th>
+              </tr>
+              <tr>
+                <td><code>LE_read_IRK_list_entry-index</code></td>
+                <td>1 个八位字节</td>
+                <td>IRK 列表 [0, <code>max_irk_list_sz-1]</code> 的索引</td>
+              </tr>
+            </tbody></table>
+
+            <p>系统将针对此命令生成一个命令完成事件。
+            </p>
+
+            <table>
+              <tbody><tr>
+                <th>返回参数</th>
+                <th>大小</th>
+                <th>用途</th>
+              </tr>
+              <tr>
+                <td><code>Status</code></td>
+                <td>1 个八位字节</td>
+                <td>命令完成状态</td>
+              </tr>
+              <tr>
+                <td><code>Event_cust_specific_feature_opcode</code></td>
+                <td>1 个八位字节</td>
+                <td>0x05 [读取 IRK 列表条目]</td>
+              </tr>
+              <tr>
+                <td><code>LE_Read_IRK_List_entry</code></td>
+                <td>1 个八位字节</td>
+                <td>主机想要读回的 IRK 索引（IRK 列表的最大大小为 32）</td>
+              </tr>
+              <tr>
+                <td><code>LE_IRK</code></td>
+                <td>16 个八位字节</td>
+                <td>IRK 值</td>
+            </tr>
+            <tr>
+              <td><code>Address_Type</code></td>
+              <td>1 个八位字节</td>
+              <td>0：公开地址<br />
+                1：随机地址</td>
+            </tr>
+            <tr>
+              <td><code>LE_Device_Address</code></td>
+              <td>6 个八位字节</td>
+              <td>与 IRK 相关联的公开地址或随机地址</td>
+            </tr>
+            <tr>
+              <td><code>LE_Resolved_Private_Address</code></td>
+              <td>6 个八位字节</td>
+              <td>此 IRK 的当前已解析的可解析私有地址</td>
+            </tr>
+            </tbody></table>
+
+      <h2 id="batching-of-scan-results">批处理扫描结果</h2>
+        <p>我们的一个设计目标是改善蓝牙 LE 扫描响应事件通知传送给主机的方式，从而节省主机电量。</p>
+
+        <p>通过降低控制器通知主机应用处理器扫描结果的频率，主机应用处理器可以更长时间保持在闲置/休眠状态。这会降低主机功耗。<code>LE_Get_Vendor_Capabilities_Command</code> 的返回参数 <code>total_scan_results_storage</code> 表示芯片最多可存储多少扫描结果。</p>
+
+        <p>此功能重点关注蓝牙控制器中 LE 扫描结果存储设备的管理和配置。该存储设备用于暂时批处理广告数据以及扫描由控制器接收以供稍后传送到主机的数据和元数据。</p>
+
+        <p>固件应支持可以同时进行的两类批处理：</p>
+
+        <ul>
+          <li>截断。包含以下信息元素：{MAC, TX Power, RSSI, Timestamp}</li>
+          <li>完整。包含以下信息元素：{MAC, TX Power, RSSI, Timestamp, Adv Data, Scan Response}</li>
+        </ul>
+
+        <h3 id="le_batch_scan_command">LE_Batch_Scan_Command</h3>
+          <p>OCF：0x156</p>
+
+          <table>
+            <tbody><tr>
+              <th>命令参数</th>
+              <th>大小</th>
+              <th>用途</th>
+            </tr>
+            <tr>
+              <td><code>Batch_Scan_opcode</code></td>
+              <td>1 个八位字节</td>
+              <td>0x1 - 启用特定于客户的功能<br />
+                0x2 - 设置批量扫描存储设备参数<br />
+                0x3 - 设置批量扫描参数<br />
+                0x4 - 读取批量扫描结果参数</td>
+            </tr>
+          </tbody></table>
+
+          <p>系统将针对此命令生成一个命令完成事件。启用特定于客户的功能不会启动扫描。</p>
+
+          <table>
+            <tbody><tr>
+              <th>返回参数</th>
+              <th>大小</th>
+              <th>用途</th>
+            </tr>
+            <tr>
+              <td><code>Status</code></td>
+              <td>1 个八位字节</td>
+              <td>命令完成状态</td>
+            </tr>
+            <tr>
+              <td><code>Batch_Scan_opcode</code></td>
+              <td>1 个八位字节</td>
+              <td>0x1 - 启用特定于客户的功能<br />
+                0x2 - 设置批量扫描存储设备参数<br />
+                0x3 - 设置批量扫描参数<br />
+                0x4 - 读取批量扫描结果参数</td>
+            </tr>
+          </tbody></table>
+
+          <h4 id="le_batch_scan_command-enable-customer-specific-feature">
+            LE_Batch_Scan_Command：启用特定于客户的功能</h4>
+            <p>子 OCF：0x01</p>
+            <table>
+              <tbody><tr>
+                <th>子命令参数</th>
+                <th>大小</th>
+                <th>用途</th>
+              </tr>
+              <tr>
+                <td><code>enable_customer_specific_feature_set</code></td>
+                <td>1 个八位字节</td>
+                <td>0x01 - 启用批量扫描功能<br />
+                  0x00 - 停用批量扫描功能</td>
+              </tr>
+            </tbody></table>
+
+            <p>系统将针对此命令生成一个命令完成事件。</p>
+            <table>
+              <tbody><tr>
+                <th>返回参数</th>
+                <th>大小</th>
+                <th>用途</th>
+              </tr>
+              <tr>
+                <td><code>Status</code></td>
+                <td>1 个八位字节</td>
+                <td>命令完成状态</td>
+              </tr>
+              <tr>
+                <td><code>Batch_Scan_opcode</code></td>
+                <td>1 个八位字节</td>
+                <td>0x1 - 启用特定于客户的功能<br />
+                  0x2 - 设置批量扫描存储设备参数<br />
+                  0x3 - 设置批量扫描参数<br />
+                  0x4 - 读取批量扫描结果参数</td>
+              </tr>
+            </tbody></table>
+
+          <h4 id="le_batch_scan_command-set-batch-scan-storage-param-subcommand">
+            LE_Batch_Scan_Command：设置批量扫描存储设备参数子命令</h4>
+            <p>子 OCF：0x02</p>
+            <table>
+              <tbody><tr>
+                <th>子命令参数</th>
+                <th>大小</th>
+                <th>用途</th>
+              </tr>
+              <tr>
+                <td><code>Batch_Scan_Full_Max</code></td>
+                <td>1 个八位字节</td>
+                <td>分配到完整样式的最大存储空间（以 ％ 形式表示）<br />
+                  [范围：0-100]</td>
+              </tr>
+              <tr>
+                <td><code>Batch_Scan_Truncated_Max</code></td>
+                <td>1 个八位字节</td>
+                <td>分配到截断样式的最大存储空间（以 ％ 形式表示）<br />
+                [范围：0-100]</td>
+              </tr>
+              <tr>
+                <td><code>Batch_Scan_Notify_Threshold</code></td>
+                <td>1 个八位字节</td>
+                <td>单个存储池的设置通知等级（以 ％ 形式表示）
+                <br />[范围：0-100]<br />
+                设置为 0 会停用通知。
+                系统会生成特定于供应商的 HCI 事件（存储阈值违规子事件）</td>
+              </tr>
+            </tbody></table>
+
+            <p>系统将针对此命令生成一个命令完成事件。</p>
+            <table>
+              <tbody><tr>
+                <th>返回参数</th>
+                <th>大小</th>
+                <th>用途</th>
+              </tr>
+              <tr>
+                <td><code>Status</code></td>
+                <td>1 个八位字节</td>
+                <td>命令完成状态</td>
+              </tr>
+              <tr>
+                <td><code>Batch_scan_opcode</code></td>
+                <td>1 个八位字节</td>
+                <td>0x02 [设置批量扫描参数]</td>
+              </tr>
+            </tbody></table>
+
+          <h4 id="le_batch_scan_command-set-batch-scan-param-subcommand">
+            LE_Batch_Scan_Command：设置批量扫描参数子命令</h4>
+            <p>子 OCF：0x03</p>
+            <table>
+              <tbody><tr>
+                <th>子命令参数</th>
+                <th>大小</th>
+                <th>用途</th>
+              </tr>
+              <tr>
+                <td><code>Batch_Scan_Mode</code></td>
+                <td>1 个八位字节</td>
+                <td>0x00 - 批量扫描已停用<br />
+                  0x01 - 已启用截断模式<br />
+                  0x02 - 已启用完整模式<br />
+                  0x03 - 已启用截断模式和完整模式</td>
+              </tr>
+              <tr>
+                <td><code>Duty_cycle_scan_window</code></td>
+                <td>4 个八位字节</td>
+                <td>批量扫描的扫描时间（插槽数）</td>
+              </tr>
+              <tr>
+                <td><code>Duty_cyle_scan_interval</code></td>
+                <td>4 个八位字节</td>
+                <td>批量扫描的间隔时间（插槽数）</td>
+              </tr>
+              <tr>
+                <td><code>own_address_type</code></td>
+                <td>1 个八位字节</td>
+                <td>0x00 - 公共设备地址<br />
+                  0x01 - 随机设备地址</td>
+              </tr>
+              <tr>
+                <td><code>Batch_scan_Discard_Rule</code></td>
+                <td>1 个八位字节</td>
+                <td>0 - 舍弃最早的广告<br />
+                  1 - 舍弃 RSSI 最弱的广告</td>
+              </tr>
+            </tbody></table>
+
+            <p>此子命令会开始批量扫描（如果启用）。在截断扫描中，结果以截断形式存储，其中截断样式的唯一密钥 = {<code>BD_ADDR,</code> scan_interval}。这意味着，系统针对每个扫描间隔只记录一个 <code>BD_ADDR will</code>。针对截断模式保存的记录如下：{<code>BD_ADDR</code>, Tx Power, RSSI, Timestamp}</p>
+
+            <p>如果启用完整模式，系统会使用主动扫描并记录扫描响应。完整样式的唯一密钥 = {MAC, Ad packet}，与扫描间隔无关。针对完整模式保存的记录如下：{<code>BD_ADDR</code>, Tx Power, RSSI, Timestamp, Ad packet, Scan Response}。在完整样式下，如果在不同的扫描间隔多次看到同一个广告包，则仅记录一次。不过，在截断模式下，重要的是 <code>BA_ADDR</code> 在不同扫描间隔的显示情况（每个扫描间隔显示一次）。RSSI 是扫描间隔内唯一广告的所有重复项的平均值。
+            </p>
+
+            <p>系统将针对此命令生成一个命令完成事件。</p>
+            <table>
+              <tbody><tr>
+                <th>返回参数</th>
+                <th>大小</th>
+                <th>用途</th>
+              </tr>
+              <tr>
+                <td><code>Status</code></td>
+                <td>1 个八位字节</td>
+                <td>命令完成状态</td>
+              </tr>
+              <tr>
+                <td><code>Batch_scan_opcode</code></td>
+                <td>1 个八位字节</td>
+                <td>0x03 [设置批量扫描参数]</td>
+              </tr>
+            </tbody></table>
+
+          <h4 id="le_batch_scan_command-read-batch-scan-results-sub-command">
+LE_Batch_Scan_Command：读取批量扫描结果子命令</h4>
+            <p>子 OCF：0x04</p>
+            <table>
+              <tbody><tr>
+                <th>子命令参数</th>
+                <th>大小</th>
+                <th>用途</th>
+              </tr>
+              <tr>
+                <td><code>Batch_Scan_Data_read</code></td>
+                <td>1 个八位字节</td>
+                <td>0x01 - 截断模式数据<br />
+                  0x02 - 完整模式数据</td>
+              </tr>
+            </tbody></table>
+
+            <p>系统将针对此命令生成一个命令完成事件。
+            当主机发出此命令时，控制器中的结果可能无法完全放入一个命令完成事件。主机会反复发出此命令，直到命令完成事件中的相应结果显示记录数为 0，这表示控制器没有更多要传输给主机的记录。每个命令完成事件可以只包含一种数据类型（完整或截断）的多个记录。</p>
+
+            <p>控制器和主机时间参考不同步。时间戳的单位为 50 毫秒。时间戳的值取决于主机指定 <code>Read_Batch_Scan_Results_Sub_cmd</code> 的时间。如果固件中的命令到达时间为 <code>T_c</code>，则在固件中截取时间戳的实际时间为 <code>T_fw</code>。报告时间将是 (<code>T_c</code> - <code>T_fw</code>)。
+              <code>T_c</code> 和 <code>T_fw </code>在固件时域中。这样一来，主机能够计算事件发生的时间。</p>
+
+            <table>
+              <tbody><tr>
+                <th>返回参数</th>
+                <th>大小</th>
+                <th>用途</th>
+              </tr>
+              <tr>
+                <td><code>Status</code></td>
+                <td>1 个八位字节</td>
+                <td>命令完成状态</td>
+              </tr>
+              <tr>
+                <td><code>Batch_scan_opcode</code></td>
+                <td>1 个八位字节</td>
+                <td>0x03 [设置批量扫描参数]</td>
+              </tr>
+              <tr>
+                <td><code>Batch_Scan_data_read</code></td>
+                <td>1 个八位字节</td>
+                <td>标识格式（截断或完整）</td>
+              </tr>
+              <tr>
+                <td><code>num_of_records</code></td>
+                <td>1 个八位字节</td>
+                <td><code>Batch_Scan_data_read</code> 的记录数</td>
+              </tr>
+              <tr>
+                <td><code>format_of_data</code></td>
+                <td>变量</td>
+                <td><span style="text-decoration:underline;">截断模式：</span><br />
+                  Address[0]：6 个八位字节<br />
+                  Address_Type[0]：1 个八位字节<br />
+                  Tx_Pwr[0]：1 个八位字节<br />
+                  RSSI[0]：1 个八位字节<br />
+                  Timestamp[0]：2 个八位字节<br />
+                  [多个采用上述格式的记录 (<code>num_of_records</code>)]<br />
+                  <br />
+                  <span style="text-decoration:underline;">完整模式：</span><br />
+                  Address[0]：6 个八位字节<br />
+                  Address_Type[0]：1 个八位字节<br />
+                  Tx_Pwr[0]：1 个八位字节<br />
+                  RSSI[0]：1 个八位字节<br />
+                  Timestamp[0]：2 个八位字节<br />
+                  Adv packet_len[0]：1 个八位字节<br />
+                  Adv_packet[0]：Adv_packet_len 个八位字节<br />
+                  Scan_data_resp_len[0]：1 个八位字节<br />
+                  Scan_data_resp[0]：<code>Scan_data_resp </code>个八位字节<br />
+                  [多个采用上述格式的记录 (<code>num_of_records</code>)]</td>
+              </tr>
+            </tbody></table>
+
+      <h2 id="advertising-packet-content-filter">广告包内容过滤器</h2>
+        <p>可借此在控制器中启用/停用/设置广告包内容过滤器 (APCF)。</p>
+
+        <h3 id="le_apcf_command">LE_APCF_Command</h3>
+          <p>OCF：0x157</p>
+          <table>
+            <tbody><tr>
+              <th>命令参数</th>
+              <th>大小</th>
+              <th>用途</th>
+            </tr>
+            <tr>
+              <td><code>APCF_opcode</code></td>
+              <td>1 个八位字节</td>
+              <td>0x00 - APCF 启用<br />
+                0x01 - APCF 设置过滤参数<br />
+                0x02 - APCF 广播地址<br />
+                0x03 - APCF 服务 UUID<br />
+                0x04 - APCF 服务请求 UUID<br />
+                0x05 - APCF 本地名称<br />
+                0x06 - APCF 制造商数据<br />
+                0x07 - APCF 服务数据</td>
+            </tr>
+          </tbody></table>
+          <p>系统将针对此命令生成一个命令完成事件。</p>
+          <table>
+            <tbody><tr>
+              <th>返回参数</th>
+              <th>大小</th>
+              <th>用途</th>
+            </tr>
+            <tr>
+              <td><code>Status</code></td>
+              <td>1 个八位字节</td>
+              <td>返回状态</td>
+            </tr>
+            <tr>
+              <td><code>APCF_opcode</code></td>
+              <td>1 个八位字节</td>
+              <td>0x00 - APCF 启用<br />
+                0x01 - APCF 设置过滤参数<br />
+                0x02 - APCF 广播地址<br />
+                0x03 - APCF 服务 UUID<br />
+                0x04 - APCF 服务请求 UUID<br />
+                0x05 - APCF 本地名称<br />
+                0x06 - APCF 制造商数据<br />
+                0x07 - APCF 服务数据</td>
+            </tr>
+          </tbody></table>
+
+          <h4 id="le_apcf_command-enable_sub_cmd"> LE_APCF_Command：Enable_sub_cmd</h4>
+            <p>子 OCF：0x00</p>
+            <table>
+              <tbody><tr>
+                <th>子命令参数</th>
+                <th>大小</th>
+                <th>用途</th>
+              </tr>
+              <tr>
+                <td><code>APCF_enable</code></td>
+                <td>1 个八位字节</td>
+                <td>0x01 - 启用 APCF 功能<br />
+                  0x00 - 停用 APCF 功能</td>
+              </tr>
+            </tbody></table>
+            <p>系统将针对此命令生成一个命令完成事件。</p>
+            <table>
+              <tbody><tr>
+                <th>返回参数</th>
+                <th>大小</th>
+                <th>用途</th>
+              </tr>
+              <tr>
+                <td><code>Status</code></td>
+                <td>1 个八位字节</td>
+                <td>命令完成状态</td>
+              </tr>
+              <tr>
+                <td><code>APCF_opcode</code></td>
+                <td>1 个八位字节</td>
+                <td>0x0 - APCF 启用</td>
+              </tr>
+              <tr>
+                <td><code>APCF_Enable</code></td>
+                <td>1 个八位字节</td>
+                <td>通过 <code>APCF_enable</code> 设置启用/停用</td>
+              </tr>
+            </tbody></table>
+
+          <h4 id="le_apcf_command-set_filtering_parameters_sub_cmd">
+              LE_APCF_Command：set_filtering_parameters_sub_cmd</h4>
+            <p>该子命令用于添加或删除芯片过滤的某个过滤器规范或清除过滤器列表。</p>
+            <p>子 OCF：0x01</p>
+            <table>
+              <tbody><tr>
+                <th>子命令参数</th>
+                <th>大小</th>
+                <th>用途</th>
+              </tr>
+              <tr>
+                <td><code>APCF_Action</code></td>
+                <td>1 个八位字节</td>
+                <td>0x00 - 添加<br />
+                  0x01 - 删除<br />
+                  0x02 - 清除<br />执行删除操作会清除特定过滤器以及其他表中的相关功能条目。<br />
+                  执行清除操作会清除所有过滤器以及其他表中的相关条目。</td>
+              </tr>
+              <tr>
+                <td><code>APCF_Filter_Index</code></td>
+                <td>1 个八位字节</td>
+                <td>过滤器索引 (0, <code>max_filter-1</code>)</td>
+              </tr>
+              <tr>
+                <td><code>APCF_Feature_Selection</code></td>
+                <td>2 个八位字节</td>
+                <td>所选功能的位掩码：<br />
+                  位 0：设为启用广播地址过滤器<br />
+                  位 1：设为启用服务数据更改过滤器<br />
+                  位 2：设为启用服务 UUID 检查<br />
+                  位 3：设为启用服务请求 UUID 检查<br />
+                  位 4：设为启用本地名称检查<br />
+                  位 5：设为启用制造商数据检查<br />
+                  位 6：设为启用服务数据检查</td>
+              </tr>
+              <tr>
+                <td><code>APCF_List_Logic_Type</code></td>
+                <td>2 个八位字节</td>
+                <td>针对 <code>APCF_Feature_Selection</code> 中指定的每个功能选项（按位位置）的逻辑操作。
+                  <br />
+                  仅在启用功能时有效。<br />
+                  位位置值：<br />
+                  0：OR<br />
+                  1：AND<br />
+                  如果选择“AND”逻辑，则广告包仅在其包含列表中的所有条目时传递过滤器。<br />
+                  如果选择“OR”逻辑，则广告包只要包含列表中的任何条目，就会传递过滤器。</td>
+              </tr>
+              <tr>
+                <td><code>APCF_Filter_Logic_Type</code></td>
+                <td>1 个八位字节</td>
+                <td>0x00：OR<br />
+                  0x01：AND<br />
+                  注意：<code>APCF_Feature_Selection</code> 的前三个字段的类型为“不适用”，这始终是“AND”逻辑。它们仅适用于 <code>APCF_Feature_Selection</code> 的四个字段（位 3 - 位 6）</td>
+              </tr>
+              <tr>
+                <td><code>rssi_high_thresh</code></td>
+                <td>1 个八位字节</td>
+                <td>[以 dBm 为单位]<br />只有该信号高于 RSSI 高阈值时，广告主才会被视为可见。否则，固件必须表现得就像从未见过一样。</td>
+              </tr>
+              <tr>
+                <td><code>delivery_mode</code></td>
+                <td>1 个八位字节</td>
+                <td>0x00 - <code>immediate</code><br />
+                  0x01 - <code>on_found</code><br />
+                  0x02 - <code>batched</code></td>
+              </tr>
+              <tr>
+                <td><code>onfound_timeout</code></td>
+                <td>2 个八位字节</td>
+                <td>仅当 <code>delivery_mode</code> 为 <code>on_found</code> 时有效<br />
+                  [以毫秒为单位]<br />
+                  固件在报告之前停留和收集其他广告所用的时间。</td>
+              </tr>
+              <tr>
+                <td><code>onfound_timeout_cnt</code></td>
+                <td>1 个八位字节</td>
+                <td>仅当 <code>delivery_mode</code> 为 <code>on_found</code> 时有效<br />
+                  [计数]<br />
+                  如果 <code>onFound</code> 中的广告在 <code>onfound_timeout</code> 期间停留在固件中，则会收集一些广告并检查计数。
+                  如果计数超过 <code>onfound_timeout_cnt</code>，之后会立即报告为 <code>OnFound</code>。</td>
+              </tr>
+              <tr>
+                <td><code>rssi_low_thresh</code></td>
+                <td>1 个八位字节</td> <td>仅当 <code>delivery_mode</code> 为 <code>on_found</code> 时有效<br />[以 dBm 为单位]<br />
+                  如果已接收包的 RSSI 低于 RSSI 低阈值，则视为未看到该广告主包。</td>
+              </tr>
+              <tr>
+                <td><code>onlost_timeout</code></td>
+                <td>2 个八位字节</td>
+                <td>仅当 <code>delivery_mode</code> 为 <code>on_found</code> 时有效<br />
+                  [以毫秒为单位]<br />
+                  如果系统在发现某个广告后，在 <code>lost_timeout</code> 期间未连续看到该广告，则会立即将其报告为已丢失。</td>
+              </tr>
+              <tr>
+                <td><code>num_of_tracking_entries</code></td>
+                <td>2 个八位字节</td>
+                <td>仅当 <code>delivery_mode</code> 为 <code>on_found</code> 时有效<br />
+                  [计数]<br />
+                  根据过滤器跟踪的广告主的总数。</td>
+              </tr>
+            </tbody></table>
+
+            <p>RSSI 值必须使用二进制补码来表示负值。</p>
+
+            <p>主机应该能够配置多个 <code>APCF_Application_Address_type</code> 设置为 0x02 的过滤器（适用于所有广播地址），以管理各种过滤器组合。</p>
+
+            <p>过滤、批处理和报告是相互关联的概念。
+            每个广告及相关扫描响应都必须逐个通过所有过滤器。因此，生成的操作 (<code>delivery_mode</code>) 与过滤紧密关联。
+            传送模式如下所示：<code>report_immediately</code>、<code>batch</code> 和 <code>onFound</code>。<code>OnLost</code> 值与 <code>OnFound</code> 相关，具体体现在，该值丢失后，会紧跟 <code>OnFound</code>。</p>
+
+            <p>以下处理流程介绍了概念模式：</p>
+            <img src="images/bt_filter_batch_report.png"/>
+            <p>收到广告（或扫描响应）帧时，该帧会按序列顺序应用到所有过滤器。广告可能导致系统根据一个过滤器立即进行报告并因其他过滤器操作立即进行批处理。</p>
+
+            <p>RSSI 级别阈值（高和低）能够控制帧何时可见以进行过滤器处理，即使控制器收到有效的包也是如此。在传送模式设置为“立即”或“批处理”时，系统会考虑某个帧的 RSSI，以进一步进行控制器处理。不同的应用需要不同的报告和批处理行为。这样一来，多个应用能够同时直接报告和/或批处理固件中的结果。例如，一个应用已启用批量扫描，之后另一个应用发起常规 LE 扫描。在发起批量扫描之前，框架/应用会设置相应的过滤器。之后，当第二个应用发起常规扫描时，之前的批处理操作将继续。不过，由于常规扫描，因此这类似于从概念上添加空过滤器（以及所有现有过滤器）和 LE 扫描命令。处于活动状态时，LE 扫描命令参数的优先级更高。停用常规 LE 扫描后，控制器将还原到之前的批量扫描（如果存在）。</p>
+
+            <p><code>OnFound</code> 传送模式取决于配置的过滤器。触发过滤器操作成功的组合被认为是跟踪 <code>onLost</code> 的实体。相应的事件是 LE 广告跟踪子事件。</p>
+
+            <p>过滤器的 <code>OnFound/OnLost</code> 转换（如果启用）将如下所示：</p>
+            <img src="images/bt_onfound_onlost.png"/>
+
+            <p>
+            系统将针对此命令生成一个命令完成事件。</p>
+
+            <table>
+              <tbody><tr>
+                <th>返回参数</th>
+                <th>大小</th>
+                <th>用途</th>
+              </tr>
+              <tr>
+                <td><code>Status</code></td>
+                <td>1 个八位字节</td>
+                <td>命令完成状态</td>
+              </tr>
+              <tr>
+                <td><code>APCF_opcode</code></td>
+                <td>1 个八位字节</td>
+                <td>0x02 - APCF 设置过滤参数</td>
+              </tr>
+              <tr>
+                <td><code>APCF_Action</code></td>
+                <td>1 个八位字节</td>
+                <td>回声返回命令的 <code>APCF_Action</code></td>
+              </tr>
+              <tr>
+                <td><code>APCF_AvailableSpaces</code></td>
+                <td>1 个八位字节</td>
+                <td>过滤器表中的可用条目数</td>
+              </tr>
+            </tbody></table>
+
+          <h4 id="le_apcf_command-broadcast_address_sub_cmd">LE_APCF_Command：broadcast_address_sub_cmd</h4>
+
+            <p>该子命令用于添加或删除芯片过滤的某个广告主地址或清除广告主地址列表。</p>
+
+            <p>子 OCF：0x02</p>
+            <table>
+              <tbody><tr>
+                <th>子命令参数</th>
+                <th>大小</th>
+                <th>用途</th>
+              </tr>
+              <tr>
+                <td><code>APCF_Action</code></td>
+                <td>1 个八位字节</td>
+                <td>0x00 - 添加<br />
+                  0x01 - 删除<br />
+                  0x02 - 清除<br />
+                  执行删除操作会删除指定过滤器中的指定广播地址。<br />
+                  执行清除操作会清除指定过滤器中的所有广播地址。</td>
+              </tr>
+              <tr>
+                <td><code>APCF_Filter_Index</code></td>
+                <td>1 个八位字节</td>
+                <td>过滤器索引 (0, <code>max_filter-1</code>)</td>
+              </tr>
+              <tr>
+                <td><code>APCF_Broadcaster_Address</code></td>
+                <td>6 个八位字节</td>
+                <td>要添加到广播地址列表或从中删除的 6 字节设备地址</td>
+              </tr>
+              <tr>
+                <td><code>APCF_Application_Address_type</code></td>
+                <td>1 个八位字节</td>
+                <td>0x00：公开<br />
+                  0x01：随机<br />
+                  0x02：不适用（地址类型不适用）</td>
+              </tr>
+            </tbody></table>
+
+            <p>系统将针对此命令生成一个命令完成事件。</p>
+            <table>
+              <tbody><tr>
+                <th>返回参数</th>
+                <th>大小</th>
+                <th>用途</th>
+              </tr>
+              <tr>
+                <td><code>Status</code></td>
+                <td>1 个八位字节</td>
+                <td>命令完成状态</td>
+              </tr>
+              <tr>
+                <td><code>APCF_opcode</code></td>
+                <td>1 个八位字节</td>
+                <td>0x02 - APCF 广播地址</td>
+              </tr>
+              <tr>
+                <td><code>APCF_Action</code></td>
+                <td>1 个八位字节</td>
+                <td>回声返回命令的 <code>APCF_Action</code></td>
+              </tr>
+              <tr>
+                <td><code>APCF_AvailableSpaces</code></td>
+                <td>1 个八位字节</td>
+                <td>广播地址表中仍可用的空闲条目数</td>
+              </tr>
+            </tbody></table>
+
+          <h4 id="le_apcf_command-service_uuid_sub_cmd">LE_APCF_Command：service_uuid_sub_cmd</h4>
+            <p>该子命令用于添加或删除芯片过滤的某个服务 UUID 或清除服务 UUID 列表。</p>
+            <p>子 OCF：0x03</p>
+            <table>
+              <tbody><tr>
+                <th>子命令参数</th>
+                <th>大小</th>
+                <th>用途</th>
+              </tr>
+              <tr>
+                <td><code>APCF_Action</code></td>
+                <td>1 个八位字节</td>
+                <td>0x00 - 添加<br />
+                  0x01 - 删除<br />
+                  0x02 - 清除<br />
+                  执行删除操作会删除指定过滤器中的指定服务 UUID。<br />
+                  执行清除操作会清除指定过滤器中的所有服务 UUID。</td>
+              </tr>
+              <tr>
+                <td><code>APCF_Filter_Index</code></td>
+                <td>1 个八位字节</td>
+                <td>过滤器索引 (0, <code>max_filter</code>-1)</td>
+              </tr>
+              <tr>
+                <td><code>APCF_UUID</code></td>
+                <td>2 个、4 个、16 个八位字节</td>
+                <td>要添加到列表或从中删除的服务 UUID（16 位、32 位或 128 位）。</td>
+              </tr>
+              <tr>
+                <td><code>APCF_UUID_MASK</code></td>
+                <td>2 个、4 个、16 个八位字节</td>
+                <td>要添加到列表中的服务 UUID 掩码（16 位、32 位或 128 位）。其长度应与 <code>APCF_UUID.</code> 相同。</td>
+              </tr>
+            </tbody></table>
+
+          <p>系统将针对此命令生成一个命令完成事件。</p>
+            <table>
+              <tbody><tr>
+                <th>返回参数</th>
+                <th>大小</th>
+                <th>用途</th>
+              </tr>
+              <tr>
+                <td><code>Status</code></td>
+                <td>1 个八位字节</td>
+                <td>命令完成状态</td>
+              </tr>
+              <tr>
+                <td><code>APCF_opcode</code></td>
+                <td>1 个八位字节</td>
+                <td>0x03 - APCF 服务 UUID</td>
+              </tr>
+              <tr>
+                <td><code>APCF_Action</code></td>
+                <td>1 个八位字节</td>
+                <td>回声返回命令的 <code>APCF_Action</code></td>
+              </tr>
+              <tr>
+                <td><code>APCF_AvailableSpaces</code></td>
+                <td>1 个八位字节</td>
+                <td>服务 UUID 表中仍可用的空闲条目数</td>
+              </tr>
+            </tbody></table>
+
+          <h4 id="le_apcf_command-solicitation_uuid_sub_cmd">LE_APCF_Command：solicitation_uuid_sub_cmd</h4>
+          <p>该子命令用于添加或删除芯片过滤的某个请求 UUID 或清除请求 UUID 列表。</p>
+            <p>子 OCF：0x04</p>
+            <table>
+              <tbody><tr>
+                <th>子命令参数</th>
+                <th>大小</th>
+                <th>用途</th>
+              </tr>
+              <tr>
+                <td><code>APCF_Action</code></td>
+                <td>1 个八位字节</td>
+                <td>0x00 - 添加<br />
+                  0x01 - 删除<br />
+                  0x02 - 清除<br />
+                  执行删除操作会删除指定过滤器中的请求 UUID 地址。<br />
+                  执行清除操作会清除指定过滤器中的所有请求 UUID。</td>
+              </tr>
+              <tr>
+                <td><code>APCF_Filter_Index</code></td>
+                <td>1 个八位字节</td>
+                <td>过滤器索引 (0, <code>max_filter</code>-1)</td>
+              </tr>
+              <tr>
+                <td><code>APCF_UUID</code></td>
+                <td>2 个、4 个、16 个八位字节</td>
+                <td>要添加到列表或从中删除的请求 UUID（16 位、32 位或 128 位）。</td>
+              </tr>
+              <tr>
+                <td><code>APCF_UUID_MASK</code></td>
+                <td>2 个、4 个、16 个八位字节</td>
+                <td>要添加到列表中的请求 UUID 掩码（16 位、32 位或 128 位）。其长度应与 <code>APCF_UUID</code> 相同。</td>
+              </tr>
+            </tbody></table>
+            <p>系统将针对此命令生成一个命令完成事件。</p>
+            <table>
+              <tbody><tr>
+                <th>返回参数</th>
+                <th>大小</th>
+                <th>用途</th>
+              </tr>
+              <tr>
+                <td><code>Status</code></td>
+                <td>1 个八位字节</td>
+                <td>命令完成状态</td>
+              </tr>
+              <tr>
+                <td><code>APCF_opcode</code></td>
+                <td>1 个八位字节</td>
+                <td>0x04 - APCF 请求 UUID</td>
+              </tr>
+              <tr>
+                <td><code>APCF_Action</code></td>
+                <td>1 个八位字节</td>
+                <td>回声返回命令的 <code>APCF_Action</code></td>
+              </tr>
+              <tr>
+                <td><code>APCF_AvailableSpaces</code></td>
+                <td>1 个八位字节</td>
+                <td>请求 UUID 表中仍可用的空闲条目数</td>
+              </tr>
+            </tbody></table>
+
+          <h4 id="le_apcf_command-local_name_sub_cmd">LE_APCF_Command：local_name_sub_cmd</h4>
+            <p>该子命令用于添加或删除芯片过滤的某个本地名称字符串或清除本地名称字符串列表。</p>
+            <p>子 OCF：0x05</p>
+            <table>
+              <tbody><tr>
+                <th>子命令参数</th>
+                <th>大小</th>
+                <th>用途</th>
+              </tr>
+              <tr>
+                <td><code>APCF_Action</code></td>
+                <td>1 个八位字节</td>
+                <td>0x00 - 添加<br />
+                  0x01 - 删除<br />
+                  0x02 - 清除<br />
+                  执行删除操作会删除指定过滤器中的指定本地名称字符串。<br />
+                  执行清除操作会清除指定过滤器中的所有本地名称字符串。</td>
+              </tr>
+              <tr>
+                <td><code>APCF_Filter_Index</code></td>
+                <td>1 个八位字节</td>
+                <td>过滤器索引 (0, <code>max_filter</code>-1)</td>
+              </tr>
+              <tr>
+                <td><code>APCF_LocName_Mandata_or_SerData</code></td>
+                <td>大小可变</td>
+                <td>本地名称字符串。<br />
+                  <br />
+                  注意：<br />
+                  <ul>
+                    <li>目前本地名称字符串中的字符数上限为 29</li>
+                    <li>执行“清除”操作时不适用 (0x2)</li>
+                  </ul>
+                </td>
+              </tr>
+            </tbody></table>
+            <p>系统将针对此命令生成一个命令完成事件。</p>
+            <table>
+              <tbody><tr>
+                <th>返回参数</th>
+                <th>大小</th>
+                <th>用途</th>
+              </tr>
+              <tr>
+                <td><code>Status</code></td>
+                <td>1 个八位字节</td>
+                <td>命令完成状态</td>
+              </tr>
+              <tr>
+                <td><code>APCF_opcode</code></td>
+                <td>1 个八位字节</td>
+                <td>0x05 - APCF 本地名称</td>
+              </tr>
+              <tr>
+                <td><code>APCF_Action</code></td>
+                <td>1 个八位字节</td>
+                <td>回声返回命令的 <code>APCF_Action</code></td>
+              </tr>
+              <tr>
+                <td><code>APCF_AvailableSpaces</code></td>
+                <td>1 个八位字节</td>
+                <td>本地名称表中仍可用的空闲条目数</td>
+              </tr>
+            </tbody></table>
+
+          <h4 id="le_apcf_command-manf_data_sub_cmd">LE_APCF_Command：manf_data_sub_cmd</h4>
+            <p>该子命令用于添加或删除芯片过滤的某个制造商数据字符串或清除制造商数据字符串列表。</p>
+            <p>子 OCF：0x06</p>
+            <table>
+              <tbody><tr>
+                <th>子命令参数</th>
+                <th>大小</th>
+                <th>用途</th>
+              </tr>
+              <tr>
+                <td><code>APCF_Action</code></td>
+                <td>1 个八位字节</td>
+                <td>0x00 - 添加<br />
+                  0x01 - 删除<br />
+                  0x02 - 清除<br />
+                  执行删除操作会删除指定过滤器中的指定制造商数据字符串。<br />
+                  执行清除操作会清除指定过滤器中的所有制造商数据字符串。</td>
+              </tr>
+              <tr>
+                <td><code>APCF_Filter_Index</code></td>
+                <td>1 个八位字节</td>
+                <td>过滤器索引 (0, <code>max_filter</code>-1)</td>
+              </tr>
+              <tr>
+                <td><code>APCF_LocName_Mandata_or_SerData</code></td>
+                <td>大小可变</td>
+                <td>制造商数据字符串。<br />
+                  <br />
+                  注意：<br />
+                  <ul>
+                    <li>目前本地名称字符串中的字符数上限为 29</li>
+                    <li>执行“清除”操作时不适用 (0x2)</li>
+                  </ul>
+                </td>
+              </tr>
+              <tr>
+                <td><code>APCF_ManData_Mask</code></td>
+                <td>大小可变</td>
+                <td>要添加到列表中的制造商数据掩码。其长度应与 <code>APCF_LocName_or_ManData_or_SerData</code> 相同。</td>
+              </tr>
+            </tbody></table>
+
+            <p>系统将针对此命令生成一个命令完成事件。</p>
+            <table>
+              <tbody><tr>
+                <th>返回参数</th>
+                <th>大小</th>
+                <th>用途</th>
+              </tr>
+              <tr>
+                <td><code>Status</code></td>
+                <td>1 个八位字节</td>
+                <td>命令完成状态</td>
+              </tr>
+              <tr>
+                <td><code>APCF_opcode</code></td>
+                <td>1 个八位字节</td>
+                <td>0x06 - APCF 制造商数据</td>
+              </tr>
+              <tr>
+                <td><code>APCF_Action</code></td>
+                <td>1 个八位字节</td>
+                <td>回声返回命令的 <code>APCF_Action</code></td>
+              </tr>
+              <tr>
+                <td><code>APCF_AvailableSpaces</code></td>
+                <td>1 个八位字节</td>
+                <td>制造商数据表中仍可用的空闲条目数。</td>
+              </tr>
+            </tbody></table>
+
+          <h4 id="le_apcf_command-service_data_sub_cmd">LE_APCF_Command：service_data_sub_cmd</h4>
+            <p>该子命令用于添加或删除芯片过滤的某个服务数据字符串或清除服务数据字符串列表。</p>
+            <p>子 OCF：0x07</p>
+            <table>
+              <tbody><tr>
+                <th>子命令参数</th>
+                <th>大小</th>
+                <th>用途</th>
+              </tr>
+              <tr>
+                <td><code>APCF_Action</code></td>
+                <td>1 个八位字节</td>
+                <td>0x00 - 添加<br />
+                  0x01 - 删除<br />
+                  0x02 - 清除<br />
+                  执行删除操作会删除指定过滤器中的指定服务数据字符串。<br />
+                  执行清除操作会清除指定过滤器中的所有服务数据字符串。</td>
+              </tr>
+              <tr>
+                <td><code>APCF_Filter_Index</code></td>
+                <td>1 个八位字节</td>
+                <td>过滤器索引 (0, <code>max_filter</code>-1)</td>
+              </tr>
+              <tr>
+                <td><code>APCF_LocName_Mandata_or_SerData</code></td>
+                <td>大小可变</td>
+                <td>服务数据字符串。<br />
+                  <br />
+                  注意：<br />
+                  <ul>
+                    <li>目前本地名称字符串中的字符数上限为 29</li>
+                    <li>执行“清除”操作时不适用 (0x2)</li>
+                  </ul>
+                </td>
+              </tr>
+              <tr>
+                  <td><code>APCF_LocName_Mandata_or_SerData_Mask</code></td>
+                  <td>大小可变</td>
+                  <td>要添加到列表中的服务数据掩码。其长度应与 <code>APCF_LocName_or_ManData_or_SerData.</code> 相同。</td>
+              </tr>
+            </tbody></table>
+            <p>系统将针对此命令生成一个命令完成事件。</p>
+            <table>
+              <tbody><tr>
+                <th>返回参数</th>
+                <th>大小</th>
+                <th>用途</th>
+              </tr>
+              <tr>
+                <td><code>Status</code></td>
+                <td>1 个八位字节</td>
+                <td>命令完成状态</td>
+              </tr>
+              <tr>
+                <td><code>APCF_opcode</code></td>
+                <td>1 个八位字节</td>
+                <td>0x07 - APCF 服务数据</td>
+              </tr>
+              <tr>
+                <td><code>APCF_Action</code></td>
+                <td>1 个八位字节</td>
+                <td>回声返回命令的 <code>APCF_Action</code></td>
+              </tr>
+              <tr>
+                <td><code>APCF_AvailableSpaces</code></td>
+                <td>1 个八位字节</td>
+                <td>服务数据表中仍可用的空闲条目数。</td>
+              </tr>
+            </tbody></table>
+
+      <h2 id="controller-activity-and-energy-information-command">控制器活动和功耗信息命令</h2>
+        <p>这些信息的目的是提高主机系统功能，以分析所有组件的总活动，包括 BT 控制器及其宏状态，以及应用和框架中所发生的情况。为此，BT 堆栈和控制器需要提供以下信息：</p>
+        <ul>
+          <li>BT 堆栈：报告该控制器当前的宏操作状态</li>
+          <li>固件：报告总活动和功耗信息</li>
+        </ul>
+        <p>BT 主机堆栈宏状态，具体在用户级确定：</p>
+        <ul>
+          <li>闲置：[page scan, LE advt, inquiry scan]</li>
+          <li>扫描：[paging/inquiry/trying to connect]</li>
+          <li>活动：[ACL link on, SCO link ongoing, sniff mode]</li>
+        </ul>
+        <p>控制器在其生命周期内跟踪的活动包括 Tx 时间、Rx 时间、闲置时间，以及消耗的总功率。从主机读取这些信息时，系统会将其清除。</p>
+
+        <h3 id="le_get_controller_activity_energy_info">
+        LE_Get_Controller_Activity_Energy_Info</h3>
+        <p>这是特定于供应商的命令。</p>p&gt;
+        <p>OCF：0x159</p>
+        <table>
+          <tbody><tr>
+            <th>子命令参数</th>
+            <th>大小</th>
+            <th>用途</th>
+          </tr>
+          <tr>
+            <td></td>
+            <td>不适用</td>
+            <td>空命令参数</td>
+          </tr>
+        </tbody></table>
+        <p>系统将针对此命令生成一个命令完成事件。</p>
+        <table>
+          <tbody><tr>
+            <th>返回参数</th>
+            <th>大小</th>
+            <th>用途</th>
+          </tr>
+          <tr>
+            <td><code>Status</code></td>
+            <td>1 个八位字节</td>
+            <td>命令完成状态</td>
+          </tr>
+          <tr>
+            <td><code>total_tx_time_ms</code></td>
+            <td>4 个八位字节</td>
+            <td>执行 Tx 所需的总时间</td>
+          </tr>
+          <tr>
+            <td><code>total_rx_time_ms</code></td>
+            <td>4 个八位字节</td>
+            <td>执行 Rx 所需的总时间</td>
+          </tr>
+          <tr>
+            <td><code>total_idle_time_ms</code></td>
+            <td>4 个八位字节</td>
+            <td>总闲置时间（非休眠低功耗状态）</td>
+          </tr>
+          <tr>
+            <td><code>total_energy_used</code></td>
+            <td>4 个八位字节</td>
+            <td>使用的总功率 [电流 (mA)、电压 (V) 和时间（毫秒）的乘积]</td>
+          </tr>
+        </tbody></table>
+
+      <h2 id="le-extended-set-scan-parameters-command">LE 扩展设置扫描参数命令</h2>
+        <p>该命令可用于在控制器中延长扫描时段和间隔。根据 BT 核心 4.1 规范，扫描时段和间隔的上限为 10.24 秒，而这会限制扫描间隔超过 10.24 秒的应用。</p>
+        <p>基础参考：BT 核心 4.1 规范，第 973 页（LE 设置扫描参数命令）</p>
+        <p>OCF：0x15A</p>
+        <table>
+          <tbody><tr>
+            <th>命令参数</th>
+            <th>大小</th>
+            <th>用途</th>
+          </tr>
+          <tr>
+            <td><code>LE_Ex_Scan_Type</code></td>
+            <td>1 个八位字节</td>
+            <td>0x00 - 被动扫描。不应发送 <code>SCAN_REQ</code> 包（默认）。<br />
+              0x01 - 主动扫描。
+              可以发送 <code>SCAN_REQ</code> 包。</td>
+          </tr>
+          <tr>
+            <td><code>LE_Ex_Scan_Interval</code></td>
+            <td>4 个八位字节</td>
+            <td>指的是从控制器开始其最后一次 LE 扫描到开始后续 LE 扫描的时间间隔。<br />
+              范围：0x0004 到 0x00FFFFFF<br />
+              默认值：0x0010（10 毫秒）<br />
+              时间 = N * 0.625 毫秒<br />
+              时间范围：2.5 毫秒到 10442.25 秒</td>
+          </tr>
+          <tr>
+            <td><code>LE_Ex_Scan_Window</code></td>
+            <td>4 个八位字节</td>
+            <td>LE 扫描持续的时间。<code>LE_Scan_Window</code> 应小于或等于 <code>LE_Scan_Interval</code>。
+              <br />
+              范围：0x0004 到 0xFFFF<br />
+              默认值：0x0010（10 毫秒）<br />
+              时间 = N * 0.625 毫秒<br />
+              时间范围：2.5 毫秒到 40.95 秒</td>
+          </tr>
+          <tr>
+            <td><code>Own_Address_Type</code></td>
+            <td>1 个八位字节</td>
+            <td>0x00 - 公共设备地址（默认）<br />
+              0x01 - 随机设备地址</td>
+          </tr>
+          <tr>
+            <td><code>LE_Ex_Scan_Filter_Policy</code></td>
+            <td></td>
+            <td>0x00 - 接受所有广告包（默认）。
+              应该忽略未针对此设备处理的已定位广告包。<br />
+              0x01 - 忽略设备中未在仅限白名单列表中的广告包。应该忽略未针对此设备处理的已定位广告包。</td>
+          </tr>
+        </tbody></table>
+        <p>系统将针对此命令生成一个命令完成事件。</p>
+        <table>
+          <tbody><tr>
+            <th>返回参数</th>
+            <th>大小</th>
+            <th>用途</th>
+          </tr>
+          <tr>
+            <td><code>Status</code></td>
+            <td>1 个八位字节</td>
+            <td>命令完成状态</td>
+          </tr>
+        </tbody></table>
+
+      <h2 id="get-controller-debug-info-command">获取控制器调试信息命令</h2>
+        <p>该信息元素的目的是以二进制的形式通过主机获取控制器调试信息，以进行后处理和分析。这有助于调试现场问题，并为工程师提供工具包来记录信息以进行分析。控制器可以在主机通过事件（控制器调试信息子事件）请求时提供信息，也可以在控制器需要时自主提供信息。例如，报告固件状态信息、崩溃转储信息、记录信息等。</p>
+        <p>OCF：0x15B</p>
+        <table>
+          <tbody><tr>
+            <th>命令参数</th>
+            <th>大小</th>
+            <th>用途</th>
+          </tr>
+          <tr>
+            <td></td>
+            <td>不适用</td>
+            <td>空命令参数列表</td>
+          </tr>
+        </tbody></table>
+        <p>系统将针对此命令生成一个命令完成事件。</p>
+        <table>
+          <tbody><tr>
+            <th>返回参数</th>
+            <th>大小</th>
+            <th>用途</th>
+          </tr>
+          <tr>
+            <td>状态</td>
+            <td>1 个八位字节</td>
+            <td>命令完成状态</td>
+          </tr>
+        </tbody></table>
+      <h2 id="hci-event-vendor-specific">HCI 事件（特定于供应商）</h2>
+        <p>在某些情况下，需要特定于供应商的 HCI 事件。请参考 BT 核心 4.1 规范第 486 页的图 5.4。事件参数 0 将始终包含第一个子事件代码，系统据此对 HCI 事件的其余部分进行解码。</p>
+        <table>
+          <tbody><tr>
+            <th>事件参数</th>
+            <th>大小</th>
+            <th>用途</th>
+          </tr>
+          <tr>
+            <td><code>HCI_vendor_specific_event_code</code></td>
+            <td>1 个八位字节</td>
+            <td>0xFF</td>
+          </tr>
+          <tr>
+            <td><code>sub_event_code</code></td>
+            <td>1 个八位字节</td>
+            <td>子事件代码的大小为 1 个八位字节，该字节紧跟在 HCI 事件包中的参数长度后。</td>
+          </tr>
+        </tbody></table>
+
+        <h3 id="storage-threshold-breach-subevent">存储阈值违规子事件</h3>
+          <p>此事件表示超出了存储阈值。
+          </p>
+          <p>子事件代码 = 0x54</p>
+          <table>
+            <tbody><tr>
+              <th>子事件参数</th>
+              <th>大小</th>
+              <th>用途</th>
+            </tr>
+            <tr>
+              <td>无</td>
+              <td></td>
+              <td></td>
+            </tr> </tbody></table>
+
+        <h3 id="le-multi-advertising-state-change-sub-event">LE 多广告状态更改子事件</h3>
+
+          <p>此事件表示广告实例已更改其状态。目前，该事件仅用于表示因连接而停止的广告实例。</p>
+          <p>子事件代码 = 0x55</p>
+          <table>
+            <tbody><tr>
+              <th>子事件参数</th>
+              <th>大小</th>
+              <th>用途</th>
+            </tr>
+            <tr>
+              <td><code>Advertising_instance</code></td>
+              <td>1 个八位字节</td>
+              <td>标识特定广告实例<br />
+                有效值为 0 到 <code>max_advt_instances</code>-1
+              </td>
+            </tr>
+            <tr>
+              <td><code>State_Change_Reason</code></td>
+              <td>1 个八位字节</td>
+              <td>0x00：收到的连接</td>
+            </tr>
+            <tr>
+              <td><code>Connection_handle</code></td>
+              <td>2 个八位字节</td>
+              <td>标识导致 <code>advt</code> 实例被停用的连接（如果无效，则为 0xFFFF）</td>
+            </tr>
+          </tbody></table>
+
+        <h3 id="le-advertisement-tracking-sub-event">LE 广告跟踪子事件</h3>
+          <p>此事件表示广告主何时被发现或丢失。</p>
+          <p>子事件代码 = 0x56</p>
+          <table>
+            <tbody><tr>
+              <th>子事件参数</th>
+              <th>大小</th>
+              <th>用途</th>
+            </tr>
+            <tr>
+              <td><code>APCF_Filter_Index</code></td>
+              <td>1 个八位字节</td>
+              <td>过滤器索引 (0, <code>max_filter</code>-1)</td>
+            </tr>
+            <tr>
+              <td><code>Advertiser_State</code></td>
+              <td>1 个八位字节</td>
+              <td>0x00：已找到广告主<br />
+                0x01：广告主已丢失</td>
+            </tr>
+            <tr>
+              <td><code>Advt_Info_Present</code></td>
+              <td>1 个八位字节</td>
+              <td>0x00：存在广告主信息 (<code>Advt_Info</code>)<br />
+                0x01：不存在广告主信息 (<code>Advt_Info</code>)</td>
+            </tr>
+            <tr>
+              <td><code>Advertiser_Address</code></td>
+              <td>6 个八位字节</td>
+              <td>公开地址或随机地址</td>
+            </tr>
+            <tr>
+              <td><code>Advertiser_Address_Type </code></td>
+              <td>1 个八位字节</td>
+              <td>0x00：公开地址<br />
+                0x01：随机地址</td>
+            </tr>
+            <tr>
+              <td><code>Advt_Info</code></td>
+              <td></td>
+              <td><code>Tx_Pwr[0]</code>：1 个八位字节<br />
+                <code>RSSI[0]</code>：1 个八位字节<br />
+                <code>Timestamp[0]</code>：2 个八位字节<br />
+                <code>Adv packet_len[0]</code>：1 个八位字节<br />
+                <code>Adv_packet[0]</code>：<code>Adv_packet_len</code> 个八位字节<br />
+                <code>Scan_data_resp_len[0]</code>：1 个八位字节<br />
+                <code>Scan_data_resp[0]</code>：<code>Scan_data_resp</code> 个八位字节</td>
+            </tr>
+          </tbody></table>
+
+        <h3 id="controller-debug-info-sub-event">控制器调试信息子事件</h3>
+          <p>控制器使用此事件来向主机提供二进制文件调试信息。</p>
+          <p>子事件代码 = 0x57</p>
+          <table>
+            <tbody><tr>
+              <th>子事件参数</th>
+              <th>大小</th>
+              <th>用途</th>
+            </tr>
+            <tr>
+              <td><code>debug_block_byte_offset_start</code></td>
+              <td>2 个八位字节</td>
+              <td>从头调试块字节偏移量</td>
+            </tr>
+            <tr>
+              <td><code>last_block</code></td>
+              <td>1 个八位字节</td>
+              <td>0x00：存在更多调试数据<br />
+                0x01：最后一个二进制文件块；没有更多调试数据</td>
+            </tr>
+            <tr>
+              <td><code>cur_pay_load_sz</code></td>
+              <td>2 个八位字节</td>
+              <td>当前事件中的二进制文件块大小</td>
+            </tr>
+            <tr>
+              <td><code>Debug_Data</code></td>
+              <td>变量</td>
+              <td><code>cur_payload_sz</code> 的调试数据</td>
+            </tr>
+          </tbody></table>
+
+</body></html>

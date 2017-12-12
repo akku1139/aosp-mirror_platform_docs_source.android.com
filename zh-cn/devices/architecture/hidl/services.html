@@ -1,0 +1,125 @@
+<html devsite><head>
+    <title>服务和数据转移</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>本部分介绍了如何注册和发现服务，以及如何通过调用 <code>.hal</code> 文件内的接口中定义的方法将数据发送到服务。</p>
+
+<h2 id="register">注册服务</h2>
+<p>HIDL 接口服务器（实现接口的对象）可注册为已命名的服务。注册的名称不需要与接口或软件包名称相关。如果没有指定名称，则使用名称“默认”；这应该用于不需要注册同一接口的两个实现的 HAL。例如，在每个接口中定义的服务注册的 C++ 调用是：</p>
+
+<pre class="prettyprint">
+registerAsService();
+registerAsService("another_foo_service");  // if needed
+</pre>
+
+<p>HIDL 接口的版本包含在接口本身中。版本自动与服务注册关联，并可通过每个 HIDL 接口上的方法调用 (<code>android::hardware::IInterface::getInterfaceVersion()</code>) 进行检索。服务器对象不需要注册，并可通过 HIDL 方法参数传递到其他进程，相应的接收进程会向服务器发送 HIDL 方法调用。</p>
+
+<h2 id="discover">发现服务</h2>
+<p>客户端代码按名称和版本请求指定的接口，从而对所需的 HAL 类调用 <code>getService</code>：</p>
+
+<pre class="prettyprint">
+sp&lt;V1_1::IFooService&gt; service = V1_1::IFooService::getService();
+sp&lt;V1_1::IFooService&gt; alternateService = 1_1::IFooService::getService("another_foo_service");
+</pre>
+
+<p>每个版本的 HIDL 接口都会被视为单独的接口。因此，<code>IFooService</code> 版本 1.1 和 <code>IFooService</code> 版本 2.2 都可以注册为“foo_service”，并且两个接口上的 <code>getService("foo_service")</code> 都可获取该接口的已注册服务。因此，在大多数情况下，注册或发现服务均无需提供名称参数（也就是说名称为“默认”）。</p>
+
+<p>供应商接口对象还会影响所返回接口的传输方法。对于软件包 <code>android.hardware.foo@1.0</code> 中的接口 <code>IFoo</code>，<code>IFoo::getService</code> 返回的接口始终使用设备清单中针对 <code>android.hardware.foo</code> 声明的传输方法（如果相应条目存在的话）；如果该传输方法不存在，则返回 nullptr。</p>
+
+<h2 id="death">服务终止通知</h2>
+<p>想要在服务终止时收到通知的客户端会接收到框架传送的终止通知。要接收通知，客户端必须：</p>
+<ol>
+<li>将 HIDL 类/接口 <code>hidl_death_recipient</code>（位于 C++ 代码中，而非 HIDL 中）归入子类。</li>
+<li>替换其 <code>serviceDied()</code> 方法。</li>
+<li>实例化 <code>hidl_death_recipient</code> 子类的对象。
+</li>
+<li>在服务上调用 <code>linkToDeath()</code> 方法以进行监控，从而传递 <code>IDeathRecipient</code> 的接口对象。</li>
+</ol>
+
+<p>伪代码示例（C++ 和 Java 类似）：</p>
+
+<pre class="prettyprint">
+class IMyDeathReceiver : hidl_death_recipient {
+  virtual void serviceDied(uint64_t cookie,
+                           wp&lt;IBase&gt;&amp; service) override {
+    log("RIP service %d!", cookie);  // Cookie should be 42
+  }
+};
+....
+IMyDeathReceiver deathReceiver = new IMyDeathReceiver();
+m_importantService-&gt;linkToDeath(deathReceiver, 42);
+</pre>
+
+<p>同一终止接收方可能已在多个不同的服务上注册。
+</p>
+
+<h2 id="data-transwer">数据转移</h2>
+<p>可通过调用 <code>.hal</code> 文件内的接口中定义的方法将数据发送到服务。具体方法有两类：</p>
+
+<ul>
+<li><strong>阻塞</strong>方法会等到服务器产生结果。</li>
+<li><strong>单向</strong>方法仅朝一个方向发送数据且不阻塞。如果 RPC 调用中正在传输的数据量超过实现限制，则调用可能会阻塞或返回错误指示（具体行为尚不确定）。</li>
+</ul>
+
+<p>不返回值但未声明为 <code>oneway</code> 的方法仍在阻塞。</p>
+
+<p>在 HIDL 接口中声明的所有方法都是单向调用，要么从 HAL 发出，要么到 HAL。该接口没有指定具体调用方向。需要从 HAL 发起调用的架构应该在 HAL 软件包中提供两个（或更多个）接口并从每个进程提供相应的接口。对于接口的调用方向，我们使用字词“客户端”和“服务器”来表示（即 HAL 可以是一个接口的服务器，也可以是另一个接口的客户端）。<em></em><em></em></p>
+
+<h3 id="callbacks">回调</h3>
+<p>“回调”一词指的是两个不同的概念，可通过“同步回调”和“异步回调”进行区分。<em></em><em></em><em></em></p>
+
+<p>“同步回调”在返回数据的一些 HIDL 方法中使用。<em></em>返回多个值（或返回非基元类型的一个值）的 HIDL 方法会通过回调函数返回其结果。如果只返回一个值且该值是基元类型，则不使用回调且该值从方法中返回。服务器实现 HIDL 方法，而客户端实现回调。</p>
+
+<p>“异步回调”允许 HIDL 接口的服务器发起调用。<em></em>通过第一个接口传递第二个接口的实例即可完成此操作。第一个接口的客户端必须作为第二个接口的服务器。第一个接口的服务器可以在第二个接口对象上调用方法。例如，HAL 实现可以通过在由该进程创建和提供的接口对象上调用方法来将信息异步发送回正在使用它的进程。用于异步回调的接口中的方法可以是阻塞（并且可能将值返回到调用程序），也可以是 <code>oneway</code>。要查看相关示例，请参阅 <a href="/devices/architecture/hidl-cpp/interfaces.html">HIDL C++</a> 中的“异步回调”。</p>
+
+<p>要简化内存所有权，方法调用和回调只能选择 <code>in</code> 参数，并且不支持 <code>out</code> 或 <code>inout</code> 参数。</p>
+
+<h3 id="limits">每事务限制</h3>
+<p>每事务限制可能会强制限制在 HIDL 方法和回调中发送的数据量。具体限制尚不确定，但可能小至 4K。超出这些限制的调用会立即返回失败。另一个限制是可供 HIDL 基础架构处理多个同时进行的事务的资源。由于多个线程或进程向一个进程发送调用或者接收进程未能快速处理多个 <code>oneway</code> 调用，因此多个事务可以同时进行。</p>
+
+<p>在设计良好的接口中，不应出现超出这些资源限制的情况；如果超出的话，则超出资源的调用可能会阻塞，直到资源可用或发出传输错误的信号。每当因正在进行的总事务导致出现超出每事务限制或溢出 HIDL 实现资源的情况时，系统都会记录下来以方便调试。</p>
+
+<h3 id="method-implement">方法实现</h3>
+<p>HIDL 生成以目标语言（C++ 或 Java）声明必要类型、方法和回调的标头文件。客户端和服务器代码的 HIDL 定义方法和回调的原型是相同的。HIDL 系统提供调用程序端（整理 IPC 传输的数据）的方法<strong>代理</strong>实现，并将代码<strong>存根</strong>到被调用程序端（将数据传递到方法的开发者实现）。</p>
+
+<p>函数的调用程序（HIDL 方法或回调）拥有对传递到该函数的数据结构的所有权，并在调用后保留所有权；被调用程序在所有情况下都无需释放存储。</p>
+
+<ul>
+<li>在 C++ 中，数据可能是只读的（尝试写入可能会导致细分错误），并且在调用期间有效。客户端可以深层复制数据，以在调用期间外传播。</li>
+<li>在 Java 中，代码会接收数据的本地副本（普通 Java 对象），代码可以保留和修改此数据或允许垃圾回收器回收。</li>
+</ul>
+
+<h3 id="non-rpc">非 RPC 数据转移</h3>
+<p>HIDL 在不使用 RPC 调用的情况下通过两种方法来转移数据：共享内存和快速消息队列 (FMQ)，只有 C++ 同时支持这两种方法。</p>
+
+<ul>
+<li><strong>共享内存</strong>。内置 HIDL 类型 <code>memory</code> 用于传递表示已分配的共享内存的对象。
+可以在接收进程中使用，以映射共享内存。</li>
+<li><strong>快速消息队列 (FMQ)</strong>。HIDL 提供了一种可实现无等待消息传递的模板化消息队列类型。它在直通式或绑定式模式下不使用内核或调度程序（设备间通信将不具有这些属性）。通常，HAL 会设置其队列的末尾，从而创建可以借助内置 HIDL 类型 <code>MQDescriptorSync</code> 或 <code>MQDescriptorUnsync</code> 的参数通过 RPC 传递的对象。接收进程可使用此对象设置队列的另一端。
+<ul>
+<li>“已同步”队列不能溢出，且只能有一个读取器。<em></em></li>
+<li>“未同步”队列可以溢出，且可以有多个读取器；每个读取器必须及时读取数据，否则数据就会丢失。<em></em></li>
+</ul>
+两种队列都不能下溢（从空队列进行读取将会失败），且都只能有一个写入器。</li></ul>
+
+<p>有关 FMQ 的更多详情，请参阅<a href="/devices/architecture/hidl/fmq.html">快速消息队列 (FMQ)</a>。</p>
+
+</body></html>

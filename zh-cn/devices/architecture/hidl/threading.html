@@ -1,0 +1,86 @@
+<html devsite><head>
+    <title>线程模型</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>标记为 <code>oneway</code> 的方法不会阻塞。对于未标记为 <code>oneway</code> 的方法，在服务器完成执行任务或调用同步回调（以先发生者为准）之前，客户端的方法调用将一直处于阻塞状态。服务器方法实现最多可以调用一个同步回调；多出的回调调用会被舍弃并记录为错误。如果方法应通过回调返回值，但未调用其回调，系统会将这种情况记录为错误，并作为传输错误报告给客户端。</p>
+
+<h2 id="passthrough">直通模式下的线程</h2>
+<p>在直通模式下，大多数调用都是同步的。不过，为确保 <code>oneway</code> 调用不会阻塞客户端这一预期行为，系统会分别为每个进程创建线程。要了解详情，请参阅 <a href="/devices/architecture/hidl/index.html#passthrough">HIDL 概览</a>。
+</p>
+
+<h2 id="binderized">绑定式 HAL 中的线程</h2>
+<p>为了处理传入的 RPC 调用（包括从 HAL 到 HAL 用户的异步回调）和终止通知，系统会为使用 HIDL 的每个进程关联一个线程池。如果单个进程实现了多个 HIDL 接口和/或终止通知处理程序，则所有这些接口和/或处理程序会共享其线程池。当进程接收从客户端传入的方法调用时，它会从线程池中选择一个空闲线程，并在该线程上执行调用。如果没有空闲的线程，它将会阻塞，直到有可用线程为止。</p>
+
+<p>如果服务器只有一个线程，则传入服务器的调用将按顺序完成。具有多个线程的服务器可以不按顺序完成调用，即使客户端只有一个线程也是如此。由于 <code>oneway</code> 调用不会阻塞客户端，因此具有多个线程的服务器可以同时或不按顺序处理多个 <code>oneway</code> 调用，而且 <code>oneway</code> 调用可以与后续的阻塞调用并行处理。</p>
+
+<h2 id="model">服务器线程模型</h2>
+<p>（直通模式除外）HIDL 接口的服务器实现位于不同于客户端的进程中，并且需要一个或多个线程等待传入的方法调用。这些线程构成服务器的线程池；服务器可以决定它希望在其线程池中运行多少线程，并且可以利用一个线程的线程池规模，以便按顺序处理其接口上的所有调用。如果服务器的线程池中有多个线程，则服务器可以在其任何接口上接收同时传入的调用（在 C++ 中，这意味着必须谨慎锁定共享数据）。</p>
+
+<p>传入同一接口的单向调用会按顺序进行处理。如果多线程客户端在接口 <code>IFoo</code> 上调用 <code>method1</code> 和 <code>method2</code>，并在接口 <code>IBar</code> 上调用 <code>method3</code>，则 <code>method1</code> 和 <code>method2</code> 将始终按顺序运行，但 <code>method3</code> 可以与 <code>method1</code> 和 <code>method2</code> 并行运行。</p>
+
+<p>单一客户端执行线程可能会通过以下两种方式在具有多个线程的服务器上引发并行运行：</p>
+
+<ul>
+<li><code>oneway</code> 调用不会阻塞。如果执行 <code>oneway</code> 调用，然后调用非 <code>oneway</code>，则服务器可以同时执行 <code>oneway</code> 调用和非 <code>oneway</code> 调用。</li>
+<li>当系统从服务器调用回调时，通过同步回调传回数据的服务器方法可以立即解除对客户端的阻塞。</li>
+</ul>
+
+<p>对于第二种方式，在调用回调之后执行的服务器函数中的任何代码都可以并行运行，同时服务器会处理来自客户端的后续调用。这包括服务器函数以及在函数结束时执行的自动析构函数中的代码。如果服务器的线程池中有多个线程，则即使调用仅从一个单一客户端线程传入，也会出现并行处理问题。（如果一个进程提供的任意 HAL 需要多个线程，则所有 HAL 都将具有多个线程，因为线程池是按进程共享的。）</p>
+
+<p>当服务器调用所提供的回调时，transport 可以立即调用客户端上已实现的回调，并解除对客户端的阻塞。客户端会继续与服务器实现在调用回调之后所执行的任何任务（可能包括正在运行的析构函数）并行运行。回调后，服务器函数中的代码不会再阻塞客户端（但前提是服务器线程池中有足够多的线程来处理传入的调用），但可以与来自客户端的未来调用并行执行（除非服务器线程池中只有一个线程）。</p>
+
+<p>除了同步回调外，来自单线程客户端的 <code>oneway</code> 调用也可以由线程池中具有多个线程的服务器并行处理，但前提是在不同的接口上执行这些 <code>oneway</code> 调用。同一接口上的 <code>oneway</code> 调用始终按顺序处理。</p>
+
+<p class="note"><strong>注意</strong>：我们强烈建议服务器函数在调用回调函数后立即返回。</p>
+
+<p>例如（在 C++ 中）：</p>
+
+<pre class="prettyprint">
+Return&lt;void&gt; someMethod(someMethod_cb _cb) {
+    // Do some processing, then call callback with return data
+    hidl_vec&lt;uint32_t&gt; vec = ...
+    _cb(vec);
+    // At this point, the client's callback will be called,
+    // and the client will resume execution.
+    ...
+    return Void(); // is basically a no-op
+};
+</pre>
+
+<h2 id="client">客户端线程模型</h2>
+<p>非阻塞调用（带有 <code>oneway</code> 关键字标记的函数）与阻塞调用（未指定 <code>oneway</code> 关键字的函数）的客户端线程模型有所不同。</p>
+
+<h3 id="block">阻塞调用</h3>
+<p>对于阻塞调用来说，除非发生以下情况之一，否则客户端将一直处于阻塞状态：</p>
+
+<ul>
+<li>出现传输错误；<code>Return</code> 对象包含可通过 <code>Return::isOk()</code> 检索的错误状态。</li>
+<li>服务器实现调用回调（如果有）。</li>
+<li>服务器实现返回值（如果没有回调参数）。
+</li>
+</ul>
+
+<p>如果成功的话，客户端以参数形式传递的回调函数始终会被服务器在函数本身返回之前调用。回调是在进行函数调用的同一线程上执行，所以在函数调用期间，实现人员必须谨慎地持有锁（并尽可能彻底避免持有锁）。不含 <code>generates</code> 语句或 <code>oneway</code> 关键字的函数仍处于阻塞状态；在服务器返回 <code>Return&lt;void&gt;</code> 对象之前，客户端将一直处于阻塞状态。</p>
+
+<h3 id="oneway">单向调用</h3>
+<p>如果某个函数标记有 <code>oneway</code>，则客户端会立即返回，而不会等待服务器完成其函数调用。</p>
+
+</body></html>

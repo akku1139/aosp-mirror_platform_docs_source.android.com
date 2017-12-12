@@ -1,0 +1,610 @@
+<html devsite><head>
+    <title>代码样式指南</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>HIDL 代码样式类似于 Android 框架中的 C++ 代码，缩进 4 个空格，并且采用混用大小写的文件名。软件包声明、导入和文档字符串与 Java 中的类似，只有些微差别。</p>
+
+<p>下面针对 <code>IFoo.hal</code> 和 <code>types.hal</code> 的示例展示了 HIDL 代码样式，并提供了指向每种样式（<code>IFooClientCallback.hal</code>、<code>IBar.hal</code> 和 <code>IBaz.hal</code> 已省略）详细信息的快速链接。</p>
+
+<table>
+<tbody><tr><th><code>hardware/interfaces/foo/1.0/IFoo.hal</code></th></tr>
+<tr><td><pre class="prettyprint">
+
+/*
+ * (License Notice)
+ */
+
+<a href="#package-names">package</a> android.hardware.foo@<a href="#versions">1.0</a>;
+
+<a href="#imports">import</a> android.hardware.bar@1.0::IBar;
+
+import IBaz;
+import IFooClientCallback;
+
+/**
+ * IFoo is an interface that…
+ */
+interface <a href="#interface-names">IFoo</a> {
+
+    /**
+     * This is a <a href="#comments">multiline docstring</a>.
+     * <a href="#return">@return</a> result 0 if successful, nonzero otherwise.
+     */
+     <a href="#function-declarations">foo() generates (FooStatus result);</a>
+
+    /**
+     * Restart controller by power cycle.
+     * <a href="#param">@param</a> bar callback interface that…
+     * @return result 0 if successful, nonzero otherwise.
+     */
+    <a href="#functions">powerCycle</a>(IBar bar) generates (FooStatus <a href="#functions">result</a>);
+
+    /** <a href="#comments">Single line docstring</a>. */
+    baz();
+
+    /**
+     * The bar function.
+     * <a href="#param">@param</a> <a href="#functions">clientCallback</a> callback after function is called
+     * @param baz related baz object
+     * @param data input data blob
+     */
+    bar(IFooClientCallback clientCallback,
+        IBaz baz,
+        FooData data);
+
+};
+</pre>
+</td></tr></tbody></table>
+
+<table>
+<tbody><tr><th><code>hardware/interfaces/foo/1.0/types.hal</code></th></tr>
+<tr><td><pre class="prettyprint">
+
+/*
+ * (License Notice)
+ */
+
+package android.hardware.foo@1.0;
+
+<a href="#comments">/** Replied status. */</a>
+<a href="#enum-declarations">enum Status : int32_t</a> {
+    <a href="#enum-values">OK</a>,
+    ERR_ARG, <a href="#comments">// invalid arguments</a>
+    ERR_UNKNOWN = -1, // note, no transport related errors
+};
+
+<a href="#struct-declarations">struct ArgData</a> {
+    <a href="#array-declarations">int32_t[20]  someArray;</a>
+    <a href="#vectors">vec&lt;uint8_t&gt; data;</a>
+};
+</pre>
+</td></tr></tbody></table>
+
+<h2 id="naming">命名规范</h2>
+<p>函数名称、变量名称和文件名应该是描述性名称；避免过度缩写。将首字母缩略词视为字词（例如，请使用 <code>INfc</code>，而非 <code>INFC</code>）。</p>
+
+<h3 id="dir-structure">目录结构和文件命名</h3>
+<p>目录结构应如下所示：</p>
+<ul>
+<li><code><var>ROOT-DIRECTORY</var></code>
+  <ul>
+  <li><code><var>MODULE</var></code>
+    <ul>
+    <li><code><var>SUBMODULE</var></code>（可选，可以有多层）
+      <ul>
+      <li><code><var>VERSION</var></code>
+        <ul>
+        <li><code>Android.mk</code></li>
+        <li><code>I<var>INTERFACE_1</var>.hal</code></li>
+        <li><code>I<var>INTERFACE_2</var>.hal</code></li>
+        <li><code>…</code></li>
+        <li><code>I<var>INTERFACE_N</var>.hal</code></li>
+        <li><code>types.hal</code>（可选）</li>
+        </ul>
+      </li>
+      </ul>
+    </li>
+    </ul>
+  </li>
+  </ul>
+</li>
+</ul>
+
+<p>其中：</p>
+<ul>
+<li><code><var>ROOT-DIRECTORY</var></code> 为：
+  <ul>
+  <li><code>hardware/interfaces</code>（如果是核心 HIDL 软件包）。</li>
+  <li><code>vendor/<var>VENDOR</var>/interfaces</code>（如果是供应商软件包），其中 <code><var>VENDOR</var></code> 指 SoC 供应商或原始设备制造商 (OEM)/原始设计制造商 (ODM)。</li>
+  </ul>
+  </li>
+<li><code><var>MODULE</var></code> 应该是一个描述子系统的小写字词（例如 <code>nfc</code>）。如果需要多个字词，请使用嵌套式 <code><var>SUBMODULE</var></code>。可以嵌套多层。</li>
+<li><code><var>VERSION</var></code> 应该与<a href="#versions">版本</a>中所述的版本完全相同 (major.minor)。</li>
+<li><code>I<var>INTERFACE_X</var></code> 应该是含有 <code>UpperCamelCase</code>/<code>PascalCase</code> 的接口名称（例如 <code>INfc</code>），如<a href="#interface-names">接口名称</a>中所述。</li>
+</ul>
+
+<p>例如：</p>
+<ul>
+<li><code>hardware/interfaces</code>
+  <ul>
+  <li><code>nfc</code>
+    <ul>
+    <li><code>1.0</code>
+      <ul>
+      <li><code>Android.mk</code></li>
+      <li><code>INfc.hal</code></li>
+      <li><code>INfcClientCallback.hal</code></li>
+      <li><code>types.hal</code></li>
+      </ul>
+    </li>
+    </ul>
+  </li>
+  </ul>
+</li>
+</ul>
+
+<p class="note"><strong>注意</strong>：所有文件都必须采用不可执行的权限（在 Git 中）。
+
+</p><h3 id="package-names">软件包名称</h3>
+<p>软件包名称必须采用以下<a href="#fqn">完全限定名称 (FQN)</a> 格式（称为 <code><var>PACKAGE-NAME</var></code>）：</p>
+
+<pre class="prettyprint">
+<var>PACKAGE</var>.<var>MODULE</var>[.<var>SUBMODULE</var>[.<var>SUBMODULE</var>[…]]]@<var>VERSION</var>
+</pre>
+
+<p>其中：</p>
+<ul>
+<li><code><var>PACKAGE</var></code> 是映射到 <code><var>ROOT-DIRECTORY</var></code> 的软件包。具体来说，<code><var>PACKAGE</var></code> 是：
+  <ul>
+  <li><code>android.hardware</code>（如果是核心 HIDL 软件包）（映射到 <code>hardware/interfaces</code>）。</li>
+  <li><code>vendor.<var>VENDOR</var>.hardware</code>（如果是供应商软件包），其中 <code><var>VENDOR</var></code> 指 SoC 供应商或原始设备制造商 (OEM)/原始设计制造商 (ODM)（映射到 <code>vendor/<var>VENDOR</var>/interfaces</code>）。</li>
+  </ul>
+</li><li><code><var>MODULE</var>[.<var>SUBMODULE</var>[.<var>SUBMODULE</var>[…]]]@<var>VERSION</var></code> 与<a href="#dir-structure">目录结构</a>中所述的结构内文件夹名称完全相同。</li>
+<li>软件包名称应为小写。如果软件包名称包含多个字词，则这些字词应用作子模块或以 <code>snake_case</code> 形式书写。
+</li>
+<li>不允许使用空格。</li>
+</ul>
+
+<p>软件包声明中始终使用 FQN。</p>
+
+<h3 id="versions">版本</h3>
+<p>
+版本应具有以下格式：
+</p>
+
+<pre class="prettyprint"><var>MAJOR</var>.<var>MINOR</var></pre>
+
+<p>MAJOR 和 MINOR 版本都应该是一个整数。<var></var><var></var>HIDL 使用<a href="http://semver.org/" class="external">语义化版本编号</a>规则。</p>
+
+<h3 id="imports">导入</h3>
+<p>导入采用以下 3 种格式之一：</p>
+<ul>
+<li>完整软件包导入：<code>import <var>PACKAGE-NAME</var>;</code></li>
+<li>部分导入：<code>import
+<var>PACKAGE-NAME</var>::<var>UDT</var>;</code>（或者，如果导入的类型是在同一个软件包中，则为 <code>import <var>UDT</var>;</code>）</li>
+<li>仅类型导入：<code>import <var>PACKAGE-NAME</var>::types;</code></li>
+</ul>
+
+<p><code><var>PACKAGE-NAME</var></code> 遵循<a href="#package-names">软件包名称</a>中的格式。当前软件包的 <code>types.hal</code>（如果存在）是自动导入的（请勿对其进行显式导入）。</p>
+
+<h4 id="fqn">完全限定名称 (FQN)</h4>
+<p>仅在必要时对用户定义的类型导入使用完全限定名称。如果导入类型是在同一个软件包中，则省略 <code><var>PACKAGE-NAME</var></code>。FQN 不得含有空格。完全限定名称示例：</p>
+
+<pre class="prettyprint">android.hardware.nfc@1.0::INfcClientCallback</pre>
+
+<p>如果是在 <code>android.hardware.nfc@1.0</code> 下的另一个文件中，可以使用 <code>INfcClientCallback</code> 引用上述接口。否则，只能使用完全限定名称。</p>
+
+<h4 id="grouping">对导入进行分组和排序</h4>
+<p>在软件包声明之后（在导入之前）添加一个空行。每个导入都应占用一行，且不应缩进。按以下顺序对导入进行分组：</p>
+
+<ol>
+<li>其他 <code>android.hardware</code> 软件包（使用完全限定名称）。
+</li>
+<li>其他 <code>vendor.<var>VENDOR</var></code> 软件包（使用完全限定名称）。
+  <ul>
+  <li>每个供应商都应是一个组。</li>
+  <li>按字母顺序对供应商排序。</li>
+  </ul>
+  </li>
+<li>源自同一个软件包中其他接口的导入（使用简单名称）。</li>
+</ol>
+
+<p>在组与组之间添加一个空行。在每个组内，按字母顺序对导入排序。例如：</p>
+
+<pre class="prettyprint">
+import android.hardware.nfc@1.0::INfc;
+import android.hardware.nfc@1.0::INfcClientCallback;
+
+// Importing the whole module.
+import vendor.barvendor.bar@3.1;
+
+import vendor.foovendor.foo@2.2::IFooBar;
+import vendor.foovendor.foo@2.2::IFooFoo;
+
+import IBar;
+import IFoo;
+</pre>
+
+<h3 id="interface-names">接口名称</h3>
+<p>接口名称必须以 <code>I</code> 开头，后跟 <code>UpperCamelCase</code>/<code>PascalCase</code> 名称。名称为 <code>IFoo</code> 的接口必须在文件 <code>IFoo.hal</code> 中定义。此文件只能包含 <code>IFoo</code> 接口的定义（接口 <code>I<var>NAME</var></code> 应位于 <code>I<var>NAME</var>.hal</code> 中）。
+</p>
+
+<h3 id="functions">函数</h3>
+<p>对于函数名称、参数和返回变量名称，请使用 <code>lowerCamelCase</code>。例如：</p>
+
+<pre class="prettyprint">
+open(INfcClientCallback clientCallback) generates (int32_t retVal);
+oneway pingAlive(IFooCallback cb);
+</pre>
+
+<h3 id="struct-union">结构体/联合字段名称</h3>
+<p>对于结构体/联合字段名称，请使用 <code>lowerCamelCase</code>。例如：</p>
+
+<pre class="prettyprint">
+struct FooReply {
+    vec&lt;uint8_t&gt; replyData;
+}
+</pre>
+
+<h3 id="type-names">类型名称</h3>
+<p>类型名称指结构体/联合定义、枚举类型定义和 <code>typedef</code>。对于这些名称，请使用 <code>UpperCamelCase</code>/<code>PascalCase</code>。例如：</p>
+
+<pre class="prettyprint">
+enum NfcStatus : int32_t {
+    /*...*/
+};
+struct NfcData {
+    /*...*/
+};
+</pre>
+
+<h3 id="enum-values">枚举值</h3>
+<p>枚举值应为 <code>UPPER_CASE_WITH_UNDERSCORES</code>。将枚举值作为函数参数传递以及作为函数返回项返回时，请使用实际枚举类型（而不是基础整数类型）。例如：</p>
+
+<pre class="prettyprint">
+enum NfcStatus : int32_t {
+    HAL_NFC_STATUS_OK               = 0,
+    HAL_NFC_STATUS_FAILED           = 1,
+    HAL_NFC_STATUS_ERR_TRANSPORT    = 2,
+    HAL_NFC_STATUS_ERR_CMD_TIMEOUT  = 3,
+    HAL_NFC_STATUS_REFUSED          = 4
+};
+</pre>
+
+<p class="note"><strong>注意</strong>：枚举类型的基础类型是在冒号后显式声明的。因为它不依赖于编译器，所以使用实际枚举类型会更明晰。</p>
+
+<p>对于枚举值的完全限定名称，请在枚举类型名称和枚举值名称之间使用<strong>冒号</strong>：</p>
+
+<pre class="prettyprint">
+<var>PACKAGE-NAME</var>::<var>UDT</var>[.<var>UDT</var>[.<var>UDT</var>[…]]:<var>ENUM_VALUE_NAME</var>
+</pre>
+
+<p>完全限定名称内不得含有空格。仅在必要时使用完全限定名称，其他情况下可以省略不必要的部分。例如：</p>
+
+<pre class="prettyprint">
+android.hardware.foo@1.0::IFoo.IFooInternal.FooEnum:ENUM_OK
+</pre>
+
+<h2 id="comments">备注</h2>
+<p>对于单行备注，使用 <code>// </code>和 <code>/** */</code> 都可以。</p>
+<pre class="prettyprint">
+// This is a single line comment
+/* This is also single line comment */
+/** This is documentation comment */
+</pre>
+
+<ul>
+<li><code>//</code> 主要用于：
+  <ul>
+  <li>尾随备注</li>
+  <li>将不会针对生成的文档使用的备注</li>
+  <li>TODO</li>
+  </ul>
+</li>
+<li><code>/** */</code> 主要用于针对生成的文档使用的函数文档/“文档字符串”。例如：
+<pre class="prettyprint">
+/** Replied status */
+enum FooStatus {
+    OK            = 0, // no error
+    ERR_TRANSPORT = 1, // transport level error
+    ERR_ARG       = 2  // invalid args
+}
+</pre>
+</li><li>多行备注的第一行应为 <code>/**</code>，每行的开头应使用 <code>*</code>，并且应将 <code>*/</code> 单独放在最后一行（各行的星号应对齐）。例如：
+<pre class="prettyprint">
+/**
+ * My multi-line
+ * comment
+ */
+</pre>
+</li>
+<li>许可通知和变更日志的第一行应为 <code>/*</code>（一个星号），每行的开头应使用 <code>*</code>，并且应将 <code>*/</code> 单独放在最后一行（各行的星号应对齐）。例如：
+<pre class="prettyprint">
+/*
+ * Copyright (C) 2017 The Android Open Source Project
+ * ...
+ */
+
+/*
+ * Changelog:
+ * ...
+ */
+</pre>
+</li>
+</ul>
+
+<h3 id="file-comments">文件备注</h3>
+<p>每个文件的开头都应为相应的许可通知。对于核心 HAL，该通知应为 <a href="https://android.googlesource.com/platform/development/+/master/docs/copyright-templates/c.txt" class="external"><code>development/docs/copyright-templates/c.txt</code></a> 中的 AOSP Apache 许可。请务必更新年份，并使用 <code>/* */</code> 样式的多行备注（如上所述）。</p>
+
+<p>您可以视需要在许可通知后空一行，后跟变更日志/版本编号信息。使用 <code>/* */</code> 样式的多行备注（如上所述），在变更日志后空一行，后跟软件包声明。</p>
+
+<h3 id="todo-comments">TODO 备注</h3>
+<p>TODO 备注应包含全部大写的字符串 <code>TODO</code>，后跟一个冒号。例如：</p>
+<pre>// TODO: remove this code before foo is checked in.</pre>
+
+<p class="alert">只有在开发期间才允许使用 TODO 备注；TODO 备注不得存在于已发布的接口中。</p>
+
+<h3 id="docstrings">接口/函数备注（文档字符串）</h3>
+<p>对于多行和单行文档字符串，请使用 <code>/** */</code>。对于文档字符串，请勿使用 <code>//</code>。</p>
+
+<p>接口的文档字符串应描述接口的一般机制、设计原理、目的等。函数的文档字符串应针对特定函数（软件包级文档位于软件包目录下的 README 文件中）。</p>
+
+<pre class="prettyprint">
+/**
+ * IFooController is the controller for foos.
+ */
+interface IFooController {
+    /**
+     * Opens the controller.
+     * @return status HAL_FOO_OK if successful.
+     */
+    open() generates (FooStatus status);
+
+    /** Close the controller. */
+    close();
+};
+</pre>
+
+<p>您必须为每个参数/返回值添加 <code>@param</code> 和 <code>@return</code>：</p>
+
+<ul>
+<li id="param">必须为每个参数添加 <code>@param</code>。其后应跟参数的名称，然后是文档字符串。</li>
+<li id="return">必须为每个返回值添加 <code>@return</code>。其后应跟返回值的名称，然后是文档字符串。</li>
+</ul>
+<p>例如：</p>
+
+<pre class="prettyprint">
+/**
+ * Explain what foo does.
+ * @param arg1 explain what arg1 is
+ * @param arg2 explain what arg2 is
+ * @return ret1 explain what ret1 is
+ * @return ret2 explain what ret2 is
+ */
+foo(T arg1, T arg2) generates (S ret1, S ret2);
+</pre>
+
+<h2>格式</h2>
+<p>一般格式规则包括：</p>
+<ul>
+<li><strong>行长</strong>：每行文字最长不应超过 <strong>80</strong> 列。</li>
+<li><strong>空格</strong>：各行不得包含尾随空格；空行不得包含空格。</li>
+<li><strong>空格与制表符</strong>：仅使用空格。</li>
+<li><strong>缩进大小</strong>：数据块缩进 <strong>4</strong> 个空格，换行缩进 <strong>8</strong> 个空格。</li>
+<li><strong>大括号</strong>：（<a href="#annotations">注释值</a>除外）<strong>左</strong>大括号与前面的代码在同一行，<strong>右</strong>大括号与后面的分号占一整行。例如：
+<pre class="prettyprint">
+interface INfc {
+    close();
+};
+</pre>
+</li>
+</ul>
+
+<h3 id="package-declarations">软件包声明</h3>
+<p>软件包声明应位于文件顶部，在许可通知之后，应占一整行，并且不应缩进。声明软件包时需采用以下格式（有关名称格式，请参阅<a href="#package-names">软件包名称</a>）：</p>
+
+<pre class="prettyprint">
+package <var>PACKAGE-NAME</var>;
+</pre>
+
+<p>例如：</p>
+
+<pre class="prettyprint">
+package android.hardware.nfc@1.0;
+</pre>
+
+<h3 id="function-declarations">函数声明</h3>
+<p>函数名称、参数、<code>generates</code> 和返回值应在同一行中（如果放得下）。例如：</p>
+<pre class="prettyprint">
+interface IFoo {
+    /** ... */
+    easyMethod(int32_t data) generates (int32_t result);
+};
+</pre>
+
+<p>如果一行中放不下，则尝试按相同的缩进量放置参数和返回值，并突出 <code>generate</code>，以便读取器快速看到参数和返回值。例如：</p>
+
+<pre class="prettyprint">
+interface IFoo {
+    suchALongMethodThatCannotFitInOneLine(int32_t theFirstVeryLongParameter,
+                                          int32_t anotherVeryLongParameter);
+    anEvenLongerMethodThatCannotFitInOneLine(int32_t theFirstLongParameter,
+                                             int32_t anotherVeryLongParameter)
+                                  generates (int32_t theFirstReturnValue,
+                                             int32_t anotherReturnValue);
+    superSuperSuperSuperSuperSuperSuperLongMethodThatYouWillHateToType(
+            int32_t theFirstVeryLongParameter, // 8 spaces
+            int32_t anotherVeryLongParameter
+        ) generates (
+            int32_t theFirstReturnValue,
+            int32_t anotherReturnValue
+        );
+    // method name is even shorter than 'generates'
+    foobar(AReallyReallyLongType aReallyReallyLongParameter,
+           AReallyReallyLongType anotherReallyReallyLongParameter)
+        generates (ASuperLongType aSuperLongReturnValue, // 4 spaces
+                   ASuperLongType anotherSuperLongReturnValue);
+}
+</pre>
+
+<p>其他细节：</p>
+<ul>
+<li>左括号始终与函数名称在同一行。</li>
+<li>函数名称和左括号之间不能有空格。</li>
+<li>括号和参数之间不能有空格，它们之间出现换行时除外。<em></em></li>
+<li>如果 <code>generates</code> 与前面的右括号在同一行，则前面加一个空格。如果 <code>generates</code> 与接下来的左括号在同一行，则后面加一个空格。</li>
+<li>将所有参数和返回值对齐（如果可能）。</li>
+<li>默认缩进 4 个空格。</li>
+<li>将换行的参数与上一行的第一个参数对齐，如果不能对齐，则这些参数缩进 8 个空格。</li>
+</ul>
+
+<h3 id="annotations">注释</h3>
+<p>对于注释，请采用以下格式：</p>
+
+<pre class="prettyprint">
+@annotate(keyword = value, keyword = {value, value, value})
+</pre>
+
+<p>按字母顺序对注释进行排序，并在等号两边加空格。例如：</p>
+
+<pre class="prettyprint">
+@callflow(key = value)
+@entry
+@exit
+</pre>
+
+<p>确保注释占一整行。例如：</p>
+<pre class="prettyprint">
+// Good
+@entry
+@exit
+
+// Bad
+@entry @exit
+</pre>
+
+<p>如果注释在同一行中放不下，则缩进 8 个空格。例如：</p>
+
+<pre class="prettyprint">
+@annotate(
+        keyword = value,
+        keyword = {
+                value,
+                value
+        },
+        keyword = value)
+</pre>
+
+<p>如果整个值数组在同一行中放不下，则在左大括号 <code>{</code> 后和数组内的每个逗号后换行。在最后一个值后紧跟着添加一个右括号。如果只有一个值，请勿使用大括号。</p>
+
+<p>如果整个值数组可以放到同一行，则请勿在左大括号后和右大括号前加空格，并在每个逗号后加一个空格。例如：</p>
+
+<pre class="prettyprint">
+// Good
+@callflow(key = {"val", "val"})
+
+// Bad
+@callflow(key = { "val","val" })
+</pre>
+
+<p>注释和函数声明之间不得有空行。例如：</p>
+<pre class="prettyprint">
+// Good
+@entry
+foo();
+
+// Bad
+@entry
+
+foo();
+</pre>
+
+<h3 id="enum-declarations">枚举声明</h3>
+<p>对于枚举声明，请遵循以下规则：</p>
+<ul>
+<li>如果与其他软件包共用枚举声明，则将声明放在 <code>types.hal</code> 中，而不是嵌入到接口内。</li>
+<li>在冒号前后加空格，并在基础类型后和左大括号前加空格。</li>
+<li>最后一个枚举值可以有也可以没有额外的逗号。</li>
+</ul>
+
+<h3 id="struct-declarations">结构体声明</h3>
+<p>对于结构体声明，请遵循以下规则：</p>
+<ul>
+<li>如果与其他软件包共用结构体声明，则将声明放在 <code>types.hal</code> 中，而不是嵌入到接口内。</li>
+<li>在结构体类型名称后和左大括号前加空格。</li>
+<li>对齐字段名称（可选）。例如：
+<pre class="prettyprint">
+struct MyStruct {
+    vec&lt;uint8_t&gt;   data;
+    int32_t        someInt;
+}
+</pre>
+</li>
+</ul>
+
+<h3 id="array-declarations">数组声明</h3>
+<p>请勿在以下内容之间加空格：</p>
+<ul>
+<li>元素类型和左方括号。</li>
+<li>左方括号和数组大小。</li>
+<li>数组大小和右方括号。</li>
+<li>右方括号和接下来的左方括号（如果存在多个维度）。</li>
+</ul>
+
+<p>例如：</p>
+<pre class="prettyprint">
+// Good
+int32_t[5] array;
+
+// Good
+int32_t[5][6] multiDimArray;
+
+// Bad
+int32_t [ 5 ] [ 6 ] array;
+</pre>
+
+<h3 id="vectors">矢量</h3>
+<p>请勿在以下内容之间加空格：</p>
+<ul>
+<li><code>vec</code> 和左尖括号。</li>
+<li>左尖括号和元素类型（例外情况：元素类型也是 <code>vec</code>）。<em></em></li>
+<li>元素类型和右尖括号（例外情况：元素类型也是 <code>vec</code>）。<em></em></li>
+</ul>
+
+<p>例如：</p>
+<pre class="prettyprint">
+// Good
+vec&lt;int32_t&gt; array;
+
+// Good
+vec&lt;vec&lt;int32_t&gt;&gt; array;
+
+// Good
+vec&lt; vec&lt;int32_t&gt; &gt; array;
+
+// Bad
+vec &lt; int32_t &gt; array;
+
+// Bad
+vec &lt; vec &lt; int32_t &gt; &gt; array;
+</pre>
+
+</body></html>
