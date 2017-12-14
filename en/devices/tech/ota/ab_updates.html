@@ -36,14 +36,22 @@
     <ul>
       <li>
         OTA updates can occur while the system is running, without
-        interrupting the user (including app optimizations that occur after a
-        reboot). This means users can continue to use their devices during an
-        OTA&mdash;the only downtime during an update is when the device
+        interrupting the user. Users can continue to use their devices during
+        an OTA&mdash;the only downtime during an update is when the device
         reboots into the updated disk partition.
       </li>
       <li>
-        If an OTA fails, the device boots into the pre-OTA disk partition and
-        remains usable. The download of the OTA can be attempted again.
+        After an update, rebooting takes no longer than a regular reboot.
+      </li>
+      <li>
+        If an OTA fails to apply (for example, because of a bad flash), the
+        user will not be affected. The user will continue to run the old OS,
+        and the client is free to re-attempt the update.
+      </li>
+      <li>
+        If an OTA update is applied but fails to boot, the device will reboot
+        back into the old partition and remains usable. The client is free to
+        re-attempt the update.
       </li>
       <li>
         Any errors (such as I/O errors) affect only the <strong>unused</strong>
@@ -59,7 +67,8 @@
       </li>
       <li>
         The cache partition is no longer used to store OTA update packages, so
-        there is no need for sizing the cache partition.
+        there is no need to ensure that the cache partition is large enough for
+        future updates.
       </li>
       <li>
         <a href="/security/verifiedboot/dm-verity.html">dm-verity</a>
@@ -72,7 +81,73 @@
 
     <h2 id="overview">About A/B system updates</h2>
 
-      <p>A/B system updates affect the following:</p>
+      <p>
+        A/B updates require changes to both the client and the system. The OTA
+        package server, however, should not require changes: update packages
+        are still served over HTTPS. For devices using Google's OTA
+        infrastructure, the system changes are all in AOSP, and the client code
+        is provided by Google Play services. OEMs not using Google's OTA
+        infrastructure will be able to reuse the AOSP system code but will
+        need to supply their own client.
+      </p>
+
+      <p>
+        For OEMs supplying their own client, the client needs to:
+      </p>
+
+      <ul>
+        <li>
+          Decide when to take an update. Because A/B updates happen in the
+          background, they are no longer user-initiated. To avoid disrupting
+          users, it is recommended that updates are scheduled when the device
+          is in idle maintenance mode, such as overnight, and on Wi-Fi.
+          However, your client can use any heuristics you want.
+        </li>
+        <li>
+          Check in with your OTA package servers and determine whether an
+          update is available. This should be mostly the same as your existing
+          client code, except that you will want to signal that the device
+          supports A/B. (Google's client also includes a
+          <strong>Check now</strong> button for users to check for the latest
+          update.)
+        </li>
+        <li>
+          Call <code>update_engine</code> with the HTTPS URL for your update
+          package, assuming one is available. <code>update_engine</code> will
+          update the raw blocks on the currently unused partition as it streams
+          the update package.
+        </li>
+        <li>
+          Report installation successes or failures to your servers, based on
+          the <code>update_engine</code> result code. If the update is applied
+          successfully, <code>update_engine</code> will tell the bootloader to
+          boot into the new OS on the next reboot. The bootloader will fallback
+          to the old OS if the new OS fails to boot, so no work is required
+          from the client. If the update fails, the client needs to decide when
+          (and whether) to try again, based on the detailed error code. For
+          example, a good client could recognize that a partial ("diff") OTA
+          package fails and try a full OTA package instead.
+        </li>
+      </ul>
+
+      <p>Optionally, the client can:</p>
+
+      <ul>
+        <li>
+          Show a notification asking the user to reboot. If you want to
+          implement a policy where the user is encouraged to routinely update,
+          then this notification can be added to your client. If the client
+          does not prompt users, then users will get the update next time they
+          reboot anyway. (Google's client has a per-update configurable delay.)
+        </li>
+        <li>
+          Show a notification telling users whether they booted into a new
+          OS version or whether they were expected to do so but fell back to
+          the old OS version. (Google's client typically does neither.)
+        </li>
+      </ul>
+
+      <p>On the system side, A/B system updates affect the following:</p>
 
       <ul>
         <li>
@@ -854,23 +929,6 @@
       before an application had even started (because the package failed to verify,
       say). With A/B updates, a failure to apply an update does not affect the
       currently running system. The update can simply be retried later.</p>
-
-      <h3>What does GmsCore do?</h3>
-
-      <p>In Google's A/B implementation, the platform APIs and
-      <code>update_engine</code> provide the mechanism while GmsCore provides the
-      policy. That is, the platform knows <em>how</em> to apply an A/B update and all
-      that code is in AOSP (as mentioned above); but it's GmsCore that decides
-      <em>what</em> and <em>when</em> to apply.</p>
-
-      <p>If you’re not using GmsCore, you can write your own replacement using the
-      same platform APIs. The platform Java API for controlling
-      <code>update_engine</code> is <code>android.os.UpdateEngine</code>:
-      <code><a href="https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/os/UpdateEngine.java" class="external-link">frameworks/base/core/java/android/os/UpdateEngine.java</a></code>.
-      Callers can provide an <code>UpdateEngineCallback</code> to be notified of status
-      updates:
-      <code><a href="https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/os/UpdateEngineCallback.java" class="external-link">frameworks/base/+/master/core/java/android/os/UpdateEngineCallback.java</a></code>.
-      Refer to the reference files for the core classes to use the interface.</p>
 
       <h3>Which systems on a chip (SoCs) support A/B?</h3>
 
