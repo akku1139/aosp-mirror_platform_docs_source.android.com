@@ -22,7 +22,7 @@
 
 <p>本文档介绍如何调试 Android 运行时 (ART) 垃圾回收 (GC) 的正确性和性能问题。本文档解释了如何使用 GC 验证选项、确定 GC 验证失败的解决方案，以及测量并解决 GC 性能问题。</p>
 
-<p>有关处理 ART 的说明，请参阅 <a href="index.html">ART 和 Dalvik</a>、<a href="dex-format.html">Dalvik 可执行格式</a>以及 <a href="index.html">ART 和 Dalvik</a> 部分的其他页面。有关验证应用行为的其他帮助信息，请参阅<a href="http://developer.android.com/guide/practices/verifying-apps-art.html">在 Android 运行时 (ART) 上验证应用行为</a>。</p>
+<p>有关处理 ART 的说明，请参阅 <a href="index.html">ART 和 Dalvik</a>、<a href="dex-format.html">Dalvik 可执行格式</a>以及此 <a href="index.html">ART 和 Dalvik</a> 部分的其他页面。有关验证应用行为的其他帮助信息，请参阅<a href="http://developer.android.com/guide/practices/verifying-apps-art.html">在 Android 运行时 (ART) 上验证应用行为</a>。</p>
 
 <h2 id="art_gc_overview">ART GC 概述</h2>
 
@@ -36,8 +36,9 @@
 
 <ul>
   <li>与 Dalvik 相比，暂停次数从 2 次减少到 1 次。Dalvik 的第一次暂停主要是为了进行根标记，即在 ART 中进行并发标记，让线程标记自己的根，然后马上恢复运行。
-  </li><li>与 Dalvik 类似，ART GC 在清除过程开始之前也会暂停 1 次。两者在这方面的主要差异在于：在此暂停期间，某些 Dalvik 阶段在 ART 中并发进行。这些阶段包括 <code>java.lang.ref.Reference</code> 处理、系统弱清除（例如，jni 弱全局等）、重新标记非线程根和卡片预清理。在 ART 暂停期间仍进行的阶段包括扫描脏卡片以及重新标记线程根，这些操作有助于缩短暂停时间。
-  </li><li>相对于 Dalvik，ART GC 改进的最后一个方面是粘性 CMS 回收器增加了 GC 吞吐量。不同于普通的分代 GC，粘性 CMS 不移动。年轻对象被保存在一个分配堆栈（基本上是 <code>java.lang. Object</code> 数组）中，而非为其设置一个专用区域。这样可以避免移动所需的对象以维持低暂停次数，但缺点是容易在堆栈中加入大量复杂对象图像而使堆栈变长。
+  </li><li>与 Dalvik 类似，ART GC 在清除过程开始之前也会暂停 1 次。
+两者在这方面的主要差异在于：在此暂停期间，某些 Dalvik 阶段在 ART 中并发进行。这些阶段包括 <code>java.lang.ref.Reference</code> 处理、系统弱清除（例如，jni 弱全局等）、重新标记非线程根和卡片预清理。在 ART 暂停期间仍进行的阶段包括扫描脏卡片以及重新标记线程根，这些操作有助于缩短暂停时间。
+  </li><li>相对于 Dalvik，ART GC 改进的最后一个方面是粘性 CMS 回收器增加了 GC 吞吐量。不同于普通的分代 GC，粘性 CMS 不移动。年轻对象会被保存在一个分配堆栈（基本上是 <code>java.lang.Object</code> 数组）中，而非为其设置一个专用区域。这样可以避免移动所需的对象以维持低暂停次数，但缺点是容易在堆栈中加入大量复杂对象图像而使堆栈变长。
 </li></ul>
 
 <p>ART GC 与 Dalvik 的另一个主要区别在于 ART GC 引入了移动垃圾回收器。使用移动 GC 的目的在于通过堆压缩来减少后台应用使用的内存。目前，触发堆压缩的事件是 ActivityManager 进程状态的改变。当应用转到后台运行时，它会通知 ART 已进入不再“感知”卡顿的进程状态。此时 ART 会进行一些操作（例如，压缩和监视器压缩），从而导致应用线程长时间暂停。目前正在使用的两个移动 GC 是同构空间压缩和半空间压缩。</p>
@@ -93,12 +94,15 @@
 
 <p>通过将 SIGQUIT 发送到已运行的应用，或在启动命令行程序时通过将 -<code>XX:DumpGCPerformanceOnShutdown</code> 传递给 <code>dalvikvm</code>，可以获得应用的 GC 性能时序。当应用获得 ANR 请求信号 (SIGQUIT) 时，它将转储与锁定、线程堆栈和 GC 性能相关的信息。</p>
 
-<p>获取 GC 时序转储的方法是使用以下命令：<br />
-<code>$ adb shell kill -S QUIT <pid></pid></code></p>
+<p>获取 GC 时序转储的方法是使用以下命令：</p>
+
+<pre class="devsite-terminal devsite-click-to-copy">
+adb shell kill -S QUIT <var>PID</var>
+</pre>
 
 <p>该操作将在 <code>/data/anr/</code> 中创建一个 <code>traces.txt</code> 文件。此文件包含一些 ANR 转储信息以及 GC 时序。您可以通过搜索“转储累计 GC 时序”来确定 GC 时序。这些时序会显示一些相关内容。它会显示各 GC 类型的阶段和暂停的直方图信息。暂停信息通常比较重要。例如：</p>
 
-<pre>
+<pre class="devsite-click-to-copy">
 sticky concurrent mark sweep paused:	Sum: 5.491ms 99% C.I. 1.464ms-2.133ms Avg: 1.830ms Max: 2.133ms
 </pre>
 
@@ -106,26 +110,26 @@ sticky concurrent mark sweep paused:	Sum: 5.491ms 99% C.I. 1.464ms-2.133ms Avg: 
 
 <p>需要关注的另一个问题是挂起时间。挂起时间测量在 GC 要求某个线程挂起后，线程到达挂起点所需的时间。该时间包含在 GC 暂停中，所以可用于确定长时间暂停是否是由 GC 缓慢或线程挂起缓慢造成。以下是 Nexus 5 上的正常挂起时间示例：</p>
 
-<pre>
+<pre class="devsite-click-to-copy">
 suspend all histogram:	Sum: 1.513ms 99% C.I. 3us-546.560us Avg: 47.281us Max: 601us
 </pre>
 
 <p>还有一些其他要关注的方面，例如总耗时、GC 吞吐量等。示例如下：</p>
 
-<pre>
+<pre class="devsite-click-to-copy">
 Total time spent in GC: 502.251ms
 Mean GC size throughput: 92MB/s
 Mean GC object throughput: 1.54702e+06 objects/s
 </pre>
 
-<p>转储已运行应用的 GC 时序的示例如下：</p><pre>
-$ adb shell kill -s QUIT &lt;pid&gt;
-$ adb pull /data/anr/traces.txt
+<p>转储已运行应用的 GC 时序的示例如下：</p><pre class="devsite-click-to-copy">
+<code class="devsite-terminal">adb shell kill -s QUIT <var>PID</var></code>
+<code class="devsite-terminal">adb pull /data/anr/traces.txt</code>
 </pre>
 
 <p>此时，GC 时序包含在 trace.txt 中。Google 地图的输出示例如下：</p>
 
-<pre>
+<pre class="devsite-click-to-copy">
 Start Dumping histograms for 34 iterations for sticky concurrent mark sweep
 ScanGrayAllocSpaceObjects:	Sum: 196.174ms 99% C.I. 0.011ms-11.615ms Avg: 1.442ms Max: 14.091ms
 FreeList:	Sum: 140.457ms 99% C.I. 6us-1676.749us Avg: 128.505us Max: 9886us
@@ -194,17 +198,17 @@ Total time waiting for GC to complete: 187.655us
 
 <p>验证应用行为的另一种方法是使用 CheckJNI。CheckJNI 是一种添加额外 JNI 检查的模式；出于性能考虑，这些选项在默认情况下并不会启用。此类检查将捕获一些可能导致堆损坏的错误，例如使用无效/过时的局部和全局引用。启用 CheckJNI 的方法如下：</p>
 
-<pre>
-$ adb shell setprop dalvik.vm.checkjni true
+<pre class="devsite-terminal devsite-click-to-copy">
+adb shell setprop dalvik.vm.checkjni true
 </pre>
 
 <p>Forcecopy 模式是 CheckJNI 的另一部分，对检测超出数组区域末端的写入非常有用。启用后，forcecopy 会促使数组访问 JNI 函数时始终返回带有红色区域的副本。<em></em>红色区域是返回指针结束/开始处的一个区域，该区域具有特殊值，并在数组释放时得到验证。如果红色区域中的值与预期值不匹配，则通常意味着发生缓冲区溢出或欠载。这将导致 CheckJNI 中止。启用 forcecopy 模式的方法如下：</p>
 
-<pre>
-$ adb shell setprop dalvik.vm.jniopts forcecopy
+<pre class="devsite-terminal devsite-click-to-copy">
+adb shell setprop dalvik.vm.jniopts forcecopy
 </pre>
 
-<p>CheckJNI 应捕获错误的一个示例是超出从 <code>GetPrimitiveArrayCritical</code> 获取的数组末端的写入。该操作很可能会破坏 Java 堆。如果写入位于 CheckJNI 红色区域内，则在调用相应 <code>ReleasePrimitiveArrayCritical</code> 时，CheckJNI 将会捕获该问题。否则，写入将最终损坏 Java 堆中的一些随机对象，并可能会导致之后出现 GC 崩溃。如果崩溃的内存是引用字段，则 GC 可能会捕获错误并输出“Tried to mark not contained by any spaces<em></em><ptr></ptr>”的错误消息。</p>
+<p>CheckJNI 应捕获错误的一个示例是超出从 <code>GetPrimitiveArrayCritical</code> 获取的数组末端的写入。该操作很可能会破坏 Java 堆。如果写入位于 CheckJNI 红色区域内，则在调用相应 <code>ReleasePrimitiveArrayCritical</code> 时，CheckJNI 将会捕获该问题。否则，写入将最终损坏 Java 堆中的一些随机对象，并可能会导致之后出现 GC 崩溃。如果崩溃的内存是引用字段，则 GC 可能会捕获错误并输出“Tried to mark <ptr>not contained by any spaces</ptr>”的错误消息。<em></em></p>
 
 <p>当 GC 尝试标记无法找到空间的对象时，就会发生此错误。在此检查失败后，GC 会遍历根，并尝试查看无效对象是否为根。结果共有两个选项：对象为根或非根。</p>
 
@@ -214,18 +218,18 @@ $ adb shell setprop dalvik.vm.jniopts forcecopy
 
 <p>以下是一个使用示例：</p>
 
-<pre>
+<pre class="devsite-click-to-copy">
 # build and install
-$ mmm external/valgrind
-$ adb remount &amp;&amp; adb sync
+<code class="devsite-terminal">mmm external/valgrind</code>
+<code class="devsite-terminal">adb remount &amp;&amp; adb sync</code>
 # disable selinux
-$ adb shell setenforce 0
-$ adb shell setprop wrap.com.android.calculator2
+<code class="devsite-terminal">adb shell setenforce 0</code>
+<code class="devsite-terminal">adb shell setprop wrap.com.android.calculator2</code>
 "TMPDIR=/data/data/com.android.calculator2 logwrapper valgrind"
 # push symbols
-$ adb shell mkdir /data/local/symbols
-$ adb push $OUT/symbols /data/local/symbols
-$ adb logcat
+<code class="devsite-terminal">adb shell mkdir /data/local/symbols</code>
+<code class="devsite-terminal">adb push $OUT/symbols /data/local/symbols</code>
+<code class="devsite-terminal">adb logcat</code>
 </pre>
 
 <h3 id="invalid_root_example">无效的根示例</h3>
@@ -234,7 +238,7 @@ $ adb logcat
 <code>art E  5955  5955 art/runtime/gc/collector/mark_sweep.cc:383] Tried to mark 0x2
 not contained by any spaces</code></p>
 
-<pre>
+<pre class="devsite-click-to-copy">
 art E  5955  5955 art/runtime/gc/collector/mark_sweep.cc:384] Attempting see if
 it's a bad root
 art E  5955  5955 art/runtime/gc/collector/mark_sweep.cc:485] Found invalid
@@ -245,13 +249,13 @@ com.google.gwt.corp.collections.JavaReadableJsArray.get(int)' at dex PC 0x0002
 (native PC 0xf19609d9) vreg=1
 </pre>
 
-<p>在这种情况下，<code>vreg 1</code>（在 <code>com.google.gwt.corp.collections.JavaReadableJsArray.get</code> 内）应该包含一个堆引用，但实际上包含地址 <code>0x2</code> 的一个无效指针。这显然是一个无效根。要调试此问题，下一步是在 oat 文件中使用 <code>oatdump</code>，并查看具有无效根的方法。在这种情况下，结果证明错误在于 x86 后端的编译器错误。修正该错误的更改列表如下：<a href="https://android-review.googlesource.com/#/c/133932/">https://android-review.googlesource.com/#/c/133932/</a></p>
+<p>在这种情况下，<code>vreg 1</code>（在 <code>com.google.gwt.corp.collections.JavaReadableJsArray.get</code> 内）应该包含一个堆引用，但实际上却包含了地址 <code>0x2</code> 的一个无效指针。这显然是一个无效根。要调试此问题，下一步是在 oat 文件中使用 <code>oatdump</code>，并查看具有无效根的方法。在这种情况下，结果证明错误在于 x86 后端的编译器错误。修正该错误的更改列表如下：<a href="https://android-review.googlesource.com/#/c/133932/">https://android-review.googlesource.com/#/c/133932/</a></p>
 
 <h3 id="corrupted_object_example">损坏的对象示例</h3>
 
 <p>如果对象不是根，则会输出类似于以下打印内容的消息：</p>
 
-<pre>
+<pre class="devsite-click-to-copy">
 01-15 12:38:00.196  1217  1238 E art     : Attempting see if it's a bad root
 01-15 12:38:00.196  1217  1238 F art     :
 art/runtime/gc/collector/mark_sweep.cc:381] Can't mark invalid object

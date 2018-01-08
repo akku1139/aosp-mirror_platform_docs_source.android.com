@@ -119,7 +119,7 @@
 
 <ul>
 <li>HAL1 不受 cameraservice 移动的影响，并且<strong>不需要供应商更新</strong>。</li>
-<li><em></em>HAL3 会受到影响，但<strong>不需要供应商更新</strong>：<p><img src="images/ape_camera_n_api2_hal3.png" alt="HAL2 上 API2 中的 Android 7.0 相机和媒体堆栈" id="figure1"/></p>
+<li>HAL3 会受到影响，但<strong>不需要供应商更新</strong>：<em></em><p><img src="images/ape_camera_n_api2_hal3.png" alt="HAL2 上 API2 中的 Android 7.0 相机和媒体堆栈" id="figure1"/></p>
 <p class="img-caption"><strong>图 3. </strong>HAL3 上 API2 中的 Android 7.0 相机和媒体堆栈。</p>
 </li>
 </ul>
@@ -139,6 +139,56 @@
 <h2 id="version-history">Camera HAL 版本历史记录</h2>
 <p>有关可用于评估 Android Camera HAL 的测试列表，请参阅 <a href="/compatibility/cts/camera-hal.html">Camera HAL 测试核对清单</a>。</p>
 
+<h3 id="80">Android 8.0</h3>
+
+<p>
+Android 8.0 版本中包含针对相机服务的以下主要增强功能：
+</p>
+
+<ul>
+  <li>共享表面 - 可让多个表面共享同一个 <code>OutputConfiguration</code></li>
+  <li>适用于自定义相机模式的系统 API</li>
+  <li><code>onCaptureQueueEmpty</code></li>
+</ul>
+
+<p>
+有关这些功能的详细信息，请参阅以下部分。
+</p>
+
+<h4 id="shared-surfaces">共享表面</h4>
+
+<p>
+借助此功能，只需一组缓冲区就可以驱动两个输出（例如预览和视频编码），从而降低功耗和内存消耗。要支持此功能，设备制造商需要确保其相机 HAL 和 gralloc HAL 实现可以创建将由多个不同消耗方（而不是仅一个消耗方；例如 Hardware Composer/GPU 和视频编码器）使用的 gralloc 缓冲区。相机服务会将消耗方使用情况标记传递到相机 HAL 和 gralloc HAL；它们需要分配正确的缓冲区类型，或者相机 HAL 需要返回一个表明该消耗方组合不受支持的错误。
+</p>
+
+<p>
+有关其他详细信息，请参阅 <code><a href="https://developer.android.com/reference/android/hardware/camera2/params/OutputConfiguration.html#enableSurfaceSharing()">enableSurfaceSharing</a></code> 开发者文档。</p>
+
+<h4 id="system-api-for-custom-camera-modes">适用于自定义相机模式的系统 API</h4>
+
+<p>
+公共相机 API 定义了两种操作模式：正常模式和受限高速录制模式。这两种模式的语义截然不同；高速模式受限于一次最多只能有两个具体输出等。各个原始设备制造商 (OEM) 已表现出极大的兴趣想要针对特定于硬件的功能定义其他自定义模式。说白了，模式只是一个传递到 configure_streams 的整数。请参阅：<code>hardware/libhardware/+/master/include/hardware/camera3.h#1736</code>
+</p>
+
+<p>
+此功能包括一个系统 API 调用，OEM 相机应用可以使用该调用来启用自定义模式。这些自定义模式必须以整数值 0x8000 开头，以避免与未来添加到公共 API 的模式发生冲突。
+</p>
+
+<p>
+要支持这一功能，OEM 只需将相应的新模式添加到其 HAL 接口即可，传递至 HAL 的这一整数会在 configure_streams 上触发该模式，然后 OEM 就可以让其自定义相机应用使用系统 API 了。</p>
+
+<p>
+此方法的名称是 <code><a href="https://developer.android.com/reference/android/hardware/camera2/CameraCaptureSession.StateCallback.html#onCaptureQueueEmpty(android.hardware.camera2.CameraCaptureSession)">android.hardware.camera2.CameraDevice#createCustomCaptureSession</a></code>。
+请参阅：<code>frameworks/base/core/java/android/hardware/camera2/CameraDevice.java#797</code>
+
+</p><p class="note"><strong>注意</strong>：在 Android 8.0 MR1 版本中，应用必须预安装到系统映像上才能访问此 API。</p>
+
+<h4 id="oncapturequeueempty">onCaptureQueueEmpty</h4>
+
+<p>
+此 API 的目的是通过尽可能让请求队列为空，来缩短控制更改（如缩放）的延迟时间。<code>onCaptureQueueEmpty</code> 不需要 HAL 发挥作用；它只是一种框架端补充。想要利用此 API 的应用需要向回调添加监听器，并相应地发出响应。通常情况下，响应方式是向相机设备发送另一个捕获请求。
+</p>
+
 <h3 id="34">3.4</h3>
 
 <p>对受支持的元数据添加了少许内容并对 data_space 支持进行了更改：</p>
@@ -150,16 +200,16 @@
 <li>可用于 HALv3.2 或更高版本的常规元数据添加项：<ul>
   <li>
   <a href="https://developer.android.com/reference/android/hardware/camera2/CameraMetadata.html#INFO_SUPPORTED_HARDWARE_LEVEL_3"><code>ANDROID_INFO_SUPPORTED_HARDWARE_LEVEL_3</code>
-  </a></li>
-  <li><code>ANDROID_CONTROL_POST_RAW_SENSITIVITY_BOOST</code></li>
+  </a>
+  </li><li><code>ANDROID_CONTROL_POST_RAW_SENSITIVITY_BOOST</code></li>
   <li><code>ANDROID_CONTROL_POST_RAW_SENSITIVITY_BOOST_RANGE</code></li>
   <li><code>ANDROID_SENSOR_DYNAMIC_BLACK_LEVEL</code></li>
   <li><code>ANDROID_SENSOR_DYNAMIC_WHITE_LEVEL</code></li>
   <li><code>ANDROID_SENSOR_OPAQUE_RAW_SIZE</code></li>
   <li><code>ANDROID_SENSOR_OPTICAL_BLACK_REGIONS</code></li>
   </ul>
-  </li><li>
-</li></ul>
+  </li>
+</ul>
 
 <h3 id="33">3.3</h3>
 
@@ -213,7 +263,7 @@
 <p>初始版本的扩展功能 HAL (Android 4.2) [camera2.h]：</p>
 
 <ul>
-<li>足够实现现有 <code>android.hardware.Camera</code> API。</li>
+<li>足够用于实现现有的 <code>android.hardware.Camera</code> API。</li>
 <li>允许用于相机服务层中的 ZSL 队列。</li>
 <li>未针对任何新功能（如手动捕获控制、Bayer RAW 捕获，RAW 数据的重新处理等）进行测试。</li>
 </ul>

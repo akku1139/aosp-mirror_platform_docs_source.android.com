@@ -20,7 +20,7 @@
       limitations under the License.
   -->
 
-<p>Android O 对 Android 操作系统的架构重新进行了设计，以在独立于设备的 Android 平台与特定于设备和供应商的代码之间定义清晰的接口。Android 已经以 HAL 接口的形式（在 <code>hardware/libhardware</code> 下定义为 C 标头）定义了许多此类接口。HIDL 将这些 HAL 接口替换为稳定的带版本接口，它们可以是采用 C++ 的客户端和服务器端 HIDL 接口（如下所述）或 <a href="/devices/architecture/hidl-java/index.html">Java</a> 接口。</p>
+<p>Android O 对 Android 操作系统的架构重新进行了设计，以在独立于设备的 Android 平台与特定于设备和供应商的代码之间定义清晰的接口。Android 已经以 HAL 接口的形式（在 <code>hardware/libhardware</code> 中定义为 C 标头）定义了许多此类接口。HIDL 将这些 HAL 接口替换为稳定的带版本接口，它们可以是采用 C++（如下所述）或 <a href="/devices/architecture/hidl-java/index.html">Java</a> 的客户端和服务器端 HIDL 接口。</p>
 
 <p>本部分中的几页内容介绍了 HIDL 接口的 C++ 实现，其中详细说明了 <code>hidl-gen</code> 编译器基于 HIDL <code>.hal</code> 文件自动生成的文件，这些文件如何打包，以及如何将这些文件与使用它们的 C++ 代码集成。</p>
 
@@ -70,9 +70,9 @@ hidl-gen -o $LOC -Landroidbp-impl -randroid.hardware:hardware/interfaces \
     -randroid.hidl:system/libhidl/transport $PACKAGE
 </pre>
 
-<p>为了让 HAL 在直通模式下发挥作用（对于旧版设备），您必须具有 HIDL_FETCH_IModuleName 函数<em></em>（位于 <code>/system/lib(64)?/hw/android.hardware.package@3.0-impl(-$OPTIONAL_IDENTIFIER).so</code> 下），其中 <code>$OPTIONAL_IDENTIFIER</code> 是一个标识直通实现的字符串。直通模式要求会通过上述命令自动满足，这些命令也会创建 <code>android.hardware.nfc@1.0-impl</code> 目标。</p>
+<p>为了让 HAL 在直通模式下发挥作用（对于旧版设备），您必须具有 HIDL_FETCH_IModuleName 函数<em></em>（位于 <code>/system/lib(64)?/hw/android.hardware.package@3.0-impl($OPTIONAL_IDENTIFIER).so</code> 下），其中 <code>$OPTIONAL_IDENTIFIER</code> 是一个用于标识直通实现的字符串。直通模式要求会通过上述命令自动满足，这些命令也可用于创建 <code>android.hardware.nfc@1.0-impl</code> 目标，但是可以使用扩展。例如，<code>android.hardware.nfc@1.0-impl-foo</code> 就是使用 <code>-foo</code> 来区分它自己。</p>
 
-<p>接下来，使用功能填写存根并设置守护进程。守护进程代码（支持直通）示例：</p>
+<p>接下来，使用相应功能填写存根并设置守护进程。守护进程代码（支持直通）示例：</p>
 
 <pre class="prettyprint">
 #include &lt;hidl/LegacySupport.h&gt;
@@ -87,7 +87,11 @@ int main(int /* argc */, char* /* argv */ []) {
 <pre class="prettyprint">
 int main(int /* argc */, char* /* argv */ []) {
     Nfc nfc = new Nfc();
-    nfc-&gt;registerAsService();
+    const status_t status = nfc-&gt;registerAsService();
+    if (status != ::android::OK) {
+        return 1; // or handle error
+    }
+    // join pool or do other things
 }
 </pre>
 

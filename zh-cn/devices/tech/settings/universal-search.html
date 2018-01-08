@@ -1,0 +1,175 @@
+<html devsite><head>
+    <title>通用搜索</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>
+Android 8.0 为“设置”菜单添加了经过扩展的搜索功能。<em></em>本文档介绍了如何添加设置，以及如何确保正确地将其加入“设置”搜索的索引中。
+</p>
+
+<h2 id="indexable-settings">创建可编入索引的设置</h2>
+
+<p>
+需要编入索引的每个“设置”片段都会实现 <code>Indexable</code> 接口，并且需要静态字段：
+
+</p><pre class="prettyprint">public static final SearchIndexProvider SEARCH_INDEX_DATA_PROVIDER
+</pre>
+
+<p>
+为您的片段进行设置以编入索引后，将其添加到以下位置中的 <code>SearchIndexableResources</code>：<br />
+<code>packages/apps/Settings/src/com/android/settings/search/SearchIndexableResources.java
+</code>
+</p>
+
+<h2 id="optional-methods">可选方法</h2>
+
+<p>该 <code>SearchIndexProvider</code> 接口有四种可选方法。</p>
+
+<h3 id="getXmlResourcesToIndex">getXmlResourcesToIndex</h3>
+  <ul>
+    <li>如果您的片段内容来自 <code>preference xml</code>，则替换此方法</li>
+    <li>以要编入索引的列表形式返回 XML 偏好设置。</li>
+  </ul>
+
+ <p>XML 资源示例：</p>
+
+<pre class="prettyprint">public List&lt;SearchIndexableResource&gt; getXmlResourcesToIndex(Context context, boolean enabled) {
+    ArrayList&lt;SearchIndexableResource&gt; result =  new ArrayList&lt;SearchIndexableResource&gt;();
+SearchIndexableResource sir = new SearchIndexableResource(context);
+	sir.xmlResId = R.xml.display_settings;
+	result.add(sir);
+
+    return result;
+}</pre>
+
+<h3 id="getRawDataToIndex">getRawDataToIndex</h3>
+  <ul>
+    <li>如果您的片段内容并非来自 <code>preference
+xml</code>，则替换此方法</li>
+    <li>返回要编入索引的原始数据 (<code>SearchIndexableRaw</code>) 的列表。</li>
+  </ul>
+
+<p>原始数据示例：</p>
+
+<pre class="prettyprint">
+public List&lt;SearchIndexableRaw&gt; getRawDataToIndex(Context context, boolean enabled) {
+              final List&lt;SearchIndexableRaw&gt; result = new ArrayList&lt;&gt;();
+              final Resources res = context.getResources();
+
+              // Add fragment title
+       SearchIndexableRaw data = new SearchIndexableRaw(context);
+       data.title = res.getString(R.string.wifi_settings);
+       data.screenTitle = res.getString(R.string.wifi_settings);
+       data.keywords = res.getString(R.string.keywords_wifi);
+       data.key = DATA_KEY_REFERENCE;
+       result.add(data);
+
+       return result;
+}
+</pre>
+
+<h3 id="getRawDataToIndex">getNonIndexableKeys</h3>
+  <ul>
+   <li>如果您的片段为 <code>DashboardFragment</code>，则很少需要替换该方法。</li>
+   <li>返回不应针对给定用户、设备、配置等显示的结果相对应的键列表。此处提供的键应与 <code>SearchIndexableResource</code> 和 <code>SearchIndexableRaw</code> 中的 KEY 字段匹配。<em></em></li>
+   <li>例如：不应向从未在其设备中使用 SIM 卡的用户显示“流量消耗”。</li>
+  </ul>
+
+<p>不可编入索引的键示例：</p>
+
+<pre class="prettyprint">
+public List&lt;String&gt; getNonIndexableKeys(Context context) {
+      final List&lt;String&gt; keys = super.getNonIndexableKeys(context);
+              if (!checkIntentAction(context, "android.settings.TERMS")) {
+                  keys.add(KEY_TERMS);
+              }
+              if (!checkIntentAction(context, "android.settings.LICENSE")) {
+                  keys.add(KEY_LICENSE);
+              }
+              if (!checkIntentAction(context, "android.settings.COPYRIGHT")) {
+                  keys.add(KEY_COPYRIGHT);
+              }
+              if (!checkIntentAction(context, "android.settings.WEBVIEW_LICENSE")) {
+                  keys.add(KEY_WEBVIEW_LICENSE);
+              }
+              return keys;
+}</pre>
+
+<h3 id="getPreferenceControllers">getPreferenceControllers</h3>
+
+<p>
+返回与此片段相关联的偏好设置控制器列表。此列表用于形成内嵌结果、更新不可编入索引的内容等。
+</p>
+
+<p>
+因此，您希望在搜索中显示的所有内容都必须包含在 <code>getXmlResourcesToIndex</code> 或 <code>getRawDataToIndex</code> 中。
+</p>
+
+<h2 id="keywords">为您的设置添加关键字</h2>
+
+<p>
+为确保设置易于搜索，请添加与设置相关、用户可能用来搜索该设置的关键字。
+</p>
+
+<p>
+添加关键字时请注意以下事项：
+</p>
+   <ul>
+     <li>关键字是具有以下特征的词语的列表：用户不一定会看到，但可能属于在脑中构想相应设置的工作原理时会用到的字词。</li>
+     <li>关键字是用户可能会输入以访问您的设置的字词。</li>
+     <li>关键字可以是同义词，或者与设置相关联的任何字词。</li>
+     <li>例如，可以使用“静音”来查找“音量”设置。</li>
+   </ul>
+
+<h2 id="duplication">避免重复内容</h2>
+
+<p>
+如果您要无条件地排除某个设置页面，请移除原始页面的索引，以避免出现重复的结果。
+</p>
+
+   <ol>
+     <li>找到您要排除的页面的 <code>PreferenceFragment</code>。</li>
+     <li>移除 <code>SearchIndexProvider</code>。</li>
+   </ol>
+
+<h2 id="validation">验证</h2>
+
+<p>
+要测试新设置的可搜索性，请执行以下操作：
+</p>
+
+   <ol>
+     <li>在设备上安装最新版本的 Android O。</li>
+     <li>通过依次选择以下各项让数据库重新编制索引：</li>
+<em>设置 &gt; 应用和通知 &gt; 应用信息 &gt; 设置 &gt; 存储 &gt; <strong>清除数据</strong></em>
+     <li>验证目标设置是否显示在搜索结果中。<br />
+     搜索设置的标题前缀将与该设置匹配。</li>
+   </ol>
+
+<p>
+可以运行以下 robolectric 测试来验证此功能的实现：<br />
+<code>packages/apps/Settings/tests/robotests/src/com/android/settings/search</code>
+</p>
+
+<p>
+编译目标为：<code>RunSettingsRoboTests</code>
+</p>
+
+</body></html>

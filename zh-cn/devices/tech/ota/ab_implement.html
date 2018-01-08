@@ -23,7 +23,7 @@
 <p>想要实现 A/B 系统更新的原始设备制造商 (OEM) 和 SoC 供应商必须确保其引导加载程序实现 boot_control HAL，并将<a href="#kernel">正确的参数</a>传递到内核。</p>
 
 <h2 id="bootcontrol">实现启动控件 HAL</h2>
-<p>支持 A/B 的引导加载程序必须在 <code><a href="https://android.googlesource.com/platform/hardware/libhardware/+/master/include/hardware/boot_control.h" class="external">hardware/libhardware/include/hardware/boot_control.h</a></code> 实现 <code>boot_control</code> HAL。您可以使用 <code><a href="https://android.googlesource.com/platform/system/extras/+/master/bootctl/" class="external">system/extras/bootctl</a></code> 实用工具和 <code><a href="https://android.googlesource.com/platform/system/extras/+/refs/heads/master/tests/bootloader/" class="external">system/extras/tests/bootloader/</a></code> 来测试实现。
+<p>支持 A/B 更新的引导加载程序必须在 <code>boot_control</code> 实现 <code><a href="https://android.googlesource.com/platform/hardware/libhardware/+/master/include/hardware/boot_control.h" class="external">hardware/libhardware/include/hardware/boot_control.h</a></code> HAL。您可以使用 <code><a href="https://android.googlesource.com/platform/system/extras/+/master/bootctl/" class="external">system/extras/bootctl</a></code> 实用工具和 <code><a href="https://android.googlesource.com/platform/system/extras/+/refs/heads/master/tests/bootloader/" class="external">system/extras/tests/bootloader/</a></code> 来测试实现。
 </p>
 
 <p>您还必须实现状态机，如下所示：</p>
@@ -35,8 +35,8 @@
 <ol>
 <li>择优挑选下列内核补丁程序系列（如果需要）：
  <ul>
- <li>如果在没有使用 ramdisk 的情况下启动并使用“以恢复方式启动”，请择优挑选 <a href="https://android-review.googlesource.com/#/c/158491/" class="external">android-review.googlesource.com/#/c/158491/</a>。</li>
- <li>要在没有使用 ramdisk 的情况下设置 dm-verity，请择优挑选 <a href="https://android-review.googlesource.com/#/q/status:merged+project:kernel/common+branch:android-3.18+topic:A_B_Changes_3.18" class="external">android-review.googlesource.com/#/q/status:merged+project:kernel/common+branch:android-3.18+topic:A_B_Changes_3.18</a>。</li>
+ <li>如果在没有使用 ramdisk 的情况下启动并使用“以恢复方式启动”，请访问 <a href="https://android-review.googlesource.com/#/c/158491/" class="external">android-review.googlesource.com/#/c/158491/</a> 根据需要进行选择。</li>
+ <li>要在没有使用 ramdisk 的情况下设置 dm-verity，请访问 <a href="https://android-review.googlesource.com/#/q/status:merged+project:kernel/common+branch:android-3.18+topic:A_B_Changes_3.18" class="external">android-review.googlesource.com/#/q/status:merged+project:kernel/common+branch:android-3.18+topic:A_B_Changes_3.18</a> 根据需要进行选择。</li>
  </ul>
 </li>
 <li>确保内核命令行参数包含中以下额外参数：
@@ -49,7 +49,7 @@
  <pre class="devsite-terminal devsite-click-to-copy">
 openssl x509 -in &lt;x509-pem-certificate&gt; -outform der -out &lt;x509-der-certificate&gt;</pre>
  </li>
- <li>构建 <code>zImage</code> 以将该证书添加为系统密钥环的一部分。要验证，请检查 <code>procfs</code> 条目（需要启用 <code>KEYS_CONFIG_DEBUG_PROC_KEYS</code>）：
+ <li>构建 <code>zImage</code> 以将该证书添加为系统密钥环的一部分。要进行验证，请检查 <code>procfs</code> 条目（需要启用 <code>KEYS_CONFIG_DEBUG_PROC_KEYS</code>）：
 <pre class="devsite-click-to-copy">
 angler:/# cat /proc/keys
 
@@ -57,19 +57,19 @@ angler:/# cat /proc/keys
 Android: 7e4333f9bba00adfe0ede979e28ed1920492b40f: X509.RSA 0492b40f []
 2d454e3e I------     1 perm 1f030000     0     0 keyring
 .system_keyring: 1/4</pre>
-如果 .X509 证书添加成功，则表示系统密钥环中存在相应公钥（突出显示部分表示公钥 ID）。</li>
+如果 .X509 证书添加成功，则表示系统密钥环中存在相应公钥（突出显示的部分为公钥 ID）。</li>
  <li>将空格替换为 <code>#</code>，并将其作为 <code>&lt;public-key-id&gt;</code> 在内核命令行中传递。例如，传递 <code>Android:#7e4333f9bba00adfe0ede979e28ed1920492b40f</code> 而非 <code>&lt;public-key-id&gt;</code>。</li>
  </ol>
 </li>
 </ol>
 
-<h2 id="build-variables">设置构建变量</h2>
+<h2 id="build-variables">设置编译变量</h2>
 
-<p>支持 A/B 的引导加载程序必须满足以下构建变量条件：</p>
+<p>支持 A/B 更新的引导加载程序必须满足以下编译变量条件：</p>
 
 <table>
 <tbody><tr>
-<th>必须针对 A/B 目标定义的变量</th>
+<th>必须针对 A/B 更新目标定义的变量</th>
 <td>
 <ul>
 <li><code>AB_OTA_UPDATER := true</code></li>
@@ -112,18 +112,18 @@ A/B 化的所有分区都应按以下方法命名（插槽始终被命名为 <co
 
 <h3 id="cache">缓存</h3>
 
-<p>对于非 A/B 更新，缓存分区用于存储下载的 OTA 软件包，并在应用更新时暂时隐藏块。调整缓存分区大小从来没有好办法：其缓存所需的大小取决于您想要应用的更新。最糟糕的情况是缓存分区与系统映像一样大。如果使用 A/B 更新，则无需隐藏块（因为您始终在写入当前未使用的分区）；如果流式传输 A/B，则无需在应用之前下载整个 OTA 软件包。</p>
+<p>对于非 A/B 更新，缓存分区用于存储下载的 OTA 软件包，并在应用更新时暂时隐藏块。调整缓存分区大小从来没有好办法：所需的大小取决于您想要应用的更新。最糟糕的情况是缓存分区与系统映像一样大。如果使用 A/B 更新，则无需隐藏块（因为您始终在向当前未使用的分区写入数据）；如果流式传输 A/B 更新，则无需在应用之前下载整个 OTA 软件包。</p>
 
 <h3 id="recovery">恢复</h3>
 
 <p>恢复 RAM 磁盘现已包含在 <code>boot.img</code> 文件中。
 进入恢复模式时，引导加载程序<strong>无法</strong>在内核命令行中添加 <code>skip_initramfs</code> 选项。</p>
 
-<p>对于非 A/B更新，恢复分区包含用于应用更新的代码。A/B 更新由在正常启动的系统映像中运行的 <code>update_engine</code> 应用。仍有一种用于实现恢复出厂设置和旁加载更新软件包的恢复模式（“恢复”就由此而来）。恢复模式的代码和数据存储在 ramdisk 的常规启动分区中；为启动进入系统映像，引导加载程序会指示内核跳过 ramdisk（否则，设备会启动进入恢复模式）。恢复模式很小（其中大部分已在启动分区上），所以启动分区的大小不会增加。</p>
+<p>对于非 A/B 更新，恢复分区包含用于应用更新的代码。A/B 更新由在正常启动的系统映像中运行的 <code>update_engine</code> 应用。同时，仍有一种用于实现恢复出厂设置和旁加载更新软件包的恢复模式（“恢复”就由此而来）。恢复模式的代码和数据存储在 ramdisk 的常规启动分区中；为启动进入系统映像，引导加载程序会指示内核跳过 ramdisk（否则，设备会启动进入恢复模式）。恢复模式很小（其中大部分已在启动分区上），所以启动分区的大小不会增加。</p>
 
 <h3 id="fstab">Fstab</h3>
 
-<p><code>slotselect</code> 参数<strong>必须</strong>位于 A/B 化分区对应的行中。例如：</p>
+<p><code>slotselect</code> 参数<strong>必须</strong>位于进行 A/B 更新的分区对应的行中。例如：</p>
 
 <pre class="devsite-click-to-copy">
 &lt;path-to-block-device&gt;/vendor  /vendor  ext4  ro
@@ -152,7 +152,7 @@ wait,verify=&lt;path-to-block-device&gt;/metadata,slotselect
 <li><code>slot-count</code>。返回一个表示可用插槽数量的整数。目前支持两个插槽，因此该值为 <code>2</code>。</li>
 <li><code>slot-successful:&lt;slot-suffix&gt;</code>。如果指定插槽已标记为成功启动，则返回“yes”，否则返回“no”。</li>
 <li><code>slot-unbootable:&lt;slot-suffix&gt;</code>。如果指定插槽已标记为不可引导，则返回“yes”，否则返回“no”。</li>
-<li><code>slot-retry-count<slot suffix></slot></code>。可以尝试启动指定插槽的剩余重试次数。</li>
+<li><code>slot-retry-count<slot suffix></slot></code>。启动指定插槽的剩余重试次数。</li>
 </ul>
 
 <p>要查看所有变量，请运行 <code class="devsite-terminal devsite-click-to-copy">fastboot getvar all</code>。
@@ -160,17 +160,17 @@ wait,verify=&lt;path-to-block-device&gt;/metadata,slotselect
 
 <h2 id="ota-package-generation">生成 OTA 软件包</h2>
 
-<p><a href="/devices/tech/ota/tools.html">OTA 软件包工具</a>遵循用于非 A/B 设备的相同命令。<code>target_files.zip</code> 文件必须通过为 A/B 目标定义构建变量生成。OTA 软件包工具会自动识别并生成格式适用于 A/B 更新程序的软件包。</p>
+<p><a href="/devices/tech/ota/tools.html">OTA 软件包工具</a>遵循的命令与不采取 A/B 更新的设备相同。<code>target_files.zip</code> 文件必须通过为 A/B 更新目标定义编译变量生成。OTA 软件包工具会自动识别并生成格式适用于 A/B 更新程序的软件包。</p>
 
 <p>例如：</p>
 <ul>
-<li>要生成完整 OTA：
+<li>生成完整 OTA：
 <pre class="devsite-terminal devsite-click-to-copy">
 ./build/tools/releasetools/ota_from_target_files \
   dist_output/tardis-target_files.zip ota_update.zip
 </pre>
 </li>
-<li>要生成增量 OTA：<pre class="devsite-terminal devsite-click-to-copy">
+<li>生成增量 OTA：<pre class="devsite-terminal devsite-click-to-copy">
 ./build/tools/releasetools/ota_from_target_files \
   -i PREVIOUS-tardis-target_files.zip \
   dist_output/tardis-target_files.zip incremental_ota_update.zip
@@ -195,10 +195,10 @@ AB_OTA_PARTITIONS := \
 
 <h2 id="post-install">配置安装后步骤</h2>
 
-<p>对于每个已更新的分区，您可以使用一组键值对配置不同的安装后步骤。要在新映像中运行位于 <code>/system/usr/bin/postinst</code> 的程序，请相对于系统分区中的文件系统的根目录来指定路径。</p>
+<p>对于每个已更新的分区，您可以使用一组键值对配置不同的安装后步骤。要在新映像中运行位于 <code>/system/usr/bin/postinst</code> 的程序，请指定相对于系统分区中文件系统的根目录的路径。</p>
 
 <p>例如，<code>usr/bin/postinst</code> 的对应路径为 <code>system/usr/bin/postinst</code>（如果未使用 RAM 磁盘）。此外，请指定要传递到 <code>mount(2)</code> 系统调用的文件系统类型。
-将以下内容添加到产品或设备的 <code>.mk</code> 文件（如果适用）：</p>
+请将以下代码添加到产品或设备的 <code>.mk</code> 文件中（如果适用）：</p>
 
 <pre class="devsite-click-to-copy">
 AB_OTA_POSTINSTALL_CONFIG += \
@@ -219,7 +219,7 @@ AB_OTA_POSTINSTALL_CONFIG += \
   # A/B OTA dexopt package
   PRODUCT_PACKAGES += otapreopt_script
 </pre></li>
-<li>将编译脚本与 <code>update_engine</code> 相关联，以便它可以作为安装后步骤运行。
+<li>将编译脚本与 <code>update_engine</code> 相关联，以便后者可以作为安装后步骤运行。
 <pre class="devsite-click-to-copy">
   # A/B OTA dexopt update_engine hookup
   AB_OTA_POSTINSTALL_CONFIG += \

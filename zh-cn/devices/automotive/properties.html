@@ -36,7 +36,7 @@ num_properties)</code>
 <li><code>(*subscribe)(..., int32_t prop, float sample_rate, int32_t
 zones)</code>
 <ul>
-<li>开始监视属性值的变化。对于区域属性，订阅适用于请求的区域。“zones = 0”用于请求所有受支持的区域。
+<li>开始监视属性值的变化。对于区域属性，订阅适用于请求的区域。Zones = 0 用于请求所有受支持的区域。
 </li>
 <li>车载 HAL 应该在属性值发生变化时（即 on-change 类型）或按一定间隔（即 continuous 类型）调用单独的回调。</li>
 </ul></li>
@@ -73,13 +73,13 @@ int32_t operation)</code>
 <li><code>vehicle_window</code>
 <br />基于窗户的区域。</li>
 </ul>
-<p>每个区域属性都应使用预定义的区域类型。如有必要，您可以为每个属性都使用自定义区域类型（有关详情，请参阅<a href="#prop_custom">处理自定义属性</a>一节）。</p>
+<p>每个区域属性都应使用预定义的区域类型。如有必要，您可以为每个属性使用自定义区域类型（有关详情，请参阅<a href="#prop_custom">处理自定义属性</a>）。</p>
 
 <h2 id="prop_config">配置属性</h2>
-<p>请使用 <code>vehicle_prop_config_t</code> 为每个属性提供配置信息。具体信息包括：</p>
+<p>使用 <code>vehicle_prop_config_t</code> 为每个属性提供配置信息。具体信息包括：</p>
 <ul>
 <li><code>access</code>（r、w、rw）</li>
-<li><code>change_mode</code>（表示监视属性的方式：on-change 模式还是 continuous 模式）</li>
+<li><code>change_mode</code>（表示监视属性的方式：变化模式还是连续模式）</li>
 <li><code>min_value</code>（int32、float、int64）、<code>max_value</code>（int32、float、int64）</li>
 <li><code>min_sample_rate</code>、<code>max_sample_rate</code></li>
 <li><code>permission_model</code></li>
@@ -92,13 +92,13 @@ int32_t operation)</code>
 <h2 id="zone_prop">处理区域属性</h2>
 <p>区域属性相当于多个属性的集合，其中每个子属性都可由指定的区域值访问。</p>
 <ul>
-<li>区域属性的 <code>get</code> 调用请求中始终包含区域，因此，只应返回所请求区域的当前值。</li>
-<li>区域属性的 <code>set</code> 调用请求中始终包含区域，因此，只应更改所请求的区域。</li>
-<li><code>subscribe</code> 调用包含所有已订阅区域的标记。不应报告来自未订阅区域的事件。</li>
+<li>区域属性的 <code>get</code> 调用始终包含请求中的区域，因此，只应返回所请求区域的当前值。</li>
+<li>区域属性的 <code>set</code> 调用始终包含请求中的区域，因此，只应更改所请求的区域。</li>
+<li><code>subscribe</code> 调用包括所有已订阅区域的标记。不应报告来自未订阅区域的事件。</li>
 </ul>
 
-<h3 id="get">get 调用</h3>
-<p>在初始化期间，由于尚未收到匹配的车辆网络消息，因此属性的值可能不可用。在这种情况下，<code>get</code> 调用应该返回 <code>-EAGAIN</code>。某些属性（如 HVAC）具有单独的电源开/关属性。关机时这种属性的 <code>get</code> 调用应返回特殊值 <code>(VEHICLE_INT_OUT_OF_RANGE_OFF/VEHICLE_FLOAT_OUT_OF_RANGE_OFF)</code>，而不是返回错误。</p>
+<h3 id="get">Get 调用</h3>
+<p>在初始化期间，由于尚未收到匹配的车辆网络消息，属性的值可能不可用。在这种情况下，<code>get</code> 调用应该返回 <code>-EAGAIN</code>。某些属性（如 HVAC）具有独立的电源开/关属性。这种属性的 <code>get</code> 的调用（关机时）应返回特殊值 <code>(VEHICLE_INT_OUT_OF_RANGE_OFF/VEHICLE_FLOAT_OUT_OF_RANGE_OFF)</code>，而不是返回错误。</p>
 <p>此外，某些属性（如 HVAC 温度）可以用某个值来表示其处于最大功率模式，而不是特定的温度值。在这种情况下，请使用特殊值表示这种状态。</p>
 <ul>
 <li>VEHICLE_INT_OUT_OF_RANGE_MAX/MIN</li>
@@ -106,30 +106,30 @@ int32_t operation)</code>
 </ul>
 
 <p>示例：获取 HVAC 温度</p>
-<img src="../images/vehicle_hvac_get.png" alt="车载 HAL 获取 HVAC 的示例"/>
+<img src="../images/vehicle_hvac_get.png" alt="车载 HAL get 获取 HVAC 的示例"/>
 <p class="img-caption"><strong>图 1</strong>. 获取 HVAC 温度（CS = CarService、VNS = VehicleNetworkService、VHAL = 车载 HAL）</p>
 
-<h3 id="set">set 调用</h3>
-<p><code>set</code> 调用属于异步操作，涉及进行所请求更改之后的事件通知。在典型的操作中，<code>set</code> 调用会导致在车辆网络中发出更改请求。拥有该属性的电子控制单元 (ECU) 执行更改后，更新后的值会通过车辆网络返回，而车载 HAL 会将更新后的值作为事件发送给车辆网络服务 (VNS)。</p>
-<p>某些 <code>set</code> 调用可能要求准备好初始数据，而这些数据在初始化期间可能尚未提供。在这种情况下，<code>set</code> 调用应该返回 <code>-EAGAIN</code>。某些具有单独的电源开/关的属性应在电源关闭且无法设置时返回 <code>-ESHUTDOWN</code>。</p>
-<p>在 <code>set</code> 生效之前，<code>get</code> 不一定会返回所设置的值。不过，例外的是更改模式为 <code>VEHICLE_PROP_CHANGE_MODE_ON_SET.</code> 的属性。此类属性仅在被 Android 之外的外部组件（如 <code>VEHICLE_PROPERTY_UNIX_TIME</code> 等时钟属性）设置时才会通知更改。</p>
+<h3 id="set">Set 调用</h3>
+<p><code>set</code> 调用属于异步操作，涉及进行所请求更改之后的事件通知。在典型的操作中，<code>set</code> 调用会导致在车辆网络中发出更改请求。拥有该属性的电子控制单元 (ECU) 执行更改后，更新后的值通过车辆网络返回，而车载 HAL 会将更新后的值作为事件发送给车辆网络服务 (VNS)。</p>
+<p>某些 <code>set</code> 调用可能要求准备好初始数据，而这些数据在初始化期间可能尚不可用。在这种情况下，<code>set</code> 调用应该返回 <code>-EAGAIN</code>。某些具有独立的电源开/关的属性应在属性关闭且无法设置时返回 <code>-ESHUTDOWN</code>。</p>
+<p>在 <code>set</code> 生效之前，<code>get</code> 不一定会返回所设置的值。例外情况是更改模式为 <code>VEHICLE_PROP_CHANGE_MODE_ON_SET.</code> 的属性。此属性仅在被 Android 之外的外部组件（如 <code>VEHICLE_PROPERTY_UNIX_TIME</code> 等时钟属性）设置时才通知更改。</p>
 
 <p>示例：设置 HVAC 温度</p>
 <img src="../images/vehicle_hvac_set.png" alt="车载 HAL 设置 HVAC 的示例"/>
 <p class="img-caption"><strong>图 2</strong>. 设置 HVAC 温度（CD = CarService、VNS = VehicleNetworkService、VHAL = 车载 HAL）</p>
 
 <h2 id="prop_custom">处理自定义属性</h2>
-<p>为了满足合作伙伴的特定需求，车载 HAL 允许使用仅限于系统应用的自定义属性。在使用自定义属性时，请遵循以下指南：</p>
+<p>为了满足合作伙伴的特定需求，车载 HAL 允许使用针对系统应用的自定义属性。在使用自定义属性时，请遵循以下指南：</p>
 <ul>
-<li>键应该处于 [<code>VEHICLE_PROPERTY_CUSTOM_START,
-VEHICLE_PROPERTY_CUSTOM_END</code>] 范围内。其他范围已预留下来以供将来扩展；使用这些范围可能会导致在将来的 Android 版本中出现冲突。</li>
-<li>仅使用定义的 <code>value_type</code>。BYTES 类型允许传递原始数据，因此，在大多数情况下这就足够了。通过自定义属性频繁发送大数据可能会减缓整个车辆网络的访问速度，因此，在添加大量需要 HAL 处理的数据时要小心谨慎。</li>
-<li>将访问策略添加到 <code>vendor_vns_policy.xml</code>（否则所有访问都会被拒）。</li>
-<li>通过 <code>VendorExtensionManager</code>（适用于 Java 组件）或 Vehicle Network Service API（适用于原生代码）访问。请勿修改其他汽车 API，因为这样做可能会在将来导致兼容性问题。</li>
+<li>键值应该在 [<code>VEHICLE_PROPERTY_CUSTOM_START,
+VEHICLE_PROPERTY_CUSTOM_END</code>] 范围内。其他范围会预留以供将来的扩展功能使用；使用这种范围可能会导致将来的 Android 版本中出现冲突。</li>
+<li>仅使用定义的 <code>value_type</code>。BYTES 类型允许传递原始数据，因此，在大多数情况下是足够的。通过自定义属性频繁发送大数据可能会减缓整个车辆网络的访问速度，因此，在添加大量需要 HAL 处理的数据时要小心谨慎。</li>
+<li>将访问策略添加到 <code>vendor_vns_policy.xml</code>（否则所有访问都将被拒）。</li>
+<li>通过 <code>VendorExtensionManager</code>（适用于 Java 组件）或 Vehicle Network Service API（适用于本机）访问。请勿修改其他汽车 API，因为这样做可能会在将来导致兼容性问题。</li>
 </ul>
 
 <h2 id="prop_hvac">处理 HVAC 属性</h2>
-<p>您可以通过设置与 HVAC 相关的属性，来使用车载 HAL 控制 HVAC。大多数 HVAC 属性都是区域属性，但也有一些非区域（全局）属性。定义的示例属性包括：</p>
+<p>您可以使用车载 HAL 控制 HVAC，具体方法是设置与 HVAC 相关的属性。大多数 HVAC 属性都是区域属性，但也有一些非区域（全局）属性。定义的示例属性包括：</p>
 <ul>
 <li><code>VEHICLE_PROPERTY_HVAC_TEMPERATURE_SET</code>
 <br />按区域设置温度。</li>
@@ -139,7 +139,7 @@ VEHICLE_PROPERTY_CUSTOM_END</code>] 范围内。其他范围已预留下来以�
 <p>有关 HVAC 属性的完整列表，请在 <code>vehicle.h</code> 中搜索 <code>VEHICLE_PROPERTY_HVAC_*</code>。</p>
 
 <h2 id="prop_sensor">处理传感器属性</h2>
-<p>车载 HAL 传感器属性表示实际的传感器数据或策略信息，如驾驶状况。某些传感器信息（如驾驶状况和日间/夜间模式）不限制任何应用的访问，因为这些数据是构建安全车载应用所必需的。还有一些传感器信息（如车辆速度）更为敏感，需要用户可以管理的特定权限。</p>
+<p>车载 HAL 传感器属性表示真实的传感器数据或策略信息，如驾驶状态。某些传感器信息（如驾驶状态和日间/夜间模式）不限制任何应用的访问，因为这些数据是构建安全车载应用所必需的。其他传感器信息（如车辆速度）更为敏感，需要用户可以管理的特定权限。</p>
 <p>支持的传感器属性包括：</p>
 <ul>
 <li><code>DRIVING_STATUS</code>
@@ -158,5 +158,16 @@ VEHICLE_PROPERTY_CUSTOM_END</code>] 范围内。其他范围已预留下来以�
 <li><code>FUEL_LEVEL_LOW</code>
 <br />油位是否较低（布尔值）。</li>
 </ul>
+
+<h2 id="vms">车载地图服务 (VMS)</h2>
+
+<p>Android 8.1 引入了对车载地图服务 (VMS) 的支持，这是一种仅用于 Android Automotive 实现的新车辆属性。
+VMS 可用于支持常见车辆功能（例如高级驾驶辅助系统 (<a href="https://en.wikipedia.org/wiki/Advanced_driver-assistance_systems" class="external">ADAS</a>)）的内置车载地图服务。
+
+</p><aside class="note"><strong>注意</strong>：有关 Automotive 兼容性要求的详细信息，请参阅 <a href="https://source.android.com/compatibility/android-cdd#2_5_automotive_requirements">Automotive 要求</a>。</aside>
+
+<p>VMS 属性是一种复杂的数据类型，它可以表示在 Android Automotive 实现与负责管理车载地图数据的底层车辆硬件之间交换的地图数据。</p>
+
+<p>AOSP 不包含 VMS 的默认实现，它目前只以属性和相关枚举的形式存在。<a href="https://android.googlesource.com/platform/hardware/interfaces/+/master/automotive/vehicle/2.0/types.hal#3216">VMSMessageType</a> 枚举中的<a href="https://android.googlesource.com/platform/hardware/interfaces/+/master/automotive/vehicle/2.0/types.hal">车载 HAL 2.0</a> 中对消息类型和数据结构进行了说明，其中列出了受支持的 VMS 消息的类型。此枚举用作车辆属性整数数组中的第一个整数，并用于确定消息其余部分的解码方式。</p>
 
 </body></html>

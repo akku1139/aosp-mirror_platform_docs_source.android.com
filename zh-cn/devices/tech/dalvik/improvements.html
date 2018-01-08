@@ -1,0 +1,147 @@
+<html devsite><head>
+    <title>Android 8.0 中的 ART 功能改进</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>
+在 Android 8.0 版本中，Android Runtime (ART) 有了极大改进。下面的列表总结了设备制造商可以在 ART 中获得的增强功能。
+</p>
+
+<h2 id="loop-optimizations">循环优化</h2>
+
+<p>
+在 Android 8.0 版本中，ART 采用了多种循环优化，具体如下：
+</p>
+   <ul>
+     <li>消除边界检查
+       <ul>
+         <li>静态：证明范围在编译时位于边界内
+         </li><li>动态：运行时测试确保循环始终位于边界内（否则就是逆优化）
+       </li></ul>
+     </li><li>消除归纳变量
+       <ul>
+         <li>移除无用归纳</li><li>用封闭式表达式替换仅在循环后使用的归纳
+       </li></ul>
+     </li><li>消除循环主体内的无用代码，移除整个死循环</li><li>强度减少
+     </li><li>循环转换：逆转、交换、拆分、展开、单模等。
+     </li><li>SIMDization（也称为矢量化）</li>
+   </ul>
+
+<p>
+循环优化器位于 ART 编译器中其自身的优化遍数中。
+大多数循环优化与其他方面的优化和简化类似。由于大多数 CFG 实用工具（请参阅 nodes.h）侧重于编译而不是重写 CFG，因此通过更复杂（与平时相比）的方式进行一些重写 CFG 的优化时，会面临挑战。
+</p>
+
+<h2 id="class-hierarchy-analysis">类层次结构分析</h2>
+
+<p>
+在 Android 8.0 中，ART 会使用类层次结构分析 (CHA)，这是一种编译器优化，可基于通过分析类层次结构所生成的信息，将虚拟调用去虚拟化为直接调用。虚拟调用代价高昂，因为它们围绕 vtable 查找来实现，且会占用几个依赖负载。另外，虚拟调用也不能内嵌。
+</p>
+
+<p>
+以下是对相关增强功能的总结：
+</p>
+   <ul>
+     <li>动态单一实现方法状态更新 - 在类关联时间结束时，如果 vtable 已被填充，ART 会按条目对超类的 vtable 进行比较。</li>
+     <li>编译器优化 - 编译器会利用某种方法的单一实现信息。如果方法 A.foo 设置了单一实现标记，则编译器会将虚拟调用去虚拟化为直接调用，并借此进一步尝试内联直接调用。</li>
+     <li>已编译代码无效 - 另外，在类关联时间结束时，如果单一实现信息进行了更新，且方法 A.foo 之前拥有单一实现，但该状态现已变为无效，则依赖方法 A.foo 拥有单一实现这一假设的所有已编译代码都需要变为无效代码。</li>
+     <li>去优化 - 对于堆栈上已编译的有效代码，系统会启动去优化功能，以强制使已编译代码进入解释器模式，从而确保正确性。系统会采用结合了同步和异步去优化的全新去优化机制。</li>
+</ul>
+
+<h2 id="inline-caches-in-oat-files">.oat 文件中的内联缓存</h2>
+
+<p>
+ART 现在采用的是内联缓存，并优化了有足够数据可用的调用站点。内联缓存功能会将额外的运行时信息记录到配置文件中，并会利用这类信息将动态优化添加到预先编译中。
+</p>
+
+<h2 id="dexlayout">Dexlayout</h2>
+
+<p>
+Dexlayout 是在 Android 8.0 中引入的一个库，用于分析 dex 文件，并根据配置文件对其进行重新排序。Dexlayout 旨在使用运行时配置信息对 dex 文件的各个部分进行重新排序（在设备的空闲维护编译期间）。通过将经常一起访问的部分 dex 文件集中在一起，程序可以因改进文件位置而拥有更好的内存访问模式，从而节省 RAM 并缩短启动时间。
+</p>
+
+<p>
+由于配置文件信息目前仅在运行应用后可用，因此系统会在空闲维护期间将 dexlayout 集成到 dex2oat 的设备编译中。
+</p>
+
+<h2 id="dex-cache-removal">Dex 缓存移除</h2>
+
+<p>
+在 Android 7.0 及更早版本中，DexCache 对象拥有四个大型数组，与 DexFile 中特定元素的数量成正比，即：
+</p>
+
+<ul>
+  <li>字符串（每个 DexFile :: StringId 一个引用），
+  </li>
+  <li>类型（每个 DexFile :: TypeId 一个引用），
+  </li>
+  <li>方法（每个 DexFile :: MethodId 一个原生指针），
+  </li>
+  <li>字段（每个 DexFile :: FieldId 一个原生指针）。
+  </li>
+</ul>
+
+<p>
+  这些数组用于快速检索我们以前解决的对象。在 Android 8.0 中，除方法数组外，所有数组都已移除。
+</p>
+
+<h2 id="interpreter-performance">解释器性能</h2>
+
+<p>
+通过引入 Mterp（一种解释器，具有以汇编语言编写的核心提取/解码/解释机制），Android 7.0 版本中的解释器性能得以显著提升。Mterp 模仿了快速的 Dalvik 解释器，并支持 arm、arm64、x86、x86_64、mips 和 mips64。对于计算代码而言，ART 的 Mterp 大致相当于 Dalvik 的快速解释器。不过，有时候，它的速度可能会显著变慢，甚至急剧变慢：
+</p>
+
+   <ol>
+     <li>调用性能。</li>
+     <li>字符串操作和 Dalvik 中其他被视为内联函数的高频用户方法。</li>
+     <li>堆栈内存使用量较高。</li>
+   </ol>
+
+<p>
+Android 8.0 解决了这些问题。
+</p>
+
+<h2 id="more-inlining">详细了解内联</h2>
+
+<p>
+从 Android 6.0 开始，ART 可以内联同一个 dex 文件中的任何调用，但只能内联来自其他 dex 文件的叶方法。实施此项限制的两个原因如下：
+</p>
+
+   <ol>
+     <li>从其他 dex 文件进行内联需要使用该 dex 文件的 dex 缓存，这与同一 dex 文件内联（只能重复使用调用程序的 dex 缓存）有所不同。已编译代码中需要具有 dex 缓存，以便执行一系列指令，例如静态调用、字符串加载或类加载。
+     </li><li>堆栈映射只对当前 dex 文件中的方法索引进行编码。</li>
+   </ol>
+
+<p>
+为了取消这些限制，Android 8.0 做出了以下改进：
+</p>
+
+   <ol>
+     <li>从已编译代码中移除 dex 缓存访问（另请参阅“Dex 缓存移除”部分）</li>
+     <li>扩展堆栈映射编码。</li>
+   </ol>
+
+<h2 id="synchronization-improvements">同步方面的改进</h2>
+
+<p>
+ART 团队调整了 MonitorEnter/MonitorExit 代码路径，并减少了我们对 ARMv8 上传统内存屏障的依赖，尽可能将其替换为较新的（获取/释放）指令。
+</p>
+
+</body></html>

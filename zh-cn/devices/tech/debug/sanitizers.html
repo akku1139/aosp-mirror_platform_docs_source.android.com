@@ -1,0 +1,256 @@
+<html devsite><head>
+    <title>LLVM 排错程序</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>
+LLVM 是用于编译 Android 的编译器基础架构，包含可执行静态和动态分析的多个组件。在这些组件中，排错程序（特别是 AddressSanitizer 和 UndefinedBehaviorSanitizer）可以广泛用于分析 Android。排错程序是包含在 external/compiler-rt 中的基于编译器的插桩组件，可用于在开发和测试期间消除错误和改进 Android。Android 目前的排错程序系列可以发现和诊断许多内存滥用错误以及可能危险的未定义行为。
+</p>
+<p>
+Android 编译版本最好在启用排错程序（如 AddressSanitizer 和 UndefinedBehaviorSanitizer）的情况下启动并运行。本页面介绍了 AddressSanitizer、UndefinedBehaviorSanitizer 和 KernelAddressSanitizer，展示了如何在 Android 编译系统中使用它们，并且提供了在启用这些排错程序的情况下编译原生组件的 Android.mk 和 Android.bp 示例文件。
+</p>
+
+<h2 id="addresssanitizer">AddressSanitizer</h2>
+<p>
+<a href="https://clang.llvm.org/docs/AddressSanitizer.html">AddressSanitizer</a> (ASan) 是一种基于编译器的插桩功能，可在运行时检测 C/C++ 代码中许多类型的内存错误。ASan 可以检测许多类别的内存错误，包括：
+</p>
+<ul>
+  <li>出界内存访问</li>
+  <li>双重释放</li>
+  <li>释放后再使用</li>
+</ul>
+<p>
+Android 允许在完整编译级别和在<a href="/devices/tech/debug/asan#addresssanitizer_in_the_apps">应用级别</a>（通过 asanwrapper）进行 <a href="/devices/tech/debug/asan">ASan 插桩</a>。
+</p>
+<p>
+AddressSanitizer 对所有与内存相关的函数调用（包括 alloca、malloc 和 free）进行插桩，并使用被读取或写入时会触发 ASan 回调的内存填充所有变量和已分配的内存区域。
+</p>
+<p>
+这种插桩使 ASan 能够检测无效内存使用错误，包括双重释放以及 UAS (use-after-scope)、UAR (use-after-return) 和 UAF (use-after-free) 错误，而内存区域填充会检测出界读取或写入错误。如果出现对此填充区域的读取或写入操作，则 ASan 会捕获这一情况并输出信息以帮助诊断内存违规行为，包括调用堆栈、影子内存映射、内存违规的类型、读取或写入的内容、导致违规的指令以及内存内容。
+</p>
+
+<pre class="devsite-click-to-copy">
+pixel-xl:/ # sanitizer-status
+=================================================================
+==14164==ERROR: AddressSanitizer: heap-buffer-overflow on address 0x0032000054b0 at pc 0x005df16ffc3c bp 0x007fc236fdf0 sp 0x007fc236fdd0
+WRITE of size 1 at 0x0032000054b0 thread T0
+    #0 0x5df16ffc3b in test_crash_malloc sanitizer-status/sanitizer-status.c:36:13
+    #1 0x5df17004e3 in main sanitizer-status/sanitizer-status.c:76:7
+    #2 0x794cf665f3 in __libc_init (/system/lib64/libc.so+0x1b5f3)
+    #3 0x5df16ffa53 in do_arm64_start (/system/bin/sanitizer-status+0xa53)
+
+0x0032000054b0 is located 0 bytes to the right of 32-byte region [0x003200005490,0x0032000054b0)
+allocated by thread T0 here:
+    #0 0x794d0bdc67 in malloc (/system/lib64/libclang_rt.asan-aarch64-android.so+0x74c67)
+    #1 0x5df16ffb47 in test_crash_malloc sanitizer-status/sanitizer-status.c:34:25
+    #2 0x5df17004e3 in main sanitizer-status/sanitizer-status.c:76:7
+    #3 0x794cf665f3 in __libc_init (/system/lib64/libc.so+0x1b5f3)
+    #4 0x5df16ffa53 in do_arm64_start (/system/bin/sanitizer-status+0xa53)
+    #5 0x794df78893  (&lt;unknown module&gt;)
+
+SUMMARY: AddressSanitizer: heap-buffer-overflow sanitizer-status/sanitizer-status.c:36:13 in test_crash_malloc
+</pre>
+
+<p>
+有时，错误发现过程可能看起来具有不确定性，特别是对于需要特殊设置或更先进技术的错误，例如堆启动或竞态条件利用。许多这样的错误并不能立即显现出来，而且可能需要从成千上万条指令中找出作为真正根本原因的内存违规行为。ASan 对所有与内存相关的函数进行插桩，并为数据填充无法在不触发 ASan 回调的情况下访问的区域。这意味着，内存违规行为一旦出现即被捕获，不用等待出现会导致崩溃的损坏。这在发现错误和诊断根本原因过程中非常有用。
+</p>
+<p>
+为了验证 ASAN 在目标设备上能否正常运行，Android 已经包含了 asan_test 可执行文件。asan_test 可执行文件会测试并验证目标设备上的 ASAN 功能，并提供诊断消息（包括每个测试的状态）。使用 ASAN Android 编译版本时，它默认位于 <code>/data/nativetest/asan_test/asan_test</code> 或 <code>/data/nativetest64/asan_test/asan_test</code> 中。
+</p>
+
+<h2 id="undefinedbehaviorsanitizer">UndefinedBehaviorSanitizer</h2>
+<p>
+UndefinedBehaviorSanitizer (UBSan) 会执行编译时插桩，以检查各种类型的未定义行为。UBSan 能够检测<a href="https://clang.llvm.org/docs/UndefinedBehaviorSanitizer.html">许多未定义行为</a>，而 Android 支持 alignment、bool、bounds、enum、float-cast-overflow、float-divide-by-zero、integer-divide-by-zero、nonnull-attribute、null、return、returns-nonnull-attribute、shift-base、shift-exponent、signed-integer-overflow、unreachable、unsigned-integer-overflow 和 vla-bound。虽然 unsigned-integer-overflow 在技术上不是未定义行为，但其包含在排错程序中，并用在许多 Android 模块（包括 mediaserver 组件）中，以消除任何潜在的整数溢出漏洞。
+</p>
+
+<h3 id="ubsan-implementation">实现</h3>
+<p>
+在 Android 编译系统中，您可以全局或局部地启用 UBSan。要全局启用 UBSan，请在 Android.mk 中设置 SANITIZE_TARGET。要在每个模块级别启用 UBSan，请在 Android.mk 中设置 LOCAL_SANITIZE 并指定要查找的未定义行为。例如：
+</p>
+
+<pre class="devsite-click-to-copy">LOCAL_PATH:= $(call my-dir)
+include $(CLEAR_VARS)
+
+LOCAL_CFLAGS := -std=c11 -Wall -Werror -O0
+
+LOCAL_SRC_FILES:= sanitizer-status.c
+
+LOCAL_MODULE:= sanitizer-status
+LOCAL_MODULE_TAGS := debug
+
+LOCAL_SANITIZE := alignment bounds null unreachable integer
+LOCAL_SANITIZE_DIAG := alignment bounds null unreachable integer
+
+include $(BUILD_EXECUTABLE)
+</pre>
+
+<p>
+Android 编译系统尚不支持像对 Makefile 那样在蓝图文件中进行详细诊断。以下是编写为蓝图 (Android.bp) 的最接近等同项：
+</p>
+
+<pre class="devsite-click-to-copy">cc_binary {
+
+    cflags: [
+        "-std=c11",
+        "-Wall",
+        "-Werror",
+        "-O0",
+    ],
+
+    srcs: ["sanitizer-status.c"],
+
+    name: "sanitizer-status",
+    tags: ["debug"],
+
+    sanitize: {
+        misc_undefined: [
+            "alignment",
+            "bounds",
+            "null",
+            "unreachable",
+            "integer",
+        ],
+        diag: {
+            undefined : true
+        },
+    },
+
+}
+</pre>
+
+<h3 id="ubsan-shortcuts">UBSan 快捷方式</h3>
+<p>
+Android 还有两种快捷方式 - <code>integer</code> 和 <code>default-ub</code>，它们可同时启用一组排错程序。integer 会启用<code> integer-divide-by-zero</code>、<code>signed-integer-overflow</code> 和 <code>unsigned-integer-overflow</code>。
+<code>default-ub</code> 会启用编译器性能问题极小的检查：bool、integer-divide-by-zero、return、returns-nonnull-attribute、shift-exponent、unreachable 和 vla-bound。integer 排错程序类可以与 SANITIZE_TARGET 和 LOCAL_SANITIZE 一起使用，而default-ub 只能与 SANITIZE_TARGET 一起使用。
+</p>
+
+<h3 id="better-error-reporting">更好的错误报告</h3>
+<p>
+Android 的默认 UBSan 实现在遇到未定义行为时会调用指定的函数。默认情况下，此函数被中止。但是，从 2016 年 10 月开始，Android 上的 UBSan 有一个可选的运行时库，可以提供更详细的错误报告，包括遇到的未定义行为的类型、文件和源代码行信息。要对 integer 检查启用此错误报告，请将以下内容添加到 Android.mk 文件中：
+</p>
+
+<pre class="devsite-click-to-copy">LOCAL_SANITIZE:=integer
+LOCAL_SANITIZE_DIAG:=integer
+</pre>
+
+<p>
+LOCAL_SANITIZE 值在编译过程中启用排错程序。LOCAL_SANITIZE_DIAG 为指定排错程序开启诊断模式。可以将 LOCAL_SANITIZE 和 LOCAL_SANITIZE_DIAG 设置为不同的值，但系统只启用 LOCAL_SANITIZE 中的检查。如果某个检查未在 LOCAL_SANITIZE 中指定，但在 LOCAL_SANITIZE_DIAG 中指定了，则系统不会启用该检查，且不会提供诊断消息。
+</p>
+<p>
+以下是由 UBSan 运行时库提供的信息示例：
+</p>
+
+<pre class="devsite-click-to-copy">pixel-xl:/ # sanitizer-status ubsan
+sanitizer-status/sanitizer-status.c:53:6: runtime error: unsigned integer overflow: 18446744073709551615 + 1 cannot be represented in type 'size_t' (aka 'unsigned long')
+</pre>
+
+<h2 id="kernel-address-sanitizer">内核地址排错程序</h2>
+<p>
+与针对用户空间组件的基于 LLVM 的排错程序一样，Android 包括内核地址排错程序 (KASAN)。KASAN 是内核与编译时修改的组合，形成了一个插桩系统，可以实现更简单的错误发现和根本原因分析。
+</p>
+<p>
+KASAN 可以检测内核中许多类型的内存违规行为。它还可以检测堆栈、堆和全局变量中的出界读取和写入操作，并可检测释放后再使用和双重释放错误。
+</p>
+<p>
+与 ASAN 一样，KASAN 将编译时内存函数插桩与影子内存相结合，以便跟踪运行时的内存访问。在 KASAN 中，八分之一的内核内存空间专用于影子内存，以确定内存访问是否有效。
+</p>
+<p>
+KASAN 在 x86_64 和 arm64 架构中受支持。自 4.0 以来，它一直是上游内核的一部分，并且已经反向移植到基于 Android 3.18 的内核。KASAN 已在基于 4.9.2 通过 gcc 编译的 Android 内核上进行了测试。
+</p>
+<p>
+除了 KASAN，kcov 是另一个对测试非常有用的内核修改。kcov 旨在允许在内核中进行覆盖率引导模糊测试。它会测量在系统调用输入方面的覆盖率，对于模糊系统（如 <a href="https://github.com/google/syzkaller">syzkaller</a>）非常有用。
+</p>
+
+<h3 id="kasan-implementation">实现</h3>
+<p>
+要在启用 KASAN 和 kcov 的情况下编译内核，请将以下编译标记添加到内核编译配置：
+</p>
+<pre class="devsite-click-to-copy">
+CONFIG_KASAN
+CONFIG_KASAN_INLINE
+CONFIG_TEST_KASAN
+CONFIG_KCOV
+CONFIG_SLUB
+CONFIG_SLUB_DEBUG
+CONFIG_CC_OPTIMIZE_FOR_SIZE
+</pre>
+
+<p>
+并移除以下内容：
+</p>
+<pre class="devsite-click-to-copy">
+CONFIG_SLUB_DEBUG_ON
+CONFIG_SLUB_DEBUG_PANIC_ON
+CONFIG_KASAN_OUTLINE
+CONFIG_KERNEL_LZ4
+</pre>
+<p>
+然后照常编译和刷写内核。KASAN 内核比原始内核大得多。考虑到这一点，请修改任何启动参数和引导加载程序设置（如果适用）。
+</p>
+<p>
+刷写内核后，检查内核启动日志，看看 KASAN 是否已启用并正在运行。内核将启动并显示 KASAN 的内存映射信息，例如：
+</p>
+
+<pre class="devsite-click-to-copy">
+...
+[    0.000000] c0      0 Virtual kernel memory layout:
+[    0.000000] c0      0     kasan   : 0xffffff8000000000 - 0xffffff9000000000   (    64 GB)
+[    0.000000] c0      0     vmalloc : 0xffffff9000010000 - 0xffffffbdbfff0000   (   182 GB)
+[    0.000000] c0      0     vmemmap : 0xffffffbdc0000000 - 0xffffffbfc0000000   (     8 GB maximum)
+[    0.000000] c0      0               0xffffffbdc0000000 - 0xffffffbdc3f95400   (    63 MB actual)
+[    0.000000] c0      0     PCI I/O : 0xffffffbffa000000 - 0xffffffbffb000000   (    16 MB)
+[    0.000000] c0      0     fixed   : 0xffffffbffbdfd000 - 0xffffffbffbdff000   (     8 KB)
+[    0.000000] c0      0     modules : 0xffffffbffc000000 - 0xffffffc000000000   (    64 MB)
+[    0.000000] c0      0     memory  : 0xffffffc000000000 - 0xffffffc0fe550000   (  4069 MB)
+[    0.000000] c0      0       .init : 0xffffffc001d33000 - 0xffffffc001dce000   (   620 KB)
+[    0.000000] c0      0       .text : 0xffffffc000080000 - 0xffffffc001d32284   ( 29385 KB)
+...
+</pre>
+
+<p>
+错误将如下所示：
+</p>
+
+<pre class="devsite-click-to-copy">
+[   18.539668] c3      1 ==================================================================
+[   18.547662] c3      1 BUG: KASAN: null-ptr-deref on address 0000000000000008
+[   18.554689] c3      1 Read of size 8 by task swapper/0/1
+[   18.559988] c3      1 CPU: 3 PID: 1 Comm: swapper/0 Tainted: G        W      3.18.24-xxx #1
+[   18.569275] c3      1 Hardware name: Android Device
+[   18.577433] c3      1 Call trace:
+[   18.580739] c3      1 [&lt;ffffffc00008b32c&gt;] dump_backtrace+0x0/0x2c4
+[   18.586985] c3      1 [&lt;ffffffc00008b600&gt;] show_stack+0x10/0x1c
+[   18.592889] c3      1 [&lt;ffffffc001481194&gt;] dump_stack+0x74/0xc8
+[   18.598792] c3      1 [&lt;ffffffc000202ee0&gt;] kasan_report+0x11c/0x4d0
+[   18.605038] c3      1 [&lt;ffffffc00020286c&gt;] __asan_load8+0x20/0x80
+[   18.611115] c3      1 [&lt;ffffffc000bdefe8&gt;] android_verity_ctr+0x8cc/0x1024
+[   18.617976] c3      1 [&lt;ffffffc000bcaa2c&gt;] dm_table_add_target+0x3dc/0x50c
+[   18.624832] c3      1 [&lt;ffffffc001bdbe60&gt;] dm_run_setup+0x50c/0x678
+[   18.631082] c3      1 [&lt;ffffffc001bda8c0&gt;] prepare_namespace+0x44/0x1ac
+[   18.637676] c3      1 [&lt;ffffffc001bda170&gt;] kernel_init_freeable+0x328/0x364
+[   18.644625] c3      1 [&lt;ffffffc001478e20&gt;] kernel_init+0x10/0xd8
+[   18.650613] c3      1 ==================================================================
+</pre>
+
+<p>
+此外，如果在内核中启用了模块，则可以加载 test_kasan 内核模块以供进一步测试。该模块会尝试出界内存访问和释放后再使用，有助于在目标设备上测试 KASAN。
+</p>
+
+</body></html>
