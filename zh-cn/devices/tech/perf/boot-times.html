@@ -212,7 +212,7 @@ CONFIG_MOBICORE_DRIVER=y
 <h3 id="deferring-initialization">延迟初始化</h3>
 
 <p>
-很多进程都在设备启动期间启动，但只有关键路径 (bootloader &gt; kernel &gt; init &gt; file system mount &gt; zygote &gt; system server) 中的组件才会直接影响启动时间。使用早期内核日志来识别对启动 init 进程不重要的外设/组件，然后将这些外设/组件延迟到启动过程的后期来启动。
+很多进程都在设备启动期间启动，但只有关键路径 (bootloader &gt; kernel &gt; init &gt; file system mount &gt; zygote &gt; system server) 中的组件才会直接影响启动时间。在内核启动期间执行 <strong>initcall</strong> 来识别对启动 init 进程不重要的外设/组件，然后将这些外设/组件延迟到启动过程的后期来启动。
 </p>
 
 <h2 id="optimizing-i-o-efficiency">优化 I/O 效率</h2>
@@ -377,6 +377,45 @@ service zygote /system/bin/app_process64 -Xzygote /system/bin --zygote --start-s
 采用文件级加密的设备可以在 zygote-start 触发器的早期阶段启动 zygote（默认情况下，zygote 会在 main 类中启动，比 zygote-start 晚得多）。这样做时，请确保允许 zygote 在所有 CPU 中运行（因为错误的 cpuset 设置可能会强制 zygote 在特定 CPU 中运行）。
 </p>
 
+<h3 id="disable-power-saving">停用节电设置</h3>
+
+<p>
+在设备启动期间，可以停用 UFS 和/或 CPU 调节器等组件的节电设置。
+</p>
+<p class="aside"><strong>请注意</strong>：为了提高效率，应在充电器模式下启用节电设置。</p>
+
+<pre class="prettyprint">
+on init
+    # Disable UFS powersaving
+    write /sys/devices/soc/${ro.boot.bootdevice}/clkscale_enable 0
+    write /sys/devices/soc/${ro.boot.bootdevice}/clkgate_enable 0
+    write /sys/devices/soc/${ro.boot.bootdevice}/hibern8_on_idle_enable 0
+    write /sys/module/lpm_levels/parameters/sleep_disabled Y
+on property:sys.boot_completed=1
+    # Enable UFS powersaving
+    write /sys/devices/soc/${ro.boot.bootdevice}/clkscale_enable 1
+    write /sys/devices/soc/${ro.boot.bootdevice}/clkgate_enable 1
+    write /sys/devices/soc/${ro.boot.bootdevice}/hibern8_on_idle_enable 1
+    write /sys/module/lpm_levels/parameters/sleep_disabled N
+on charger
+    # Enable UFS powersaving
+    write /sys/devices/soc/${ro.boot.bootdevice}/clkscale_enable 1
+    write /sys/devices/soc/${ro.boot.bootdevice}/clkgate_enable 1
+    write /sys/devices/soc/${ro.boot.bootdevice}/hibern8_on_idle_enable 1
+    write /sys/class/typec/port0/port_type sink
+    write /sys/module/lpm_levels/parameters/sleep_disabled N</pre>
+
+<h3 id="defer-non-critical-initialization">推迟非关键初始化</h3>
+
+<p>
+非关键初始化（如 ZRAM）可以推迟到 boot_complete。
+</p>
+
+<pre class="prettyprint">
+on property:sys.boot_completed=1
+   # Enable ZRAM on boot_complete
+   swapon_all /vendor/etc/fstab.${ro.hardware}</pre>
+
 <h2 id="optimizing-boot-animation">优化启动动画</h2>
 
 <p>
@@ -415,7 +454,8 @@ Android 8.0 支持在装载用户数据分区之前，及早启动动画。然�
 </p>
 
 <ul>
-<li><strong>使用简洁的正则表达式 (regex)</strong>。在为 <code>file_contexts</code> 中的 <code>sys/devices</code> 匹配 SELinux 政策时，格式糟糕的正则表达式可能会导致大量开销。例如，正则表达式 <code>/sys/devices/.*abc.*(/.*)?</code>  错误地强制扫描包含“abc”的所有 <code>/sys/devices</code> 子目录，导致 <code>/sys/devices/abc</code> 和 <code>/sys/devices/xyz/abc</code> 都成为匹配项。如果将此正则表达式修正为 <code>/sys/devices/[^/]*abc[^/]*(/.*)?</code> ，则只有 <code>/sys/devices/abc</code> 会成为匹配项。
+<li><strong>使用简洁的正则表达式 (regex)</strong>。在为 <code>file_contexts</code> 中的 <code>sys/devices</code> 匹配 SELinux 政策时，格式糟糕的正则表达式可能会导致大量开销。例如，正则表达式 <code>/sys/devices/.*abc.*(/.*)?</code>  错误地强制扫描包含“abc”的所有 <code>/sys/devices</code> 子目录，导致 <code>/sys/devices/abc</code> 和 <code>/sys/devices/xyz/abc</code> 都成为匹配项。
+如果将此正则表达式修正为 <code>/sys/devices/[^/]*abc[^/]*(/.*)?</code> ，则只有 <code>/sys/devices/abc</code> 会成为匹配项。
 </li><li><strong>将标签移动到 </strong><a href="https://selinuxproject.org/page/FileStatements#genfscon">genfscon</a>。这一现有的 SELinux 功能会将文件匹配前缀传递到 SELinux 二进制文件的内核中，而内核会将这些前缀应用于内核生成的文件系统。这也有助于修复错误标记的内核创建的文件，从而防止用户空间进程之间可能出现的争用情况（试图在重新标记之前访问这些文件）。</li>
 </ul>
 

@@ -1,0 +1,470 @@
+<html devsite><head>
+    <title>时区规则</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>Android 8.1 为 OEM 提供了一种新机制：无需进行系统更新就可以将更新的时区规则数据推送至设备中。此机制使用户能够及时获得更新（从而延长 Android 设备的使用期限），并且使 OEM 能够独立于系统映像更新来测试时区更新。</p>
+
+<p>Android 核心库团队将提供必要的数据文件，用于更新原生 Android 设备上的时区规则。OEM 在为其设备创建时区更新时可以选择使用这些数据文件，也可以根据需要创建自己的数据文件。在任何情况下，OEM 都可以自己掌控其受支持设备的时区规则更新的质量保证/测试、时间规划及发布。</p>
+
+<h2 id="source-code">Android 时区源代码和数据</h2>
+<p>所有原生 Android 设备（即使是不使用此功能的设备）都需要时区规则数据，并且必须在 <code>/system</code> 分区中提供一组默认的时区规则数据。然后，这些数据将供 Android 源代码树中以下库中的代码使用：</p>
+
+<ul>
+<li><code>libcore/</code> 中的受管理代码（例如 <code>java.util.TimeZone</code>）使用 <code>tzdata</code> 和 <code>tzlookup.xml</code> 文件。</li>
+<li><code>bionic/</code> 中的原生库代码（例如，对于 <code>mktime</code>，本地时间系统调用）使用 <code>tzdata</code> 文件。</li>
+<li><code>external/icu/</code> 中的 ICU4J/ICU4C 库代码使用 ICU .dat 文件。</li>
+</ul>
+
+<p>这些库经过配置，能够发现 <code>/data/misc/zoneinfo/current</code> 目录中可能存在的叠加层文件。叠加层文件中应包含经过改进的时区规则数据，从而能够在不更改 <code>/system</code> 的情况下更新设备。</p>
+
+<p>需使用时区规则数据的 Android 系统组件首先检查以下位置：</p>
+
+<ul>
+<li><code>libcore/</code> 和 <code>bionic/</code> 代码使用 <code>tzdata</code> 和 <code>tzlookup.xml</code> 文件的 <code>/data</code> 副本。</li>
+<li>ICU4J/ICU4C 代码使用 <code>/data</code> 中的文件，如果在其中找不到特定数据（针对格式、本地化的字符串等），则回退到 <code>/system</code> 文件。</li>
+</ul>
+
+<h2 id="distro-files">发行版文件</h2>
+<p>发行版 .zip 文件包含填充 <code>/data/misc/zoneinfo/current</code> 目录时所需的数据文件。发行版文件还包含用于供设备检测版本问题的元数据。</p>
+<p>由于发行版文件的内容会随 ICU 版本、Android 平台要求等因素而改变，因此发行版文件的格式取决于 Android 版本。Android 会为每次 IANA 更新（在更新系统平台文件之外）提供所支持 Android 版本的发行版文件。为了使设备保持最新状态，OEM 可以选择使用此发行版文件，也可以使用 Android 源代码树（包含生成发行版文件所需的脚本和其他文件）创建自己的发行版文件。</p>
+
+<h2>时区更新组件</h2>
+<p>时区规则更新过程会将发行版文件传输到设备，并且安全地安装其中所含的文件。传输和安装过程需用到以下组件：</p>
+
+<ul>
+<li>平台服务功能 (<a href="https://android.googlesource.com/platform/frameworks/base/+/master/services/core/java/com/android/server/timezone/RulesManagerService.java">timezone.RulesManagerService</a>)，其在默认情况下处于停用状态。OEM 必须通过相应配置来启用该功能。RulesManagerService 在系统服务器进程中运行，并通过写入 <code>/data/misc/zoneinfo/staged</code> 来暂存时区更新操作。它也可以替换或删除已经暂存的操作。</li>
+<li>
+<a href="https://android.googlesource.com/platform/packages/apps/TimeZoneUpdater/">Time Zone Updater</a>，一个不可更新的系统应用（又名 Updater App）。<em></em>OEM 必须将此应用包含在要使用该功能的设备的系统映像中。</li>
+<li>OEM <a href="https://android.googlesource.com/platform/packages/apps/TimeZoneData/">Time Zone Data</a>，一个可更新的系统应用（又名 Data App），它将发行版文件传输到设备中并使其可供 Updater App 使用。OEM 必须将此应用包含在要使用该功能的设备的系统映像中。<em></em></li>
+<li>
+<a href="https://android.googlesource.com/platform/system/timezone/+/master/tzdatacheck/">tzdatacheck</a>，一个启动时二进制文件，用于正确、安全地执行时区更新。</li>
+</ul>
+
+<p>Android 源代码树中包含上述组件的通用源代码，OEM 可以选择使用这些代码，无需做出变更。
+为使 OEM 能够自动检查是否已正确启用该功能，我们专门提供了<a href="https://android.googlesource.com/platform/packages/apps/TimeZoneData/+/master/testing/">测试代码</a>。</p>
+
+<h3 id="distro-install">发行版安装</h3>
+<p>发行版安装过程包括以下步骤：</p>
+
+<ol>
+<li>通过从应用商店下载或旁加载来<strong>更新 Data App</strong>。系统服务器进程（通过 <code>timezone.RulesManagerServer/timezone.PackageTracker</code> 类）监控对已配置的 OEM 专属 Data App 软件包名称的更改。
+<figure>
+<img src="images/tz_data_app_updates.png" alt="Data App 更新" id="data-app-updates"/>
+<figcaption><strong>图 1.</strong> Data App 更新。</figcaption></figure>
+</li>
+<li><strong>系统服务器进程触发更新检查</strong>，方法是向 Updater App 广播一个包含独一无二的一次性令牌的定向 Intent。系统服务器会持续跟踪自己生成的最新令牌，从而稍后能够确定最近一次触发的检查操作完成的时间；其他令牌一概会被忽略。
+<figure>
+<img src="images/tz_trigger_update.png" alt="触发更新" id="trigger-update"/>
+<figcaption><strong>图 2.</strong> 触发更新检查。</figcaption>
+</figure>
+</li>
+<li><strong>更新检查</strong>。在此期间，Updater App 会执行以下任务：<ul>
+<li>通过调用 RulesManagerService 来查询当前的设备状态。
+<figure>
+<img src="images/tz_call_rulesmanagerservice.png" alt="调用 RulesManagerService" id="call-rulesmanagerservice"/>
+<figcaption><strong>图 3.</strong> Data App 更新，调用 RulesManagerService。</figcaption></figure>
+</li>
+<li>通过查询明确定义的 ContentProvider URL 和列规范来查询 Data App，从而获取有关发行版的信息：<figure>
+<img src="images/tz_get_info_distro.png" alt="获取发行版信息" id="get-distro-info"/>
+<figcaption><strong>图 4.</strong> Data App 更新，获取有关发行版的信息。
+</figcaption></figure>
+</li>
+</ul>
+</li><li><strong>Updater App 执行适当的操作</strong>（根据其获得的信息）。可用的操作包括：<ul>
+<li><em></em>请求安装。从 Data App 中读取发行版数据并将此数据传递给系统服务器中的 RulesManagerService。RulesManagerService 重新确认发行版格式版本和内容是否适用于设备，然后准备安装。</li>
+<li><em></em>请求卸载（这种情况很少出现）。例如，如果要停用或卸载 <code>/data</code> 中已更新的 .apk，并且设备将退回到 <code>/system</code> 中的现有版本。</li>
+<li><em></em>不执行任何操作。在 Data App 发行版无效时会发生此情况。
+</li>
+</ul>
+在所有情况下，Updater App 都会使用检查令牌调用 RulesManagerService，以便系统服务器知道检查已成功完成。
+<figure>
+<img src="images/tz_check_complete.png" alt="检查完成" id="check-complete"/>
+<figcaption><strong>图 5.</strong> 检查完成。</figcaption></figure>
+</li>
+<li><strong>重新启动并运行 tzdatacheck</strong>。当设备下次启动时，tzdatacheck 二进制文件将执行所有暂存操作。tzdatacheck 二进制文件可以执行以下任务：<ul>
+<li>在其他系统组件打开并开始使用 <code>/data/misc/zoneinfo/current</code> 文件之前，根据暂存操作相应地创建、替换和/或删除这些文件。</li>
+<li>检查 <code>/data</code> 中的文件是否适合当前平台版本。如果设备刚刚收到系统更新并且发行版格式版本已更改，则可能不适合。</li>
+<li>确保 IANA 规则版本不低于 <code>/system</code> 中的版本。这样可防止在系统更新后设备拥有的时区规则数据版本低于 <code>/system</code> 映像中的时区规则数据版本。
+</li>
+</ul>
+</li>
+</ol>
+
+<h3 id="reliability">可靠性</h3>
+<p>端到端安装过程是异步进行的，可以分为三个操作系统进程。在安装过程中的任何时刻，如果出现设备断电、磁盘空间不足等情况，都将导致安装检查无法成功完成。在情况最好的失败案例中，Updater App 能够通知系统服务器检查失败；在情况最坏的失败案例中，RulesManagerService 不会收到任何调用。</p>
+<p>为了解决此问题，系统服务器代码会持续跟踪所触发的更新检查是否已完成，以及上次检查到的 Data App 版本号是什么。当设备空闲并在充电时，系统服务器代码可以检查当前状态。如果发现更新检查未完成或发现非预期的 Data App 版本，它会自发地触发更新检查。</p>
+
+<h3 id="security">安全性</h3>
+<p>系统服务器中的 RulesManagerService 代码在启用后会执行多项检查，以确保可以安全使用系统。</p>
+<ul>
+<li>表明系统映像配置有误的问题将导致设备无法正常启动；示例包括 Updater App 或 Data App 配置错误，或者 Updater App 或 Data App 不在 <code>/system/priv-app</code> 中。</li>
+<li>表明所安装的 Data App 有误的问题不会阻碍设备启动，但会阻碍触发更新检查；示例包括缺少必要的系统权限，或者 Data App 没有在预期的 URI 上提供 ContentProvider。</li>
+</ul>
+
+<p><code>/data/misc/zoneinfo</code> 目录的文件权限通过 SELinux 规则强制执行。与任何 APK 一样，Data App 必须使用 <code>/system/priv-app</code> 版本所用的同一密钥签名。Data App 应采用专属的 OEM 软件包名称和密钥。</p>
+
+<h2 id="integrating">集成时区更新</h2>
+<p>为了启用时区更新功能，OEM 通常要执行以下操作：</p>
+<ul>
+<li>创建自己的 Data App。</li>
+<li>在系统映像编译中加入 Updater App 和 Data App。</li>
+<li>配置系统服务器以启用 RulesManagerService。</li>
+</ul>
+
+<h3 id="preparing">准备工作</h3>
+<p>开始操作前，请查看以下政策、质量保证和安全注意事项：</p>
+<ul>
+<li>OEM 应当为其 Data App 创建该应用专用的签名密钥。</li>
+<li>OEM 应当针对时区更新拟订版本发布和版本控制策略，以了解将更新哪些设备以及如何确保只在需要的设备上安装更新。例如，OEM 可能希望为所有设备使用相同的 Data App，或者为各个设备使用不同的 Data App。相关决定会影响所选择的软件包名称和质量保证策略，还有可能影响所使用的版本号。</li>
+<li>OEM 应明确自己是要使用 AOSP 的原生 Android 时区数据，还是要创建自己的 Android 时区数据。</li>
+</ul>
+
+<h3 id="creating-data-app">创建 Data App</h3>
+<p>AOSP 在 <code>packages/apps/TimeZoneData</code> 中提供了创建 Data App 所需的所有源代码和编译规则，还提供了针对 <code>AndroidManifest.xml</code> 文件以及 <code>packages/apps/TimeZoneData/oem_template</code> 中的其他文件的说明和示例模板。示例模板包括用于实际 Data App .apk 文件的编译目标，以及用于创建 Data App 测试版本的额外目标。</p>
+<p>OEM 可以使用自己的图标、名称、翻译等内容自定义 Data App。但是，由于 Data App 无法启动，图标仅会显示在“设置 &gt; 应用”屏幕中。<em></em></p>
+<p>Data App 按计划应采用 <strong>Tapas</strong> 编译进程进行编译。该编译进程生成的 .apk 适合添加到系统映像（针对初始版本）并适合通过应用商店进行签名和分发（针对后续更新）。要详细了解如何使用 Tapas，请参阅<a href="#building-tapas">使用 Tapas 编译 Data App</a>。</p>
+
+<aside class="note"><strong>注意</strong>：如何对 APK 进行安全签名和如何进行密钥管理不在本文讨论范围之内。</aside>
+
+<p>OEM 必须在 <code>/system/priv-app</code> 中安装设备的系统映像中预编译的 Data App。要在系统映像中包含预编译的 .apk（由 Tapas 编译进程生成），OEM 可以复制 <code>packages/apps/TimeZoneData/oem_template/data_app_prebuilt</code> 中的示例文件。示例模板还包括编译目标，以便在测试套件中包含 Data App 的测试版本。</p>
+
+<h3 id="including">在系统映像中加入 Updater App 和 Data App</h3>
+<p>OEM 必须将 Updater App 和 Data App .apk 文件放在系统映像的 <code>/system/priv-app</code> 目录中。为此，系统映像编译必须明确包含 Updater App 和 Data App 预编译目标。</p>
+<p>Updater App 应使用平台密钥进行签名，并与其他系统应用一样包含在映像内。目标在 <code>packages/apps/TimeZoneUpdater</code> 中定义为 <code>TimeZoneUpdater</code>。将 Data App 加入映像的方式因 OEM 而异，并取决于为预编译选择的目标名称。</p>
+
+<h3 id="configuring-system-server">配置系统服务器</h3>
+<p>为了启用时区更新，OEM 可以通过替换在 <code>frameworks/base/core/res/res/values/config.xml</code> 中定义的配置属性来配置系统服务器。</p>
+
+<table>
+<thead>
+<tr>
+<th>属性</th>
+<th width="20%">需要替换？</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<pre class="prettyprint">
+
+config_enableUpdateableTimeZoneRules</pre>
+必须设置为 true 才能启用 RulesManagerService。</td>
+<td>是</td>
+</tr>
+<tr>
+<td><pre class="prettyprint">
+
+config_timeZoneRulesUpdateTrackingEnabled</pre>
+必须设置为 true 才能让系统监听对 Data App 的更改。</td>
+<td>是</td>
+</tr>
+<tr>
+<td><pre class="prettyprint">
+
+config_timeZoneRulesDataPackage</pre>
+OEM 专属 Data App 的软件包名称。</td>
+<td>是</td>
+</tr>
+<tr>
+<td><pre class="prettyprint">
+
+config_timeZoneRulesUpdaterPackage</pre>
+针对默认 Updater App 的配置。仅在提供不同的 Updater App 实现时才更改。</td>
+<td>否</td>
+</tr>
+<tr>
+<td><pre class="prettyprint">
+
+config_timeZoneRulesCheckTimeMillisAllowed</pre>
+RulesManagerService 触发更新检查的操作与安装、卸载或无操作响应之间所允许的间隔时间。在此时间之后，可能会自发地触发可靠性检查。</td>
+<td>否</td>
+</tr>
+<tr>
+<td><pre class="prettyprint">
+
+config_timeZoneRulesCheckRetryCount</pre>
+在 RulesManagerService 停止触发更多更新检查前所允许的连续失败更新检查次数。</td>
+<td>否</td>
+</tr>
+</tbody>
+</table>
+
+<p>配置替换文件应位于系统映像（而非 vendor 或 other 目录）中，因为配置错误的设备可能会无法启动。如果配置替换文件位于 <code>/vendor</code> 中，则更新到不含 Data App（或所含的 Data App/Updater App 具有不同的软件包名称）的系统映像将被视为配置错误。</p>
+
+<h3 id="xts-testing">xTS 测试</h3>
+<p>xTS 是指任何 OEM 专属测试套件，类似于采用 Tradefed 的标准 Android 测试套件（例如 CTS 和 VTS）。具有此类测试套件的 OEM 可添加以下位置中提供的 Android 时区更新测试：</p>
+
+<ul>
+<li><code>packages/apps/TimeZoneData/testing/xts</code>。包含自动执行基本功能测试所需的代码。</li>
+<li><code>packages/apps/TimeZoneData/oem_template/xts</code>。包含一个示例目录结构，用于将测试添加到类似 Tradefed 的 xTS 套件中。与其他模板目录一样，OEM 应根据自己的需求复制和自定义代码。</li>
+<li><code>packages/apps/TimeZoneData/oem_template/data_app_prebuilt</code>。包含编译时配置，用于纳入测试所需的预编译测试 .apk 文件。</li>
+</ul>
+
+<aside class="note"><strong>注意</strong>：设置 OEM 专属测试套件不在本文的讨论范围内。</aside>
+
+<h2 id="creating-updates">创建时区更新</h2>
+<p>当 IANA 发布一组新时区规则时，Android 核心库团队将生成补丁程序来更新 AOSP 中的版本。那些采用原生 Android 系统和发行版文件的 OEM 可提取这些变更，用它们来创建新版 Data App，然后发布新版本来更新其正式版设备。</p>
+
+<aside class="note"><strong>注意</strong>：以下步骤未说明如何更新 <code>/system</code> 映像中的基础数据文件，这是在准备出厂映像或系统更新时需要执行的工作。该过程还会生成要包含在 Data App 中的发行版文件。有关如何更新平台文件的说明，请参阅 <code>/system/timezone/README.android</code>。</aside>
+
+<p>由于 Data App 包含与 Android 版本紧密关联的发行版文件，OEM 必须为其要更新的每个受支持的 Android 版本创建一个新的 Data App 版本。<em></em>例如，如果 OEM 想要更新 O-MR1、P 和 Q 设备，则必须完成该过程三次。</p>
+
+<h3 id="step1">第 1 步：更新 system/timezone 和 external/icu 数据文件</h3>
+<p>在此步骤中，OEM 从 AOSP 的 release-dev 分支中提取 <code>system/timezone</code> 和 <code>external/icu</code> 的原生 Android 代码变更，并将这些变更应用到其 Android 源代码副本中。<em></em></p>
+<p>system/timezone AOSP 修补程序更新后的文件位于 <code>system/timezone/input_data</code> 和 <code>system/timezone/output_data</code> 中。需要在本地进行其他修复的 OEM 可以修改输入文件，然后使用 <code>system/timezone/input_data</code> 和 <code>external/icu</code> 中的文件生成 <code>output_data</code> 中的文件。</p>
+<p>最重要的文件是 <code>system/timezone/output_data/distro/distro.zip</code>。编译 Data App .apk 时，会自动包含该文件。</p>
+
+<h3 id="step2">第 2 步：更新 Data App 的版本号</h3>
+<p>在此步骤中，OEM 将更新 Data App 的版本号。编译进程会自动选取 <code>distro.zip</code>，但新版 Data App 必须具有新的版本号，以便被识别为新版本并用于替换预加载的 Data App 或之前的设备更新所安装的 Data App。</p>
+<p>使用从 <code>package/apps/TimeZoneData/oem_template/data_app</code> 复制的文件编译 Data App 时，可以在 <code>Android.mk</code> 中查找应用于 .apk 的版本号/版本名称：
+</p>
+
+<pre class="prettyprint">
+TIME_ZONE_DATA_APP_VERSION_CODE :=
+TIME_ZONE_DATA_APP_VERSION_NAME :=
+</pre>
+
+<p>类似的条目可以在 <code>testing/Android.mk</code> 中找到（但是，测试版本号必须高于系统映像版本）。要了解详情，请参阅<a href="#example-version-code-strategy">示例版本号策略方案</a>；如果使用示例方案或类似方案，则不需要更新测试版本号，因为它们肯定高于实际版本号。</p>
+
+<h3 id="step3">第 3 步：重新编译、签名、测试和发布</h3>
+<p>在此步骤中，OEM 使用 Tapas 重新编译 .apk 文件，对生成的 .apk 文件进行签名，然后测试并发布 .apk：</p>
+<ul>
+<li>对于未发布的设备（或准备已发布设备的系统更新时），请在 Data App 预编译目录中提交新的 .apk 文件，以确保系统映像和 xTS 测试具有最新的 .apk。OEM 应测试新文件能否正常工作（通过 CTS 和任何 OEM 专属的自动和手动测试）。</li>
+<li>对于不再接收系统更新的已发布设备，可能只能通过应用商店发布已签名的 .apk。</li>
+</ul>
+<p>OEM 全权负责质量保证以及在发布之前在其设备上测试更新的 Data App。</p>
+
+<h2 id="version-code-strategy">Data App 版本号策略</h2>
+<p>Data App 必须具有<a href="https://developer.android.com/google/play/publishing/multiple-apks.html#VersionCodes">适当的版本控制策略</a>，以确保设备接收正确的 .apk 文件。例如，如果收到的系统更新中包含的 .apk 版本低于从应用商店下载的版本，则应保留应用商店版本。</p>
+<p>.apk 版本号应包含以下信息：</p>
+<ul>
+<li>发行版格式版本 (Major + Minor)</li>
+<li>递增（不透明）版本号</li>
+</ul>
+<p>目前，平台 API 级别与发行版格式版本密切相关，因为每个 API 级别通常都与新版本的 ICU 相关联（这会造成发行版文件不兼容）。将来的 Android 版本可能会改变这一情况，使得一个发行版文件适用于多个 Android 平台版本（并且不在 Data App 版本号方案中使用 API 级别）。</p>
+
+<h3 id="example-version-code-strategy">版本号策略示例</h3>
+<p>此示例版本号方案可确保较高的发行版格式版本优先于较低的发行版格式版本。<code>AndroidManifest.xml</code> 使用 <code>android:minSdkVersion</code> 来确保旧版设备不会收到高于其可处理的版本的发行版格式版本。</p>
+
+<figure>
+<img src="images/tz_version_check.png" alt="版本检查" id="version-check"/>
+<figcaption><strong>图 6.</strong> 版本号策略示例。
+</figcaption></figure>
+
+<table>
+<thead>
+<tr>
+<th>示例</th>
+<th width="20%">值</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Y</strong></td>
+<td>保留</td>
+<td>用于在将来指定替代方案和/或测试 APK。该值最初（隐式）为 0。由于基础类型是一个带符号的 32 位整数类型，因此该方案未来最多支持两种编号方案修订版本。</td>
+</tr>
+<tr>
+<td><strong>01</strong></td>
+<td>Major 格式版本</td>
+<td>用于跟踪 3 位十进制数字 Major 格式版本。发行版格式支持 3 位十进制数字，但在此处仅使用 2 位。根据每个 API 级别的 Major 版本号预期递增情况，此数字不太可能达到 100。Major 版本 1 == API 级别 27。</td>
+</tr>
+<tr>
+<td><strong>1</strong></td>
+<td>Minor 格式版本</td>
+<td>用于跟踪 3 位十进制数字 Minor 格式版本。发行版格式支持 3 位十进制数字，但在此处仅使用 1 位。此数字不太可能达到 10。</td>
+</tr>
+<tr>
+<td><strong>X</strong></td>
+<td>保留</td>
+<td>正式版为 0（对于测试 APK，可为不同的值）。</td>
+</tr>
+<tr>
+<td><strong>ZZZZZ</strong></td>
+<td>不透明版本号</td>
+<td>按需分配的十进制数字。可存在间隙，以便在需要时执行间隙式更新。</td>
+</tr>
+</tbody>
+</table>
+
+<p>如果采用二进制而非十进制，则可以更好地打包该方案，但在可读性方面，十进制方案更具优势。如果整个范围的数字已用尽，则将来的版本可以更改 Data App 软件包名称并重新开始编号。</p>
+
+<p>版本名称将采用相关详情的可读表示法，例如：<code>major=001,minor=001,iana=2017a, revision=1,respin=2</code>。示例：</p>
+
+<table>
+<thead>
+<tr>
+<th>编号</th>
+<th>版本号</th>
+<th>minSdkVersion</th>
+<th>{Major 格式版本}.{Minor 格式版本}.{IANA 规则版本}.{修订版本}</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>11000010</td>
+<td>O-MR1</td>
+<td>major=001,minor=001,iana=2017a,revision=1</td>
+</tr>
+<tr>
+<td>2</td>
+<td>21000010</td>
+<td>P</td>
+<td>major=002,minor=001,iana=2017a,revision=1</td>
+</tr>
+<tr>
+<td>3</td>
+<td>11000020</td>
+<td>O-MR1</td>
+<td>major=001,minor=001,iana=2017a,revision=2</td>
+</tr>
+<tr>
+<td>4</td>
+<td>11000030</td>
+<td>O-MR1</td>
+<td>major=001,minor=001,iana=2017b,revision=1</td>
+</tr>
+<tr>
+<td>5</td>
+<td>21000020</td>
+<td>P</td>
+<td>major=002,minor=001,iana=2017b,revision=1</td>
+</tr>
+<tr>
+<td>6</td>
+<td>11000040</td>
+<td>O-MR1</td>
+<td>major=001,minor=001,iana=2018a,revision=1</td>
+</tr>
+<tr>
+<td>7</td>
+<td>21000030</td>
+<td>P</td>
+<td>major=002,minor=001,iana=2018a,revision=1</td>
+</tr>
+<tr>
+<td>8</td>
+<td>1123456789</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr>
+<td>9</td>
+<td>11000021</td>
+<td>O-MR1</td>
+<td>major=001,minor=001,iana=2017a,revision=2,respin=2</td>
+</tr>
+</tbody>
+</table>
+
+<ul>
+<li>示例 1 和示例 2 分别显示了同一 2017a IANA 版本的两个具有不同 Major 格式版本的 .apk 版本。示例 2 在数值上高于示例 1，这是为了确保较新的设备接收较高的格式版本。minSdkVersion 可确保不会将 P 版本提供给 O 设备。</li>
+<li>示例 3 是示例 1 的示例修订版本/修复版本，在数值上高于示例 1。
+</li>
+<li>示例 4 和示例 5 显示用于 O-MR1 和 P 的 2017b 版本。由于在数值上更高，这两个示例取代了各自之前的 IANA 版本/Android 修订版本。</li>
+<li>示例 6 和示例 7 显示用于 O-MR1 和 P 的 2018a 版本。</li>
+<li>示例 8 演示使用 Y 来完全替换 Y=0 方案。
+</li>
+<li>示例 9 演示使用示例 3 和示例 4 之间的间隙来重制 apk。</li>
+</ul>
+
+<p>由于每个设备在出厂时，其系统映像中都会附带适当版本的默认 .apk，因此在 P 设备上安装 O-MR1 版本不会有任何风险，因为它的版本号低于 P 系统映像的版本。如果设备在 <code>/data</code> 中安装了 O-MR1 版本，随后又收到了更新至 P 版本的系统更新，则该设备将优先使用 <code>/system</code> 版本而非 <code> /data</code> 中的 O-MR1 版本，因为 P 版本将始终高于旨在用于 O-MR1 的任何应用版本。</p>
+
+<h2 id="building-tapas">使用 Tapas 编译 Data App</h2>
+<p>OEM 负责管理时区 Data App 的大部分内容，并负责正确配置系统映像。Data App 按计划应采用 <strong>Tapas</strong> 编译进程进行编译。该编译进程生成的 .apk 适合添加到系统映像（针对初始版本）并适合通过应用商店进行签名和分发（针对后续更新）。</p><p>
+</p><p><strong>Tapas</strong> 是 Android 编译系统的精简版本，它使用简化的源代码树来生成可分发的应用版本。熟悉常规 Android 编译系统的 OEM 可认出其编译文件与常规 Android 平台编译文件的不同之处。</p>
+
+<h3 id="creating-manifest">创建清单</h3>
+<p>简化的源代码树通常可通过自定义清单文件来实现，该文件仅会引用编译系统及编译应用所需的 Git 项目。按照<a href="#creating-data-app">创建 Data App</a> 中的说明操作后，OEM 应至少有两个使用 <code>packages/apps/TimeZoneData/oem_template</code> 下的模板文件创建的 OEM 专属 Git 项目：</p>
+
+<ul>
+<li>一个 Git 项目中包含应用文件，例如创建应用 .apk 文件（如 <code>vendor/<em>oem</em>/apps/TimeZoneData</code>）时所需的清单和编译文件。此项目还包含可供 xTS 测试使用的测试 APK 的编译规则。</li>
+<li>一个 Git 项目中包含由应用编译生成的已签名 .apk 文件，以将其包含在系统映像编译和 xTS 测试中。</li>
+</ul>
+
+<p>应用编译会用到几个其他的 Git 项目，这些 Git 项目要么与平台编译共享，要么包含独立于 OEM 的代码库。</p>
+<p>以下清单代码段包含时区 Data App 的 O-MR1 编译在最低限度下所需的一组 Git 项目（将来的 Android 版本将采用不同的列表，甚至可能会更改编译系统）。OEM 必须将其 OEM 专属 Git 项目（通常包括一个含签名证书的项目）添加到此清单，并可以相应地配置不同的分支。</p>
+
+<pre class="prettyprint">
+   &lt;!-- Tapas Build --&gt;
+    &lt;project
+        path="build"
+        name="platform/build"&gt;
+        &lt;copyfile src="core/root.mk" dest="Makefile" /&gt;
+    &lt;/project&gt;
+    &lt;project
+        path="prebuilts/build-tools"
+        name="platform/prebuilts/build-tools"
+        clone-depth="1" /&gt;
+    &lt;project
+        path="prebuilts/go/linux-x86"
+        name="platform/prebuilts/go/linux-x86"
+        clone-depth="1" /&gt;
+    &lt;project
+        path="build/blueprint"
+        name="platform/build/blueprint" /&gt;
+    &lt;project
+        path="build/kati"
+        name="platform/build/kati" /&gt;
+    &lt;project
+        path="build/soong"
+        name="platform/build/soong"&gt;
+        &lt;linkfile src="root.bp" dest="Android.bp" /&gt;
+        &lt;linkfile src="bootstrap.bash" dest="bootstrap.bash" /&gt;
+    &lt;/project&gt;
+
+    &lt;!-- SDK for system / public API stubs --&gt;
+    &lt;project
+        path="prebuilts/sdk"
+        name="platform/prebuilts/sdk"
+        clone-depth="1" /&gt;
+    &lt;!-- App source --&gt;
+    &lt;project
+        path="system/timezone"
+        name="platform/system/timezone" /&gt;
+    &lt;project
+        path="packages/apps/TimeZoneData"
+        name="platform/packages/apps/TimeZoneData" /&gt;
+    &lt;!-- Enable repohooks --&gt;
+    &lt;project
+        path="tools/repohooks"
+        name="platform/tools/repohooks"
+        revision="master"
+        clone_depth="1" /&gt;
+    &lt;repo-hooks
+        in-project="platform/tools/repohooks"
+        enabled-list="pre-upload" /&gt;
+</pre>
+
+<h3 id="running-tapas">运行 Tapas 编译</h3>
+<p>建立源代码树之后，使用以下命令调用 <strong>Tapas</strong> 编译：</p>
+
+<pre class="devsite-click-to-copy">
+<code class="devsite-terminal">source build/envsetup.sh</code>
+<code class="devsite-terminal">tapas</code>
+<code class="devsite-terminal">make -j30 showcommands dist TARGET_BUILD_APPS='TimeZoneData TimeZoneData_test1 TimeZoneData_test2'  TARGET_BUILD_VARIANT=userdebug</code>
+</pre>
+
+<p>成功的编译将在 <code>out/dist</code> 目录中生成用于测试的文件。可以将这些文件放在预编译目录中，以便加入到系统映像中，和/或通过应用商店分发到兼容设备。</p>
+
+</body></html>

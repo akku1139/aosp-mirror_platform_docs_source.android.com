@@ -1,5 +1,5 @@
 <html devsite><head>
-    <title>服务和数据转移</title>
+    <title>服务和数据传输</title>
     <meta name="project_path" value="/_project.yaml"/>
     <meta name="book_path" value="/_book.yaml"/>
   </head>
@@ -26,23 +26,29 @@
 <p>HIDL 接口服务器（实现接口的对象）可注册为已命名的服务。注册的名称不需要与接口或软件包名称相关。如果没有指定名称，则使用名称“默认”；这应该用于不需要注册同一接口的两个实现的 HAL。例如，在每个接口中定义的服务注册的 C++ 调用是：</p>
 
 <pre class="prettyprint">
-registerAsService();
-registerAsService("another_foo_service");  // if needed
+status_t status = myFoo-&gt;registerAsService();
+status_t anotherStatus = anotherFoo-&gt;registerAsService("another_foo_service");  // if needed
 </pre>
 
 <p>HIDL 接口的版本包含在接口本身中。版本自动与服务注册关联，并可通过每个 HIDL 接口上的方法调用 (<code>android::hardware::IInterface::getInterfaceVersion()</code>) 进行检索。服务器对象不需要注册，并可通过 HIDL 方法参数传递到其他进程，相应的接收进程会向服务器发送 HIDL 方法调用。</p>
 
 <h2 id="discover">发现服务</h2>
-<p>客户端代码按名称和版本请求指定的接口，从而对所需的 HAL 类调用 <code>getService</code>：</p>
+<p>客户端代码按名称和版本请求指定的接口，并对所需的 HAL 类调用 <code>getService</code>：</p>
 
 <pre class="prettyprint">
+// C++
 sp&lt;V1_1::IFooService&gt; service = V1_1::IFooService::getService();
 sp&lt;V1_1::IFooService&gt; alternateService = 1_1::IFooService::getService("another_foo_service");
+// Java
+V1_1.IFooService; service = V1_1.IFooService.getService(true /* retry */);
+V1_1.IFooService; alternateService = 1_1.IFooService.getService("another", true /* retry */);
 </pre>
 
 <p>每个版本的 HIDL 接口都会被视为单独的接口。因此，<code>IFooService</code> 版本 1.1 和 <code>IFooService</code> 版本 2.2 都可以注册为“foo_service”，并且两个接口上的 <code>getService("foo_service")</code> 都可获取该接口的已注册服务。因此，在大多数情况下，注册或发现服务均无需提供名称参数（也就是说名称为“默认”）。</p>
 
 <p>供应商接口对象还会影响所返回接口的传输方法。对于软件包 <code>android.hardware.foo@1.0</code> 中的接口 <code>IFoo</code>，<code>IFoo::getService</code> 返回的接口始终使用设备清单中针对 <code>android.hardware.foo</code> 声明的传输方法（如果相应条目存在的话）；如果该传输方法不存在，则返回 nullptr。</p>
+
+<p>在某些情况下，即使没有获得相关服务，也可能需要立即继续。例如，当客户端希望自行管理服务通知或者在需要获取所有 hwservice 并检索它们的诊断程序（例如 <code>atrace</code>）中时，可能会发生这种情况。在这种情况下，可以使用其他 API，例如 C++ 中的 <code>tryGetService</code> 或 Java 中的 <code>getService("instance-name", false)</code>。Java 中提供的旧版 API <code>getService</code> 也必须与服务通知一起使用。使用此 API 不会避免以下竞态条件：当客户端使用某个非重试 API 请求服务器后，该服务器对自身进行了注册。</p>
 
 <h2 id="death">服务终止通知</h2>
 <p>想要在服务终止时收到通知的客户端会接收到框架传送的终止通知。要接收通知，客户端必须：</p>
@@ -51,7 +57,7 @@ sp&lt;V1_1::IFooService&gt; alternateService = 1_1::IFooService::getService("ano
 <li>替换其 <code>serviceDied()</code> 方法。</li>
 <li>实例化 <code>hidl_death_recipient</code> 子类的对象。
 </li>
-<li>在服务上调用 <code>linkToDeath()</code> 方法以进行监控，从而传递 <code>IDeathRecipient</code> 的接口对象。</li>
+<li>在要监控的服务上调用 <code>linkToDeath()</code> 方法，并传入 <code>IDeathRecipient</code> 的接口对象。</li>
 </ol>
 
 <p>伪代码示例（C++ 和 Java 类似）：</p>
@@ -79,21 +85,21 @@ m_importantService-&gt;linkToDeath(deathReceiver, 42);
 <li><strong>单向</strong>方法仅朝一个方向发送数据且不阻塞。如果 RPC 调用中正在传输的数据量超过实现限制，则调用可能会阻塞或返回错误指示（具体行为尚不确定）。</li>
 </ul>
 
-<p>不返回值但未声明为 <code>oneway</code> 的方法仍在阻塞。</p>
+<p>不返回值但未声明为 <code>oneway</code> 的方法仍会阻塞。</p>
 
-<p>在 HIDL 接口中声明的所有方法都是单向调用，要么从 HAL 发出，要么到 HAL。该接口没有指定具体调用方向。需要从 HAL 发起调用的架构应该在 HAL 软件包中提供两个（或更多个）接口并从每个进程提供相应的接口。对于接口的调用方向，我们使用字词“客户端”和“服务器”来表示（即 HAL 可以是一个接口的服务器，也可以是另一个接口的客户端）。<em></em><em></em></p>
+<p>在 HIDL 接口中声明的所有方法都是单向调用，要么从 HAL 发出，要么到 HAL。该接口没有指定具体调用方向。需要从 HAL 发起调用的架构应该在 HAL 软件包中提供两个（或更多个）接口并从每个进程提供相应的接口。我们根据接口的调用方向来取名“客户端”或“服务器”（即 HAL 可以是一个接口的服务器，也可以是另一个接口的客户端）。<em></em><em></em></p>
 
 <h3 id="callbacks">回调</h3>
-<p>“回调”一词指的是两个不同的概念，可通过“同步回调”和“异步回调”进行区分。<em></em><em></em><em></em></p>
+<p>“回调”一词可以指代两个不同的概念，可通过“同步回调”和“异步回调”进行区分。<em></em><em></em><em></em></p>
 
-<p>“同步回调”在返回数据的一些 HIDL 方法中使用。<em></em>返回多个值（或返回非基元类型的一个值）的 HIDL 方法会通过回调函数返回其结果。如果只返回一个值且该值是基元类型，则不使用回调且该值从方法中返回。服务器实现 HIDL 方法，而客户端实现回调。</p>
+<p>“同步回调”用于返回数据的一些 HIDL 方法。<em></em>返回多个值（或返回非基元类型的一个值）的 HIDL 方法会通过回调函数返回其结果。如果只返回一个值且该值是基元类型，则不使用回调且该值从方法中返回。服务器实现 HIDL 方法，而客户端实现回调。</p>
 
-<p>“异步回调”允许 HIDL 接口的服务器发起调用。<em></em>通过第一个接口传递第二个接口的实例即可完成此操作。第一个接口的客户端必须作为第二个接口的服务器。第一个接口的服务器可以在第二个接口对象上调用方法。例如，HAL 实现可以通过在由该进程创建和提供的接口对象上调用方法来将信息异步发送回正在使用它的进程。用于异步回调的接口中的方法可以是阻塞（并且可能将值返回到调用程序），也可以是 <code>oneway</code>。要查看相关示例，请参阅 <a href="/devices/architecture/hidl-cpp/interfaces.html">HIDL C++</a> 中的“异步回调”。</p>
+<p>“异步回调”允许 HIDL 接口的服务器发起调用。<em></em>通过第一个接口传递第二个接口的实例即可完成此操作。第一个接口的客户端必须作为第二个接口的服务器。第一个接口的服务器可以在第二个接口对象上调用方法。例如，HAL 实现可以通过在由该进程创建和提供的接口对象上调用方法来将信息异步发送回正在使用它的进程。用于异步回调的接口中的方法可以是阻塞方法（并且可能将值返回到调用程序），也可以是 <code>oneway</code> 方法。要查看相关示例，请参阅 <a href="/devices/architecture/hidl-cpp/interfaces.html">HIDL C++</a> 中的“异步回调”。</p>
 
-<p>要简化内存所有权，方法调用和回调只能选择 <code>in</code> 参数，并且不支持 <code>out</code> 或 <code>inout</code> 参数。</p>
+<p>要简化内存所有权，方法调用和回调只能接受 <code>in</code> 参数，并且不支持 <code>out</code> 或 <code>inout</code> 参数。</p>
 
 <h3 id="limits">每事务限制</h3>
-<p>每事务限制可能会强制限制在 HIDL 方法和回调中发送的数据量。具体限制尚不确定，但可能小至 4K。超出这些限制的调用会立即返回失败。另一个限制是可供 HIDL 基础架构处理多个同时进行的事务的资源。由于多个线程或进程向一个进程发送调用或者接收进程未能快速处理多个 <code>oneway</code> 调用，因此多个事务可以同时进行。</p>
+<p>每事务限制可能会强制限制在 HIDL 方法和回调中发送的数据量。具体限制尚不确定，但可能小至 4K。超出这些限制的调用会立即返回失败。另一个限制是可供 HIDL 基础架构处理多个同时进行的事务的资源。由于多个线程或进程向一个进程发送调用或者接收进程未能快速处理多个 <code>oneway</code> 调用，因此多个事务可能会同时进行。</p>
 
 <p>在设计良好的接口中，不应出现超出这些资源限制的情况；如果超出的话，则超出资源的调用可能会阻塞，直到资源可用或发出传输错误的信号。每当因正在进行的总事务导致出现超出每事务限制或溢出 HIDL 实现资源的情况时，系统都会记录下来以方便调试。</p>
 

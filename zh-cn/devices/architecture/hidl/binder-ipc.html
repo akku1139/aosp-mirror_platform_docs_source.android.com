@@ -28,7 +28,8 @@
 
 <h3 id="contexts">多个 Binder 域（上下文）</h3>
 <em>在通用 3.10、3.18、4.4、4.9 版内核和上游中</em>
-<p>为了明确地拆分框架（与设备无关）和供应商（与具体设备相关）代码之间的 Binder 流量，Android O 引入了“Binder 上下文”这一概念。<em></em>每个 Binder 上下文都有自己的设备节点和上下文（服务）管理器。您只能通过上下文管理器所属的设备节点对其进行访问，并且在通过特定上下文传递 Binder 节点时，只能由另一个进程从相同的上下文访问上下文管理器，从而确保这些域完全互相隔离。如需使用方法的详细信息，请参阅 <a href="#vndbinder">vndbinder</a> 和 <a href="#vndservicemanager">vndservicemanager</a>。
+<p>
+为了明确地拆分框架（与设备无关）和供应商（与具体设备相关）代码之间的 Binder 流量，Android O 引入了“Binder 上下文”这一概念。<em></em>每个 Binder 上下文都有自己的设备节点和上下文（服务）管理器。您只能通过上下文管理器所属的设备节点对其进行访问，并且在通过特定上下文传递 Binder 节点时，只能由另一个进程从相同的上下文访问上下文管理器，从而确保这些域完全互相隔离。如需使用方法的详细信息，请参阅 <a href="#vndbinder">vndbinder</a> 和 <a href="#vndservicemanager">vndservicemanager</a>。
 </p>
 
 <h3 id="scatter">分散-集中</h3>
@@ -41,7 +42,8 @@
 <li>一次是在目标进程中对 <code>Parcel</code> 进行反序列化</li>
 </ul>
 
-<p>Android O 使用<a href="https://en.wikipedia.org/wiki/Vectored_I/O">分散-集中优化</a>机制将复制次数从 3 次减少到了 1 次。数据保留在其原始结构和内存布局中且 Binder 驱动程序会立即将数据复制到目标进程中，而不是先在 <code>Parcel</code> 中对数据进行序列化。在目标进程中，这些数据的结构和内存布局保持不变，并且，在无需再次复制的情况下即可读取这些数据。
+<p>
+Android O 使用<a href="https://en.wikipedia.org/wiki/Vectored_I/O">分散-集中优化</a>机制将复制次数从 3 次减少到了 1 次。数据保留其原始结构和内存布局，且 Binder 驱动程序会立即将数据复制到目标进程中，而不是先在 <code>Parcel</code> 中对数据进行序列化。在目标进程中，这些数据的结构和内存布局保持不变，并且，在无需再次复制的情况下即可读取这些数据。
 </p>
 
 <h3 id="locking">精细锁定</h3>
@@ -59,15 +61,18 @@
 
 <p>Binder 驱动程序一直支持 nice 优先级继承。随着 Android 中以实时优先级运行的进程日益增加，现在出现以下这种情形也属正常：如果实时线程进行 Binder 调用，则处理该调用的进程中的线程同样会以实时优先级运行。为了支持这些使用情景，Android O 现在在 Binder 驱动程序中实现了实时优先级继承。
 </p>
-<p>除了事务级优先级继承之外，“节点优先级继承”允许节点（Binder 服务对象）指定对该节点执行调用操作所需的最低优先级。<em></em>之前版本的 Android 已经通过 nice 值支持节点优先级继承，但 Android O 增加了对实时调度政策节点继承的支持。
+<p>
+除了事务级优先级继承之外，“节点优先级继承”允许节点（Binder 服务对象）指定对该节点执行调用操作所需的最低优先级。<em></em>之前版本的 Android 已经通过 nice 值支持节点优先级继承，但 Android O 增加了对实时调度政策节点继承的支持。
 </p>
 <p class="note"><strong>注意</strong>：Android 性能团队发现，实时优先级继承会对框架 Binder 域 (<code>/dev/binder</code>) 造成不必要的负面影响，因此已对该域<strong>停用</strong>实时优先级继承。
 </p>
 
 <h3 id="userspace">用户空间更改</h3>
-<p>Android O 纳入了在通用内核中使用现有 Binder 驱动程序所需的所有用户空间更改，但有一个例外：针对 <code>/dev/binder</code> 停用实时优先级继承的原始实现使用的是 <a href="https://android.googlesource.com/kernel/msm/+/868f6ee048c6ff51dbd92353dd5c68bea4419c78" class="external">ioctl</a>。由于后续开发将优先级继承的控制方法改为了更加精细的方法（根据 Binder 模式，而非上下文），因此，ioctl 不存于 Android 通用分支中，而是<a href="https://android-review.googlesource.com/#/c/421861/" class="external">提交到了我们的通用内核中</a>。
+<p>
+Android O 纳入了在通用内核中使用现有 Binder 驱动程序所需的所有用户空间更改，但有一个例外：针对 <code>/dev/binder</code> 停用实时优先级继承的原始实现使用的是 <a href="https://android.googlesource.com/kernel/msm/+/868f6ee048c6ff51dbd92353dd5c68bea4419c78" class="external">ioctl</a>。由于后续开发将优先级继承的控制方法改为了更加精细的方法（根据 Binder 模式，而非上下文），因此，ioctl 不存于 Android 通用分支中，而是<a href="https://android-review.googlesource.com/#/c/421861/" class="external">提交到了我们的通用内核中</a>。
 </p>
-<p>此项更改的影响是，所有节点均默认停用实时优先级继承。<em></em>Android 性能团队发现，为 <code>hwbinder</code> 域中的所有节点启用实时优先级继承会有一定好处。要达到同样的效果，请在用户空间中择优实施<a href="https://android-review.googlesource.com/#/c/440359/" class="external">此更改</a>。
+<p>
+此项更改的影响是，所有节点均默认停用实时优先级继承。<em></em>Android 性能团队发现，为 <code>hwbinder</code> 域中的所有节点启用实时优先级继承会有一定好处。要达到同样的效果，请在用户空间中择优实施<a href="https://android-review.googlesource.com/#/c/440359/" class="external">此更改</a>。
 </p>
 <h3 id="shas">通用内核的 SHA</h3>
 <p>要获取对 Binder 驱动程序所做的必要更改，请同步到下列 SHA（或更高版本）：
@@ -109,7 +114,7 @@ ecd972d4f9b5 ANDROID: Binder：请勿在还原时检查优先级权限。</li>
 
 <p>为了显示 <code>/dev/vndbinder</code>，请确保内核配置项 <code>CONFIG_ANDROID_BINDER_DEVICES</code> 设为 <code>"binder,hwbinder,vndbinder"</code>（这是 Android 通用内核树的默认设置）。</p>
 
-<p>通常，供应商进程不直接打开 Binder 驱动程序，而是链接到打开 Binder 驱动程序的 <code>libbinder</code> 用户空间库。为 <code>::android::ProcessState()</code> 添加方法可为 <code>libbinder</code> 选择 Binder 驱动程序。供应商进程应该在调用 <code>ProcessState,</code>、<code>IPCThreadState</code> 或（在一般情况下）发出任何 Binder 调用<strong>之前</strong>调用此方法。要使用该方法，请在供应商进程（客户端和服务器）的 <code>main()</code> 后放置以下调用：</p>
+<p>通常，供应商进程不直接打开 Binder 驱动程序，而是链接到打开 Binder 驱动程序的 <code>libbinder</code> 用户空间库。为 <code>::android::ProcessState()</code> 添加方法可为 <code>libbinder</code> 选择 Binder 驱动程序。供应商进程应该在调用 <code>ProcessState,</code>、<code>IPCThreadState</code> 或发出任何普通 Binder 调用<strong>之前</strong>调用此方法。要使用该方法，请在供应商进程（客户端和服务器）的 <code>main()</code> 后放置以下调用：</p>
 
 <pre class="prettyprint">ProcessState::initWithDriver("/dev/vndbinder");</pre>
 
@@ -137,7 +142,7 @@ ecd972d4f9b5 ANDROID: Binder：请勿在还原时检查优先级权限。</li>
 
 <p>要满足要求 4，您必须按照处理服务名称、服务标签和规则的方式进行更改。</p>
 
-<p>有关 SELinux 的详细信息，请参阅 <a href="https://source.android.com/security/selinux/">Android 中的安全增强型 Linux</a>。有关 Android 8.0 中 SELinux 的详细信息，请参阅 <a href="/security/selinux/images/SELinux_Treble.pdf">SELinux for Android 8.0</a>。</p>
+<p>有关 SELinux 的详细信息，请参阅 <a href="/security/selinux/">Android 中的安全增强型 Linux</a>。有关 Android 8.0 中 SELinux 的详细信息，请参阅 <a href="/security/selinux/images/SELinux_Treble.pdf">SELinux for Android 8.0</a>。</p>
 
 <h3 id="names">服务名称</h3>
 <p>以前，供应商进程在 <code>service_contexts</code> 文件中注册服务名称并添加用于访问该文件的相应规则。来自 <code>device/google/marlin/sepolicy</code> 的 <code>service_contexts</code> 文件示例：</p>
@@ -151,7 +156,7 @@ uce                                   u:object_r:uce_service:s0
 vendor.qcom.PeripheralManager         u:object_r:per_mgr_service:s0
 </pre>
 
-<p>而在 Android O 中，<code>vndservicemanager</code> 会加载 <code>vndservice_contexts</code> 文件。迁移到 <code>vndservicemanager</code> 供应商服务（且已经在旧的 <code>service_contexts</code> 文件中）的供应商服务应该添加到新的 <code>vndservice_contexts</code> 文件中。</p>
+<p>而在 Android O 中，<code>vndservicemanager</code> 会加载 <code>vndservice_contexts</code> 文件。迁移到 <code>vndservicemanager</code>（且已经在旧的 <code>service_contexts</code> 文件中）的供应商服务应该添加到新的 <code>vndservice_contexts</code> 文件中。</p>
 
 <h3 id="labels">服务标签</h3>
 <p>以前，服务标签（例如 <code>u:object_r:atfwd_service:s0</code>）在 <code>service.te</code> 文件中定义。例如：</p>
@@ -170,8 +175,7 @@ allow atfwd atfwd_service:service_manager find;
 allow some_vendor_app atfwd_service:service_manager add;
 </pre>
 
-<p>在 Android O 中，这样的规则可继续存在并使用相同的类。例如：
-</p>
+<p>在 Android O 中，这样的规则可继续存在并使用相同的类。例如：</p>
 
 <pre class="prettyprint">
 allow atfwd atfwd_service:service_manager find;

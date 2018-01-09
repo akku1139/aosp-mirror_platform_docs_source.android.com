@@ -1,0 +1,307 @@
+<html devsite>
+  <head>
+    <title>Fuzzing with libFuzzer</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2018 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          //www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+<p>
+Fuzzing, which is simply providing potentially invalid, unexpected, or random
+data as an input to a program, is an extremely effective way of finding bugs in
+large software systems, and is an important part of the software development
+life cycle.
+</p>
+<p>
+Android's build system supports fuzzing through the inclusion of the <a
+href="http://llvm.org/docs/LibFuzzer.html">libFuzzer project</a> from the LLVM
+compiler infrastructure project. LibFuzzer is linked with the function under
+test and handles all input selection, mutation, and crash reporting that occurs
+during a fuzzing session. LLVM's sanitizers are used to aid in memory corruption
+detection and code coverage metrics.
+</p>
+<p>
+This article provides an introduction to libFuzzer on Android and how to perform
+an instrumented build. It also includes instructions to write, run, and
+customize fuzzers.
+</p>
+<h3 id="setup-and-build">Setup and build</h3>
+<p>
+To ensure you have a working image running on a device, follow the setup and
+build examples below.
+</p>
+<aside class="note"><strong>Tip</strong>:
+For more detailed setup information, see the
+<a href="/setup/requirements">Downloading and building</a> section.
+Follow the instructions to <a href="/setup/initializing">set up</a> your build
+environment, <a href="/setup/downloading">download</a> the source, and
+build Android (up to the
+<a href="/setup/building.html#build-the-code">make command</a>).</aside>
+
+<p>After you flash your device with a standard Android build, follow the
+instructions to flash an
+<a href="/devices/tech/debug/asan.html#sanitize_target">AddressSanitizer
+build</a>, and turn on coverage by using <code>SANITIZE_TARGET='address
+coverage'</code> instead of <code>SANITIZE_TARGET='address'</code>.
+</p>
+<h4 id="setup-example">Setup example</h4>
+<p>
+This example assumes the target device is Pixel (<code>sailfish</code>) and is
+already prepared for USB debugging (<code>aosp_sailfish-userdebug</code>).
+</p>
+
+
+<pre
+class="prettyprint"><code class="devsite-terminal">mkdir ~/bin</code>
+<code class="devsite-terminal">export PATH=~/bin:$PATH</code>
+<code class="devsite-terminal">curl https://storage.googleapis.com/git-repo-downloads/repo &gt; ~/bin/repo</code>
+<code class="devsite-terminal">chmod a+x ~/bin/repo</code>
+<code class="devsite-terminal">repo init -u https://android.googlesource.com/platform/manifest -b master</code>
+<code class="devsite-terminal">repo sync -c -j8</code>
+<code class="devsite-terminal">wget https://dl.google.com/dl/android/aosp/google_devices-sailfish-nde63p-c36cb625.tgz</code>
+<code class="devsite-terminal">tar xvf google_devices-sailfish-nde63p-c36cb625.tgz</code>
+<code class="devsite-terminal">extract-google_devices-sailfish.sh</code>
+<code class="devsite-terminal">wget https://dl.google.com/dl/android/aosp/qcom-sailfish-nde63p-50a5f1e0.tgz</code>
+<code class="devsite-terminal">tar xvf qcom-sailfish-nde63p-50a5f1e0.tgz</code>
+<code class="devsite-terminal">extract-qcom-sailfish.sh</code>
+<code class="devsite-terminal">. build/envsetup.sh</code>
+<code class="devsite-terminal">lunch aosp_sailfish-userdebug</code>
+</pre>
+
+<h4 id="build-example">Build example</h4>
+<p>
+There is a two-step build process to create an instrumented system image that
+allows for reproducible fuzzing sessions.
+</p>
+<p>
+First perform a full build of Android and flash it to the device. Next, build
+the instrumented version of Android using the existing build as a starting
+point. The build system is sophisticated enough to build only the required
+binaries and put them in the correct location.
+</p>
+
+<ol>
+<li>Perform the initial build by issuing:
+<pre class="devsite-terminal devsite-click-to-copy">make -j$(nproc)</pre></li>
+<li>To allow you to flash your device, boot your device into fastboot mode using
+the <a href="/source/running.html#booting-into-fastboot-mode">appropriate
+key combination</a>.</li>
+<li>Unlock the bootloader and flash the newly compiled image with the following
+commands. (The <code>-w</code> option erases userdata, ensuring a clean initial
+state.)
+<pre class="prettyprint"><code class="devsite-terminal">fastboot oem unlock</code>
+<code class="devsite-terminal">fastboot flashall -w</code>
+</pre></li>
+<li>Perform the instrumented build and flash the modified binaries to the
+device:
+<pre class="prettyprint"><code class="devsite-terminal">make -j$(nproc) SANITIZE_TARGET='address coverage'</code>
+<code class="devsite-terminal">fastboot flash userdata</code>
+<code class="devsite-terminal">fastboot flashall</code></pre>
+</li>
+</ol>
+
+<p>
+The target device should now be ready for libFuzzer fuzzing. To ensure your
+build is an instrumented build, check for the existence of
+<code>/data/asan/lib</code> using adb as root:
+</p>
+
+<pre class="prettyprint"><code class="devsite-terminal">adb root</code>
+<code class="devsite-terminal">adb shell ls -ld /data/asan/lib*
+drwxrwx--x 6 system system 8192 2016-10-05 14:52 /data/asan/lib
+drwxrwx--x 6 system system 8192 2016-10-05 14:52 /data/asan/lib64</code>
+</pre>
+<p>
+These directories do not exist on a regular, non-instrumented build.
+</p>
+
+<h2 id="write-a-fuzzer">Write a fuzzer</h2>
+<p>
+To illustrate writing an end-to-end fuzzer using libFuzzer in Android, use the
+following vulnerable code as a test case. This helps to test the fuzzer, ensure
+everything is working correctly, and illustrate what crash data looks like.
+</p>
+<p>
+Here is the test function.
+</p>
+
+
+<pre class="prettyprint">#include &lt;stdint.h&gt;
+#include &lt;stddef.h&gt;
+bool FuzzMe(const uint8_t *Data, size_t DataSize) {
+   return DataSize &gt;= 3 &&
+          Data[0] == 'F' &&
+          Data[1] == 'U' &&
+          Data[2] == 'Z' &&
+          Data[3] == 'Z';  // ← Out of bounds access
+}
+</pre>
+
+<p>
+To build and run this test fuzzer:</p>
+<ol>
+<li>Create a directory in the Android source tree, for example,
+<code>tools/fuzzers/fuzz_me_fuzzer</code>. The following files will all be
+created in this directory.</li>
+<li>Write a fuzz target using libFuzzer. The fuzz target is a function that
+takes a blob of data of a specified size and passes it to the function to be
+fuzzed. Here's a basic fuzzer for the vulnerable test function:
+
+<pre
+class="prettyprint">extern "C" int LLVMFuzzerTestOneInput(const uint8_t *buf, size_t len) {
+  FuzzMe(buf, len);
+  return 0;
+}
+</pre></li>
+<li>Tell Android's build system to create the fuzzer binary.
+To build the fuzzer, add this code to the <code>Android.mk</code> file:
+
+<pre
+class="prettyprint">LOCAL_PATH:= $(call my-dir)
+
+include $(CLEAR_VARS)
+
+LOCAL_SRC_FILES := fuzz_me_fuzzer.cpp
+LOCAL_CFLAGS += -Wno-multichar -g -O0
+LOCAL_MODULE_TAGS := optional
+LOCAL_CLANG := true
+LOCAL_MODULE:= fuzz_me_fuzzer
+
+Include $(BUILD_FUZZ_TEST)
+</pre>
+<p>
+Most of the logic to get this working is included in the BUILD_FUZZ_TEST macro,
+which is defined in  <code>build/core/fuzz_test.mk.</code></p></li>
+
+<li>Make the fuzzer with:
+
+<pre class="devsite-terminal devsite-click-to-copy">make -j$(nproc) fuzz_me_fuzzer SANITIZE_TARGET="address coverage"
+</pre></li>
+</ol>
+<p>
+After following these steps, you should have a built fuzzer. The default
+location for the fuzzer (for this example Pixel build) is
+<code>out/target/product/sailfish/data/nativetest/fuzzers/fuzz_me_fuzzer/fuzz_me_fuzzer</code>
+</p>
+<h2 id="run-your-fuzzer">Run your fuzzer</h2>
+<p>
+After you've built your fuzzer, upload the fuzzer and the vulnerable library to
+link against.</p>
+<ol>
+<li>To upload these files to a directory on the device, run these
+commands:
+
+
+<pre
+	 class="prettyprint"><code class="devsite-terminal">adb root</code>
+<code class="devsite-terminal">adb shell mkdir -p /data/tmp/fuzz_me_fuzzer/corpus</code>
+<code class="devsite-terminal">adb push $OUT/data/asan/nativetest/fuzzers/fuzz_me_fuzzer/fuzz_me_fuzzer
+ /data/tmp/fuzz_me_fuzzer/</code>
+ </pre>
+</li>
+<li>Run the test fuzzer with this command:
+
+<pre class="devsite-terminal devsite-click-to-copy">adb shell /data/tmp/fuzz_me_fuzzer/fuzz_me_fuzzer /data/tmp/fuzz_me_fuzzer/corpus</pre>
+</li></ol>
+<p>
+This results in output similar to the example output below.
+</p>
+<aside class="note"><strong>Tip</strong>:
+See the <a href="http://llvm.org/docs/LibFuzzer.html">LibFuzzer docs</a> for
+more information on how to read libFuzzer output.
+</aside>
+
+
+<pre class="prettyprint">
+INFO: Seed: 702890555
+INFO: Loaded 1 modules (9 guards): [0xaaac6000, 0xaaac6024),
+Loading corpus dir: /data/tmp/fuzz_me_fuzzer/corpus
+INFO: -max_len is not provided, using 64
+INFO: A corpus is not provided, starting from an empty corpus
+#0
+READ units: 1
+#1
+INITED cov: 5 ft: 3 corp: 1/1b exec/s: 0 rss: 11Mb
+#6
+NEW    cov: 6 ft: 4 corp: 2/62b exec/s: 0 rss: 11Mb L: 61 MS: 1 InsertRepeatedBytes-
+#3008
+NEW    cov: 7 ft: 5 corp: 3/67b exec/s: 0 rss: 11Mb L: 5 MS: 1 CMP- DE: "F\x00\x00\x00"-
+#7962
+NEW    cov: 8 ft: 6 corp: 4/115b exec/s: 0 rss: 11Mb L: 48 MS: 1 InsertRepeatedBytes-
+#35324
+NEW    cov: 9 ft: 7 corp: 5/163b exec/s: 0 rss: 13Mb L: 48 MS: 1 ChangeBinInt-
+=================================================================
+==28219==ERROR: AddressSanitizer: heap-buffer-overflow on address 0xe6423fb3 at pc 0xaaaae938 bp 0xffa31ab0 sp 0xffa31aa8
+READ of size 1 at 0xe6423fb3 thread T0
+#0 0xef72f6df in __sanitizer_print_stack_trace [asan_rtl] (discriminator 1)
+    #1 0xaaab813d in fuzzer::Fuzzer::CrashCallback() external/llvm/lib/Fuzzer/FuzzerLoop.cpp:251
+    #2 0xaaab811b in fuzzer::Fuzzer::StaticCrashSignalCallback() external/llvm/lib/Fuzzer/FuzzerLoop.cpp:240
+    #3 0xef5a9a2b in $a.0 /proc/self/cwd/bionic/libc/arch-arm/bionic/__restore.S:48
+    #4 0xef5dba37 in tgkill /proc/self/cwd/bionic/libc/arch-arm/syscalls/tgkill.S:9
+    #5 0xef5ab511 in abort bionic/libc/bionic/abort.cpp:42 (discriminator 2)
+    #6 0xef73b0a9 in __sanitizer::Abort() external/compiler-rt/lib/sanitizer_common/sanitizer_posix_libcdep.cc:141
+    #7 0xef73f831 in __sanitizer::Die() external/compiler-rt/lib/sanitizer_common/sanitizer_termination.cc:59
+    #8 0xef72a117 in ~ScopedInErrorReport [asan_rtl]
+    #9 0xef72b38f in __asan::ReportGenericError(unsigned long, unsigned long, unsigned long, unsigned long, bool, unsigned long, unsigned int, bool) [asan_rtl]
+    #10 0xef72bd33 in __asan_report_load1 [asan_rtl]
+    #11 0xaaaae937 in FuzzMe(unsigned char const*, unsigned int) tools/fuzzers/fuzz_me_fuzzer/fuzz_me_fuzzer.cpp:10
+    #12 0xaaaaead7 in LLVMFuzzerTestOneInput tools/fuzzers/fuzz_me_fuzzer/fuzz_me_fuzzer.cpp:15
+    #13 0xaaab8d5d in fuzzer::Fuzzer::ExecuteCallback(unsigned char const*, unsigned int) external/llvm/lib/Fuzzer/FuzzerLoop.cpp:515
+    #14 0xaaab8f3b in fuzzer::Fuzzer::RunOne(unsigned char const*, unsigned int) external/llvm/lib/Fuzzer/FuzzerLoop.cpp:469
+    #15 0xaaab9829 in fuzzer::Fuzzer::MutateAndTestOne() external/llvm/lib/Fuzzer/FuzzerLoop.cpp:701
+    #16 0xaaab9933 in fuzzer::Fuzzer::Loop() external/llvm/lib/Fuzzer/FuzzerLoop.cpp:734
+    #17 0xaaab48e5 in fuzzer::FuzzerDriver(int*, char***, int (*)(unsigned char const*, unsigned int)) external/llvm/lib/Fuzzer/FuzzerDriver.cpp:524
+    #18 0xaaab306f in main external/llvm/lib/Fuzzer/FuzzerMain.cpp:20
+    #19 0xef5a8da1 in __libc_init bionic/libc/bionic/libc_init_dynamic.cpp:114
+
+SUMMARY: AddressSanitizer: heap-buffer-overflow
+...
+==28219==ABORTING
+MS: 1 CrossOver-; base unit: 10cc0cb80aa760479e932609f700d8cbb5d54d37
+0x46,0x55,0x5a,
+FUZ
+artifact_prefix='./'; Test unit written to ./crash-0eb8e4ed029b774d80f2b66408203801cb982a60
+Base64: RlVa
+</pre>
+
+<p>
+In the example output, the crash was caused by <code>fuzz_me_fuzzer.cpp</code>
+at line 10:</p>
+<pre
+class="prettyprint">      Data[3] == 'Z';  // :(
+</pre>
+<p>
+This is a straightforward out-of-bounds read if Data is of length 3.
+</p>
+<p>
+After you run your fuzzer, the output often results in a crash and the offending
+input is saved in the corpus and given an ID. In the example output, this is
+<code>crash-0eb8e4ed029b774d80f2b66408203801cb982a60</code>.
+</p>
+<p>
+To retrieve crash information, issue this command, specifying your crash ID:</p>
+<pre class="devsite-terminal devsite-click-to-copy">adb pull
+/data/tmp/fuzz_me_fuzzer/corpus/<var>CRASH_ID</var></pre>
+
+<p>
+For more information about libFuzzer, see the <a
+href="http://llvm.org/docs/LibFuzzer.html">upstream documentation</a>. Because
+Android's libFuzzer is a few versions behind upstream, check <a
+href="https://android.googlesource.com/platform/external/llvm/+/master/lib/Fuzzer/">external/llvm/lib/Fuzzer</a>
+to make sure the interfaces support what you're trying to do.
+</p>
+</body></html>

@@ -1,0 +1,75 @@
+<html devsite><head>
+    <title>救援程序</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>
+很多用户严重依赖他们的手机，需要一台始终可以正常工作的设备。然而，有时设备会陷入重新启动循环僵局，这样，用户便需要提交支持服务单据或保修咨询。这个过程会让用户不舒服，而对于设备制造商和运营商来说，则需要支付高昂的费用。
+</p>
+<p>
+Android 8.0 中纳入了一个功能，当该功能注意到核心系统组件陷入崩溃循环僵局时，就会派出“救援程序”。然后救援程序会通过一系列操作来上报相关情况，以期恢复设备。最后的解决方法是，救援程序使设备重新启动并进入恢复模式，然后提示用户恢复出厂设置。
+</p>
+<p>
+<a href="/compatibility/android-cdd">Android 兼容性定义文档</a>并未要求提供此类救援功能，但此类功能对减少邮件支持记录来说非常有用。
+</p>
+
+<h2 id="implementation">实现</h2>
+<p>
+在 Android 8.0 中，救援程序默认处于启用状态，其实现位于 <code>/services/core/java/com/android/server/RescueParty.java</code> 中。
+在出现以下情况时，救援程序会收到有关启动和崩溃事件的信息，然后即会启动：
+</p>
+<ul>
+  <li>system_server 在 5 分钟内重启 5 次以上。</li>
+  <li>永久性系统应用在 30 秒内崩溃 5 次以上。</li>
+</ul>
+<p>
+当检测到上述某种情况时，救援程序会将其上报给下一救援级别、处理与该级别相关联的任务，并让设备继续运行，看看能否恢复。清除或重置内容的程度随级别而增加。最高级别会提示用户将设备恢复出厂设置。
+</p>
+<p>
+要支持救援程序，无需特别的硬件支持。实现后，设备的恢复系统必须响应 <code>--prompt_and_wipe_data</code> 命令，且设备必须先提供一种方法，让用户确认用户数据是否有任何损坏，然后再继续运行。此外，恢复系统还应为用户提供有关尝试再次启动设备的选项。
+</p>
+<p>
+由于每个救援级别都会使设备再次变为可运行状态的时间延后（可能长达 5 分钟），因此设备制造商不应添加自定义救援级别。设备处于不可运行的状态的时间越长，用户发出支持请求或保修咨询，而不是自行恢复其设备的可能性就越大。
+</p>
+<h2 id="validation">验证</h2>
+<p>
+当设备具有有效的 USB 数据连接时，系统会停止所有救援事件，因为这是一个较强的信号，表示有人正在调试设备。
+</p>
+<p>
+要停止此类抑制行为，请运行：</p>
+
+<pre class="devsite-terminal devsite-click-to-copy">adb shell setprop persist.sys.enable_rescue 1</pre>
+<p>
+在此处，您可以触发系统或界面崩溃循环。
+</p>
+<p>
+要触发低级 <code>system_server</code> 崩溃循环，请运行：</p>
+
+<pre class="devsite-terminal devsite-click-to-copy">adb shell setprop debug.crash_system 1</pre>
+<p>
+要触发中级 SystemUI 崩溃循环，请运行：</p>
+
+<pre class="devsite-terminal devsite-click-to-copy">adb shell setprop debug.crash_sysui 1</pre>
+<p>
+这两个崩溃循环都会启动救援逻辑。所有的救援操作也都会记录到存储在 <code>/data/system/uiderrors.txt</code> 中的永久性的 PackageManager 日志中，以供日后进行检查和调试。
+此外，“软件包警告消息”部分下的每个错误报告中也会包含这些永久性的日志。
+</p>
+
+</body></html>

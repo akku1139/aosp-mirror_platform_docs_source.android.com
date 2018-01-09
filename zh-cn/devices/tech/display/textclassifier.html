@@ -1,0 +1,123 @@
+<html devsite><head>
+    <title>实现 TEXTCLASSIFIER</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<h2 id="overview">概览</h2>
+
+<p>
+Android 8.1 引入了 TextClassfier API，该 API 可以使用机器学习技术来协助开发者对文本进行分类：</p>
+
+<pre class="prettyprint">TextClassificationManager tcm =
+    context.getSystemService(TextClassificationManager.class);
+TextClassifier classifier = tcm.getTextClassifier();
+TextSelection selection = classifier.suggestSelection(...);
+TextClassification classification = classifier.classifyText(...);
+</pre>
+<p>
+开发者可以选择设置自定义文本分类程序：</p>
+<p>
+ <code>tcm.setTextClassifier(customTextClassifier);</code>
+</p>
+<p>
+但是，如果应用开发者将文本分类程序设置为 null，则系统会针对 <code>getTextClassifier()</code> 返回系统默认文本分类程序。
+</p>
+<p>
+请参阅：<code>android.view.textclassifier.TextClassifierImpl</code>
+</p>
+<p>
+TextView 和 WebView 会使用 TextClassifier 来实现智能选择和智能文本分享功能：</p>
+
+<img src="/devices/tech/display/images/textclassifier.png"/>
+<p class="img-caption">
+  <b>图 1.</b> TEXTCLASSIFIER 的用法。
+</p>
+
+<h2 id="textclassifier-neural-net-models">TextClassifier 神经网络模型</h2>
+<p>
+Android 开源项目 (AOSP) 具有多个用于文本分类的神经网络模型。每个模型文件都已针对单一语言进行训练。您可以选择安装任何组合的模型。模型会在以下位置进行定义：</p>
+<p>
+<code>external/libtextclassifier/Android.mk</code>
+</p>
+
+<h2 id="pre-installing-language-models-on-devices">在设备上预安装语言模型</h2>
+<p>
+您可以指定一组语言模型并将其安装在设备上：</p>
+
+<pre class="prettyprint"># -----------------------
+# Smart Selection bundles
+# -----------------------
+
+include $(CLEAR_VARS)
+LOCAL_MODULE           := textclassifier.smartselection.bundle1
+LOCAL_REQUIRED_MODULES := textclassifier.smartselection.en.model
+LOCAL_REQUIRED_MODULES += textclassifier.smartselection.es.model
+LOCAL_REQUIRED_MODULES += textclassifier.smartselection.de.model
+LOCAL_REQUIRED_MODULES += textclassifier.smartselection.fr.model
+include $(BUILD_STATIC_LIBRARY)
+</pre>
+
+<p>
+例如，安装在 <code>device/google/marlin/device-common.mk</code> 中
+</p>
+
+<pre class="prettyprint"># TextClassifier smart selection model files
+PRODUCT_PACKAGES += \
+    textclassifier.smartselection.bundle1
+</pre>
+
+<h2 id="inspecting-installed-language-modules">检查已安装的语言模块</h2>
+<p>
+使用 ADB 命令列出目录下的文件：</p>
+
+<pre class="prettyprint">$ adb shell ls -l /etc/textclassifier
+-rw-r--r-- 1 root root ... textclassifier.smartselection.de.model
+-rw-r--r-- 1 root root ... textclassifier.smartselection.en.model
+-rw-r--r-- 1 root root ... textclassifier.smartselection.es.model
+-rw-r--r-- 1 root root ... textclassifier.smartselection.fr.model
+</pre>
+
+<h2 id="gservices-model-updates">模型更新</h2>
+
+<p>
+要更新模型，您可以将新模型作为系统映像的一部分来更新，也可以通过使用系统 <code>API ACTION_UPDATE_SMART_SELECTION</code> intent 触发更新的系统组件来进行动态更新。通过广播该系统 API intent，框架得以更新当前所设置语言的语言模型。模型自身包含支持的语言和版本号，因此会使用最新的合适模型。
+</p>
+
+<p>
+因此，您无需预加载所有语言的模型，因为这些模型可以稍后再添加。如果未找到指定语言的模型文件，则文本分类将返回空操作值。
+</p>
+
+<h2 id="compatibility-test-suite-tests">兼容性测试套件测试</h2>
+<p>
+您可以在以下位置找到相关的 Android 兼容性测试套件 (CTS) 测试：</p>
+<p>
+<code>cts/tests/tests/view/src/android/view/textclassifier/cts/TextClassificationManagerTest.java</code>
+</p>
+<p>
+<code>cts/tests/tests/widget/src/android/widget/cts/TextViewTest.java</code>
+</p>
+
+<ul>
+<li><code>testSmartSelection</code></li>
+<li><code>testSmartSelection_dragSelection</code></li>
+<li><code>testSmartSelection_resetSelection</code></li>
+</ul>
+
+</body></html>

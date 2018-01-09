@@ -21,24 +21,87 @@
   -->
 
 <p>
-Android 7.1.1 及更高版本可为零售模式提供系统级支持，以便用户可以轻松检测运行中的设备。通过该功能，零售环境中的任何人都可以观看快速、安全、一致的 Android 设备演示，而原始设备制造商 (OEM) 也可以借此大幅降低零售模式的成本和复杂度，实现演示设备的普通化。
+Android 7.1.1 及更高版本可为零售模式提供系统级支持，以便用户可以轻松检测运行中的设备。Android 8.1 对这项支持进行了修订，以通过设备政策管理器创建演示用户。这有利于对标准零售模式进行更灵活的 OEM 自定义。
 </p>
 
-<h2 id="key-use-cases">关键用例</h2>
+<h2 id="android-8-1-and-later">Android 8.1 及更高版本</h2>
 
+<p>Android 8.1 支持通过设备政策管理器向零售店用户展示设备功能。尽管设备政策管理器的 API 可以在 8.1 之前的版本上使用，但是对于 8.1 之前的版本，无法使用 <a href="https://developer.android.com/reference/android/app/admin/DevicePolicyManager.html#createAndManageUser(android.content.ComponentName, java.lang.String, android.content.ComponentName, android.os.PersistableBundle, int)">createAndManageUser</a> 创建演示类型的用户。
+</p>
+
+<h3 id="implementation">实现</h3>
+
+<h4 id="provisioning">配置</h4>
+<p>
+在配置前将 <code>Settings.Global.DEVICE_DEMO_MODE</code> 设置为 1，以表示设备应进入零售模式。系统服务器将使用此标记来管理零售模式的各个方面，例如电源配置文件。此外，零售员工必须向演示应用授予设备所有权。完成消费者设置后，将无法设置设备所有者。
+</p>
+
+<h4 id="create-demo-app">创建演示应用</h4>
+<p>
+设备所有者应用无需在系统映像上进行提权或预安装。一般来说，这类应用的实现方式与传统应用是一样的；以下是它们之间的差异：</p>
 <ul>
-<li>任何现成的 Android 设备都可以通过向 build 添加一个演示视频来设置为零售模式。
-</li><li>所有设备上都具有突出设备独特功能的视频。
-</li><li>无论是在线还是离线环境，设备都可以运行。
-</li><li>设备可以进行自我维护，所需的员工互动极少。</li></ul>
+  <li>所有的设备所有者应用都必须扩展 <code>DeviceAdminReceiver</code> 组件，该组件可作为所有设备政策管理器 API 的授权令牌。该组件必须具有 <code>android.permission.BIND_DEVICE_ADMIN</code> 权限，包含请求的特殊政策（作为元数据），并过滤 <code>android.app.action.PROFILE_PROVISIONING_COMPLETE</code> 和 <code>android.app.action.DEVICE_ADMIN_ENABLED</code> intent。</li>
+  <li><code>DevicePolicyManager#MAKE_USER_DEMO</code> 标记是一个隐藏 API。设置此标记可以创建特殊的演示类型用户。此标记是一个常量 0x4。</li>
+  <li>设备所有权只能通过托管配置进行分配。</li>
+</ul>
 
-<h2 id="lifecycle">生命周期</h2>
+<h4 id="device-policy-manager">设备政策管理器</h4>
+<p>
+设备政策管理器 API 会授予所有的设备所有者 (DO) 和配置文件所有者 (PO) 权限（软件包安装权限除外，因为系统会自动授予这项权限）。与 DO 关联的 PO 可以使用 AIDL 接口来访问仅向 DO 授予的权限。可用的功能包括：</p>
+<ul>
+ <li>创建用户。通过 DevicePolicyManager 创建的用户将自动设置为 PO。</li>
+ <li>切换用户。</li>
+ <li>将权限政策设置为 <code>PERMISSION_POLICY_AUTO_GRANT</code>，这样可以自动授予所有运行时权限。权限的授予范围也可以缩小：单项权限授予单一应用。这不适用于 Appops 权限（用户仍必须基于每个用户、每个应用授予权限）。</li>
+ <li>添加用户限制。与零售模式相关的限制可能包括但不限于：<ul>
+     <li><code>DISALLOW_MODIFY_ACCOUNTS</code></li>
+     <li><code>DISALLOW_USB_FILE_TRANSFER</code></li>
+     <li><code>DISALLOW_DEBUGGING_FEATURES</code></li>
+     <li><code>DISALLOW_CONFIG_WIFI</code></li>
+     <li><code>DISALLOW_CONFIG_BLUETOOTH</code></li>
+     <li><code>DISALLOW_INSTALL_UNKNOWN_SOURCES</code></li>
+     <li><code>DISALLOW_CONFIG_MOBILE_NETWORKS</code></li>
+   </ul>
+ </li>
+ <li>启用自动系统更新。设备将自动下载并应用 OTA 更新。</li>
+ <li>设置 LockTask 允许的软件包。</li>
+ <li>将设备恢复出厂设置。</li>
+ <li>停用锁屏功能。</li>
+ <li>阻止设置密码/指纹。</li>
+ <li>控制 WLAN 网络更改。与用户限制 <code>DISALLOW_CONFIG_WIFI</code> 一起使用时，设备所有者应用可以控制对 WLAN 网络选择设置的访问权限。</li>
+ <li>重新启动设备。</li>
+ <li>通过 <a href="https://developer.android.com/reference/android/content/pm/PackageInstaller.html">PackageInstaller</a> 安装软件包。</li>
+ <li>设置一组已加入白名单的 <a href="https://developer.android.com/reference/android/provider/Settings.Global.html">
+Settings.Global</a>、<a href="https://developer.android.com/reference/android/provider/Settings.Secure.html">
+Settings.Secure</a> 和 <a href="https://developer.android.com/reference/android/provider/Settings.System.html">
+Settings.System</a> 设置。</li>
+ <li>阻止卸载软件包。</li>
+</ul>
+
+<h3 id="examples-additional-resources">示例和其他资源</h3>
+<ul>
+ <li>用户、配置文件和帐号的 <a href="/devices/tech/admin/multi-user">Android 开发者定义</a></li>
+ <li><a href="https://developer.android.com/reference/android/app/admin/DevicePolicyManager.html">设备政策管理器 API 文档</a></li>
+ <li><a href="https://developer.android.com/samples/DeviceOwner/index.html">示例设备所有者应用</a></li>
+</ul>
+
+<h3 id="validation">验证</h3>
+<p>
+CTS 不涵盖零售演示模式，因为该模式是一项可选功能。测试应手动进行，或对演示应用进行单元测试。
+</p>
+
+<h2 id="retail-demo-mode-8-and-earlier">Android 8.0 及更早版本</h2>
+
+<p>
+Android 7.1.1 引入了零售演示模式，并提供了一个简单 API 来播放演示视频。该实现已在 Android 8.1 中移除。
+</p>
+
+<h3 id="lifecycle">生命周期</h3>
 
 <img src="/devices/tech/display/images/retail-demo-flow.png" alt="零售演示模式流程" width="XXX" id="retail-demo-flow"/>
 <p class="img-caption">
   <strong>图 1.</strong> 语言选择中的零售演示模式选项</p>
 
-<h3 id="setup-wizard-suw">设置向导 (SUW)</h3>
+<h4 id="setup-wizard-suw">设置向导 (SUW)</h4>
 
 <p>零售员工可以从任何设置向导的首屏直接启用零售模式，具体方法是选择列表底部的语言 <strong>Retail demo</strong>。此选项适用于全新出厂的设备。一旦消费者完成设置，零售模式将不再可用。选择后，设备将完成具有简短流程的 SUW。
 </p>
@@ -47,7 +110,7 @@ Android 7.1.1 及更高版本可为零售模式提供系统级支持，以便用
 <p class="img-caption">
   <strong>图 2.</strong> 语言选择中的零售演示模式选项</p>
 
-<h3 id="guest-session">访客会话</h3>
+<h4 id="guest-session">访客会话</h4>
 
 <p>设备进入零售模式后，会切换到新的演示用户，并自动启动覆盖层资源中指定的自定义启动器（如“实现”部分所述）。默认情况下，此自定义启动器会重复播放演示视频，直至用户触摸屏幕开始访客会话。这时，自定义启动器会在启动系统启动器后退出。原始设备制造商 (OEM) 可以更改自定义启动器，使其在退出时额外启动其他服务或活动。有关详细信息，请参阅“实现”部分。<em></em>
 </p>
@@ -70,27 +133,27 @@ Android 7.1.1 及更高版本可为零售模式提供系统级支持，以便用
 <ul>
   <li>亮度</li><li>自动旋转</li><li>手电筒</li><li>语言</li><li>无障碍</li></ul>
 
-<h3 id="exiting-retail-mode">退出零售模式</h3>
+<h4 id="exiting-retail-mode">退出零售模式</h4>
 
 <p>要退出零售模式，零售员工必须从引导加载程序将设备恢复出厂设置。
 </p>
 
-<h2 id="examples-and-source">示例和源代码</h2>
+<h3 id="examples-and-source">示例和源代码</h3>
 
 <p>从以下位置查找循环播放视频的自定义启动器：</p>
 <pre class="devsite-click-to-copy">
 /packages/apps/RetailDemo
 </pre>
 
-<h2 id="implementation">实现</h2>
+<h3 id="implementation">实现</h3>
 
-<h3 id="enabling-retaildemomodeservice">启用 RetailDemoModeService</h3>
+<h4 id="enabling-retaildemomodeservice">启用 RetailDemoModeService</h4>
 
 <p>
-设置向导设置全局设置 <code>Global.DEVICE_DEMO_MODE=true</code>，以表示设备已进入零售模式。一遇到此设置，<code>RetailDemoModeService</code> 便会在用户 0 已启动时创建并切换至演示用户，启用覆盖层资源中指定的自定义启动器，并停用 SUW。系统服务器和 SystemUI 也会使用此标记来管理零售模式的各个方面。
+设置向导将设置全局设置 <code>Global.DEVICE_DEMO_MODE=true</code>，来表示设备已进入零售模式。一遇到此设置，<code>RetailDemoModeService</code> 便会在用户 0 已启动时创建并切换至演示用户，启用覆盖层资源中指定的自定义启动器，并停用 SUW。系统服务器和 SystemUI 也会使用此标记来管理零售模式的各个方面。
 </p>
 
-<h3 id="setting-custom-launcher-or-video-player">设置自定义启动器或视频播放器</h3>
+<h4 id="setting-custom-launcher-or-video-player">设置自定义启动器或视频播放器</h4>
 
 <p>原始设备制造商 (OEM) 可以通过覆盖 <code>/frameworks/base/core/res/res/config.xml</code> 中指定的框架资源 <code>config_demoModeLauncherComponent</code> 来指定自定义启动器
 </p>
@@ -107,25 +170,26 @@ Android 7.1.1 及更高版本可为零售模式提供系统级支持，以便用
 <p>自定义启动器必须将其自定义组件标记为默认停用，从而避免该组件在非演示情境下出现。在演示情境下，系统服务器会在启动新的演示会话时启用指定的 <code>config_demoModeLauncherComponent</code>。
 </p>
 
-<p>设置向导也会查找上述视频作为素材，以提供给零售模式进行播放。如果视频不是演示的一部分，则可以修改 SUW 以查找其他表明支持零售模式的原始设备制造商 (OEM) 特定标志。
+<p>设置向导也会查找上述视频作为素材，以提供给零售模式进行播放。如果视频不是演示的一部分，则可以修改 SUW 以查找其他表明支持零售模式的 OEM 特定标志。
 </p>
 
 <p>如果有 A/B 两个系统分区，则 B 系统分区的 <code>/preloads/demo</code> 中必须包含演示视频。在首次启动时，系统会将该视频复制到 <code>/data/preloads/demo</code>。
 </p>
 
 <p>
-要设置特定于零售模式的设置，请使用：<code>Settings.Global.retail_demo_mode_constants</code>。例如：<code>user_inactivity_timeout_ms=90000,warning_dialog_timeout_ms=10000</code>
+要设置特定于零售模式的设置，请使用：
+<code>Settings.Global.retail_demo_mode_constants</code>。例如：<code>user_inactivity_timeout_ms=90000,warning_dialog_timeout_ms=10000</code>
 </p>
 
 <p class="note"><strong>注意</strong>：目前的超时默认值为 90000 毫秒，但可对其进行配置。
 </p>
 
-<h3 id="finding-sample-images">查找示例图片</h3>
+<h4 id="finding-sample-images">查找示例图片</h4>
 
 <p>此功能可将示例照片放在对任何图库应用均可见的特殊文件夹中。这些照片仅在演示模式下可用，并且由于处在受保护的目录中，所以演示用户无法对其进行修改。
 </p>
 
-<h3 id="preventing-google-accounts">阻止 Google 帐号</h3>
+<h4 id="preventing-google-accounts">阻止 Google 帐号</h4>
 
 <p>访客用户中设置了一些限制，类似于通过托管设备/资料策略防止应用和用户执行某些操作。其中一项限制是 <code>DISALLOW_MODIFY_ACCOUNTS</code>。在此限制之下，AccountManager 和“设置”不允许添加帐号。某些 Google 应用会对此限制做出反应并显示一条错误消息，其他应用则不提示登录帐号（如 YouTube 和 Google 照片）。
 </p>
@@ -133,37 +197,38 @@ Android 7.1.1 及更高版本可为零售模式提供系统级支持，以便用
 <p>原始设备制造商 (OEM) 应用也应检查是否已设置 <code>DISALLOW_MODIFY_ACCOUNTS</code>。但这是一个一般问题，并非零售模式所独有。企业用例很可能已解决此问题。
 </p>
 
-<h3 id="customizing-the-system-launcher">自定义系统启动器</h3>
+<h4 id="customizing-the-system-launcher">自定义系统启动器</h4>
 
 <p>原始设备制造商 (OEM) 可以自由选择布局，但应该在主屏幕和底部区域包含正常运行的应用。
 </p>
 
-<h3 id="Customizing-built-in-apps">针对零售演示模式自定义内置应用</h3>
+<h4 id="Customizing-built-in-apps">针对零售演示模式自定义内置应用</h4>
 
 <p>内置应用可调用 API <code>UserManager.isDemoUser()</code> 来查看应用是否在演示环境中启动，以此针对零售演示模式自定义应用体验。
 </p>
 
-<h3 id="following-demo-video-guidelines">遵循演示视频指南</h3>
+<h4 id="following-demo-video-guidelines">遵循演示视频指南</h4>
 
 <p>演示视频应采用纵向布局（如果是平板电脑，则为设备的自然方向），且时长在 5 秒以上。由于视频将在展示期间全天候播放，因此视频内容不能导致烧机。
 </p>
 
-<h2 id="maintenance">维护</h2>
+<h3 id="maintenance">维护</h3>
 
-<h3 id="bringing-the-device-out-of-retail-mode">使设备退出零售模式</h3>
+<h4 id="bringing-the-device-out-of-retail-mode">使设备退出零售模式</h4>
 
 <p>只能通过从引导加载程序恢复出厂设置来实现。
 </p>
 
-<h3 id="auto-ota-of-system-software">系统软件的自动 OTA</h3>
+<h4 id="auto-ota-of-system-software">系统软件的自动 OTA</h4>
 
-<p>默认情况下，启用零售模式时，设备策略将被自动设置为无线 (OTA) 更新。零售设备将不经过确认，自动下载、重新启动并安装更新（考虑电池阈值），即使更新被标记为可选亦如此。
+<p>
+默认情况下，启用零售模式时，设备政策将自动设置为无线下载 (OTA) 更新。零售设备将不经过确认，自动下载、重新启动并安装更新（考虑电池阈值），即使更新被标记为可选亦如此。
 </p>
 
 <p class="caution"><strong>注意</strong>：如果针对 OTA 使用 A/B 系统分区，则接收 OTA 更新后，设备将无法在 B 系统分区中找到原始的零售模式资源。因此，之后的任何恢复出厂设置操作都会导致设备无法返回零售模式。
 </p>
 
-<h3 id="updating-demo-video-via-the-web">通过网络更新演示视频</h3>
+<h4 id="updating-demo-video-via-the-web">通过网络更新演示视频</h4>
 
 <p>只要有网络连接，<code>/packages/apps/RetailDemo</code> 中的 RetailDemo 应用便可以更新演示视频。通过在 RetailDemo 应用中替换以下字符串值，可配置下载视频的网址：</p>
 
@@ -189,7 +254,7 @@ Android 7.1.1 及更高版本可为零售模式提供系统级支持，以便用
 
 <p>每次设备重新启动时，此视频最多只能下载一次。视频在设备上播放时，RetailDemo 应用会在后台检查是否提供了下载网址以及网址中的视频是否比正在播放的视频新。
 
-</p><p>如果是，RetailDemo 应用就会下载该视频并开始播放。视频下载完成后，下载的视频将用于在之后的演示会话中播放。在下次重新启动之前，将不再执行此类检查。
+</p><p>如果是，RetailDemo 应用就会下载该视频并开始播放。视频下载完成后，下载的视频将用于在之后的演示会话中播放。在下次重新启动之前，将不再执行任何此类检查。
 </p>
 
 </body></html>

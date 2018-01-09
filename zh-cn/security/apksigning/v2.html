@@ -20,9 +20,12 @@
       limitations under the License.
   -->
 
-<p>APK 签名方案 v2 是一种全文件签名方案，该方案能够发现对 APK 的受保护部分进行的所有更改，从而有助于加快验证速度并<a href="#integrity-protected-contents">增强完整性保证</a>。</p>
+<p>
+APK 签名方案 v2 是一种全文件签名方案，该方案能够发现对 APK 的受保护部分进行的所有更改，从而有助于加快验证速度并<a href="#integrity-protected-contents">增强完整性保证</a>。
+</p>
 
-<p>使用 APK 签名方案 v2 进行签名时，会在 APK 文件中插入一个 <a href="#apk-signing-block">APK 签名分块</a>，该分块位于“ZIP 中央目录”部分之前并紧邻该部分。在“APK 签名分块”内，v2 签名和签名者身份信息会存储在 <a href="#apk-signature-scheme-v2-block">APK 签名方案 v2 分块</a>中。
+<p>
+使用 APK 签名方案 v2 进行签名时，会在 APK 文件中插入一个 <a href="#apk-signing-block">APK 签名分块</a>，该分块位于“ZIP 中央目录”部分之前并紧邻该部分。在“APK 签名分块”内，v2 签名和签名者身份信息会存储在 <a href="#apk-signature-scheme-v2-block">APK 签名方案 v2 分块</a>中。
 </p>
 
 <p>
@@ -51,7 +54,7 @@
     </ul>
   </li>
   <li><code>size of block</code>，以字节数计 - 与第一个字段相同 (uint64)</li>
-  <li><code>magic</code> APK 签名分块 42（16 个字节）</li>
+  <li><code>magic</code>“APK 签名分块 42”（16 个字节）</li>
 </ul>
 
 <p>在解析 APK 时，首先要通过以下方法找到“ZIP 中央目录”的起始位置：在文件末尾找到“ZIP 中央目录结尾”记录，然后从该记录中读取“中央目录”的起始偏移量。通过 <code>magic</code> 值，可以快速确定“中央目录”前方可能是“APK 签名分块”。然后，通过 <code>size of
@@ -74,30 +77,37 @@ block</code> 值，可以高效地找到该分块在文件中的起始位置。
 </p>
 
 <h3 id="apk-signature-scheme-v2-block-format">格式</h3>
-<p>“APK 签名方案 v2 分块”存储在“APK 签名分块”内，ID 为 <code>0x7109871a</code>。
+<p>
+“APK 签名方案 v2 分块”存储在“APK 签名分块”内，ID 为 <code>0x7109871a</code>。
 </p>
 
 <p>“APK 签名方案 v2 分块”的格式如下（所有数字值均采用小端字节序，所有带长度前缀的字段均使用 uint32 值表示长度）：</p>
 <ul>
-  <li>带长度前缀的 <code>signer</code>（带长度前缀）序列：<ul>
-      <li>带长度前缀的 <code>signed data</code>：<ul>
-          <li>带长度前缀的 <code>digests</code>（带长度前缀）序列：<ul>
+  <li>带长度前缀的 <code>signer</code>（带长度前缀）序列：
+    <ul>
+      <li>带长度前缀的 <code>signed data</code>：
+        <ul>
+          <li>带长度前缀的 <code>digests</code>（带长度前缀）序列：
+            <ul>
               <li><code>signature algorithm ID</code> (uint32)</li>
               <li>（带长度前缀）<code>digest</code> - 请参阅<a href="#integrity-protected-contents">受完整性保护的内容</a></li>
             </ul>
           </li>
-          <li>带长度前缀的 X.509 <code>certificates</code> 序列：<ul>
+          <li>带长度前缀的 X.509 <code>certificates</code> 序列：
+            <ul>
               <li>带长度前缀的 X.509 <code>certificate</code>（ASN.1 DER 形式）</li>
             </ul>
           </li>
-          <li>带长度前缀的 <code>additional attributes</code>（带长度前缀）序列：<ul>
+          <li>带长度前缀的 <code>additional attributes</code>（带长度前缀）序列：
+            <ul>
               <li><code>ID</code> (uint32)</li>
               <li><code>value</code>（可变长度：附加属性的长度 - 4 个字节）</li>
             </ul>
           </li>
         </ul>
       </li>
-      <li>带长度前缀的 <code>signatures</code>（带长度前缀）序列：<ul>
+      <li>带长度前缀的 <code>signatures</code>（带长度前缀）序列：
+        <ul>
           <li><code>signature algorithm ID</code> (uint32)</li>
           <li><code>signed data</code> 上带长度前缀的 <code>signature</code></li>
         </ul>
@@ -147,13 +157,17 @@ block</code> 值，可以高效地找到该分块在文件中的起始位置。
 </p>
 <p class="img-caption"><strong>图 2.</strong> 签名后的各个 APK 部分</p>
 
-<p>APK 签名方案 v2 负责保护第 1、3、4 部分的完整性，以及第 2 部分包含的“APK 签名方案 v2 分块”中的 <code>signed data</code> 分块的完整性。
+<p>
+APK 签名方案 v2 负责保护第 1、3、4 部分的完整性，以及第 2 部分包含的“APK 签名方案 v2 分块”中的 <code>signed data</code> 分块的完整性。
 </p>
 
-<p>第 1、3 和 4 部分的完整性通过其内容的一个或多个摘要来保护，这些摘要存储在 <code>signed data</code> 分块中，而这些分块则通过一个或多个签名来保护。
+<p>
+第 1、3 和 4 部分的完整性通过其内容的一个或多个摘要来保护，这些摘要存储在 <code>signed data</code> 分块中，而这些分块则通过一个或多个签名来保护。
 </p>
 
-<p>第 1、3 和 4 部分的摘要采用以下计算方式，类似于两级 <a href="https://en.wikipedia.org/wiki/Merkle_tree">Merkle 树</a>。每个部分都会被拆分成多个大小为 1 MB（2<sup>20</sup> 个字节）的连续块。每个部分的最后一个块可能会短一些。每个块的摘要均通过字节 <code>0xa5</code> 的连接、块的长度（采用小端字节序的 uint32 值，以字节数计）和块的内容进行计算。顶级摘要通过字节 <code>0x5a</code> 的连接、块数（采用小端字节序的 uint32 值）以及块的摘要的连接（按照块在 APK 中显示的顺序）进行计算。摘要以分块方式计算，以便通过并行处理来加快计算速度。
+<p>
+第 1、3 和 4 部分的摘要采用以下计算方式，类似于两级 <a href="https://en.wikipedia.org/wiki/Merkle_tree">Merkle 树</a>。
+每个部分都会被拆分成多个大小为 1 MB（2<sup>20</sup> 个字节）的连续块。每个部分的最后一个块可能会短一些。每个块的摘要均通过字节 <code>0xa5</code> 的连接、块的长度（采用小端字节序的 uint32 值，以字节数计）和块的内容进行计算。顶级摘要通过字节 <code>0x5a</code> 的连接、块数（采用小端字节序的 uint32 值）以及块的摘要的连接（按照块在 APK 中显示的顺序）进行计算。摘要以分块方式计算，以便通过并行处理来加快计算速度。
 </p>
 
 <p>
@@ -190,7 +204,8 @@ block</code> 值，可以高效地找到该分块在文件中的起始位置。
     </ol>
   </li>
   <li>找到“APK 签名分块”中的第一个“APK 签名方案 v2 分块”。如果 v2 分块存在，则继续执行第 3 步。否则，回退至<a href="#v1-verification">使用 v1 方案</a>验证 APK。</li>
-  <li>对“APK 签名方案 v2 分块”中的每个 <code>signer</code> 执行以下操作：<ol>
+  <li>对“APK 签名方案 v2 分块”中的每个 <code>signer</code> 执行以下操作：
+    <ol>
       <li>从 <code>signatures</code> 中选择安全系数最高的受支持 <code>signature algorithm ID</code>。安全系数排序取决于各个实现/平台版本。</li>
       <li>使用 <code>public
       key</code> 并对照 <code>signed data</code> 验证 <code>signatures</code> 中对应的 <code>signature</code>。（现在可以安全地解析 <code>signed data</code> 了。）</li>
@@ -207,7 +222,8 @@ block</code> 值，可以高效地找到该分块在文件中的起始位置。
 </p>
 
 <h3 id="v1-verification">JAR 已签名的 APK 的验证（v1 方案）</h3>
-<p>JAR 已签名的 APK 是一种<a href="https://docs.oracle.com/javase/8/docs/technotes/guides/jar/jar.html#Signed_JAR_File">标准的已签名 JAR</a>，其中包含的条目必须与 META-INF/MANIFEST.MF 中列出的条目完全相同，并且所有条目都必须已由同一组签名者签名。其完整性按照以下方式进行验证：</p>
+<p>
+JAR 已签名的 APK 是一种<a href="https://docs.oracle.com/javase/8/docs/technotes/guides/jar/jar.html#Signed_JAR_File">标准的已签名 JAR</a>，其中包含的条目必须与 META-INF/MANIFEST.MF 中列出的条目完全相同，并且所有条目都必须已由同一组签名者签名。其完整性按照以下方式进行验证：</p>
 
 <ol>
   <li>每个签名者均由一个包含 META-INF/&lt;signer&gt;.SF 和 META-INF/&lt;signer&gt;.(RSA|DSA|EC) 的 JAR 条目来表示。</li>

@@ -21,134 +21,835 @@
       limitations under the License.
   -->
 
-<p>Linker namespace is a mechanism to control the shared library search path and
-the permission to open the libraries in a directory.</p>
+<p>The dynamic linker tackles two challenges in Treble VNDK design:</p>
 
-<h2 id="framework-processes">Framework processes</h2>
-<h3 id="default-namespace">Default namespace</h3>
-<p>Search paths and permitted paths:</p>
-<ol>
-<li><code>/system/lib[64]</code></li>
-<li><code>/vendor/lib[64]</code> # Deprecated in Android O (for legacy modules
-only)</li>
-</ol>
-
-<h3 id="sp-hal-namespace">SP-HAL namespace</h3>
-<p>Search paths and permitted paths:</p>
-<ol>
-<li><code>/vendor/lib[64]/egl</code></li>
-<li><code>/vendor/lib[64]/hw</code></li>
-<li><code>/vendor/lib[64]</code></li>
-</ol>
-
-<p>Shared libraries imported from other namespaces:</p>
 <ul>
-<li>Exported by <strong>default</strong> namespace:
- <ul>
- <li>LL-NDK: <code>libc.so</code>, <code>libm.so</code>, <code>libdl.so</code>,
- <code>libstdc++.so</code>, <code>liblog.so, libz.so</code></li>
- <li>SP-NDK: <code>libEGL.so</code>, <code>libGLESv1_CM.so</code>,
- <code>libGLESv2.so</code>, <code>libnativewindow.so</code>,
- <code>libsync.so</code>, <code>libvndksupport.so</code></li>
- </ul>
-</li>
-<li>Exported by <strong>vndk</strong> namespace:
-<code>android.hardware.renderscript@1.0.so</code>,
-<code>android.hardware.graphics.allocator@2.0.so</code>,
-<code>android.hardware.graphics.mapper@2.0.so</code>,
-<code>android.hardware.graphics.common@1.0.so</code>,
-<code>libhwbinder.so</code>, <code>libbase.so</code>, <code>libcutils.so</code>,
-<code>libhardware.so</code>, <code>libhidlbase.so</code>,
-<code>libhidltransport.so</code>, <code>libutils.so</code>,
-<code>libc++.so</code>
-</li>
-<li>Exported by <strong>rs</strong> namespace: <code>libRS_internal.so</code>
-</li>
+ <li>SP-HAL shared libraries and their dependencies, including VNDK-SP
+libraries, are loaded into framework processes. There should be some mechanisms
+to prevent symbol conflicts.</li>
+
+ <li><code>dlopen()</code> and <code>android_dlopen_ext()</code> may introduce
+some run-time dependencies that are not visible at build-time and can be
+difficult to detect using static analysis.</li>
 </ul>
 
-<h3 id="vndk-vndk-sp-namespace">VNDK (VNDK-SP) namespace</h3>
-<p>Search paths:</p>
-<ol>
-<li><code>/vendor/lib[64]/vndk-sp</code></li>
-<li><code>/system/lib[64]/vndk-sp</code></li>
-<li><code>/vendor/lib[64]</code></li>
-</ol>
+<p>These two challenges can be resolved by the <em>linker namespace</em>
+mechanism. The linker namespace mechanism is provided by the dynamic linker. It
+can isolate the shared libraries in different linker namespaces so that
+libraries with same library name but with different symbols won't conflict.</p>
 
-<p>Permitted paths:</p>
-<ul>
-<li><code>/vendor/lib[64]/vndk-sp</code></li>
-<li><code>/system/lib[64]/vndk-sp</code></li>
-<li><code>/vendor/lib[64]</code></li>
-<li><code>/vendor/lib[64]/hw</code></li>
-<li><code>/vendor/lib[64]/egl</code></li>
-</ul>
+<p>On the other hand, the linker namespace mechanism provides the flexibility
+so that some shared libraries may be exported by a linker namespace and used by
+another linker namespace. These exported shared libraries may become the
+application programming interfaces that are public to other programs while
+hiding their implementation details within their linker namespaces.</p>
 
-<p>Shared libraries imported from other namespaces:</p>
+<p>For example, <code>/system/lib[64]/libcutils.so</code> and
+<code>/system/lib[64]/vndk-sp/libutils.so</code> are two shared libraries.
+These two libraries may have different symbols. They will be loaded into
+different linker namespaces so that framework modules can depend on
+<code>/system/lib[64]/libcutils.so</code> and SP-HAL shared libraries can
+depend on <code>/system/lib[64]/vndk-sp/libcutils.so</code>.</p>
+
+<p>On the other hand, <code>/system/lib[64]/libc.so</code> is an example of
+public libraries that is exported by a linker namespace and imported into
+many linker namespaces. The dependencies of
+<code>/system/lib[64]/libc.so</code>, such as <code>libnetd_client.so</code>,
+will be loaded into the namespace in which <code>/system/lib[64]/libc.so</code>
+resides. Other namespaces won't have accesses to those dependencies. This
+mechanism encapsulates the implementation details while providing the public
+interfaces.</p>
+
+<h2 id="how-does-it-work">How does it work?</h2>
+
+<p>The dynamic linker is responsible for loading the shared libraries specified
+in <code>DT_NEEDED</code> entries or the shared libraries specified by the
+argument of <code>dlopen()</code> or <code>android_dlopen_ext()</code>. In both
+cases, the dynamic linker will find out the linker namespace in which the
+caller resides in and try to load the dependencies into the same linker
+namespace. If the dynamic linker cannot load the shared library into the
+specified linker namespace, it will ask the linked linker namespace for
+exported shared libraries.</p>
+
+<h2 id="configuration-file-format">Configuration file format</h2>
+
+<p>The configuration file format is based on the INI file format. A typical
+configuration file looks like:</p>
+
+<pre class="prettyprint">
+dir.system = /system/bin
+dir.vendor = /vendor/bin
+
+[system]
+additional.namespaces = sphal
+
+namespace.default.isolated = true
+namespace.default.search.paths = /system/${LIB}:/vendor/${LIB}
+namespace.default.permitted.paths = /system/${LIB}:/vendor/${LIB}
+
+namespace.sphal.isolated = true
+namespace.sphal.visible = true
+namespace.sphal.search.paths = /vendor/${LIB}
+namespace.sphal.permitted.paths = /vendor/${LIB}
+namespace.sphal.links = default
+namespace.sphal.link.default.shared_libs = libc.so:libm.so
+
+[vendor]
+namespace.default.isolated = false
+namespace.default.search.paths = /vendor/${LIB}:/system/${LIB}
+namespace.default.permitted.paths = /vendor/${LIB}:/system/${LIB}
+</pre>
+
+<p>First, there are several <code>dir.${section}</code> properties in the
+beginning of <code>ld.config.txt</code>:</p>
+
+<pre class="prettyprint">
+dir.${section} = /path/to/bin/directory
+</pre>
+
+<p>These properties decide which set of rules will be applied to the process.
+For example, If the <em>main executable</em> is in <code>/system/bin</code>,
+the rules in the <code>[system]</code> are applied. Similarly, if the
+<em>main executable</em> is in <code>/vendor/bin</code>, the rules in
+<code>[vendor]</code> are applied.</p>
+
+<p>Second, for each section, in addition to the <code>default</code> linker
+namespace, <code>addition.namespaces</code> specifies the extra linker
+namespaces (separated by comma) that will be created by the dynamic
+linker:</p>
+
+<pre class="prettyprint">
+additional.namespaces = namespace1,namespace2,namespace3
+</pre>
+
+<p>In the example above, the dynamic linker creates two linker namespaces
+(<code>default</code> and <code>sphal</code>) for the executables in
+<code>/system/bin</code>.</p>
+
+<p>Third, for each linker namespace, following properties can be configured:</p>
+
+<pre class="prettyprint">
+namespace.${name}.search.paths = /path1/${LIB}:/path2/${LIB}
+namespace.${name}.permitted.paths = /path1:/path2
+namespace.${name}.isolated = true|false
+namespace.${name}.links = namespace1,namespace2
+namespace.${name}.link.${other}.shared_libs = lib1.so:lib2.so
+namespace.${name}.visible = true|false
+</pre>
+
+<p><code>namespace.${name}.search.paths</code> denotes the directories that
+will be prepended to the library name. Directories are separated by colons.
+<code>${LIB}</code> is a special placeholder. If the process is running a
+32-bit executable, <code>${LIB}</code> is substituted by
+<code>lib</code>. Similarly, if the process is running a 64-bit executable,
+<code>${LIB}</code> is substituted by <code>lib64</code>.</p>
+
+<p>In the example above, if a 64-bit executable in <code>/system/bin</code>
+links with <code>libexample.so</code>, the dynamic linker searches for
+<code>/system/lib64/libexample.so</code> first. If
+<code>/system/lib64/libexample.so</code> is not available, the dynamic
+linker searches for <code>/vendor/lib64/libexample.so</code>.</p>
+
+<p>If <code>namespace.${name}.isolated</code> is <code>true</code>, the
+dynamic linker loads only the shared libraries in the directories specified
+in <code>namespace.${name}.search.paths</code> or the shared libraries under
+the directories specified in
+<code>namespace.${name}.permitted.paths</code>.</p>
+
+<p>In the example above, a shared library that is loaded in the
+<code>sphal</code> linker namespace won't be able to link to shared libraries
+in <code>/system/lib[64]</code> because <code>namespace.sphal.isolated</code>
+is <code>true</code> and <code>/system/lib[64]</code> is in neither
+<code>namespace.sphal.permitted.paths</code> nor
+<code>namespace.sphal.search.paths</code>.</p>
+
+<p><code>namespace.${name}.links</code> specifies a comma-separated list of
+linker namespaces that the <code>${name}</code> linker namespace links to.</p>
+
+<p>In the example above, <code>namespace.sphal.links</code> specifies that the
+<code>sphal</code> linker namespace links to the <code>default</code> linker
+namespace.</p>
+
+<p><code>namespace.${name}.link.${other}.shared_libs</code> links two linker
+namespaces and specifies the shared library names (separated by colons) that
+may utilize the fallback link. If a shared library can't be loaded into the
+<code>${name}</code> linker namespace and its name is in
+<code>namespace.${name}.link.${other}.shared_libs</code>, the dynamic
+linker will try to import the library from the <code>${other}</code> linker
+namespace.</p>
+
+<p>In the example above, <code>namespace.sphal.link.default.shared_libs</code>
+specifies that <code>libc.so</code> and <code>libm.so</code> may be exported by
+the <code>default</code> linker namespace. If a shared library loaded in the
+<code>sphal</code> linker namespace links to <code>libc.so</code> and the
+dynamic linker cannot find <code>libc.so</code> in
+<code>/vendor/lib[64]</code>, the dynamic linker will walk through the
+fallback link and find the <code>libc.so</code> exported by the
+<code>default</code> linker namespace.</p>
+
+<p>If <code>namespace.${name}.visible</code> is <code>true</code>, the
+program will be able to obtain a linker namespace handle, which can be passed
+to <code>android_dlopen_ext()</code> later.</p>
+
+<p>In the example above, the <code>namespace.sphal.visible</code> is
+<code>true</code> so that <code>android_load_sphal_library()</code> can
+explicitly ask the dynamic linker to load a shared library in the
+<code>sphal</code> linker namespace.</p>
+
+<h2 id="linker-namespace-isolation">Linker namespace isolation</h2>
+
+<p>There are three configurations in
+<code>android-src/system/core/rootdir/etc</code>.  Depending on the value of
+<code>PRODUCT_FULL_TREBLE</code>, <code>BOARD_VNDK_VERSION</code>, and
+<code>BOARD_VNDK_RUNTIME_DISABLE</code> in <code>BoardConfig.mk</code>,
+different configurations will be selected:</p>
+
+<table>
+ <tr>
+  <th><code>PRODUCT_FULL_TREBLE</code></th>
+  <th><code>BOARD_VNDK_VERSION</code> / <code>BOARD_VNDK_RUNTIME_DISABLE</code></th>
+  <th>Selected configuration</th>
+ </tr>
+
+ <tr>
+  <td><code>false</code></td>
+  <td><em>any</em></td>
+  <td><code>ld.config.legacy.txt</code></td>
+ </tr>
+
+ <tr>
+  <td rowspan="2"><code>true</code></td>
+  <td><code>current</code> and <em>empty</em></td>
+  <td><code>ld.config.txt.in</code></td>
+ </tr>
+
+ <tr>
+  <td><em>empty</em> or <code>true</code></td>
+  <td><code>ld.config.txt</code></td>
+ </tr>
+</table>
+
+<p><code>android-src/system/core/rootdir/etc/ld.config.txt</code> isolates
+SP-HAL and VNDK-SP shared libraries. In Android 8.0 and higher, this must be the
+dynamic linker configuration when <code>PRODUCT_FULL_TREBLE</code> is
+<code>true</code>.</p>
+
+<p><code>android-src/system/core/rootdir/etc/ld.config.txt.in</code> isolates
+SP-HAL and VNDK-SP shared libraries as well. In addition,
+<code>ld.config.txt.in</code> also provides the full dynamic linker isolation.
+It makes sure that modules in the system partition won't depend on the shared
+libraries in the vendor partitions and vice versa.</p>
+
+<p>In Android 8.1, <code>ld.config.txt.in</code> is the default configuration
+and it is highly recommended to enable full dynamic linker isolation. However,
+if there are too many dependencies to be cleaned up in Android 8.1, you may add
+<code>BOARD_VNDK_RUNTIME_DISABLE</code> to <code>BoardConfig.mk</code>:</p>
+
+<pre class="prettyprint">
+BOARD_VNDK_RUNTIME_DISABLE := true
+</pre>
+
+<p>If <code>BOARD_VNDK_RUNTIME_DISABLE</code> is <code>true</code>,
+<code>android-src/system/core/rootdir/etc/ld.config.txt</code> will be
+installed.</p>
+
+
+<h3 id="ld.config.txt">ld.config.txt</h3>
+
+<p>As of Android 8.0, the dynamic linker is configured to isolate SP-HAL and
+VNDK-SP shared libraries such that their symbols do not conflict with other
+framework shared libraries. The relationship between the linker namespaces is
+shown below:</p>
+
+<img src="../images/treble_vndk_linker_namespace1.png" alt="Linker namespace
+graph described in ld.config.txt" />
+ <figcaption><strong>Figure 2.</strong> Linker namespace isolation
+  (<code>ld.config.txt</code>).</figcaption>
+
+<p><em>LL-NDK</em> and <em>VNDK-SP</em> stand for following shared libraries:
+</p>
+
 <ul>
-<li>Exported by <strong>default</strong> namespace:
- <ul>
- <li>LL-NDK: <code>libc.so</code>, <code>libm.so</code>, <code>libdl.so</code>,
- <code>libstdc++.so</code>, <code>liblog.so</code>,<code> libz.so</code>
-  <li>SP-NDK: <code>libEGL.so</code>, <code>libnativewindow.so</code>,
-  <code>libsync.so</code>, <code>libvndksupport.so</code>
-  </li>
+ <li>
+  <em>LL-NDK</em>
+
+  <ul>
+   <li><code>libEGL.so</code></li>
+   <li><code>libGLESv1_CM.so</code></li>
+   <li><code>libGLESv2.so</code></li>
+   <li><code>libc.so</code></li>
+   <li><code>libdl.so</code></li>
+   <li><code>liblog.so</code></li>
+   <li><code>libm.so</code></li>
+   <li><code>libnativewindow.so</code></li>
+   <li><code>libstdc++.so</code> (Not in <code>ld.config.txt.in</code>)</li>
+   <li><code>libsync.so</code></li>
+   <li><code>libvndksupport.so</code></li>
+   <li><code>libz.so</code> (Moved to <em>VNDK-SP</em> in
+   <code>ld.config.txt.in</code>)</li>
   </ul>
-</li>
+ </li>
+
+ <li>
+  <em>VNDK-SP</em>
+
+  <ul>
+   <li><code>android.hardware.graphics.common@1.0.so</code></li>
+   <li><code>android.hardware.graphics.allocator@2.0.so</code></li>
+   <li><code>android.hardware.graphics.mapper@2.0.so</code></li>
+   <li><code>android.hardware.renderscript@1.0.so</code></li>
+   <li><code>android.hidl.memory@1.0.so</code></li>
+   <li><code>libbase.so</code></li>
+   <li><code>libc++.so</code></li>
+   <li><code>libcutils.so</code></li>
+   <li><code>libhardware.so</code></li>
+   <li><code>libhidlbase.so</code></li>
+   <li><code>libhidlmemory.so</code></li>
+   <li><code>libhidltransport.so</code></li>
+   <li><code>libhwbinder.so</code></li>
+   <li><code>libion.so</code></li>
+   <li><code>libutils.so</code></li>
+  </ul>
+ </li>
 </ul>
 
-<h3 id="rs-namespace">RS namespace</h3>
-<p>This special namespace allows <code>libRS_internal.so</code> to use
-<code>libmediandk.so</code>, which is not accessible from either SP-HAL
-namespace or VNDK-SP namespace (this is a relaxation in Android O).</p>
+<p>The table below presents the namespaces configuration for framework
+processes, which is excerpted from the <code>[system]</code> section in
+<code>ld.config.txt</code>:</p>
 
-<p>Search paths:</p>
-<ol>
-<li><code>/vendor/lib[64]/vndk-sp</code></li>
-<li><code>/system/lib[64]/vndk-sp</code></li>
-<li><code>/vendor/lib[64]</code></li>
-</ol>
+<table>
+ <tr>
+  <th>Namespace</th>
+  <th>Property</th>
+  <th>Value</th>
+ </tr>
 
-<p>Permitted paths:</p>
+ <tr>
+  <td rowspan="3"><code>default</code></td>
+  <td><code>search.paths</code></td>
+  <td>
+   <code>/system/${LIB}</code><br/>
+   <code>/vendor/${LIB}</code>
+  </td>
+ </tr>
+
+ <tr>
+  <td><code>permitted.paths</code></td>
+  <td>
+   <code>/system/${LIB}</code><br/>
+   <code>/vendor/${LIB}</code>
+  </td>
+ </tr>
+
+ <tr>
+  <td><code>isolated</code></td>
+  <td><code>false</code></td>
+ </tr>
+
+ <tr>
+  <td rowspan="8"><code>sphal</code></td>
+  <td><code>search.paths</code></td>
+  <td>
+   <code>/vendor/${LIB}/egl</code><br/>
+   <code>/vendor/${LIB}/hw</code><br/>
+   <code>/vendor/${LIB}</code>
+  </td>
+ </tr>
+
+ <tr>
+  <td><code>permitted.paths</code></td>
+  <td>
+   <code>/vendor/${LIB}</code><br/>
+   <code>/system/${LIB}/vndk-sp/hw</code> (Android 8.1)
+  </td>
+ </tr>
+
+ <tr>
+  <td><code>isolated</code></td>
+  <td><code>true</code></td>
+ </tr>
+
+ <tr>
+  <td><code>visible</code></td>
+  <td><code>true</code></td>
+ </tr>
+
+ <tr>
+  <td><code>links</code></td>
+  <td><code>default,vndk,rs</code></td>
+ </tr>
+ <tr>
+  <td><code>link.default.shared_libs</code></td>
+  <td><em>LL-NDK</em></td>
+ </tr>
+ <tr>
+  <td><code>link.vndk.shared_libs</code></td>
+  <td><em>VNDK-SP</em></td>
+ </tr>
+ <tr>
+  <td><code>link.rs.shared_libs</code></td>
+  <td><code>libRS_internal.so</code></td>
+ </tr>
+
+ <tr>
+  <td rowspan="6"><code>vndk</code> (For VNDK-SP)</td>
+  <td><code>search.paths</code></td>
+  <td>
+   <code>/vendor/${LIB}/vndk-sp</code><br/>
+   <code>/system/${LIB}/vndk-sp</code><br/>
+   <code>/vendor/${LIB}</code>
+  </td>
+ </tr>
+
+ <tr>
+  <td><code>permitted.paths</code></td>
+  <td>
+   <code>/vendor/${LIB}/egl</code><br/>
+   <code>/vendor/${LIB}/hw</code>
+  </td>
+ </tr>
+
+ <tr>
+  <td><code>isolated</code></td>
+  <td><code>true</code></td>
+ </tr>
+
+ <tr>
+  <td><code>visible</code></td>
+  <td><code>true</code></td>
+ </tr>
+
+ <tr>
+  <td><code>links</code></td>
+  <td><code>default</code></td>
+ </tr>
+
+ <tr>
+  <td><code>link.default.shared_libs</code></td>
+  <td><em>LL-NDK</em></td>
+ </tr>
+
+ <tr>
+  <td rowspan="7"><code>rs</code> (For Renderscript)</td>
+  <td><code>search.paths</code></td>
+  <td>
+   <code>/vendor/${LIB}/vndk-sp</code><br/>
+   <code>/system/${LIB}/vndk-sp</code><br/>
+   <code>/vendor/${LIB}</code>
+  </td>
+ </tr>
+
+ <tr>
+  <td><code>permitted.paths</code></td>
+  <td>
+   <code>/vendor/${LIB}</code><br/>
+   <code>/data</code>  (For compiled RS kernel)
+  </td>
+ </tr>
+
+ <tr>
+  <td><code>isolated</code></td>
+  <td><code>true</code></td>
+ </tr>
+
+ <tr>
+  <td><code>visible</code></td>
+  <td><code>true</code></td>
+ </tr>
+
+ <tr>
+  <td><code>links</code></td>
+  <td><code>default,vndk</code></td>
+ </tr>
+
+ <tr>
+  <td><code>link.default.shared_libs</code></td>
+  <td>
+   <em>LL-NDK</em><br/>
+   <code>libmediandk.so</code><br/>
+   <code>libft2.so</code>
+  </td>
+ </tr>
+
+ <tr>
+  <td><code>link.vndk.shared_libs</code></td>
+  <td><em>VNDK-SP</em></td>
+ </tr>
+</table>
+
+<p>The table below presents the namespaces configuration for vendor processes,
+which is excerpted from the <code>[vendor]</code> section in
+<code>ld.config.txt</code>:</p>
+
+<table>
+ <tr>
+  <th>Namespace</th>
+  <th>Property</th>
+  <th>Value</th>
+ </tr>
+
+ <tr>
+  <td rowspan="2"><code>default</code></td>
+  <td><code>search.paths</code></td>
+  <td>
+   <code>/vendor/${LIB}</code><br/>
+   <code>/vendor/${LIB}/vndk-sp</code><br/>
+   <code>/system/${LIB}/vndk-sp</code><br/>
+   <code>/system/${LIB}</code>  (Deprecated)
+  </td>
+ </tr>
+
+ <tr>
+  <td><code>isolated</code></td>
+  <td><code>false</code></td>
+ </tr>
+</table>
+
+<p>More details can be found in
+<code>android-src/system/core/rootdir/etc/ld.config.txt</code>.</p>
+
+
+<h3 id="ld.config.txt.in">ld.config.txt.in</h3>
+
+<p><code>ld.config.txt.in</code> isolates the shared library dependencies
+between the system partition and vendor partitions. Compared to
+<code>ld.config.txt</code> mentioned in previous subsection, the differences
+are outlined as following items:</p>
+
 <ul>
-<li><code>/vendor/lib[64]/vndk-sp</code></li>
-<li><code>/system/lib[64]/vndk-sp</code></li>
-<li><code>/vendor/lib[64]</code></li>
-<li><code>/data</code>  # Shared libraries JIT-compiled by RS CPU reference
-implementation</li>
+ <li>
+  Framework Processes
+
+  <ul>
+   <li>The <code>default</code> namespace is isolated. A shared library can be
+   loaded into the <code>default</code> namespace only if it is in a directory
+   specified in the search paths or under a directory specified in the
+   permitted paths.</li>
+
+   <li>The permitted paths of the <code>default</code> namespace have been
+   changed to a limited set (<code>/vendor/lib[64]</code>,
+   <code>/system/lib[64]/vndk</code>, and <code>/system/lib[64]/vndk-sp</code>
+   have been excluded).</li>
+  </ul>
+ </li>
+
+ <li>
+  Vendor Processes
+
+  <ul>
+   <li>Two namespaces (<code>default</code> and <code>system</code>) are
+   created.</li>
+
+   <li>The <code>default</code> namespace is isolated. A shared library can be
+   loaded into the default namespace only if it is in a directory specified in
+   the search paths or under a directory specified in the permitted
+   paths.</li>
+
+   <li>The permitted paths of the <code>default</code> namespace are
+   <code>/vendor</code>, <code>/system/lib[64]/vndk</code>, and
+   <code>/system/lib[64]/vndk-sp</code>.</li>
+
+   <li>The <code>default</code> namespace and <code>system</code> namespace are
+   linked. The <code>default</code> namespace may link to LL-NDK libraries
+   loaded in the <code>system</code> namespace.</li>
+  </ul>
+ </li>
 </ul>
 
-<p>Shared libraries imported from other namespaces:</p>
+<p>The relationship between the linker namespaces is depicted in the figure
+below:</p>
+
+<img src="../images/treble_vndk_linker_namespace2.png" alt="Linker namespace graph described in ld.config.txt.in" />
+ <figcaption><strong>Figure 2.</strong> Linker namespace isolation
+  (<code>ld.config.txt.in</code>).</figcaption>
+
+
+<p>In the graph above, <em>LL-NDK</em> and <em>VNDK-SP</em> stand for following
+shared libraries:</p>
+
 <ul>
-<li>Exported by <strong>default</strong> namespace
- <ul>
- <li>LL-NDK: <code>libc.so</code>, <code>libm.so</code>, <code>libdl.so</code>,
- <code>libstdc++.so</code>, <code>liblog.so</code></li>
- <li>SP-NDK:  <code>libEGL.so</code>, <code>libGLESv1_CM.so</code>,
- <code>libGLESv2.so</code>, <code>libnativewindow.so</code>,
- <code>libsync.so</code>, <code>libvndksupport.so</code></li>
- <li>Other Lib: <code>libmediandk.so</code>, <code>libui.so</code></li>
- </ul>
-</li>
-<li>Exported by <strong>vndk</strong> namespace:
-<code>android.hardware.renderscript@1.0.so</code>,
-<code>android.hardware.graphics.allocator@2.0.so</code>,
-<code>android.hardware.graphics.mapper@2.0.so</code>,
-<code>android.hardware.graphics.common@1.0.so</code>,
-<code>libhwbinder.so</code>, <code>libbase.so</code>, <code>libcutils.so</code>,
-<code>libhardware.so</code>, <code>libhidlbase.so</code>,
-<code>libhidltransport.so</code>, <code>libutils.so</code>,
-<code>libc++.so</code></li>
+ <li>
+  <em>LL-NDK</em>
+
+  <ul>
+   <li><code>libEGL.so</code></li>
+   <li><code>libGLESv1_CM.so</code></li>
+   <li><code>libGLESv2.so</code></li>
+   <li><code>libGLESv3.so</code></li>
+   <li><code>libandroid_net.so</code></li>
+   <li><code>libc.so</code></li>
+   <li><code>libdl.so</code></li>
+   <li><code>liblog.so</code></li>
+   <li><code>libm.so</code></li>
+   <li><code>libnativewindow.so</code></li>
+   <li><code>libsync.so</code></li>
+   <li><code>libvndksupport.so</code></li>
+  </ul>
+ </li>
+
+ <li>
+  <em>VNDK-SP</em>
+
+  <ul>
+   <li><code>android.hardware.graphics.common@1.0.so</code></li>
+   <li><code>android.hardware.graphics.allocator@2.0.so</code></li>
+   <li><code>android.hardware.graphics.mapper@2.0.so</code></li>
+   <li><code>android.hardware.renderscript@1.0.so</code></li>
+   <li><code>android.hidl.memory@1.0.so</code></li>
+   <li><code>libRSCpuRef.so</code></li>
+   <li><code>libRSDriver.so</code></li>
+   <li><code>libRS_internal.so</code></li>
+   <li><code>libbase.so</code></li>
+   <li><code>libbcinfo.so</code></li>
+   <li><code>libc++.so</code></li>
+   <li><code>libcutils.so</code></li>
+   <li><code>libhardware.so</code></li>
+   <li><code>libhidlbase.so</code></li>
+   <li><code>libhidlmemory.so</code></li>
+   <li><code>libhidltransport.so</code></li>
+   <li><code>libhwbinder.so</code></li>
+   <li><code>libion.so</code></li>
+   <li><code>libutils.so</code></li>
+   <li><code>libz.so</code></li>
+  </ul>
+ </li>
 </ul>
 
-<h2 id="vendor-processes">Vendor processes</h2>
-<h3 id="default-linker-namespace">Default linker namespace</h3>
-<p>Search paths and permitted paths:</p>
-<ol>
-<li><code>/vendor/lib[64]</code></li>
-<li><code>/vendor/lib[64]/vndk-sp</code></li>
-<li><code>/system/lib[64]/vndk-sp</code></li>
-<li><code>/system/lib[64]</code>  # For degenerated VNDK libraries</li>
-</ol>
+<p>The table below presents the namespaces configuration for framework
+processes, which is excerpted from the <code>[system]</code> section in
+<code>ld.config.txt.in</code>:</p>
+
+<table>
+ <tr>
+  <th>Namespace</th>
+  <th>Property</th>
+  <th>Value</th>
+ </tr>
+
+ <tr>
+  <td rowspan="3"><code>default</code></td>
+  <td><code>search.paths</code></td>
+  <td><code>/system/${LIB}</code></td>
+ </tr>
+
+ <tr>
+  <td><code>permitted.paths</code></td>
+  <td>
+   <code>/system/${LIB}/drm</code><br/>
+   <code>/system/${LIB}/hw</code><br/>
+   <code>/system/framework</code><br/>
+   <code>/system/app</code><br/>
+   <code>/system/priv-app</code><br/>
+   <code>/vendor/app</code><br/>
+   <code>/vendor/framework</code><br/>
+   <code>/oem/app</code><br/>
+   <code>/data</code><br/>
+   <code>/mnt/expand
+  </td>
+ </tr>
+
+ <tr>
+  <td><code>isolated</code></td>
+  <td><code>true</code></td>
+ </tr>
+
+ <tr>
+  <td rowspan="8"><code>sphal</code></td>
+  <td><code>search.paths</code></td>
+  <td>
+   <code>/vendor/${LIB}/egl</code><br/>
+   <code>/vendor/${LIB}/hw</code><br/>
+   <code>/vendor/${LIB}</code>
+  </td>
+ </tr>
+
+ <tr>
+  <td><code>permitted.paths</code></td>
+  <td>
+   <code>/vendor/${LIB}</code><br/>
+   <code>/system/${LIB}/vndk-sp/hw</code>
+  </td>
+ </tr>
+
+ <tr>
+  <td><code>isolated</code></td>
+  <td><code>true</code></td>
+ </tr>
+
+ <tr>
+  <td><code>visible</code></td>
+  <td><code>true</code></td>
+ </tr>
+
+ <tr>
+  <td><code>links</code></td>
+  <td><code>default,vndk,rs</code></td>
+ </tr>
+
+ <tr>
+  <td><code>link.default.shared_libs</code></td>
+  <td><em>LL-NDK</em></td>
+ </tr>
+
+ <tr>
+  <td><code>link.vndk.shared_libs</code></td>
+  <td><em>VNDK-SP</em></td>
+ </tr>
+
+ <tr>
+  <td><code>link.rs.shared_libs</code></td>
+  <td><code>libRS_internal.so</code></td>
+ </tr>
+
+ <tr>
+  <td rowspan="6"><code>vndk</code> (For VNDK-SP)</td>
+  <td><code>search.paths</code></td>
+  <td>
+   <code>/vendor/${LIB}/vndk-sp</code><br/>
+   <code>/system/${LIB}/vndk-sp</code>
+  </td>
+ </tr>
+
+ <tr>
+  <td><code>permitted.paths</code></td>
+  <td>
+   <code>/vendor/${LIB}/egl</code><br/>
+   <code>/vendor/${LIB}/hw</code>
+  </td>
+ </tr>
+
+ <tr>
+  <td><code>isolated</code></td>
+  <td><code>true</code></td>
+ </tr>
+
+ <tr>
+  <td><code>visible</code></td>
+  <td><code>true</code></td>
+ </tr>
+
+ <tr>
+  <td><code>links</code></td>
+  <td><code>default</code></td>
+ </tr>
+
+ <tr>
+  <td><code>link.default.shared_libs</code></td>
+  <td><em>LL-NDK</em></td>
+ </tr>
+
+ <tr>
+  <td rowspan="7"><code>rs</code> (For Renderscript)</td>
+  <td><code>search.paths</code></td>
+  <td>
+   <code>/vendor/${LIB}/vndk-sp</code><br/>
+   <code>/system/${LIB}/vndk-sp</code><br/>
+   <code>/vendor/${LIB}</code>
+  </td>
+ </tr>
+
+ <tr>
+  <td><code>permitted.paths</code></td>
+  <td>
+   <code>/vendor/${LIB}</code><br/>
+   <code>/data</code>  (For compiled RS kernel)
+  </td>
+ </tr>
+
+ <tr>
+  <td><code>isolated</code></td>
+  <td><code>true</code></td>
+ </tr>
+
+ <tr>
+  <td><code>visible</code></td>
+  <td><code>true</code></td>
+ </tr>
+
+ <tr>
+  <td><code>links</code></td>
+  <td><code>default,vndk</code></td>
+ </tr>
+
+ <tr>
+  <td><code>link.default.shared_libs</code></td>
+  <td>
+   <em>LL-NDK</em><br/>
+   <code>libmediandk.so</code><br/>
+   <code>libft2.so</code>
+  </td>
+ </tr>
+
+ <tr>
+  <td><code>link.vndk.shared_libs</code></td>
+  <td><em>VNDK-SP</em></td>
+ </tr>
+</table>
+
+<p>The table below presents the namespaces configuration for vendor processes,
+which is excerpted from the <code>[vendor]</code> section in
+<code>ld.config.txt.in</code>:</p>
+
+<table>
+ <tr>
+  <th>Namespace</th>
+  <th>Property</th>
+  <th>Value</th>
+ </tr>
+
+ <tr>
+  <td rowspan="5"><code>default</code></td>
+  <td><code>search.paths</code></td>
+  <td>
+   <code>/vendor/${LIB}/hw</code><br/>
+   <code>/vendor/${LIB}/egl</code><br/>
+   <code>/vendor/${LIB}</code><br/>
+   <code>/vendor/${LIB}/vndk</code><br/>
+   <code>/system/${LIB}/vndk</code><br/>
+   <code>/vendor/${LIB}/vndk-sp</code><br/>
+   <code>/system/${LIB}/vndk-sp</code>
+  </td>
+ </tr>
+
+ <tr>
+  <td><code>permitted.paths</code></td>
+  <td>
+   <code>/vendor</code><br/>
+   <code>/system/${LIB}/vndk</code><br/>
+   <code>/system/${LIB}/vndk-sp</code>
+  </td>
+ </tr>
+
+ <tr>
+  <td><code>isolated</code></td>
+  <td><code>true</code></td>
+ </tr>
+
+ <tr>
+  <td><code>links</code></td>
+  <td><code>system</code></td>
+ </tr>
+
+ <tr>
+  <td><code>link.system.shared_libs</code></td>
+  <td><em>LL-NDK</em></td>
+ </tr>
+
+ <tr>
+  <td rowspan="2"><code>system</code></td>
+  <td><code>search.paths</code></td>
+  <td><code>/system/${LIB}</code></td>
+ </tr>
+
+ <tr>
+  <td><code>permitted.paths</code></td>
+  <td><code>/system/${LIB}</code></td>
+ </tr>
+</table>
+
+
+<p>More details can be found in
+<code>android-src/system/core/rootdir/etc/ld.config.txt.in</code>.</p>
 
   </body>
 </html>

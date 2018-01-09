@@ -1,0 +1,247 @@
+<html devsite><head>
+    <title>通过 libFuzzer 进行模糊测试</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2018 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          //www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+<p>
+模糊测试（只是将可能无效的数据、异常数据或随机数据作为输入内容提供给程序）是在大型软件系统中查找错误的一种非常有效的方式，也是软件开发生命周期的重要组成部分。
+</p>
+<p>
+Android 编译系统通过从 LLVM 编译器基础架构项目纳入 <a href="http://llvm.org/docs/LibFuzzer.html">libFuzzer 项目</a>来支持模糊测试。LibFuzzer 会与被测函数相关联，并会处理在模糊测试会话期间出现的所有输入选择、变更和崩溃报告。LLVM 的排错程序用于协助内存损坏检测以及提供代码覆盖率指标。
+</p>
+<p>
+本文介绍了 Android 上的 libFuzzer 以及如何执行插桩编译，还介绍了如何编写、运行和自定义模糊测试工具。
+</p>
+<h3 id="setup-and-build">设置和编译</h3>
+<p>
+为了确保映像能够在设备上正常运行，请按照以下设置和编译示例进行操作。
+</p>
+<aside class="note"><strong>提示</strong>：要详细了解设置信息，请参阅<a href="/setup/requirements">下载和编译</a>部分。
+请按照说明<a href="/setup/initializing">设置</a>您的编译环境，<a href="/setup/downloading">下载</a>源代码，然后编译 Android（借助 <a href="/setup/building.html#build-the-code">make 命令</a>）。</aside>
+
+<p>使用标准的 Android 编译系统刷写您的设备后，请按照说明刷写 <a href="/devices/tech/debug/asan.html#sanitize_target">AddressSanitizer 编译</a>，然后通过使用 <code>SANITIZE_TARGET='address
+coverage'</code>（而非 <code>SANITIZE_TARGET='address'</code>）来开启覆盖率。
+</p>
+<h4 id="setup-example">设置示例</h4>
+<p>
+本例假设目标设备为 Pixel (<code>sailfish</code>)，且已为 USB 调试 (<code>aosp_sailfish-userdebug</code>) 做好准备。
+</p>
+
+<pre class="prettyprint"><code class="devsite-terminal">mkdir ~/bin</code>
+<code class="devsite-terminal">export PATH=~/bin:$PATH</code>
+<code class="devsite-terminal">curl https://storage.googleapis.com/git-repo-downloads/repo &gt; ~/bin/repo</code>
+<code class="devsite-terminal">chmod a+x ~/bin/repo</code>
+<code class="devsite-terminal">repo init -u https://android.googlesource.com/platform/manifest -b master</code>
+<code class="devsite-terminal">repo sync -c -j8</code>
+<code class="devsite-terminal">wget https://dl.google.com/dl/android/aosp/google_devices-sailfish-nde63p-c36cb625.tgz</code>
+<code class="devsite-terminal">tar xvf google_devices-sailfish-nde63p-c36cb625.tgz</code>
+<code class="devsite-terminal">extract-google_devices-sailfish.sh</code>
+<code class="devsite-terminal">wget https://dl.google.com/dl/android/aosp/qcom-sailfish-nde63p-50a5f1e0.tgz</code>
+<code class="devsite-terminal">tar xvf qcom-sailfish-nde63p-50a5f1e0.tgz</code>
+<code class="devsite-terminal">extract-qcom-sailfish.sh</code>
+<code class="devsite-terminal">. build/envsetup.sh</code>
+<code class="devsite-terminal">lunch aosp_sailfish-userdebug</code>
+</pre>
+
+<h4 id="build-example">编译示例</h4>
+<p>
+要创建支持可重现模糊测试会话的插桩系统映像，您需要完成具有两个步骤的编译过程。
+</p>
+<p>
+首先，请执行完整的 Android 编译，并将其刷写到设备。接下来，以现有编译为起点，编译 Android 的插桩版本。编译系统要足够复杂，以便只编译所需的二进制文件并将其放在正确的位置。
+</p>
+
+<ol>
+<li>通过执行以下命令来执行初始编译：
+<pre class="devsite-terminal devsite-click-to-copy">make -j$(nproc)</pre></li>
+<li>要刷写设备，请在启动设备后使用<a href="/source/running.html#booting-into-fastboot-mode">相应的键组合</a>进入 fastboot 模式。</li>
+<li>解锁引导加载程序，并使用下列命令刷写新编译的映像（<code>-w</code> 选项可用于擦除用户数据，以确保干净的初始状态）。
+<pre class="prettyprint"><code class="devsite-terminal">fastboot oem unlock</code>
+<code class="devsite-terminal">fastboot flashall -w</code>
+</pre></li>
+<li>执行插桩编译，并将修改后的二进制文件刷写到设备：
+<pre class="prettyprint"><code class="devsite-terminal">make -j$(nproc) SANITIZE_TARGET='address coverage'</code>
+<code class="devsite-terminal">fastboot flash userdata</code>
+<code class="devsite-terminal">fastboot flashall</code></pre>
+</li>
+</ol>
+
+<p>
+目标设备现在应该已经准备好进行 libFuzzer 模糊测试。为了确保您的编译是插桩编译，请将 adb 作为根来检查 <code>/data/asan/lib</code> 是否存在：
+</p>
+
+<pre class="prettyprint"><code class="devsite-terminal">adb root</code>
+<code class="devsite-terminal">adb shell ls -ld /data/asan/lib*
+drwxrwx--x 6 system system 8192 2016-10-05 14:52 /data/asan/lib
+drwxrwx--x 6 system system 8192 2016-10-05 14:52 /data/asan/lib64</code>
+</pre>
+<p>
+常规的非插桩编译中不存在这类目录。
+</p>
+
+<h2 id="write-a-fuzzer">编写模糊测试工具</h2>
+<p>
+为了说明如何在 Android 中使用 libFuzzer 编写端到端的模糊测试工具，请将以下易受攻击的代码作为测试用例。这样做有助于对模糊测试工具进行测试，确保一切运行正常，并说明崩溃数据是什么样的。
+</p>
+<p>
+以下是测试函数。
+</p>
+
+<pre class="prettyprint">#include &lt;stdint.h&gt;
+#include &lt;stddef.h&gt;
+bool FuzzMe(const uint8_t *Data, size_t DataSize) {
+   return DataSize &gt;= 3 &amp;&amp;
+          Data[0] == 'F' &amp;&amp;
+          Data[1] == 'U' &amp;&amp;
+          Data[2] == 'Z' &amp;&amp;
+          Data[3] == 'Z';  // ← Out of bounds access
+}
+</pre>
+
+<p>
+要编译并运行此模糊测试工具，请执行以下操作：</p>
+<ol>
+<li>在 Android 源代码树中创建一个目录，例如，<code>tools/fuzzers/fuzz_me_fuzzer</code>。后续文件都将在此目录下创建。</li>
+<li>使用 libFuzzer 编写模糊测试目标。模糊测试目标是一个函数，该函数可接收指定大小的 blob 数据，并将其传递给要接受模糊测试的函数。以下是针对易受攻击的测试函数的基本模糊测试工具：
+
+<pre class="prettyprint">extern "C" int LLVMFuzzerTestOneInput(const uint8_t *buf, size_t len) {
+  FuzzMe(buf, len);
+  return 0;
+}
+</pre></li>
+<li>指示 Android 的编译系统创建模糊测试工具二进制文件。
+要编译模糊测试工具，请将此代码添加到 <code>Android.mk</code> 文件：
+
+<pre class="prettyprint">LOCAL_PATH:= $(call my-dir)
+
+include $(CLEAR_VARS)
+
+LOCAL_SRC_FILES := fuzz_me_fuzzer.cpp
+LOCAL_CFLAGS += -Wno-multichar -g -O0
+LOCAL_MODULE_TAGS := optional
+LOCAL_CLANG := true
+LOCAL_MODULE:= fuzz_me_fuzzer
+
+Include $(BUILD_FUZZ_TEST)
+</pre>
+<p>
+实现这个目的所需的大部分逻辑都包含在 BUILD_FUZZ_TEST 宏（在 <code>build/core/fuzz_test.mk.</code> 中进行定义）中</p></li>
+
+<li>使用以下代码编译模糊测试工具：
+
+<pre class="devsite-terminal devsite-click-to-copy">make -j$(nproc) fuzz_me_fuzzer SANITIZE_TARGET="address coverage"
+</pre></li>
+</ol>
+<p>
+完成这些步骤之后，您便会得到一个编译好的模糊测试工具。模糊测试工具的默认位置（本例中为 Pixel 编译）为 <code>out/target/product/sailfish/data/nativetest/fuzzers/fuzz_me_fuzzer/fuzz_me_fuzzer</code>
+</p>
+<h2 id="run-your-fuzzer">运行您的模糊测试工具</h2>
+<p>
+编译好模糊测试工具之后，请上传该工具和易受攻击的库以进行关联。</p>
+<ol>
+<li>要将这些文件上传到设备上的某个目录下，请运行以下命令：
+
+<pre class="prettyprint"><code class="devsite-terminal">adb root</code>
+<code class="devsite-terminal">adb shell mkdir -p /data/tmp/fuzz_me_fuzzer/corpus</code>
+<code class="devsite-terminal">adb push $OUT/data/asan/nativetest/fuzzers/fuzz_me_fuzzer/fuzz_me_fuzzer
+ /data/tmp/fuzz_me_fuzzer/</code>
+ </pre>
+</li>
+<li>使用以下命令运行模糊测试工具：
+
+<pre class="devsite-terminal devsite-click-to-copy">adb shell /data/tmp/fuzz_me_fuzzer/fuzz_me_fuzzer /data/tmp/fuzz_me_fuzzer/corpus</pre>
+</li></ol>
+<p>
+执行此操作后，系统将输出类似于下方示例输出的内容。
+</p>
+<aside class="note"><strong>提示</strong>：要详细了解如何读取 libFuzzer 输出，请参阅 <a href="http://llvm.org/docs/LibFuzzer.html">LibFuzzer 文档</a>。
+</aside>
+
+<pre class="prettyprint">
+INFO: Seed: 702890555
+INFO: Loaded 1 modules (9 guards): [0xaaac6000, 0xaaac6024),
+Loading corpus dir: /data/tmp/fuzz_me_fuzzer/corpus
+INFO: -max_len is not provided, using 64
+INFO: A corpus is not provided, starting from an empty corpus
+#0
+READ units: 1
+#1
+INITED cov: 5 ft: 3 corp: 1/1b exec/s: 0 rss: 11Mb
+#6
+NEW    cov: 6 ft: 4 corp: 2/62b exec/s: 0 rss: 11Mb L: 61 MS: 1 InsertRepeatedBytes-
+#3008
+NEW    cov: 7 ft: 5 corp: 3/67b exec/s: 0 rss: 11Mb L: 5 MS: 1 CMP- DE: "F\x00\x00\x00"-
+#7962
+NEW    cov: 8 ft: 6 corp: 4/115b exec/s: 0 rss: 11Mb L: 48 MS: 1 InsertRepeatedBytes-
+#35324
+NEW    cov: 9 ft: 7 corp: 5/163b exec/s: 0 rss: 13Mb L: 48 MS: 1 ChangeBinInt-
+=================================================================
+==28219==ERROR: AddressSanitizer: heap-buffer-overflow on address 0xe6423fb3 at pc 0xaaaae938 bp 0xffa31ab0 sp 0xffa31aa8
+READ of size 1 at 0xe6423fb3 thread T0
+#0 0xef72f6df in __sanitizer_print_stack_trace [asan_rtl] (discriminator 1)
+    #1 0xaaab813d in fuzzer::Fuzzer::CrashCallback() external/llvm/lib/Fuzzer/FuzzerLoop.cpp:251
+    #2 0xaaab811b in fuzzer::Fuzzer::StaticCrashSignalCallback() external/llvm/lib/Fuzzer/FuzzerLoop.cpp:240
+    #3 0xef5a9a2b in $a.0 /proc/self/cwd/bionic/libc/arch-arm/bionic/__restore.S:48
+    #4 0xef5dba37 in tgkill /proc/self/cwd/bionic/libc/arch-arm/syscalls/tgkill.S:9
+    #5 0xef5ab511 in abort bionic/libc/bionic/abort.cpp:42 (discriminator 2)
+    #6 0xef73b0a9 in __sanitizer::Abort() external/compiler-rt/lib/sanitizer_common/sanitizer_posix_libcdep.cc:141
+    #7 0xef73f831 in __sanitizer::Die() external/compiler-rt/lib/sanitizer_common/sanitizer_termination.cc:59
+    #8 0xef72a117 in ~ScopedInErrorReport [asan_rtl]
+    #9 0xef72b38f in __asan::ReportGenericError(unsigned long, unsigned long, unsigned long, unsigned long, bool, unsigned long, unsigned int, bool) [asan_rtl]
+    #10 0xef72bd33 in __asan_report_load1 [asan_rtl]
+    #11 0xaaaae937 in FuzzMe(unsigned char const*, unsigned int) tools/fuzzers/fuzz_me_fuzzer/fuzz_me_fuzzer.cpp:10
+    #12 0xaaaaead7 in LLVMFuzzerTestOneInput tools/fuzzers/fuzz_me_fuzzer/fuzz_me_fuzzer.cpp:15
+    #13 0xaaab8d5d in fuzzer::Fuzzer::ExecuteCallback(unsigned char const*, unsigned int) external/llvm/lib/Fuzzer/FuzzerLoop.cpp:515
+    #14 0xaaab8f3b in fuzzer::Fuzzer::RunOne(unsigned char const*, unsigned int) external/llvm/lib/Fuzzer/FuzzerLoop.cpp:469
+    #15 0xaaab9829 in fuzzer::Fuzzer::MutateAndTestOne() external/llvm/lib/Fuzzer/FuzzerLoop.cpp:701
+    #16 0xaaab9933 in fuzzer::Fuzzer::Loop() external/llvm/lib/Fuzzer/FuzzerLoop.cpp:734
+    #17 0xaaab48e5 in fuzzer::FuzzerDriver(int*, char***, int (*)(unsigned char const*, unsigned int)) external/llvm/lib/Fuzzer/FuzzerDriver.cpp:524
+    #18 0xaaab306f in main external/llvm/lib/Fuzzer/FuzzerMain.cpp:20
+    #19 0xef5a8da1 in __libc_init bionic/libc/bionic/libc_init_dynamic.cpp:114
+
+SUMMARY: AddressSanitizer: heap-buffer-overflow
+...
+==28219==ABORTING
+MS: 1 CrossOver-; base unit: 10cc0cb80aa760479e932609f700d8cbb5d54d37
+0x46,0x55,0x5a,
+FUZ
+artifact_prefix='./'; Test unit written to ./crash-0eb8e4ed029b774d80f2b66408203801cb982a60
+Base64: RlVa
+</pre>
+
+<p>
+在示例输出中，崩溃是由第 10 行中的 <code>fuzz_me_fuzzer.cpp</code> 导致的：</p>
+<pre class="prettyprint">      Data[3] == 'Z';  // :(
+</pre>
+<p>
+如果数据长度为 3，则这属于简单的出界读取。
+</p>
+<p>
+运行模糊测试工具后，输出常常会导致系统崩溃，而攻击性输入则会保存到语料库中，并被指定一个 ID。在本示例输出中，ID 为 <code>crash-0eb8e4ed029b774d80f2b66408203801cb982a60</code>。
+</p>
+<p>
+要检索崩溃信息，请运行以下命令（先指定好您的崩溃 ID）：</p>
+<pre class="devsite-terminal devsite-click-to-copy">adb pull
+/data/tmp/fuzz_me_fuzzer/corpus/<var>CRASH_ID</var></pre>
+
+<p>
+要详细了解 libFuzzer，请参阅<a href="http://llvm.org/docs/LibFuzzer.html">上游文档</a>。由于 Android 的 libFuzzer 是上游之后的几个版本，请检查 <a href="https://android.googlesource.com/platform/external/llvm/+/master/lib/Fuzzer/">external/llvm/lib/Fuzzer</a> 以确保接口支持您正尝试执行的操作。
+</p>
+
+</body></html>
