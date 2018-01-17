@@ -22,6 +22,8 @@
 
 <p>Android 开放源代码项目 (AOSP) 针对所有 Android 设备中常用的应用和服务提供了一个可靠实用的基本政策。AOSP 的贡献者会定期完善该政策。该核心政策应占设备上最终政策的 90-95%，而剩下的 5-10% 则为设备专用自定义政策。本文重点介绍了这些设备专用自定义政策、如何编写设备专用政策，以及在编写此类政策时要避免的一些陷阱。</p>
 
+<aside class="note"><strong>注意</strong>：要详细了解如何在 Android 8.0 中编写 SELinux 政策，请参阅 <a href="/security/selinux/images/SELinux_Treble.pdf">SELinux for Android 8.0</a>。</aside>
+
 <h2 id="device_bringup">设备启动</h2>
 
 <p>在编写设备专用政策时，请按顺序执行以下步骤。</p>
@@ -39,7 +41,9 @@
 
 <p>在此之后，通过以下命令确认宽容模式：</p>
 
-<p><code>adb getenforce</code></p>
+<pre class="devsite-terminal devsite-click-to-copy">
+adb getenforce
+</pre>
 
 <p>将处于全局宽容模式的时间设为两周比较合理。在解决大多数拒绝事件之后，返回到强制模式，并在出现错误时加以解决。对于仍然不断出现拒绝事件的域或仍处于密集开发阶段的服务，可以暂时使其进入宽容模式，但要尽快使其返回到强制模式。</p>
 
@@ -60,7 +64,7 @@
 
 <p>核心服务生成的拒绝事件通常是通过为文件添加标签来解决的。例如：</p>
 
-<pre class="no-pretty-print">
+<pre>
 avc: denied { open } for pid=1003 comm=”mediaserver” path="/dev/kgsl-3d0”
 dev="tmpfs" scontext=u:r:mediaserver:s0 tcontext=u:object_r:device:s0
 tclass=chr_file permissive=1
@@ -92,7 +96,7 @@ tcontext=u:object_r:device:s0 tclass=chr_file permissive=1
 
 <p>该服务是在设备的 <code>init.&lt;target&gt;.rc</code> 文件中启动的，如下所示：</p>
 
-<pre class="no-pretty-print">
+<pre class="devsite-click-to-copy">
 service foo /system/bin/foo
     class core
 </pre>
@@ -102,7 +106,7 @@ service foo /system/bin/foo
 
       <p>创建包含以下内容的文件 <code>device/&lt;oem&gt;/&lt;target&gt;/sepolicy/foo.te</code>：</p>
 
-<pre class="no-pretty-print">
+<pre class="devsite-click-to-copy">
 # foo service
 type foo, domain;
 type foo_exec, exec_type, file_type;
@@ -118,7 +122,7 @@ init_daemon_domain(foo)
       <p>将以下内容添加到 <code>device/&lt;oem&gt;/&lt;target&gt;/sepolicy/
          file_contexts</code>：</p>
 
-<pre class="no-pretty-print">
+<pre class="devsite-click-to-copy">
 /system/bin/foo   u:object_r:foo_exec:s0
 </pre>
 
@@ -145,7 +149,7 @@ init_daemon_domain(foo)
 
 <p>以下示例规则类似于锁着前门，但开着窗户：</p>
 
-<p><code>allow { domain -untrusted_app } scary_debug_device:chr_file rw_file_perms</code>。</p>
+<pre>allow { domain -untrusted_app } scary_debug_device:chr_file rw_file_perms</pre>
 
 <p>该规则的意图很明确：除了第三方应用之外，其他所有应用都可以访问调试设备。</p>
 
@@ -181,13 +185,5 @@ init_daemon_domain(foo)
 <h3 id="granting_the_dac_override_capability">授予 dac_override 权限</h3>
 
 <p><code> dac_override</code> 拒绝事件意味着违规进程正在尝试使用错误的 unix user/group/world 权限访问某个文件。正确的解决方案几乎从不授予 <code>dac_override</code> 权限，而是<a href="https://android-review.googlesource.com/#/c/174530/5/update_engine.te@11">更改相应文件或进程的 unix 权限</a>。有些域（例如 init、vold 和 installd）确实需要能够替换 unix 文件权限才能访问其他进程的文件。要查看更深入的讲解，请访问 <a href="http://danwalsh.livejournal.com/69478.html">Dan Walsh 的博客</a>。</p>
-
-<h2 id="additional_resources">其他资源</h2>
-
-<p>如果要提问或提出代码审核请求，<a href="http://seandroid.bitbucket.org/ForMoreInformation.html">SEAndroid 论坛</a>是一个的绝佳场所。</p>
-
-<p>AOSP 提供了关于 <a href="index.html">Android 上的 SELinux</a> 的简要介绍。</p>
-
-<p>如需更深入的说明，请点击<a href="http://seandroid.bitbucket.org/">此处</a>。</p>
 
 </body></html>

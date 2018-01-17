@@ -34,7 +34,7 @@ int (waitForVsync*) (int64_t *timestamp)
 
 <p>显式同步是必需的，它提供了一种以同步方式获取和释放 Gralloc 缓冲区的机制。显式同步允许图形缓冲区的生产方和消耗方在完成对缓冲区的处理时发出信号。这允许 Android 异步地将要读取或写入的缓冲区加入队列，并且确定另一个消耗方或生产方当前不需要它们。有关详细信息，请参阅<a href="/devices/graphics/index.html#synchronization_framework">同步框架</a>一文。</p>
 
-<p>显式同步的优点包括设备之间的行为变化较小、调试支持更好，并且测试指标更完善。例如，同步框架输出可以很容易地识别问题区域和根本原因，而集中的 SurfaceFlinger 演示时间戳可以显示何时在系统的正常流程中发生事件。</p>
+<p>显式同步的优点包括不同设备上的行为差异较小、对调试的支持更好，并且测试指标更完善。例如，同步框架输出可以很容易地识别问题区域和根本原因，而集中的 SurfaceFlinger 演示时间戳可以显示何时在系统的正常流程中发生事件。</p>
 
 <p>该通信是通过使用同步栅栏来促进的。在请求用于消耗或生产的缓冲区时，必须使用同步栅栏。同步框架由三个主要构造块组成：<code>sync_timeline</code>、<code>sync_pt</code> 和 <code>sync_fence</code>。</p>
 
@@ -93,7 +93,7 @@ int (waitForVsync*) (int64_t *timestamp)
 <li>与 <code>platform/system/core/libsync</code> 中的内核空间进行通信的库。</li>
 </ul></li>
 <li>支持新同步功能的 Hardware Composer HAL（v1.3 或更高版本）。您必须为 HAL 中的 <code>set()</code> 和 <code>prepare()</code> 函数提供适当的同步栅栏作为参数。</li>
-<li>图形驱动程序中的两个与栅栏相关的 GL 扩展程序（<code>EGL_ANDROID_native_fence_sync</code> 和 <code>EGL_ANDROID_wait_sync</code>）以及栅栏支持。</li>
+<li>图形驱动程序中的两个与栅栏相关的 GL 扩展（<code>EGL_ANDROID_native_fence_sync</code> 和 <code>EGL_ANDROID_wait_sync</code>）以及栅栏支持。</li>
 </ul>
 
 <p>例如，要使用支持同步函数的 API，您可以开发具有显示设备缓冲区函数的显示设备驱动程序。在同步框架出现之前，此函数会接收 dma-buf，将这些缓冲区放在显示设备上，并在缓冲区可见时阻塞。例如：</p>
@@ -120,7 +120,7 @@ struct sync_fence* display_buffer(struct dma_buf *buf, struct sync_fence
 </pre>
 
 <h2 id="sync_integration">同步集成</h2>
-<p>本部分将介绍如何将低级同步框架与 Android 框架的不同部分以及与彼此必须通信的驱动程序进行集成。</p>
+<p>本部分将介绍如何将低层级同步框架与 Android 框架的不同部分以及与彼此必须通信的驱动程序进行集成。</p>
 
 <h3 id="integration_conventions">集成规范</h3>
 
@@ -141,18 +141,18 @@ struct sync_fence* display_buffer(struct dma_buf *buf, struct sync_fence
 
 <h3 id="opengl_es_integration">OpenGL ES 集成</h3>
 
-<p>OpenGL ES 同步集成依赖于两个 EGL 扩展程序：</p>
+<p>OpenGL ES 同步集成依赖于两个 EGL 扩展：</p>
 
 <ul>
 <li><code>EGL_ANDROID_native_fence_sync</code>。提供一种在 EGLSyncKHR 对象中包装或创建原生 Android 栅栏文件描述符的方法。</li>
-<li><code>EGL_ANDROID_wait_sync</code>。允许 GPU 端停止而不是在 CPU 中停止，使 GPU 等待 EGLSyncKHR。这与 <code>EGL_KHR_wait_sync</code> 扩展程序基本相同（有关详细信息，请参阅相关规范）。</li>
+<li><code>EGL_ANDROID_wait_sync</code>。允许 GPU 端停止而不是在 CPU 中停止，使 GPU 等待 EGLSyncKHR。这与 <code>EGL_KHR_wait_sync</code> 扩展基本相同（有关详细信息，请参阅相关规范）。</li>
 </ul>
 
-<p>这些扩展程序可以独立使用，并由 libgui 中的编译标记控制。要使用它们，请首先实现 <code>EGL_ANDROID_native_fence_sync</code> 扩展程序以及关联的内核支持。接下来，为驱动程序添加对栅栏的 ANATIONWindow 支持，然后在 libgui 中启用支持以使用 <code>EGL_ANDROID_native_fence_sync</code> 扩展程序。</p>
+<p>这些扩展可以独立使用，并由 libgui 中的编译标记控制。要使用它们，请首先实现 <code>EGL_ANDROID_native_fence_sync</code> 扩展以及关联的内核支持。接下来，为驱动程序添加对栅栏的 ANATIONWindow 支持，然后在 libgui 中启用支持以使用 <code>EGL_ANDROID_native_fence_sync</code> 扩展。</p>
 
-<p>其次，在驱动程序中启用 <code>EGL_ANDROID_wait_sync</code> 扩展程序，并单独打开它。<code>EGL_ANDROID_native_fence_sync</code> 扩展程序包含完全不同的原生栅栏 EGLSync 对象类型，因此适用于现有 EGLSync 对象类型的扩展程序不一定适用于 <code>EGL_ANDROID_native_fence</code> 对象，以避免不必要的交互。</p>
+<p>其次，在驱动程序中启用 <code>EGL_ANDROID_wait_sync</code> 扩展，并单独打开它。<code>EGL_ANDROID_native_fence_sync</code> 扩展包含完全不同的原生栅栏 EGLSync 对象类型，因此适用于现有 EGLSync 对象类型的扩展不一定适用于 <code>EGL_ANDROID_native_fence</code> 对象，以避免不必要的交互。</p>
 
-<p>EGL_ANDROID_native_fence_sync 扩展程序使用相应的原生栅栏文件描述符属性，该属性只能在创建时设置，不能从现有同步对象直接向前查询。该属性可以设置为以下两种模式之一：</p>
+<p>EGL_ANDROID_native_fence_sync 扩展使用相应的原生栅栏文件描述符属性，该属性只能在创建时设置，不能从现有同步对象直接向前查询。该属性可以设置为以下两种模式之一：</p>
 
 <ul>
 <li><em></em>有效的栅栏文件描述符。在 EGLSyncKHR 对象中包装现有的原生 Android 栅栏文件描述符。</li>

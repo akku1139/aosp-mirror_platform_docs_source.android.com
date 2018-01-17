@@ -1,0 +1,106 @@
+<html devsite><head>
+    <title>版本绑定</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          //www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>
+在 Keymaster 1 中，所有 Keymaster 密钥都以加密形式绑定至设备的信任根或已验证的启动密钥。<em></em>在 Keymaster 2 及更高版本中，所有密钥也绑定至系统映像的操作系统和补丁程序级别。这样可确保在旧版系统或 TEE 软件中发现漏洞的攻击者无法将设备回滚到易受攻击的版本，也无法使用在较新版本中创建的密钥。此外，在已经升级到更新的版本或补丁程序级别的设备上使用指定版本和补丁程序级别的密钥时，需要先升级该密钥才能使用，因为该密钥的旧版本已失效。这样一来，当设备升级时，密钥会随着设备一起“升级”，但是将设备恢复到任何一个旧版本都会导致密钥无法使用。
+</p>
+
+<h2 id="hal-changes">HAL 变更</h2>
+<p>
+为了支持版本绑定和版本认证，Android 7.1 添加了 <code>Tag::OS_VERSION</code> 和 <code>Tag::OS_PATCHLEVEL</code> 标记以及 <code>configure</code> 和 <code>upgradeKey</code> 方法。版本标记由 Keymaster 2 及更高版本的实现自动添加到所有新生成的（或更新后的）密钥。此外，如果尝试使用的密钥所具有的操作系统版本或补丁程序级别与当前系统的操作系统版本或补丁程序级别不匹配，操作会被拒绝并显示 <code>ErrorCode::KEY_REQUIRES_UPGRADE</code>。
+</p>
+<p>
+<code>Tag::OS_VERSION</code> 是一个 <code>UINT</code>，它以 MMmmss 格式表示 Android 系统版本的主要、次要和子次要部分，其中 MM 表示主要版本，mm 表示次要版本，ss 表示子次要版本。例如，6.1.2 将表示为 060102。
+</p>
+<p>
+<code>Tag::OS_PATCHLEVEL</code> 是一个 <code>UINT</code>，它以 YYYYMM 格式表示系统上次更新的年份和月份，其中 YYYY 表示四位数的年份，MM 表示两位数的月份。例如，2016 年 3 月将表示为 201603。
+</p>
+
+<h3 id="upgrade_key">UpgradeKey</h3>
+<p>
+为了使密钥升级到系统映像的新操作系统版本和补丁程序级别，Android 7.1 向 HAL 添加了 <code>upgradeKey</code> 方法：
+</p>
+
+<p><strong>Keymaster 3</strong></p>
+<pre class="devsite-click-to-copy">
+    upgradeKey(vec<uint8_t> keyBlobToUpgrade, vec<keyparameter> upgradeParams)
+        generates(ErrorCode error, vec<uint8_t> upgradedKeyBlob);</uint8_t></keyparameter></uint8_t></pre>
+<p><strong>Keymaster 2</strong></p>
+<pre class="devsite-click-to-copy">
+keymaster_error_t (*upgrade_key)(const struct keymaster2_device* dev,
+    const keymaster_key_blob_t* key_to_upgrade,
+    const keymaster_key_param_set_t* upgrade_params,
+    keymaster_key_blob_t* upgraded_key);
+</pre>
+
+<ul>
+  <li><code>dev</code> 是设备结构</li>
+  <li><code>keyBlobToUpgrade</code> 是需要进行升级的密钥</li>
+  <li><code>upgradeParams</code> 是升级密钥所需的参数。这将包括 <code>Tag::APPLICATION_ID</code> 和 <code>Tag::APPLICATION_DATA</code>，如果在密钥生成期间提供了这两个参数，则它们是解密密钥 Blob 所必需的参数。</li>
+  <li><code>upgradedKeyBlob</code> 是输出参数，用于返回新的密钥 Blob。</li>
+</ul>
+
+<p>
+如果使用无法解析或无效的密钥 Blob 调用 <code>upgradeKey</code>，则会返回 <code>ErrorCode::INVALID_KEY_BLOB</code>。如果使用补丁程序级别高于当前系统的补丁程序级别的密钥调用该方法，则会返回 <code>ErrorCode::INVALID_ARGUMENT</code>。如果使用操作系统版本高于当前系统的操作系统版本（当前系统的操作系统版本为非零值）的密钥调用该方法，则会返回 <code>ErrorCode::INVALID_ARGUMENT</code>。允许操作系统版本从非零升级为零。如果在与安全域进行通信时发生错误，该方法会返回相应的错误值（例如 <code>ErrorCode::SECURE_HW_ACCESS_DENIED</code>、<code>ErrorCode::SECURE_HW_BUSY</code> 等）。在其他情况下，它会返回 <code>ErrorCode::OK</code> 并在 <code>upgradedKeyBlob</code> 中返回一个新的密钥 Blob。
+</p>
+<p>
+<code>keyBlobToUpgrade</code> 在调用 <code>upgradeKey</code> 后仍然有效，理论上，如果设备降级，还可以再次使用。但在实际操作中，Keystore 通常在调用 <code>upgradeKey</code> 后很快就会对 <code>keyBlobToUpgrade</code> Blob 调用 <code>deleteKey</code>。如果 <code>keyBlobToUpgrade</code> 具有 <code>Tag::ROLLBACK_RESISTANT</code> 标记，则 <code>upgradedKeyBlob</code> 也应该包含该标记（并且应该可抗回滚）。
+</p>
+
+<h2 id="secure-configuration">安全配置</h2>
+
+<p class="note">
+<strong>注意</strong>：Keymaster 3 移除了 Keymaster 2 方法 <code>configure</code>。之前通过 <code>configure</code> 提供给 Keymaster HAL 的信息已在系统属性文件中提供，制造商实现会在启动期间读取这些文件。
+</p>
+<p>
+要实现版本绑定，Keymaster TA 需要以一种方式安全接收当前的操作系统版本和补丁程序级别（版本信息），并确保所接收的信息与运行系统的相关信息严格匹配。
+</p>
+<p>
+为了确保将版本信息安全传递到 TA，启动映像标头中添加了 <code><a href="https://android.googlesource.com/platform/system/core/+/master/mkbootimg/bootimg.h#48">os_version
+field</a></code>。启动映像构建脚本会自动填充此字段。原始设备制造商 (OEM) 和 Keymaster TA 实现人员需要相互协作来修改设备引导加载程序，以便从启动映像中提取版本信息，并在非安全系统启动之前将其传递到 TA。这样可确保攻击者无法干扰向 TA 提供版本信息。
+</p>
+
+<p>
+此外，您还需要确保系统映像与启动映像具有相同的版本信息。为此，Keymaster HAL 中添加了 configure 方法：
+</p>
+
+<pre class="devsite-click-to-copy">keymaster_error_t (*configure)(const struct keymaster2_device* dev,
+	const keymaster_key_param_set_t* params);
+</pre>
+
+<p>
+<code>params</code> 参数包含 <code>Tag::OS_VERSION</code> 和 <code>Tag::OS_PATCHLEVEL</code>。Keymaster2 客户端会在打开 HAL 之后、调用任何其他方法之前调用此方法。如果在调用 configure 之前调用了任何其他方法，TA 会返回 <code>ErrorCode::KEYMASTER_NOT_CONFIGURED</code>。
+</p>
+
+<p>
+在设备启动后首次调用 <code>configure</code> 时，该方法应该验证所提供的版本信息是否与引导加载程序提供的版本信息一致。如果版本信息不一致，则 <code>configure</code> 会返回 <code>ErrorCode::INVALID_ARGUMENT</code>，所有其他 Keymaster 方法会继续返回 <code>ErrorCode::KEYMASTER_NOT_CONFIGURED</code>。如果信息一致，<code>configure</code> 会返回 <code>ErrorCode::OK</code>，其他 Keymaster 方法开始正常运行。
+</p>
+
+<p>
+对 <code>configure</code> 的后续调用与首次调用返回的值相同，而且不会更改 Keymaster 的状态。请注意，此过程会要求所有 OTA 同时更新系统映像和启动映像；为了使版本信息保持同步，不能单独更新这两种映像。
+</p>
+
+<p>
+由于将调用 <code>configure</code> 的系统的内容需要经过验证，攻击者可利用这一短暂的窗口期机会来破坏系统映像，并强制其提供与启动映像一致的版本信息，但这并不是系统的真实版本信息。不过，对启动映像的验证、对系统映像内容的 dm-verity 验证以及在系统启动早期调用 <code>configure</code> 这三项相结合，会让攻击者很难利用这个机会。
+</p>
+
+</body></html>

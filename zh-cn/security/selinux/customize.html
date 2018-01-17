@@ -22,6 +22,8 @@
 
 <p>集成这一基本级别的功能并全面分析结果后，您可以添加自己的政策设置，以便涵盖自己对 Android 操作系统进行的自定义。当然，这些政策仍必须要满足 <a href="/compatibility/index.html">Android 兼容性计划</a>的要求，并且不会移除默认的 SELinux 设置。</p>
 
+<aside class="note"><strong>注意</strong>：要详细了解如何在 Android 8.0 中自定义 SELinux，请参阅 <a href="/security/selinux/images/SELinux_Treble.pdf">SELinux for Android 8.0</a>。</aside>
+
 <p>制造商不得移除现有的安全设置，否则可能会破坏 Android SELinux 实现及其管控的应用。这包括可能需要进行改进以符合政策并正常运行的第三方应用。应用必须无需进行任何修改即可继续在启用了 SELinux 的设备上正常运行。</p>
 
 <p>当开始着手自定义 SELinux 时，制造商应记得做以下事情：</p>
@@ -34,7 +36,7 @@
 <ul>
   <li>创建不兼容的政策</li><li>允许对最终用户政策进行自定义</li><li>允许对 MDM 政策进行自定义</li><li>恐吓违反政策的用户</li><li>添加后门程序</li></ul>
 
-<p><em></em>如需查看具体要求，请参阅 <a href="/compatibility/android-cdd.pdf">Android 兼容性定义文档</a>中的“内核安全功能”部分。</p>
+<p>如需查看具体要求，请参阅 <a href="/compatibility/android-cdd.pdf">Android 兼容性定义文档</a>中的“内核安全功能”部分。<em></em></p>
 
 <p>SELinux 采用白名单方法，这意味着只能授予政策中明确允许的访问权限。由于 Android 的默认 SELinux 政策已经支持 Android 开放源代码项目，因此原始设备制造商 (OEM) 无需以任何方式修改 SELinux 设置。如果他们要自定义 SELinux 设置，则应格外谨慎，以免破坏现有应用。以下是我们建议的做法：</p>
 
@@ -62,7 +64,7 @@
 
 <p>在以下示例中，所有域都被授予从 <code>/dev/null</code> 读取数据或向其写入数据的权限以及从 <code>/dev/zero</code> 读取数据的权限。</p>
 
-<pre>
+<pre class="devsite-click-to-copy">
 # Allow read / write access to /dev/null
 allow domain null_device:chr_file { getattr open read ioctl lock append write};
 
@@ -72,7 +74,7 @@ allow domain zero_device:chr_file { getattr open read ioctl lock };
 
 <p>可以使用 SELinux <code>*_file_perms</code> 宏编写相同的声明（代码非常简短）：</p>
 
-<pre>
+<pre class="devsite-click-to-copy">
 # Allow read / write access to /dev/null
 allow domain null_device:chr_file rw_file_perms;
 
@@ -84,7 +86,7 @@ allow domain zero_device:chr_file r_file_perms;
 
 <p>以下是一个完整的 DHCP 政策示例，我们将在下文中对其进行分析：</p>
 
-<pre>
+<pre class="devsite-click-to-copy">
 type dhcp, domain;
 permissive dhcp;
 type dhcp_exec, exec_type, file_type;
@@ -117,7 +119,7 @@ netlink_nflog_socket } { read write };
 
 <p>下面我们来分析一下该示例：</p>
 
-<p>在第一行（即类型声明）中，该政策声明 DHCP 守护进程将沿用基本的安全政策 (<code>domain</code>)。从前面的声明示例中，我们知道 DHCP 可以从 <code>/dev/null.</code> 读取数据以及向其写入数据。</p>
+<p>在第一行（即类型声明）中，该政策声明 DHCP 守护进程将沿用基本的安全政策 (<code>domain</code>)。从前面的声明示例中，我们知道 DHCP 可以从 <code>/dev/null</code> 读取数据以及向其写入数据。</p>
 
 <p>在第二行中，DHCP 被声明为宽容域。</p>
 
@@ -235,13 +237,15 @@ audit_control setfcap</pre>
 
 <h2 id="neverallow">neverallow 规则</h2>
 
-<p>SELinux <code>neverallow</code> 规则用于禁止在任何情况下都不应该发生的行为。通过<a href="/compatibility/index.html">兼容性</a>测试，现在各种合作伙伴设备上都会强制执行 SELinux <code>neverallow</code> 规则。</p>
+<p>SELinux <code>neverallow</code> 规则用于禁止在任何情况下都不应该发生的行为。
+通过<a href="/compatibility/index.html">兼容性</a>测试，现在各种合作伙伴设备上都会强制执行 SELinux <code>neverallow</code> 规则。</p>
 
 <p>以下准则旨在协助制造商在自定义过程中避免与 <code>neverallow</code> 规则相关的错误。此处使用的规则编号与 Android 5.1 中使用的编号一致，并且会因版本而异。</p>
 
 <p>规则 48：<code>neverallow { domain -debuggerd -vold -dumpstate
 -system_server } self:capability sys_ptrace;</code><br />请参阅 <code>ptrace</code> 的帮助页面。<code>sys_ptrace</code> 功能用于授予对任何进程执行 <code>ptrace</code> 命令的权限。拥有该权限后，可以对其他进程进行广泛的控制。应该只有该规则中列出的指定系统组件享有该权限。如果需要该功能，则通常表明存在的某些内容不适用于面向用户的版本或存在不需要的功能。请移除不必要的组件。</p>
 
-<p>规则 76：<code>neverallow { domain -appdomain -dumpstate -shell -system_server -zygote } { file_type -system_file -exec_type }:file execute;</code><br />该规则旨在防止执行系统中的任意代码。具体来说就是，该规则声明仅执行 <code>/system</code> 中的代码，以便通过验证启动等机制实现安全保证。通常情况下，当遇到与这个 <code>neverallow</code> 规则相关的问题时，最好的解决办法是将违规代码移到 <code>/system</code> 分区。</p>
+<p>规则 76：<code>neverallow { domain -appdomain -dumpstate -shell -system_server -zygote } { file_type -system_file -exec_type }:file execute;</code><br />该规则旨在防止执行系统中的任意代码。具体来说就是，该规则声明仅执行 <code>/system</code> 中的代码，以便通过验证启动等机制实现安全保证。
+通常情况下，当遇到与这个 <code>neverallow</code> 规则相关的问题时，最好的解决办法是将违规代码移到 <code>/system</code> 分区。</p>
 
 </body></html>
