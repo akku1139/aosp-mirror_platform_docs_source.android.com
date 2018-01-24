@@ -35,7 +35,7 @@ message queue.</p>
 <p class="caution">Fast Message Queues are supported only in C++.</p>
 
 <h2 id=flavors>MessageQueue types</h2>
-<p>Android supports two queue types:</p>
+<p>Android supports two queue types (known as <em>flavors</em>):</p>
 <ul>
 <li><em>Unsynchronized</em> queues are allowed to overflow, and can have many
 readers; each reader must read data in time or lose it.
@@ -136,14 +136,15 @@ for the queue.</li>
 <code>MQDescriptor</code> object obtained from the first side. The
 <code>MQDescriptor</code> object is sent over a HIDL RPC call to the process
 that will hold the second end of the message queue. The
-<code>MQDescriptor</code> contains information about the queue:</p>
+<code>MQDescriptor</code> contains information about the queue, including:</p>
 
 <ul>
 <li>Information to map the buffer and write pointer.</li>
-<li>If the queue is synchronized, information to map the read pointer.</li>
-<li>If the queue is blocking, information to map the event flag word.</li>
-<li>The object type is made into a template with the HIDL-defined type of queue
-elements and the flavor (synchronized or unsynchronized).</li>
+<li>Information to map the read pointer (if the queue is synchronized).</li>
+<li>Information to map the event flag word (if the queue is blocking).</li>
+<li>Object type (<code>&lt;T, flavor&gt;</code>), which includes the
+<a href="/devices/architecture/hidl-cpp/types.html">HIDL-defined type</a> of
+queue elements and the queue flavor (synchronized or unsynchronized).</li>
 </ul>
 
 <p>The <code>MQDescriptor</code> object can be used to construct a
@@ -172,8 +173,15 @@ of blocking read/write calls:</p>
 <li><em>Short form</em>, with three parameters (data pointer, number of items,
 timeout). Supports blocking on individual read/write operations on a single
 queue. When using this form, the queue will handle the event flag and bitmasks
-internally, and the first message queue object must be initialized with a
-second parameter of <code>true</code>.</li>
+internally, and the <a href="#first-object">first message queue object</a> must
+be initialized with a second parameter of <code>true</code>. For example:
+<pre>
+// For an unsynchronized FMQ that supports blocking
+mFmqUnsynchronizedBlocking =
+  new (std::nothrow) MessageQueue&lt;uint16_t, kUnsynchronizedWrite&gt;
+      (kNumElementsInQueue, true /* enable blocking operations */);
+<pre>
+</li>
 <li><em>Long form</em>, with six parameters (includes event flag and bitmasks).
 Supports using a shared <code>EventFlag</code> object between multiple queues
 and allows specifying the notification bit masks to be used. In this case, the
@@ -285,12 +293,12 @@ notification bits. Similarly, <code>writeblocking()</code> will fail if
 <p>To wait on multiple queues at once, use an <code>EventFlag</code> object's
 <code>wait()</code> method to wait on a bitmask of notifications. The
 <code>wait()</code> method returns a status word with the bits that caused the
-wake up set. Using the information, the user can then check the corresponding
-queue to see whether it has enough space or data for the desired write or read
-operation and perform a nonblocking <code>read()</code>/<code>write()</code>
-followed by a call to the <code>EventFlag</code>'s <code>wake()</code> method if
-a notification is desired after the same. For a definition of the
-<code>EventFlag</code> abstraction, refer to
+wake up set. This information is then used to verify the corresponding queue has
+enough space or data for the desired write/read operation and perform a
+nonblocking <code>write()</code>/<code>read()</code>. To get a post operation
+notification, use another call to the <code>EventFlag</code>'s
+<code>wake()</code> method. For a definition of the <code>EventFlag</code>
+abstraction, refer to
 <a href="https://android.googlesource.com/platform/system/libfmq/+/master/include/fmq/EventFlag.h" class="external"><code>system/libfmq/include/fmq/EventFlag.h</code></a>.
 </p>
 
@@ -299,9 +307,9 @@ a notification is desired after the same. For a definition of the
 <code>read</code>/<code>write</code>/<code>readBlocking</code>/<code>writeBlocking()</code>
 APIs take a pointer to an input/output buffer as an argument and use
 <code>memcpy()</code> calls internally to copy data between the same and the
-FMQ ring buffer. To improve performance, Android O includes a set of APIs that
-provide direct pointer access into the ring buffer, eliminating the need to use
-<code>memcpy</code> calls.</p>
+FMQ ring buffer. To improve performance, Android 8.0 and higher include a set of
+APIs that provide direct pointer access into the ring buffer, eliminating the
+need to use <code>memcpy</code> calls.</p>
 
 <p>Use the following public APIs for zero copy FMQ operations:</p>
 
@@ -323,8 +331,9 @@ read/write is possible. If the read or write is possible the <code>memTx</code>
 struct is populated with base pointers that can be used for direct pointer
 access into the ring buffer shared memory.</li>
 <li>The <code>MemRegion</code> struct contains details about a block of memory,
-i.e. a base pointer and length in terms of <code>T</code>(where the FMQ is
-templatized to <code>T</code>).</li>
+including the base pointer (base address of the memory block) and the length in
+terms of <code>T</code> (length of the memory block in terms of the HIDL-defined
+type of the message queue).</li>
 <li>The <code>MemTransaction</code> struct contains two <code>MemRegion</code>
 structs, <code>first</code> and <code>second</code> as a read or write into
 the ring buffer may require a wrap around to the beginning of the queue. This
@@ -404,7 +413,7 @@ event flag pointer (using <code>getEventFlagWord()</code>) from a
 use that flag to create the necessary <code>EventFlag</code> object.</li>
 <li>Use the <code>MessageQueue</code> <code>getDesc()</code> method to get a
 descriptor object.</li>
-<li>In the <code>.hal</code> file, give a method a parameter of type
+<li>In the <code>.hal</code> file, give the method a parameter of type
 <code>fmq_sync<T></code> or <code>fmq_unsync<T></code> where <code>T</code> is a
 suitable HIDL-defined type. Use this to send the object returned by
 <code>getDesc()</code> to the receiving process.</li>
