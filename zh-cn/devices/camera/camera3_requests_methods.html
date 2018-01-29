@@ -22,42 +22,42 @@
 
 <h2 id="request-creation">创建和提交请求</h2>
 <h3 id="default-settings">construct_default_request_settings</h3>
-<p>为标准相机用例创建拍照设置。设备必须返回配置为满足所请求用例的设置缓冲区，该用例必须是其中一个 CAMERA3_TEMPLATE_* 枚举。所有请求控制字段都必须包括在内。<br />
-  HAL 保留对此结构的所有权，但指向该结构的指针必须在设备关闭之前保持有效。此调用返回缓冲区后，框架和 HAL 不能对其进行修改。可以为同一模板或其他模板的后续调用返回相同的缓冲区。</p>
+<p>为标准相机用例创建拍照设置。设备必须返回一个设置缓冲区，并且该缓冲区已配置为满足所请求用例（必须是 <code>CAMERA3_TEMPLATE_*</code> 枚举之一）的需求。所有请求控制字段都必须包括在内。</p>
+<p>HAL 保留对该结构的所有权，但指向该结构的指针在设备关闭之前必须一直保持有效。该调用返回缓冲区后，框架和 HAL 便不能再修改相应缓冲区。对于针对同一模板或针对其他模板的后续调用，可以返回同一个缓冲区。</p>
 <h4><strong>返回值</strong></h4>
 <ul>
   <li>有效的元数据：在成功创建默认设置缓冲区时返回。</li>
-  <li>NULL：在发生致命错误时返回。返回此值后，框架只能成功调用 close() 方法。</li>
+  <li><code>NULL</code>：在发生严重错误时返回。如果返回了该值，框架将只能成功调用 <code>close()</code> 方法。</li>
 </ul>
 <h3 id="process-request">process_capture_request</h3>
-<p>向 HAL 发送新的拍照请求。HAL 在准备好接受下一个要处理的请求之前，不会从这里调用返回。框架一次只能对 process_capture_request() 执行一次调用，而且调用将全部来自同一个线程。新请求及其关联的缓冲区可用后，会立即对 process_capture_request() 进行下一次调用。在正常的预览场景中，这意味着框架几乎会立即重新调用该函数。<br />
-  实际请求处理是异步的，拍照结果由 HAL 通过 process_capture_result() 调用返回。此调用要求结果元数据可用，但输出缓冲区可以只提供等待的同步栅栏。多个请求应同时发出，以保持全输出帧速率。<br />
-  框架保留对请求结构的所有权。这仅保证在此调用中有效。HAL 设备必须复制需要保留用于拍照处理的信息。HAL 负责等待和关闭缓冲区的栅栏并将缓冲区句柄返回给框架。<br />
-  如果 input_buffer 的返回值不是 NULL，则 HAL 必须将输入缓冲区释放同步栅栏的文件描述符写入 input_buffer-&gt;release_fence。如果 HAL 为输入缓冲区释放同步栅栏返回 -1，则框架可以立即重新使用输入缓冲区。否则，框架将等待同步栅栏，然后再重新填充和重新使用输入缓冲区。</p>
+<p>向 HAL 发送新的拍照请求。在准备好可以接受下一个要处理的请求之前，HAL 不会从该调用返回。框架一次只会对 <code>process_capture_request()</code> 进行一次调用，并且调用将全部来自同一个线程。一旦有新的请求并且其关联的缓冲区处于可用状态，框架会立即对 <code>process_capture_request()</code> 进行下一次调用。在正常预览情况下，这意味着框架几乎会立即再次调用该函数。</p>
+<p>实际的请求处理是异步进行的，拍照结果由 HAL 通过 <code>process_capture_result()</code> 调用返回。该调用要求结果元数据可用，但输出缓冲区可能只会提供要等待的同步 Fence。如果有多个请求，系统会立即对其进行快速处理，以保持全输出帧速率。</p>
+<p>框架保留对请求结构的所有权。系统只能保证请求结构在该调用期间有效。对于需要保留以用于拍照处理的信息，HAL 设备必须为其创建多个副本。HAL 负责等待并关闭缓冲区的 Fence，并将缓冲区句柄返回给框架。</p>
+<p>如果 <code>input_buffer</code> 不是 <code>NULL</code>，则 HAL 必须将输入缓冲区释放同步 Fence 的文件描述符写入到 <code>input_buffer</code>-&gt;<code>release_fence</code>。如果 HAL 为输入缓冲区释放同步 Fence 返回 <code>-1</code>，则框架可以立即重新使用输入缓冲区。否则，框架将等待同步 Fence，然后再重新填充和重新使用输入缓冲区。</p>
 <h4><strong>返回值</strong></h4>
 <ul>
-  <li>0：在成功开始处理拍照请求时返回。</li>
-  <li>-EINVAL：在输入格式不正确（在不允许的情况下设置为 NULL、没有输出缓冲区等），且拍照处理无法开始时返回。请求处理过程中的故障应通过调用 camera3_callback_ops_t.notify() 来处理。如果出现此错误，框架仍会负责处理流缓冲区的栅栏和缓冲区句柄；HAL 不应通过 process_capture_result 关闭栅栏或者返回这些缓冲区。</li>
-  <li>-ENODEV：在相机设备遇到严重错误时返回。返回此错误后，框架只能成功调用 close() 方法。</li>
+  <li><code>0</code>：在成功开始处理拍照请求时返回。</li>
+  <li><code>-EINVAL</code>：在输入格式不正确（不允许各项设置设为 <code>NULL</code> 但却被设为了 NULL、没有输出缓冲区，等等）且无法开始处理拍照时返回。请求处理过程中发生的故障应通过调用 <code>camera3_callback_ops_t.notify()</code> 来处理。如果出现此错误，框架仍将负责流缓冲区的 Fence 和缓冲区句柄；HAL 不应关闭 Fence 或通过 <code>process_capture_result</code> 返回这些缓冲区。</li>
+  <li><code>-ENODEV</code>：在相机设备遇到严重错误时返回。如果返回了此错误，框架将只能成功调用 <code>close()</code> 方法。</li>
 </ul>
 <h2 id="misc-methods">其他方法</h2>
 <h3 id="get-metadata">get_metadata_vendor_tag_ops</h3>
-<p>获取方法以查询供应商扩展元数据标签信息。HAL 应填充所有供应商标签操作方法；或者在没有定义供应商标签的情况下，保持操作不变。vendor_tag_query_ops_t 的定义可以在 system/media/camera/include/system/camera_metadata.h 中找到。</p>
-<h3 id="dump">转储</h3>
-<p>打印出相机设备的调试状态。当相机服务要求进行调试转储时，框架将调用调试转储。在使用 dumpsys 工具或捕获错误报告时，就会出现这种情况。传入文件描述符可用于使用 dprintf() 或 write() 来编写调试文本。该文本应仅采用 ASCII 编码。</p>
-<h3 id="flush">刷新</h3>
-<p>在给定设备上的管道中，刷新当前正在进行的所有拍照和所有缓冲区。框架将使用它来尽快转储所有状态，以准备 configure_streams() 调用。<br />
-  由于无需成功返回缓冲区，因此在 flush()（不管是否成功填充）时持有的每个缓冲区都可能返回 CAMERA3_BUFFER_STATUS_ERROR。请注意，仍允许 HAL 在此调用期间返回有效的 (STATUS_OK) 缓冲区，前提是已成功填充缓冲区。<br />
-  目前在 HAL 中的所有请求都会尽快返回。未在处理的请求会立即返回错误。所有可中断的硬件块均会停止，而所有不可中断的块均会等待。<br />
-  仅当 HAL 中不再有未完成的缓冲区或请求时，flush() 才会返回。框架可能会调用 configure_streams（因为 HAL 状态现在为已停顿），也可能会发出新的请求。<br />
-  flush() 调用只需要 100 毫秒或更短时间，最多花费 1 秒钟。</p>
+<p>获取方法以查询供应商扩展元数据标签信息。HAL 应填充所有供应商标签操作方法，或者使操作保持不变（如果未定义供应商标签）。可以在以下位置找到 <code>vendor_tag_query_ops_t</code> 的定义：<code>system/media/camera/include/system/camera_metadata.h</code>。</p>
+<h3 id="dump">dump</h3>
+<p>打印出相机设备的调试状态。当相机服务收到调试转储请求时，框架将调用该方法。在使用 <code>dumpsys</code> 工具或捕获错误报告时，会发生这种情况。传入的文件描述符可用于编写调试文本（使用 <code>dprintf()</code> 或 <code>write()</code>）。该文本应仅采用 ASCII 编码。</p>
+<h3 id="flush">flush</h3>
+<p>在给定设备上的管道中，刷新当前正在进行的所有拍照和所有缓冲区。框架将使用该方法来尽快转储所有状态，以便为调用 <code>configure_streams()</code> 做准备。</p>
+<p>由于无需成功返回缓冲区，因此可以返回在 <code>flush()</code> 时占用的每个缓冲区（不管是否已成功填充），并显示 <code>CAMERA3_BUFFER_STATUS_ERROR</code>。请注意，HAL 仍可在此调用期间返回有效的 (<code>STATUS_OK</code>) 缓冲区，但前提是已成功填充这些缓冲区。</p>
+<p>目前在 HAL 中的所有请求都应被尽快返回。未在处理的请求应立即返回错误。应停止所有可中断的硬件块，并且应等待所有不可中断的块。</p>
+<p>仅当 HAL 中不再有待处理的缓冲区或请求时，<code>flush()</code> 才应返回。框架可能会调用 <code>configure_streams</code>（因为 HAL 状态现在为已停顿），也可能会发出新的请求。</p>
+<p><code>flush()</code> 调用所用时间不应超过 100 毫秒，且最长不得超过 1 秒。</p>
 <h4><strong>版本信息</strong></h4>
-<p>版本信息仅在设备版本不低于 CAMERA_DEVICE_API_VERSION_3_1 时可用。</p>
+<p>仅当设备版本不低于 <code>CAMERA_DEVICE_API_VERSION_3_1</code> 时，才能获得版本信息。</p>
 <h4><strong>返回值</strong></h4>
 <ul>
-  <li>0：在成功刷新相机 HAL 时返回。</li>
-  <li>-EINVAL：在输入格式不正确时（设备无效）返回。</li>
-  <li>-ENODEV：在相机设备遇到严重错误时返回。返回此错误后，框架只能成功调用 close() 方法。</li>
+  <li><code>0</code>：在成功刷新相机 HAL 时返回。</li>
+  <li><code>-EINVAL</code>：在输入格式不正确（设备无效）时返回。</li>
+  <li><code>-ENODEV</code>：在相机设备遇到严重错误时返回。如果返回了此错误，框架将只能成功调用 <code>close()</code> 方法。</li>
 </ul>
 
 </body></html>

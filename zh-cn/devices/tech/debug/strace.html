@@ -24,15 +24,15 @@
 
 <h2 id="build-strace">构建 strace</h2>
 
-<p>要构建 strace，请运行以下命令：</p><pre>
-$ mmma -j6 external/strace
+<p>要构建 strace，请运行以下命令：</p><pre class="devsite-terminal devsite-click-to-copy">
+mmma -j6 external/strace
 </pre>
 
 <h2 id="attach-strace">附加到正在运行的进程</h2>
 
 <p>对于 strace，最简单和最常见的用例即是附加到正在运行的进程，方法是使用下面这行命令：</p>
-<pre>
-$ adb shell strace -f -p PID
+<pre class="devsite-terminal devsite-click-to-copy">
+adb shell strace -f -p PID
 </pre>
 <p><code>-f</code> 标记表明 strace 会附加到相应进程中的所有现有线程，以及之后会产生的所有新线程。</p>
 
@@ -40,15 +40,15 @@ $ adb shell strace -f -p PID
 <p>要在应用上使用 strace，请执行以下操作：</p>
 
 <ol>
-<li>为 strace 日志设置一个目录：<pre>
-$ adb shell setenforce 0
-$ adb shell mkdir /data/local/tmp/strace
-$ adb shell chmod 777 /data/local/tmp/strace
+<li>为 strace 日志设置一个目录：<pre class="devsite-click-to-copy">
+<code class="devsite-terminal">adb shell setenforce 0</code>
+<code class="devsite-terminal">adb shell mkdir /data/local/tmp/strace</code>
+<code class="devsite-terminal">adb shell chmod 777 /data/local/tmp/strace</code>
 </pre>
 </li>
 
-<li>在启动前选择要跟踪的进程：<pre>
-$ adb shell setprop wrap.com.google.android.browser "logwrapper strace -f -o /data/local/tmp/strace/strace.com.google.android.browser.txt"
+<li>在启动前选择要跟踪的进程：<pre class="devsite-terminal devsite-click-to-copy">
+adb shell setprop wrap.com.google.android.browser "logwrapper strace -f -o /data/local/tmp/strace/strace.com.google.android.browser.txt"
 </pre>
 </li>
 <li>正常启动该进程。</li>
@@ -57,9 +57,9 @@ $ adb shell setprop wrap.com.google.android.browser "logwrapper strace -f -o /da
 <h2 id="zygote-systrace">在 zygote 上使用</h2>
 <p>要在 zygote 上使用 strace，请修复相关的 <code>init.rc</code> zygote 行（需要使用 <code>adb shell setenforce 0</code>）：</p>
 
-<pre>
-$ cd system/core/
-$ patch -p1 &lt;&lt;EOF
+<pre class="devsite-click-to-copy">
+<code class="devsite-terminal">cd system/core/</code>
+<code class="devsite-terminal">patch -p1 &lt;&lt;EOF
 --- a/rootdir/init.zygote32.rc
 +++ b/rootdir/init.zygote32.rc
 @@ -1,4 +1,4 @@
@@ -68,7 +68,7 @@ $ patch -p1 &lt;&lt;EOF
      class main
      socket zygote stream 660 root system
      onrestart write /sys/android_power/request_state wake
-EOF
+EOF</code>
 </pre>
 
 <h2 id="get-logs-boot">获取 Android 启动期间的 strace 日志</h2>
@@ -76,7 +76,7 @@ EOF
 <p>要获取 Android 启动期间的 strace 日志，请执行以下更改：</p>
 
 <ul>
-<li>由于进程名称已从 <code>zygote</code> 改为 <code>strace</code>，给定服务可能会因缺少用于 <code>strace</code> 的 SELinux <code>file_context</code> 而无法启动。解决方法：在 <code>system/sepolicy/private/file_contexts</code> 中为 strace 添加一个新行，并将原始文件上下文复制过来。例如：<pre>
+<li>由于进程名称已从 <code>zygote</code> 改为 <code>strace</code>，给定服务可能会因缺少用于 <code>strace</code> 的 SELinux <code>file_context</code> 而无法启动。解决方法：在 <code>system/sepolicy/private/file_contexts</code> 中为 strace 添加一个新行，并将原始文件上下文复制过来。例如：<pre class="devsite-click-to-copy">
 /dev/socket/zygote      u:object_r:zygote_socket:s0
 + /system/xbin/strace u:object_r:zygote_socket:s0
 </pre>
@@ -85,10 +85,11 @@ EOF
 <li>添加内核命令，然后在 SELinux 宽容模式下启动相应设备。为此，请将 <code>androidboot.selinux=permissive</code> 添加到 <code>BOARD_KERNEL_CMDLINE</code>。（该变量在 <code>build/core/Makefile</code> 中将会变为仅供读取，但在 <code>/device/*/BoardConfig</code> 下则是始终可用。）
 
 <br />
-<br /><code>/device/google/marlin/sailfish/BoardConfig.mk</code> 中 Pixel (sailfish) 设备的示例：<pre>
+<br /><code>/device/google/marlin/sailfish/BoardConfig.mk</code> 中 Pixel (sailfish) 设备的示例：<pre class="devsite-click-to-copy">
 - BOARD_KERNEL_CMDLINE := ....  androidboot.hardware=sailfish ...
 +BOARD_KERNEL_CMDLINE := ....  androidboot.hardware=sailfish ...  androidboot.selinux=permissive
-</pre>待做出上述更改后，编译并刷写启动映像；这样一来，该设备便会在宽容模式下启动了。
+</pre>
+在完成上述更改之后，编译并刷写启动映像，设备便会以宽容模式启动。
 </li>
 </ul>
 

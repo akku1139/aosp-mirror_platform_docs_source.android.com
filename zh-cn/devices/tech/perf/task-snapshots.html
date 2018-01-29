@@ -1,0 +1,82 @@
+<html devsite><head>
+    <title>任务快照</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<h2 id="introduction">简介</h2>
+
+<p>
+任务快照是在 Android O 中引入的基础架构，可将窗口管理器中的最近任务缩略图和已保存平面这两者的屏幕截图进行合并。<em></em><em></em><em></em>最近任务缩略图用于在“最近”视图中呈现任务的最后状态。
+</p>
+
+<p>
+过去，当有 Activity 进入停止状态时，只要该 Activity 位于任务顶层，窗口管理器就不会销毁该 Activity 的表面。如果该 Activity 必须再次显示，窗口管理器便能够启动相应动画，而无需等待该 Activity 绘制完其第一帧，因为它能够使用这个已保存表面。
+</p>
+<h2 id="architecture">架构</h2>
+
+<p>
+通过任务快照，最近任务缩略图和已保存表面这两个概念合并在了一起。当有任务进入后台时，窗口管理器会将该任务的屏幕截图放入一个图形缓冲区中。只要任务顶层 Activity 的应用保留在内存中，该图形缓冲区就会保留在内存中。现在，当同一个 Activity 再次回到前面时，窗口管理器将会创建一个起始窗口 (TaskSnapshotSurface) 并附加图形缓冲区，而无需将任何内存复制到起始窗口的缓冲区队列。一旦该 Activity 绘制了其第一帧，任务快照起始窗口就会立即像常规启动画面一样平滑淡出。
+</p>
+
+<p>
+系统还会将同一个图形缓冲区通过 Binder 发送到 SystemUI，以用于在“最近”视图中绘制任务的预览状态。由于这只是对缓冲区的引用，因此通过 Binder 发送它只需要多占用很少的资源。当该图形缓冲区到达 SystemUI 时，将会被封装到硬件位图中，然后被绘制到屏幕上，而无需将任何内存上传到图形内存。
+</p>
+
+<h2 id="benefits">优点</h2>
+
+<p>
+这种新架构有以下三个主要优点：
+</p>
+
+<ul>
+<li>如果将任务快照用作起始窗口，则快照和实际内容之间会有一个很好的交叉淡入淡出过程。</li>
+<li>在 SystemUI 中绘制任务快照时，无需进行任何复制操作即可完成。以前则必须将位图复制到 Ashmem 中，然后再复制到图形内存。由于这种方法是将快照直接存储在图形内存中，因此无需进行任何复制操作。</li>
+<li>您在“最近”视图中看到的状态始终会与您在重新打开应用时首先看到的状态一致。拥有相同的缓冲区还能够节省大量内存。这就是“最近”视图现在能够以完整分辨率显示这些图像的原因。以前，系统会将采样减少 64% 以节省内存。</li>
+</ul>
+
+<h2 id="implementation">实现</h2>
+
+<p>
+该功能完全位于 Android 平台中。不需要集成，且不支持自定义。不过，设备制造商可以完全停用任务快照功能。
+</p>
+
+<p>
+要停用该功能，请修改以下函数：
+</p>
+
+<pre class="prettyprint">
+frameworks/base/services/core/java/com/android/server/wm/TaskSnapshotController.java#215
+</pre>
+
+<p>
+请注意，如果该功能被停用，“最近”视图将不会显示任何缩略图。在内存较低的设备上，该功能会被自动停用。
+</p>
+
+<h2 id="examples-and-source">示例和源代码</h2>
+
+<p>
+您可以在位于以下位置的 TaskSnapshot* 文件中找到该功能的其余代码：
+</p>
+
+<pre class="prettyprint">
+frameworks/base/+/master/services/core/java/com/android/server/wm/
+</pre>
+
+</body></html>
