@@ -27,7 +27,7 @@
 <ul>
 <li>对于独立的 SoC 和 OEM/ODM 内核开发的平台支持。Android O 建议以设备中的内核模块的形式构建和推出所有板专属代码。因此：
  <ul>
- <li>所有平台都应支持<a href="https://www.devicetree.org/" class="external">设备树</a>或<a href="http://www.uefi.org/acpi/specs" class="external">高级配置与电源接口 (ACPI)</a>，以描述所有不可检测的设备。</li>
+ <li>所有平台都应支持<a href="https://www.devicetree.org/" class="external">设备树</a>或<a href="http://www.uefi.org/acpi/specs" class="external">高级配置与电源接口 (ACPI)</a>，以便描述所有不可检测的设备。</li>
  <li>对于基于设备树的平台，应将板专属设备节点作为<a href="/devices/architecture/dto/index.html">叠加层</a>添加到内核设备树中。</li>
  </ul>
 </li>
@@ -127,7 +127,7 @@ CONFIG_MODULE_SIG_FORCE=y
 <li>SoC 供应商内核模块不应依赖 ODM 内核模块。</li>
 </ul>
 
-<p>在 Android 7.x 及更早版本中，<code>/vendor</code> 和 <code>/odm</code> 分区<strong>未</strong>提前装载。在 Android 8.0 中，为使模块能够从这些分区加载，已进行相关配置，以便为<a href="/devices/tech/ota/ab_updates">非 A/B 和 A/B 设备</a>提前装载分区。这还确保了在 Android 和充电模式下均装载分区。</p>
+<p>在 Android 7.x 及更早版本中，<code>/vendor</code> 和 <code>/odm</code> 分区<strong>不会</strong>提前装载。在 Android 8.0 中，为使模块能够从这些分区加载，已进行相关配置，以便为<a href="/devices/tech/ota/ab_updates">非 A/B 和 A/B 设备</a>提前装载分区。这还确保了在 Android 和充电模式下均装载分区。</p>
 
 <h3 id="android-build-system-support">Android 编译系统支持</h3>
 <p>在 <code>BoardConfig.mk</code> 中，Android 编译系统定义了 <code>BOARD_VENDOR_KERNEL_MODULES</code> 变量，该变量提供了用于供应商映像的内核模块的完整列表。此变量中列出的模块会被复制到位于 <code>/lib/modules/</code> 的供应商映像中，在 Android 中装载后会显示在 <code>/vendor/lib/modules</code> 中（根据上述要求）。下面是一个供应商内核模块的配置示例：</p>
@@ -196,7 +196,8 @@ on early-init
 <ol>
 <li>设备节点路径必须在 <code>fstab</code> 和设备树条目中使用其 by-name 符号链接。<em></em>例如，确保对分区进行命名且设备节点为 <code>/dev/block/…./by-name/{system,vendor,odm}</code>，而不是使用 <code>/dev/block/mmcblk0pX</code> 指定分区。
 </li>
-<li>在设备配置中（即 <code>device/<em>oem</em>/<em>project</em>/device.mk</code> 中）为产品 <code>PRODUCT_{SYSTEM,VENDOR}_VERITY_PARTITION</code> 和 <code>CUSTOM_IMAGE_VERITY_BLOCK_DEVICE</code> 指定的路径必须与 <code>fstab</code>/设备树条目中指定 by-name 的相应块设备节点相匹配。<em></em>例如：<pre class="prettyprint">
+<li>在产品的设备配置中（即 <code>device/<em>oem</em>/<em>project</em>/device.mk</code> 中）为产品 <code>PRODUCT_{SYSTEM,VENDOR}_VERITY_PARTITION</code> 和 <code>CUSTOM_IMAGE_VERITY_BLOCK_DEVICE</code> 指定的路径必须与 <code>fstab</code>/设备树条目中指定 by-name 的相应块设备节点相匹配。<em></em>例如：
+<pre class="prettyprint">
 PRODUCT_SYSTEM_VERITY_PARTITION := /dev/block/…./by-name/system
 PRODUCT_VENDOR_VERITY_PARTITION := /dev/block/…./by-name/vendor
 CUSTOM_IMAGE_VERITY_BLOCK_DEVICE := /dev/block/…./by-name/odm
@@ -360,7 +361,8 @@ fstab 条目采取以下形式：</p>
 <ul>
 <li>很多分区都是在 vbmeta 条目中指定的，因为这些分区<a href="https://android.googlesource.com/platform/external/avb/#The-VBMeta-struct">受 AVB 保护</a>。</li>
 <li>请务必包含所有 AVB 分区，即使仅提前装载了 <code>/vendor</code> 也是如此。</li>
-<li>请务必为 A/B 分区添加 <strong><code>slotselect</code></strong>。<pre class="prettyprint">
+<li>请务必为 A/B 分区添加 <strong><code>slotselect</code></strong>。
+<pre class="prettyprint">
 / {
   vbmeta {
       compatible = "android,vbmeta";
@@ -402,7 +404,7 @@ fstab 条目采取以下形式：</p>
 <li>分区大小取决于板。
  <ul>
  <li>DT 叠加层分区大小取决于设备以及主 SoC 内核 DT Blob 上所需的更改量。</li>
- <li>DTBO 分区的大小是构建 SoC 内核所需的更改数的函数。选择分区大小时需要为未来更新留出空间（通常，8MB 大小的分区已绰绰有余）。</li>
+ <li>DTBO 分区的大小是编译 SoC 内核所需的更改数量对应的函数。选择分区大小时需要为未来更新留出空间（通常，8MB 大小的分区已绰绰有余）。</li>
  </ul>
 </li>
 </ul>

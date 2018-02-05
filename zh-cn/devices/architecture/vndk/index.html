@@ -23,16 +23,16 @@
 <p>供应商原生开发套件 (VNDK) 是专门用来让供应商实现其 HAL 的一组库。VNDK 包含在 <code>system.img</code> 中，并在运行时与供应商代码动态关联。</p>
 
 <h2 id="why-vndk">为何要使用 VNDK？</h2>
-<p>Android O 支持 Framework-Only 更新，在此类更新中，系统分区可以升级到最新版本，而供应商分区保持不变。这意味着在不同时间编译的二进制文件必须能够相互配合使用；VNDK 为 Android 版本迭代时发生的 API/ABI 变更所导致的问题提供了解决途径。</p>
+<p>Android 8.0 及更高版本支持框架专用更新，在此类更新中，系统分区可以升级到最新版本，而供应商分区保持不变。这意味着在不同时间编译的二进制文件必须能够相互配合使用；VNDK 为 Android 版本迭代时发生的 API/ABI 变更所导致的问题提供了解决途径。</p>
 
-<p>Framework-Only 更新面临着以下挑战：</p>
+<p>框架专用更新面临着以下挑战：</p>
 
 <ul>
-<li><strong>框架模块与供应商模块之间的依赖关系</strong>。在 Android O 之前的版本中，两种模块可以互相关联。但是，来自供应商模块的依赖关系对框架模块开发施加了不必要的限制。</li>
-<li><strong>AOSP 库的扩展</strong>。Android O 要求所有 Android 设备在系统分区被替换为标准 AOSP 系统映像时，都可以通过 CTS 测试。不过，当供应商扩展 AOSP 库以提高性能或为其 HIDL 实现添加额外的功能时，使用标准 AOSP 系统映像来刷写系统分区可能会破坏供应商的 HIDL 实现（有关如何防止此类破坏的指南，请参阅 <a href="/devices/architecture/vndk/extensions.html">VNDK 扩展</a>）。</li>
+<li><strong>框架模块与供应商模块之间的依赖关系</strong>。在 Android 8.0 之前的版本中，两种模块可以互相关联。但是，来自供应商模块的依赖关系对框架模块开发施加了不必要的限制。</li>
+<li><strong>AOSP 库的扩展</strong>。Android 8.0 及更高版本要求所有 Android 设备在系统分区被替换为标准常规系统映像 (GSI) 时，都可以通过 CTS 测试。不过，当供应商扩展 AOSP 库以提高性能或为其 HIDL 实现添加额外的功能时，使用标准 GSI 来刷写系统分区可能会破坏供应商的 HIDL 实现（有关如何防止此类破坏的指南，请参阅 <a href="/devices/architecture/vndk/extensions.html">VNDK 扩展</a>）。</li>
 </ul>
 
-<p>为了克服这些挑战，Android O 引入了几项技术，例如 VNDK（如本部分中所述）、<a href="/devices/architecture/hidl/index.html">HIDL</a>、hwbinder、<a href="/devices/architecture/dto/index.html">设备树叠加层</a>和 sepolicy 叠加层。</p>
+<p>为了克服这些挑战，Android 8.0 引入了几项技术，例如 VNDK（如本部分中所述）、<a href="/devices/architecture/hidl/index.html">HIDL</a>、hwbinder、<a href="/devices/architecture/dto/index.html">设备树叠加层</a>和 sepolicy 叠加层。</p>
 
 <h2 id="resources">VNDK 资源</h2>
 <p>本部分包含以下 VNDK 资源：</p>
@@ -40,15 +40,16 @@
 <li><em><a href="#vndk-concepts">VNDK 概念</a></em>（参见下文）介绍了框架共享库、Same-Process HAL (SP-HAL) 和 VNDK 术语。
 </li>
 <li><em><a href="/devices/architecture/vndk/extensions.html">VNDK 扩展</a></em>对供应商专属更改进行了分类。例如，具有供应商模块所依赖的扩展功能的库必须复制到供应商分区中，但禁止进行 ABI 不兼容的更改。</li>
-<li><em><a href="/devices/architecture/vndk/deftool.html">VNDK 定义工具</a></em>可帮助您将源代码树迁移到 Android O。</li>
+<li><em><a href="/devices/architecture/vndk/build-system.html">VNDK 编译系统支持</a></em>介绍了与 VNDK 相关的编译系统配置和模块定义语法。</li>
+<li><em><a href="/devices/architecture/vndk/deftool.html">VNDK 定义工具</a></em>可帮助您将源代码树迁移到 Android 8.0 及更高版本。</li>
 <li><em><a href="/devices/architecture/vndk/linker-namespace.html">链接器命名空间</a></em>提供对共享库关联的精细控制。
 </li>
-<li><em><a href="/devices/architecture/vndk/dir-rules-sepolicy.html">目录、规则和 sepolicy</a></em> 定义了运行 Android O 的设备的目录布局，以及 VNDK 规则和关联的 sepolicy。</li>
+<li><em><a href="/devices/architecture/vndk/dir-rules-sepolicy.html">目录、规则和 sepolicy</a></em> 定义了运行 Android 8.0 及更高版本的设备的目录布局，以及 VNDK 规则和关联的 sepolicy。</li>
 <li><em><a href="../images/vndk_design_android_o.pdf">Android O 中的 VDNK 设计</a></em>演示文稿阐述了 Android O 中使用的 VDNK 基本概念。</li>
 </ul>
 
 <h2 id="concepts">VNDK 概念</h2>
-<p>在理想的 Android O 环境中，框架进程不加载供应商共享库，所有供应商进程仅加载供应商共享库（和一部分框架共享库），而框架进程与供应商进程之间的通信由 HIDL 和硬件 binder 控制。</p>
+<p>在理想的 Android 8.0 及更高版本环境中，框架进程不加载供应商共享库，所有供应商进程仅加载供应商共享库（和一部分框架共享库），而框架进程与供应商进程之间的通信由 HIDL 和硬件 binder 控制。</p>
 
 <p>这样的环境存在以下可能：来自框架共享库的稳定、公共 API 可能不足以满足供应商模块开发者的需求（尽管 API 在不同的 Android 版本之间会有所变化），要防止出现这种情况，供应商进程需要能够访问一部分框架共享库。此外，由于性能要求可能会导致折中方案，因此必须区别对待某些对响应时间要求严格的 HAL。</p>
 
@@ -65,10 +66,10 @@
 <p>根据共享库的特性不同，使用的方法也有差异。因此，框架共享库可分为以下三个子类别：</p>
 
 <ul>
-<li><em></em><em></em><em></em>LL-NDK 和 SP-NDK 是已知稳定的框架共享库。它们的开发者致力于保持其 API/ABI 的稳定性。
+<li><em></em><em></em>LL-NDK 库是已知稳定的框架共享库。它们的开发者致力于保持其 API/ABI 的稳定性。
  <ul>
- <li>LL-NDK 包含以下库：<code>libandroid_net.so</code>、<code>libc.so</code>、<code>libstdc++.so</code>、<code>libdl.so</code>、<code>liblog.so</code>、<code>libm.so</code>、<code>libz.so</code> 和 <code>libvndksupport.so</code>。</li>
- <li>SP-NDK 包含以下库：<code>libEGL.so</code>、<code>libGLESv1_CM.so</code>、<code>libGLESv2.so</code>、<code>libGLESv3.so</code>、<code>libvulkan.so</code>、<code>libnativewindow.so</code> 和 <code>libsync.so</code>。</li>
+ <li>LL-NDK 包含以下库：<code>libEGL.so</code>、<code>libGLESv1_CM.so</code>、<code>libGLESv2.so</code>、<code>libGLESv3.so</code>、<code>libandroid_net.so</code>、<code>libc.so</code>、<code>libdl.so</code>、<code>liblog.so</code>、<code>libm.so</code>、<code>libnativewindow.so</code>、<code>libsync.so</code> 和 <code>libvndksupport.so</code>
+</li>
  </ul>
 </li>
 <li><em></em><em></em>符合条件的 VNDK 库 (VNDK) 是指可以安全复制两次的框架共享库。<em></em><em></em>框架模块和供应商模块可以与其各自的库副本相关联。框架共享库只有满足以下条件才能成为符合条件的 VNDK 库：
@@ -92,15 +93,16 @@
 
 <h3 id="sp-hal">Same-Process HAL (SP-HAL)</h3>
 <p>
-<em></em><em></em><em></em><em></em>Same-Process HAL (SP-HAL) 是一组预先确定的 HAL，作为供应商共享库进行实现，并被加载到框架进程中。SP-HAL 由链接器命名空间（控制共享库可见的库和符号）进行隔离。SP-HAL 必须仅依赖于 LL-NDK、SP-NDK 和 VNDK-SP。<em></em><em></em><em></em></p>
+<em></em><em></em><em></em><em></em>Same-Process HAL (SP-HAL) 是一组预先确定的 HAL，作为供应商共享库进行实现，并被加载到框架进程中。SP-HAL 由链接器命名空间（控制共享库可见的库和符号）进行隔离。SP-HAL 必须仅依赖于 LL-NDK 和 VNDK-SP<em></em><em></em>。</p>
 
 <p>VNDK-SP 是一部分预定义的符合条件的 VNDK 库。我们会仔细审查 VNDK-SP 库，以确保将 VNDK-SP 库双重加载到框架进程中不会导致问题。SP-HAL 和 VNDK-SP 均由 Google 定义。</p>
 
 <p>以下库是经过批准的 SP-HAL：</p>
 
 <ul>
-<li><code>libGLESv2_${driver}.so</code></li>
 <li><code>libGLESv1_CM_${driver}.so</code></li>
+<li><code>libGLESv2_${driver}.so</code></li>
+<li><code>libGLESv3_${driver}.so</code></li>
 <li><code>libEGL_${driver}.so</code></li>
 <li><code>vulkan.${driver}.so</code></li>
 <li><code>android.hardware.renderscript@1.0-impl.so</code></li>
@@ -123,7 +125,9 @@
 <li><code>libhidlbase.so</code></li>
 <li><code>libhidltransport.so</code></li>
 <li><code>libhwbinder.so</code></li>
+<li><code>libion.so</code></li>
 <li><code>libutils.so</code></li>
+<li><code>libz.so</code></li>
 </ul>
 
 <p>
@@ -169,6 +173,28 @@
 <li><em></em><em></em><em></em>供应商模块是指供应商可执行文件和供应商共享库。</li>
 <li><em></em><em></em>供应商进程是指供应商可执行文件（例如 </li>
 <code>/vendor/bin/android.hardware.camera.provider@2.4-service</code>）产生的进程。
+</ul>
+
+<aside class="note"><strong>注意</strong>：常规系统映像 (GSI) 代表根据相应分支（与版本分支类似，但修正了一些错误或进行了一些泛化）编译并由 Google 发布的标准 Android 系统映像。<em></em></aside>
+
+<h2 id="document-history">文档历史记录</h2>
+
+<p>本部分跟踪了对 VNDK 文档的更改。</p>
+
+<h3 id="changes-81">Android 8.1 的变化</h3>
+
+<ul>
+ <li>SP-NDK 库已合并到 LL-NDK 库中。</li>
+
+ <li>在 RS 命名空间部分中将 <code>libui.so</code> 替换为 <code>libft2.so</code>。包含 <code>libui.so</code> 会出错。</li>
+
+ <li>将 <code>libGLESv3.so</code> 和 <code>libandroid_net.so</code> 添加到 LL-NDK 库中。</li>
+
+ <li>将 <code>libion.so</code> 添加到 VNDK-SP 库中。</li>
+
+ <li>从 LL-NDK 库中移除 <code>libstdc++.so</code>。改用 <code>libc++.so</code>。某些版本的独立工具链可以将 <code>-lstdc++</code> 添加到默认链接器标记中。要停用默认设置，请将 <code>-nodefaultlibs -lc -lm -ldl</code> 添加到 <code>LDFLAGS</code> 中。</li>
+
+ <li>将 <code>libz.so</code> 从 LL-NDK 移到 VNDK-SP 库中。在某些配置中，<code>libz.so</code> 可能仍是 LL-NDK。但是，应该没有明显的差异。</li>
 </ul>
 
 </body></html>

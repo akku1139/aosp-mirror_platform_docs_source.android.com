@@ -1,0 +1,296 @@
+<html devsite><head>
+    <title>VNDK 编译系统支持</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>编译系统在 Android 8.1 中具有内置的 VNDK 支持。如果启用了 VNDK 支持，编译系统就会检查各模块之间的依赖关系，为供应商模块编译特定于供应商的变体，并自动将这些模块安装到指定目录中。</p>
+
+<p>以下示例演示了基本概念：</p>
+
+<p><img src="../images/treble_vndk_androidbp.png" alt="具有 vendor_available:true 和 vndk.enabled:true 的 libexample"/></p>
+<figcaption><strong>图 1.</strong> 启用 VNDK 支持。</figcaption>
+
+<p><code>Android.bp</code> 模块定义定义了一个名为 <code>libexample</code> 的库。<code>vendor_available</code> 属性表示框架模块和供应商模块均可能依赖于 <code>libexample</code>。在本示例中，框架可执行文件 <code>/system/bin/foo</code> 和供应商可执行文件 <code>/vendor/bin/bar</code> 均依赖于 <code>libexample</code>，并且在其 <code>shared_libs</code> 属性中具有 <code>libexample</code>。</p>
+
+<p>如果框架模块和供应商模块均使用 <code>libexample</code>，则编译 <code>libexample</code> 的两个变体。核心变体（以 <code>libexample</code> 命名）由框架模块使用，供应商变体（以 <code>libexample.vendor</code> 命名）由供应商模块使用。</p>
+
+<p>这两个变体将安装到不同的目录中。核心变体将安装到 <code>/system/lib[64]/libexample.so</code> 中。供应商变体将安装到 <code>/system/lib[64]/vndk/libexample.so</code> 中，因为 <code>vndk.enabled</code> 为 <code>true</code>。</p>
+
+<p>有关更多详情，请参阅<a href="#module-definition">模块定义</a>。</p>
+
+<h2 id="configuration">配置</h2>
+
+<p>要为产品设备启用完整编译系统支持，请将 <code>BOARD_VNDK_VERSION</code> 添加到 <code>BoardConfig.mk</code>：</p>
+
+<pre class="prettyprint">BOARD_VNDK_VERSION := current</pre>
+
+<h3 id="migration-notes">迁移备注</h3>
+
+<p>将 <code>BOARD_VNDK_VERSION</code> 添加到 <code>BoardConfig.mk</code> 会产生全局效应。如果是在 <code>BoardConfig.mk</code> 中定义，系统会检查所有模块。没有将违规模块列入黑名单或白名单的机制。建议您在清除所有不必要的依赖项后再添加 <code>BOARD_VNDK_VERSION</code>。</p>
+
+<p>在迁移过程中，您可以通过在环境变量中设置 <code>BOARD_VNDK_VERSION</code> 来测试和编译模块：</p>
+
+<pre class="prettyprint">$ BOARD_VNDK_VERSION=current m module_name.vendor</pre>
+
+<p>而另一个副作用是，默认的全局标头搜索路径会被移除。<em></em>如果启用 <code>BOARD_VNDK_VERSION</code>，则在默认情况下，系统不会添加以下默认标头搜索路径：</p>
+
+<ul>
+ <li>frameworks/av/include</li>
+ <li>frameworks/native/include</li>
+ <li>frameworks/native/opengl/include</li>
+ <li>hardware/libhardware/include</li>
+ <li>hardware/libhardware_legacy/include</li>
+ <li>hardware/ril/include</li>
+ <li>libnativehelper/include</li>
+ <li>libnativehelper/include_deprecated</li>
+ <li>system/core/include</li>
+ <li>system/media/audio/include</li>
+</ul>
+
+<p>如果某个模块依赖于这些目录中的标头，则其作者必须明确指定与 <code>header_libs</code>、<code>static_libs</code> 和/或 <code>shared_libs</code> 的依赖关系。</p>
+
+<h2 id="module-definition">模块定义</h2>
+
+<p>要使用 <code>BOARD_VNDK_VERSION</code> 编译 Android，开发者必须在 <code>Android.mk</code> 或 <code>Android.bp</code> 中修改其模块定义。本小节介绍了不同种类的模块定义，一些与 VNDK 相关的模块属性，以及在编译系统中实现的依赖性检查。</p>
+
+<h3 id="vendor-modules">供应商模块</h3>
+
+<p>供应商模块是特定于供应商的可执行文件或共享库（必须将这些模块安装到供应商分区中）。在 <code>Android.bp</code> 文件中，供应商模块必须将供应商或专有属性设置为 <code>true</code>。在 <code>Android.mk</code> 文件中，供应商模块必须将 <code>LOCAL_VENDOR_MODULE</code> 或 <code>LOCAL_PROPRIETARY_MODULE</code> 设置为 <code>true</code>。</p>
+
+<p>如果定义了 <code>BOARD_VNDK_VERSION</code>，则编译系统不允许在供应商模块和框架模块之间建立依赖关系。在以下情况下，编译系统会发出错误：</p>
+
+<ul>
+ <li>不具有 <code>vendor:true</code> 的模块依赖于具有 <code>vendor:true</code> 的模块，或</li>
+
+ <li>具有 <code>vendor:true</code> 的模块依赖于既不具有 <code>vendor:true</code> 也不具有 <code>vendor_available:true</code> 的非 <code>llndk_library</code> 模块。</li>
+</ul>
+
+<p>前面提到的依赖性检查适用于 <code>Android.bp</code> 中的 <code>header_libs</code>、<code>static_libs</code> 和 <code>shared_libs</code>，也适用于 <code>Android.mk</code> 中的 <code>LOCAL_HEADER_LIBRARIES</code>、<code>LOCAL_STATIC_LIBRARIES</code> 和 <code>LOCAL_SHARED_LIBRARIES</code>。</p>
+
+<h3 id="ll-ndk">LL-NDK</h3>
+
+<p>LL-NDK 共享库是具有稳定 ABI 的共享库。框架模块和供应商模块均具有相同的最新实现。对于每个 LL-NDK 共享库，<code>Android.bp</code> 文件中都有 <code>llndk_library</code> 模块定义：</p>
+
+<pre class="prettyprint">llndk_library {
+    name: "libvndksupport",
+    symbol_file: "libvndksupport.map.txt",
+}</pre>
+
+<p>该模块定义指定了模块名称和符号文件，后者描述了应该对供应商模块可见的符号。例如：</p>
+
+<pre class="prettyprint">LIBVNDKSUPPORT {
+  global:
+    android_load_sphal_library; # vndk
+    android_unload_sphal_library; # vndk
+  local:
+    *;
+};</pre>
+
+<p>编译系统会根据符号文件为供应商模块生成存根共享库。如果启用了 <code>BOARD_VNDK_VERSION</code>，供应商模块将与这些存根共享库建立关联。</p>
+
+<p>只有在满足以下条件时，存根共享库中才会包含符号：</p>
+
+<ul>
+ <li>它未在以 <code>_PRIVATE</code> 或 <code>_PLATFORM</code> 结尾的部分中定义。</li>
+
+ <li>它不含 <code>#platform-only</code> 标记，并且</li>
+
+ <li>它不含 <code>#introduce*</code> 标记或者该标记与目标匹配。</li>
+</ul>
+
+<aside class="note"><strong>注意</strong>：供应商不得定义自己的 LL-NDK 共享库，因为供应商模块无法在常规系统映像 (GSI) 中找到它们。<em></em></aside>
+
+<h3 id="vndk">VNDK</h3>
+
+<p>在 <code>Android.bp</code> 文件中，<code>cc_library</code>、<code>cc_library_static</code>、<code>cc_library_shared</code> 和 <code>cc_library_headers</code> 模块定义支持三个与 VNDK 相关的属性：<code>vendor_available</code>、<code>vndk.enabled</code> 和 <code>vndk.support_system_process</code>。</p>
+
+<p>如果 <code>vendor_available</code> 或 <code>vndk.enabled</code> 为 <code>true</code>，则可以编译两个变体（核心变体和供应商变体）。<em></em><em></em>核心变体应被视为框架模块，而供应商变体应被视为供应商模块。如果某些框架模块依赖于此模块，则会编译核心变体。如果某些供应商模块依赖于此模块，则会编译供应商变体。</p>
+
+<p>编译系统会强制执行以下依赖性检查：</p>
+
+<ul>
+ <li>核心变体始终供框架专用，无法供供应商模块访问。</li>
+
+ <li>供应商变体始终无法供框架模块访问。</li>
+
+ <li>供应商变体的所有依赖项（在 <code>header_libs</code>、<code>static_libs</code> 和/或 <code>shared_libs</code> 中指定）必须是 <code>llndk_library</code> 或具有 <code>vendor_available</code> 或 <code>vndk.enabled</code> 的模块。</li>
+
+ <li>如果 <code>vendor_available</code> 为 <code>true</code>（Android 8.1 的唯一有效值），则所有供应商模块均可访问供应商变体。</li>
+
+ <li>在 AOSP master 中，如果 <code>vendor_available</code> 为 <code>false</code>，则供应商变体只能供其他 VNDK 或 VNDK-SP 模块访问（即，具有 <code>vendor:true</code> 的模块无法与 <code>vendor_available:false</code> 模块相关联）。</li>
+</ul>
+
+<p><code>cc_library</code> 或 <code>cc_library_shared</code> 的默认安装路径由以下规则确定：</p>
+
+<ul>
+ <li>
+  将核心变体安装到 <code>/system/lib[64]</code> 中。
+ </li>
+
+ <li>
+  供应商变体安装路径可能会有所不同：
+
+  <ul>
+   <li>
+    如果 <code>vndk.enabled</code> 为 <code>false</code>，则将供应商变体安装到 <code>/vendor/lib[64]</code> 中。
+   </li>
+
+   <li>
+    如果 <code>vndk.enabled</code> 为 <code>true</code>，则 <code>vndk.support_system_process</code> 可以是 <code>true</code> 或 <code>false</code>。
+
+    <ul>
+     <li>
+      如果 <code>vndk.support_system_process</code> 为 <code>false</code>，则将供应商变体安装到 <code>/system/lib[64]/vndk</code> 中。
+     </li>
+
+     <li>
+      反之，将供应商变体安装到 <code>/system/lib[64]/vndk-sp</code> 中。
+     </li>
+    </ul>
+   </li>
+  </ul>
+ </li>
+</ul>
+
+<p>下表对编译系统处理供应商变体的方式进行了总结：</p>
+
+<table>
+ <tbody><tr>
+  <th rowspan="2"><p><code>vendor_available</code></p></th>
+  <th colspan="2"><p><code>vndk</code></p></th>
+  <th rowspan="2"><p><code>Vendor variant descriptions</code></p></th>
+ </tr>
+
+ <tr>
+  <th><p><code>enabled</code></p></th>
+  <th><p><code>support_same_process</code></p></th>
+ </tr>
+
+ <tr>
+  <td rowspan="4"><p><code>true</code></p></td>
+  <td rowspan="2"><p><code>false</code></p></td>
+  <td><p><code>false</code></p></td>
+  <td>
+   <p>供应商变体是 VND-ONLY<em></em></p>
+   <p>共享库将安装到 <code>/vendor/lib[64]</code> 中。</p>
+  </td>
+ </tr>
+
+ <tr>
+  <td><p><code>true</code></p></td>
+  <td><p><em></em>无效（编译错误）</p></td>
+ </tr>
+
+ <tr>
+  <td rowspan="2"><p><code>true</code></p></td>
+  <td><p><code>false</code></p></td>
+  <td>
+   <p>供应商变体是 VNDK<em></em>。</p>
+   <p>共享库将安装到 <code>/system/lib[64]/vndk</code> 中。</p>
+  </td>
+ </tr>
+
+ <tr>
+  <td><p><code>true</code></p></td>
+  <td>
+   <p>供应商变体是 VNDK-SP<em></em>。</p>
+   <p>共享库将安装到 <code>/system/lib[64]/vndk-sp</code> 中。</p>
+  </td>
+ </tr>
+
+ <tr>
+  <td rowspan="4"><p><code>false</code></p></td>
+  <td rowspan="2"><p><code>false</code></p></td>
+  <td><p><code>false</code></p></td>
+  <td><p>没有供应商变体。此模块为 FWK-ONLY。<em></em></p></td>
+ </tr>
+
+ <tr>
+  <td><p><code>true</code></p></td>
+  <td><p><em></em>无效（编译错误）</p></td>
+ </tr>
+
+ <tr>
+  <td rowspan="2"><p><code>true</code></p></td>
+  <td><p><code>false</code></p></td>
+  <td>
+   <p>供应商变体是 VNDK-Indirect。<em></em></p>
+   <p>共享库将安装到 <code>/system/lib[64]/vndk</code> 中。</p>
+   <p>这些变体不得由供应商模块直接使用。</p>
+   <p>AOSP master（而非 Android 8.1）中的新设置。</p>
+  </td>
+ </tr>
+
+ <tr>
+  <td><p><code>true</code></p></td>
+  <td>
+   <p>供应商变体是 VNDK-SP-Indirect-Private。<em></em></p>
+   <p>共享库将安装到 <code>/system/lib[64]/vndk-sp</code> 中。</p>
+   <p>这些变体不得由供应商模块直接使用。</p>
+   <p>AOSP master（而非 Android 8.1）中的新设置。</p>
+  </td>
+ </tr>
+</tbody></table>
+
+<aside class="note"><strong>注意</strong>：供应商可以为其模块设置 <code>vendor_available</code>。但是，供应商既不得设置 <code>vndk.enabled</code> 也不得设置 <code>vndk.support_system_process</code>，因为供应商模块无法在 GSI 中找到它们。</aside>
+
+<h3 id="conditional-compilation">条件编译</h3>
+
+<p>如果核心变体和供应商变体之间存在一些细微差异，您可以使用 <code>target.vendor</code> 为条件编译指定不同的选项。例如：</p>
+
+<pre class="prettyprint">cc_library {
+    name: "libconditional_example",
+    srcs: ["fwk.c", "both.c"],
+    shared_libs: ["libfwk_only", "libboth"],
+    target: {
+        vendor: {
+            exclude_srcs: ["fwk.c"],
+            exclude_shared_libs: ["libfwk_only"],
+            cflags: ["-DVENDOR_VARIANT=1"],
+            cppflags: ["-DVENDOR_VARIANT=1"],
+        },
+    },
+}</pre>
+
+<p>在本示例中，<code>libconditional_example</code> 的核心变体包含 <code>fwk.c</code> 和 <code>both.c</code> 的代码，并且依赖于共享库 <code>libfwk_only</code> 和 <code>libboth</code>。</p>
+
+<p>另一方面，<code>libconditional_example</code> 的供应商变体仅包含 <code>both.c</code> 中的代码，因为 <code>fwk.c</code> 已被 <code>exclude_srcs</code> 属性排除。同样，<code>libconditional_example</code> 仅依赖于共享库 <code>libboth</code>，因为 <code>libfwk_only</code> 已被 <code>exclude_shared_libs</code> 属性排除。<code>cflags</code> 和 <code>cppflags</code> 也可以指定特定于供应商的选项。</p>
+
+<h3 id="product-packages">产品包</h3>
+
+<p>在 Android 编译系统中，变量 <code>PRODUCT_PACKAGES</code> 指定应安装到设备中的可执行文件、共享库或软件包。指定模块的传递依赖项也会隐式安装到设备中。</p>
+
+<p>如果启用了 <code>BOARD_VNDK_VERSION</code>，具有 <code>vendor_available</code> 或 <code>vndk.enabled</code> 的模块会得到特殊处理。如果框架模块依赖于具有 <code>vendor_available</code> 或 <code>vndk.enabled</code> 的模块，则核心变体将纳入传递安装集中。同样，如果供应商模块依赖于具有 <code>vendor_available</code> 或 <code>vndk.enabled</code> 的模块，则供应商变体将纳入传递安装集中。</p>
+
+<p>当相关依赖项对编译系统不可见时（例如，可以在运行时使用 <code>dlopen()</code> 打开的共享库），您应该在 <code>PRODUCT_PACKAGES</code> 中指定模块名称来明确安装这些模块。</p>
+
+<p>如果某个模块具有 <code>vendor_available</code> 或 <code>vndk.enabled</code>，则模块名称代表该模块的核心变体。要在 <code>PRODUCT_PACKAGES</code> 中明确指定供应商变体，请将 <code>.vendor</code> 后缀附加到模块名称上。例如：</p>
+
+<pre class="prettyprint">cc_library {
+    name: "libexample",
+    srcs: ["example.c"],
+    vendor_available: true,
+}</pre>
+
+<p>在本示例中，<code>libexample</code> 代表 <code>/system/lib[64]/libexample.so</code>，<code>libexample.vendor</code> 代表 <code>/vendor/lib[64]/libexample.so</code>。要安装 <code>/vendor/lib[64]/libexample.so</code>，请将 <code>libexample.vendor</code> 添加到 <code>PRODUCT_PACKAGES</code>：</p>
+
+<pre class="prettyprint">PRODUCT_PACKAGES += libexample.vendor</pre>
+
+</body></html>

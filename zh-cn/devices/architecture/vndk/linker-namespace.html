@@ -20,104 +20,699 @@
       limitations under the License.
   -->
 
-<p>链接器命名空间是一种控制共享库搜索路径以及打开目录中库的权限的机制。</p>
+<p>动态链接器解决了 Treble VNDK 设计中的两个难题：</p>
 
-<h2 id="framework-processes">框架进程</h2>
-<h3 id="default-namespace">默认命名空间</h3>
-<p>搜索路径和允许的路径：</p>
-<ol>
-<li><code>/system/lib[64]</code></li>
-<li><code>/vendor/lib[64]</code> # 在 Android O 中已弃用（仅适用于旧版模块）</li>
-</ol>
-
-<h3 id="sp-hal-namespace">SP-HAL 命名空间</h3>
-<p>搜索路径和允许的路径：</p>
-<ol>
-<li><code>/vendor/lib[64]/egl</code></li>
-<li><code>/vendor/lib[64]/hw</code></li>
-<li><code>/vendor/lib[64]</code></li>
-</ol>
-
-<p>从其他命名空间导入的共享库：</p>
 <ul>
-<li>由<strong>默认</strong>命名空间导出的库：
- <ul>
- <li>LL-NDK：<code>libc.so</code>、<code>libm.so</code>、<code>libdl.so</code>、<code>libstdc++.so</code>、<code>liblog.so, libz.so</code></li>
- <li>SP-NDK：<code>libEGL.so</code>、<code>libGLESv1_CM.so</code>、<code>libGLESv2.so</code>、<code>libnativewindow.so</code>、<code>libsync.so</code>、<code>libvndksupport.so</code></li>
- </ul>
-</li>
-<li>由 <strong>vndk</strong> 命名空间导出的库：<code>android.hardware.renderscript@1.0.so</code>、<code>android.hardware.graphics.allocator@2.0.so</code>、<code>android.hardware.graphics.mapper@2.0.so</code>、<code>android.hardware.graphics.common@1.0.so</code>、<code>libhwbinder.so</code>、<code>libbase.so</code>、<code>libcutils.so</code>、<code>libhardware.so</code>、<code>libhidlbase.so</code>、<code>libhidltransport.so</code>、<code>libutils.so</code>、<code>libc++.so</code>
-</li>
-<li>由 <strong>rs</strong> 命名空间导出的库：<code>libRS_internal.so</code>
-</li>
+ <li>将 SP-HAL 共享库及其依赖项（包括 VNDK-SP 库）加载到框架进程中。应该有一些防止出现符号冲突的机制。</li>
+
+ <li><code>dlopen()</code> 和 <code>android_dlopen_ext()</code> 可能会引入一些在编译时不可见的运行时依赖关系，这些依赖关系使用静态分析很难检测到。</li>
 </ul>
 
-<h3 id="vndk-vndk-sp-namespace">VNDK (VNDK-SP) 命名空间</h3>
-<p>搜索路径：</p>
-<ol>
-<li><code>/vendor/lib[64]/vndk-sp</code></li>
-<li><code>/system/lib[64]/vndk-sp</code></li>
-<li><code>/vendor/lib[64]</code></li>
-</ol>
+<p>这两个难题可以通过链接器命名空间机制来解决。<em></em>链接器命名空间机制由动态链接器提供，可以隔离不同链接器命名空间中的共享库，以确保具有相同库名称和不同符号的库不会发生冲突。</p>
 
-<p>允许的路径：</p>
-<ul>
-<li><code>/vendor/lib[64]/vndk-sp</code></li>
-<li><code>/system/lib[64]/vndk-sp</code></li>
-<li><code>/vendor/lib[64]</code></li>
-<li><code>/vendor/lib[64]/hw</code></li>
-<li><code>/vendor/lib[64]/egl</code></li>
-</ul>
+<p>另一方面，链接器命名空间机制可提供相应的灵活性，从而将由一个链接器命名空间导出的某些共享库用于另一个链接器命名空间。这些导出的共享库可能会成为对其他程序公开的应用编程接口，同时在其链接器命名空间中隐藏实现细节。</p>
 
-<p>从其他命名空间导入的共享库：</p>
+<p>例如，<code>/system/lib[64]/libcutils.so</code> 和 <code>/system/lib[64]/vndk-sp/libutils.so</code> 是两个共享库。这两个库可能有不同的符号。它们将加载到不同的链接器命名空间中，以便框架模块可以依赖于 <code>/system/lib[64]/libcutils.so</code>，SP-HAL 共享库可以依赖于 <code>/system/lib[64]/vndk-sp/libcutils.so</code>。</p>
+
+<p>另一方面，<code>/system/lib[64]/libc.so</code> 是由一个链接器命名空间导出而后又被导入到许多链接器命名空间中的公共库。<code>/system/lib[64]/libc.so</code> 的依赖项（例如 <code>libnetd_client.so</code>）将被加载到 <code>/system/lib[64]/libc.so</code> 所在的命名空间中。其他命名空间将无法访问这些依赖项。这种机制会在提供公共接口的同时封装实现细节。</p>
+
+<h2 id="how-does-it-work">工作原理</h2>
+
+<p>动态链接器负责加载 <code>DT_NEEDED</code> 条目中指定的共享库，或由 <code>dlopen()</code> 或 <code>android_dlopen_ext()</code> 的参数指定的共享库。在这两种情况下，动态链接器都会找出调用程序所在的链接器命名空间，并尝试将相关依赖项加载到同一个链接器命名空间中。如果动态链接器无法将共享库加载到指定的链接器命名空间中，它会向关联的链接器命名空间索取导出的共享库。</p>
+
+<h2 id="configuration-file-format">配置文件格式</h2>
+
+<p>配置文件格式取决于 INI 文件格式。典型的配置文件如下所示：</p>
+
+<pre class="prettyprint">
+dir.system = /system/bin
+dir.vendor = /vendor/bin
+
+[system]
+additional.namespaces = sphal
+
+namespace.default.isolated = true
+namespace.default.search.paths = /system/${LIB}:/vendor/${LIB}
+namespace.default.permitted.paths = /system/${LIB}:/vendor/${LIB}
+
+namespace.sphal.isolated = true
+namespace.sphal.visible = true
+namespace.sphal.search.paths = /vendor/${LIB}
+namespace.sphal.permitted.paths = /vendor/${LIB}
+namespace.sphal.links = default
+namespace.sphal.link.default.shared_libs = libc.so:libm.so
+
+[vendor]
+namespace.default.isolated = false
+namespace.default.search.paths = /vendor/${LIB}:/system/${LIB}
+namespace.default.permitted.paths = /vendor/${LIB}:/system/${LIB}
+</pre>
+
+<p>首先，<code>ld.config.txt</code> 的开头有几个 <code>dir.${section}</code> 属性：</p>
+
+<pre class="prettyprint">
+dir.${section} = /path/to/bin/directory
+</pre>
+
+<p>这些属性决定了将应用于相应进程的一系列规则。<em></em>例如，如果主可执行文件位于 <code>/system/bin</code> 中，则会应用 <code>[system]</code> 中的规则。<em></em>同样，如果主可执行文件位于 <code>/vendor/bin</code> 中，则会应用 <code>[vendor]</code> 中的规则。</p>
+
+<p>其次，除了 <code>default</code> 链接器命名空间外，<code>addition.namespaces</code> 还为每个部分指定了将由动态链接器创建的额外链接器命名空间（用英文逗号分隔）：</p>
+
+<pre class="prettyprint">
+additional.namespaces = namespace1,namespace2,namespace3
+</pre>
+
+<p>在上述示例中，动态链接器为 <code>/system/bin</code> 中的可执行文件创建了两个链接器命名空间（<code>default</code> 和 <code>sphal</code>）。</p>
+
+<p>再次，对于每个链接器命名空间，可以配置以下属性：</p>
+
+<pre class="prettyprint">
+namespace.${name}.search.paths = /path1/${LIB}:/path2/${LIB}
+namespace.${name}.permitted.paths = /path1:/path2
+namespace.${name}.isolated = true|false
+namespace.${name}.links = namespace1,namespace2
+namespace.${name}.link.${other}.shared_libs = lib1.so:lib2.so
+namespace.${name}.visible = true|false
+</pre>
+
+<p><code>namespace.${name}.search.paths</code> 表示将附加到库名称前面的目录。各目录之间用英文冒号隔开。
+<code>${LIB}</code> 是一个特殊的占位符。如果相应进程正在运行 32 位可执行文件，则 <code>${LIB}</code> 将被替换为 <code>lib</code>。同样，如果相应进程正在运行 64 位可执行文件，则 <code>${LIB}</code> 将被替换为 <code>lib64</code>。</p>
+
+<p>在上述示例中，如果 <code>/system/bin</code> 中的 64 位可执行文件与 <code>libexample.so</code> 相关联，则动态链接器会首先搜索 <code>/system/lib64/libexample.so</code>。如果找不到 <code>/system/lib64/libexample.so</code>，则动态链接器会搜索 <code>/vendor/lib64/libexample.so</code>。</p>
+
+<p>如果 <code>namespace.${name}.isolated</code> 为 <code>true</code>，则动态链接器仅会加载 <code>namespace.${name}.search.paths</code> 中指定目录下的共享库，或 <code>namespace.${name}.permitted.paths</code> 中指定目录下的共享库。</p>
+
+<p>在上述示例中，在 <code>sphal</code> 链接器命名空间中加载的共享库将无法关联到 <code>/system/lib[64]</code> 中的共享库，因为 <code>namespace.sphal.isolated</code> 为 <code>true</code> 并且 <code>/system/lib[64]</code> 既不在 <code>namespace.sphal.permitted.paths</code> 中也不在 <code>namespace.sphal.search.paths</code> 中。</p>
+
+<p><code>namespace.${name}.links</code> 指定了 <code>${name}</code> 链接器命名空间关联到的链接器命名空间列表（以英文逗号分隔）。</p>
+
+<p>在上述示例中，<code>namespace.sphal.links</code> 指定 <code>sphal</code> 链接器命名空间关联到 <code>default</code> 链接器命名空间。</p>
+
+<p><code>namespace.${name}.link.${other}.shared_libs</code> 会关联两个链接器命名空间，并指定可能会利用后备链接的共享库名称（用英文冒号分隔）。如果某个共享库无法加载到 <code>${name}</code> 链接器命名空间中，并且其名称位于 <code>namespace.${name}.link.${other}.shared_libs</code> 中，则动态链接器会尝试从 <code>${other}</code> 链接器命名空间导入该库。</p>
+
+<p>在上述示例中，<code>namespace.sphal.link.default.shared_libs</code> 指定 <code>libc.so</code> 和 <code>libm.so</code> 可以由 <code>default</code> 链接器命名空间导出。如果在 <code>sphal</code> 链接器命名空间中加载的共享库关联到 <code>libc.so</code>，并且动态链接器在 <code>/vendor/lib[64]</code> 中找不到 <code>libc.so</code>，则动态链接器会遍历后备链接，并查找由 <code>default</code> 链接器命名空间导出的 <code>libc.so</code>。</p>
+
+<p>如果 <code>namespace.${name}.visible</code> 为 <code>true</code>，该程序将能够获取链接器命名空间句柄，该句柄随后可传递到 <code>android_dlopen_ext()</code>。</p>
+
+<p>在上述示例中，<code>namespace.sphal.visible</code> 为 <code>true</code>，以便 <code>android_load_sphal_library()</code> 可以明确要求动态链接器加载 <code>sphal</code> 链接器命名空间中的共享库。</p>
+
+<h2 id="linker-namespace-isolation">链接器命名空间隔离</h2>
+
+<p><code>android-src/system/core/rootdir/etc</code> 中有三种配置。系统会根据 <code>BoardConfig.mk</code> 中 <code>PRODUCT_FULL_TREBLE</code>、<code>BOARD_VNDK_VERSION</code> 和 <code>BOARD_VNDK_RUNTIME_DISABLE</code> 的值选择不同的配置：</p>
+
+<table>
+ <tbody><tr>
+  <th><code>PRODUCT_FULL_TREBLE</code></th>
+  <th><code>BOARD_VNDK_VERSION</code> / <code>BOARD_VNDK_RUNTIME_DISABLE</code></th>
+  <th>选择的配置</th>
+ </tr>
+
+ <tr>
+  <td><code>false</code></td>
+  <td><em>any</em></td>
+  <td><code>ld.config.legacy.txt</code></td>
+ </tr>
+
+ <tr>
+  <td rowspan="2"><code>true</code></td>
+  <td><code>current</code> 和 empty<em></em></td>
+  <td><code>ld.config.txt.in</code></td>
+ </tr>
+
+ <tr>
+  <td><em></em>empty 或 <code>true</code></td>
+  <td><code>ld.config.txt</code></td>
+ </tr>
+</tbody></table>
+
+<p><code>android-src/system/core/rootdir/etc/ld.config.txt</code> 会隔离 SP-HAL 和 VNDK-SP 共享库。在 Android 8.0 及更高版本中，当 <code>PRODUCT_FULL_TREBLE</code> 为 <code>true</code> 时，该配置必须是动态链接器配置。</p>
+
+<p><code>android-src/system/core/rootdir/etc/ld.config.txt.in</code> 也会隔离 SP-HAL 和 VNDK-SP 共享库。此外，<code>ld.config.txt.in</code> 还提供全面的动态链接器隔离。它可确保系统分区中的模块不依赖于供应商分区中的共享库，反之亦然。</p>
+
+<p>在 Android 8.1 中，<code>ld.config.txt.in</code> 是默认配置，并且我们强烈建议启用全面的动态链接器隔离。但是，如果在 Android 8.1 中需要清理的依赖项太多，您可以将 <code>BOARD_VNDK_RUNTIME_DISABLE</code> 添加到 <code>BoardConfig.mk</code> 中：</p>
+
+<pre class="prettyprint">
+BOARD_VNDK_RUNTIME_DISABLE := true
+</pre>
+
+<p>如果 <code>BOARD_VNDK_RUNTIME_DISABLE</code> 为 <code>true</code>，则会安装 <code>android-src/system/core/rootdir/etc/ld.config.txt</code>。</p>
+
+<h3 id="ld.config.txt">ld.config.txt</h3>
+
+<p>从 Android 8.0 开始，动态链接器将配置为隔离 SP-HAL 和 VNDK-SP 共享库，以使其符号不会与其他框架共享库发生冲突。链接器命名空间之间的关系如下所示：</p>
+
+<img src="../images/treble_vndk_linker_namespace1.png" alt="ld.config.txt 中描绘的链接器命名空间图表"/>
+ <figcaption><strong>图 2.</strong> 链接器命名空间隔离 (<code>ld.config.txt</code>)。</figcaption>
+
+<p><em></em><em></em>LL-NDK 和 VNDK-SP 代表以下共享库：
+</p>
+
 <ul>
-<li>由<strong>默认</strong>命名空间导出的库：
- <ul>
- <li>LL-NDK：<code>libc.so</code>、<code>libm.so</code>、<code>libdl.so</code>、<code>libstdc++.so</code>、<code>liblog.so</code>、<code> libz.so</code>
-  </li><li>SP-NDK：<code>libEGL.so</code>、<code>libnativewindow.so</code>、<code>libsync.so</code>、<code>libvndksupport.so</code>
-  </li>
+ <li>
+  <em>LL-NDK</em>
+
+  <ul>
+   <li><code>libEGL.so</code></li>
+   <li><code>libGLESv1_CM.so</code></li>
+   <li><code>libGLESv2.so</code></li>
+   <li><code>libc.so</code></li>
+   <li><code>libdl.so</code></li>
+   <li><code>liblog.so</code></li>
+   <li><code>libm.so</code></li>
+   <li><code>libnativewindow.so</code></li>
+   <li><code>libstdc++.so</code>（不在 <code>ld.config.txt.in</code> 中）</li>
+   <li><code>libsync.so</code></li>
+   <li><code>libvndksupport.so</code></li>
+   <li><code>libz.so</code>（已移到 <code>ld.config.txt.in</code> 中的 VNDK-SP）<em></em></li>
   </ul>
-</li>
+ </li>
+
+ <li>
+  <em>VNDK-SP</em>
+
+  <ul>
+   <li><code>android.hardware.graphics.common@1.0.so</code></li>
+   <li><code>android.hardware.graphics.allocator@2.0.so</code></li>
+   <li><code>android.hardware.graphics.mapper@2.0.so</code></li>
+   <li><code>android.hardware.renderscript@1.0.so</code></li>
+   <li><code>android.hidl.memory@1.0.so</code></li>
+   <li><code>libbase.so</code></li>
+   <li><code>libc++.so</code></li>
+   <li><code>libcutils.so</code></li>
+   <li><code>libhardware.so</code></li>
+   <li><code>libhidlbase.so</code></li>
+   <li><code>libhidlmemory.so</code></li>
+   <li><code>libhidltransport.so</code></li>
+   <li><code>libhwbinder.so</code></li>
+   <li><code>libion.so</code></li>
+   <li><code>libutils.so</code></li>
+  </ul>
+ </li>
 </ul>
 
-<h3 id="rs-namespace">RS 命名空间</h3>
-<p>此特殊命名空间允许 <code>libRS_internal.so</code> 使用 <code>libmediandk.so</code>，从 SP-HAL 命名空间或 VNDK-SP 命名空间则无法访问此项（这是 Android O 中的一项缓和机制）。</p>
+<p>下表列出了框架进程的命名空间配置（摘自 <code>ld.config.txt</code> 中的 <code>[system]</code> 部分）：</p>
 
-<p>搜索路径：</p>
-<ol>
-<li><code>/vendor/lib[64]/vndk-sp</code></li>
-<li><code>/system/lib[64]/vndk-sp</code></li>
-<li><code>/vendor/lib[64]</code></li>
-</ol>
+<table>
+ <tbody><tr>
+  <th>命名空间</th>
+  <th>属性</th>
+  <th>值</th>
+ </tr>
 
-<p>允许的路径：</p>
+ <tr>
+  <td rowspan="3"><code>default</code></td>
+  <td><code>search.paths</code></td>
+  <td>
+   <code>/system/${LIB}</code><br />
+   <code>/vendor/${LIB}</code>
+  </td>
+ </tr>
+
+ <tr>
+  <td><code>permitted.paths</code></td>
+  <td>
+   <code>/system/${LIB}</code><br />
+   <code>/vendor/${LIB}</code>
+  </td>
+ </tr>
+
+ <tr>
+  <td><code>isolated</code></td>
+  <td><code>false</code></td>
+ </tr>
+
+ <tr>
+  <td rowspan="8"><code>sphal</code></td>
+  <td><code>search.paths</code></td>
+  <td>
+   <code>/vendor/${LIB}/egl</code><br />
+   <code>/vendor/${LIB}/hw</code><br />
+   <code>/vendor/${LIB}</code>
+  </td>
+ </tr>
+
+ <tr>
+  <td><code>permitted.paths</code></td>
+  <td>
+   <code>/vendor/${LIB}</code><br />
+   <code>/system/${LIB}/vndk-sp/hw</code> (Android 8.1)
+  </td>
+ </tr>
+
+ <tr>
+  <td><code>isolated</code></td>
+  <td><code>true</code></td>
+ </tr>
+
+ <tr>
+  <td><code>visible</code></td>
+  <td><code>true</code></td>
+ </tr>
+
+ <tr>
+  <td><code>links</code></td>
+  <td><code>default,vndk,rs</code></td>
+ </tr>
+ <tr>
+  <td><code>link.default.shared_libs</code></td>
+  <td><em>LL-NDK</em></td>
+ </tr>
+ <tr>
+  <td><code>link.vndk.shared_libs</code></td>
+  <td><em>VNDK-SP</em></td>
+ </tr>
+ <tr>
+  <td><code>link.rs.shared_libs</code></td>
+  <td><code>libRS_internal.so</code></td>
+ </tr>
+
+ <tr>
+  <td rowspan="6"><code>vndk</code>（适用于 VNDK-SP）</td>
+  <td><code>search.paths</code></td>
+  <td>
+   <code>/vendor/${LIB}/vndk-sp</code><br />
+   <code>/system/${LIB}/vndk-sp</code><br />
+   <code>/vendor/${LIB}</code>
+  </td>
+ </tr>
+
+ <tr>
+  <td><code>permitted.paths</code></td>
+  <td>
+   <code>/vendor/${LIB}/egl</code><br />
+   <code>/vendor/${LIB}/hw</code>
+  </td>
+ </tr>
+
+ <tr>
+  <td><code>isolated</code></td>
+  <td><code>true</code></td>
+ </tr>
+
+ <tr>
+  <td><code>visible</code></td>
+  <td><code>true</code></td>
+ </tr>
+
+ <tr>
+  <td><code>links</code></td>
+  <td><code>default</code></td>
+ </tr>
+
+ <tr>
+  <td><code>link.default.shared_libs</code></td>
+  <td><em>LL-NDK</em></td>
+ </tr>
+
+ <tr>
+  <td rowspan="7"><code>rs</code>（适用于 Renderscript）</td>
+  <td><code>search.paths</code></td>
+  <td>
+   <code>/vendor/${LIB}/vndk-sp</code><br />
+   <code>/system/${LIB}/vndk-sp</code><br />
+   <code>/vendor/${LIB}</code>
+  </td>
+ </tr>
+
+ <tr>
+  <td><code>permitted.paths</code></td>
+  <td>
+   <code>/vendor/${LIB}</code><br />
+   <code>/data</code>（适用于已编译的 RS 内核）
+  </td>
+ </tr>
+
+ <tr>
+  <td><code>isolated</code></td>
+  <td><code>true</code></td>
+ </tr>
+
+ <tr>
+  <td><code>visible</code></td>
+  <td><code>true</code></td>
+ </tr>
+
+ <tr>
+  <td><code>links</code></td>
+  <td><code>default,vndk</code></td>
+ </tr>
+
+ <tr>
+  <td><code>link.default.shared_libs</code></td>
+  <td>
+   <em>LL-NDK</em><br />
+   <code>libmediandk.so</code><br />
+   <code>libft2.so</code>
+  </td>
+ </tr>
+
+ <tr>
+  <td><code>link.vndk.shared_libs</code></td>
+  <td><em>VNDK-SP</em></td>
+ </tr>
+</tbody></table>
+
+<p>下表列出了供应商进程的命名空间配置（摘自 <code>ld.config.txt</code> 中的 <code>[vendor]</code> 部分）：</p>
+
+<table>
+ <tbody><tr>
+  <th>命名空间</th>
+  <th>属性</th>
+  <th>值</th>
+ </tr>
+
+ <tr>
+  <td rowspan="2"><code>default</code></td>
+  <td><code>search.paths</code></td>
+  <td>
+   <code>/vendor/${LIB}</code><br />
+   <code>/vendor/${LIB}/vndk-sp</code><br />
+   <code>/system/${LIB}/vndk-sp</code><br />
+   <code>/system/${LIB}</code>（已弃用）
+  </td>
+ </tr>
+
+ <tr>
+  <td><code>isolated</code></td>
+  <td><code>false</code></td>
+ </tr>
+</tbody></table>
+
+<p>更多详情可以在 <code>android-src/system/core/rootdir/etc/ld.config.txt</code> 中找到。</p>
+
+<h3 id="ld.config.txt.in">ld.config.txt.in</h3>
+
+<p><code>ld.config.txt.in</code> 会隔离系统分区和供应商分区之间的共享库依赖关系。下文概述了该配置文件与上一小节中提到的 <code>ld.config.txt</code> 相比有哪些不同：</p>
+
 <ul>
-<li><code>/vendor/lib[64]/vndk-sp</code></li>
-<li><code>/system/lib[64]/vndk-sp</code></li>
-<li><code>/vendor/lib[64]</code></li>
-<li><code>/data</code> # 共享库由 RS CPU 参考实现进行 JIT 编译</li>
+ <li>
+  框架进程
+
+  <ul>
+   <li>系统会隔离 <code>default</code> 命名空间。只有当共享库位于搜索路径中指定的目录下或允许的路径中指定的目录下时，才能将其加载到 <code>default</code> 命名空间中。</li>
+
+   <li><code>default</code> 命名空间的允许路径已更改为有限集（<code>/vendor/lib[64]</code>、<code>/system/lib[64]/vndk</code> 和 <code>/system/lib[64]/vndk-sp</code> 已被排除）。</li>
+  </ul>
+ </li>
+
+ <li>
+  供应商进程
+
+  <ul>
+   <li>系统会创建两个命名空间（<code>default</code> 和 <code>system</code>）。</li>
+
+   <li>系统会隔离 <code>default</code> 命名空间。只有当共享库位于搜索路径中指定的目录下或允许的路径中指定的目录下时，才能将其加载到默认命名空间中。</li>
+
+   <li><code>default</code> 命名空间的允许路径是 <code>/vendor</code>、<code>/system/lib[64]/vndk</code> 和 <code>/system/lib[64]/vndk-sp</code>。</li>
+
+   <li><code>default</code> 命名空间与 <code>system</code> 命名空间相关联。<code>default</code> 命名空间可以关联到在 <code>system</code> 命名空间中加载的 LL-NDK 库。</li>
+  </ul>
+ </li>
 </ul>
 
-<p>从其他命名空间导入的共享库：</p>
+<p>链接器命名空间之间的关系如下图所示：</p>
+
+<img src="../images/treble_vndk_linker_namespace2.png" alt="ld.config.txt.in 中描绘的链接器命名空间图表"/>
+ <figcaption><strong>图 2.</strong> 链接器命名空间隔离 (<code>ld.config.txt.in</code>)。</figcaption>
+
+<p>在上图中，LL-NDK 和 VNDK-SP 代表以下共享库：<em></em><em></em></p>
+
 <ul>
-<li>由<strong>默认</strong>命名空间导出的库
- <ul>
- <li>LL-NDK：<code>libc.so</code>、<code>libm.so</code>、<code>libdl.so</code>、<code>libstdc++.so</code>、<code>liblog.so</code></li>
- <li>SP-NDK：<code>libEGL.so</code>、<code>libGLESv1_CM.so</code>、<code>libGLESv2.so</code>、<code>libnativewindow.so</code>、<code>libsync.so</code>、<code>libvndksupport.so</code></li>
- <li>其他库：<code>libmediandk.so</code>、<code>libui.so</code></li>
- </ul>
-</li>
-<li>由 <strong>vndk</strong> 命名空间导出的库：<code>android.hardware.renderscript@1.0.so</code>、<code>android.hardware.graphics.allocator@2.0.so</code>、<code>android.hardware.graphics.mapper@2.0.so</code>、<code>android.hardware.graphics.common@1.0.so</code>、<code>libhwbinder.so</code>、<code>libbase.so</code>、<code>libcutils.so</code>、<code>libhardware.so</code>、<code>libhidlbase.so</code>、<code>libhidltransport.so</code>、<code>libutils.so</code>、<code>libc++.so</code></li>
+ <li>
+  <em>LL-NDK</em>
+
+  <ul>
+   <li><code>libEGL.so</code></li>
+   <li><code>libGLESv1_CM.so</code></li>
+   <li><code>libGLESv2.so</code></li>
+   <li><code>libGLESv3.so</code></li>
+   <li><code>libandroid_net.so</code></li>
+   <li><code>libc.so</code></li>
+   <li><code>libdl.so</code></li>
+   <li><code>liblog.so</code></li>
+   <li><code>libm.so</code></li>
+   <li><code>libnativewindow.so</code></li>
+   <li><code>libsync.so</code></li>
+   <li><code>libvndksupport.so</code></li>
+  </ul>
+ </li>
+
+ <li>
+  <em>VNDK-SP</em>
+
+  <ul>
+   <li><code>android.hardware.graphics.common@1.0.so</code></li>
+   <li><code>android.hardware.graphics.allocator@2.0.so</code></li>
+   <li><code>android.hardware.graphics.mapper@2.0.so</code></li>
+   <li><code>android.hardware.renderscript@1.0.so</code></li>
+   <li><code>android.hidl.memory@1.0.so</code></li>
+   <li><code>libRSCpuRef.so</code></li>
+   <li><code>libRSDriver.so</code></li>
+   <li><code>libRS_internal.so</code></li>
+   <li><code>libbase.so</code></li>
+   <li><code>libbcinfo.so</code></li>
+   <li><code>libc++.so</code></li>
+   <li><code>libcutils.so</code></li>
+   <li><code>libhardware.so</code></li>
+   <li><code>libhidlbase.so</code></li>
+   <li><code>libhidlmemory.so</code></li>
+   <li><code>libhidltransport.so</code></li>
+   <li><code>libhwbinder.so</code></li>
+   <li><code>libion.so</code></li>
+   <li><code>libutils.so</code></li>
+   <li><code>libz.so</code></li>
+  </ul>
+ </li>
 </ul>
 
-<h2 id="vendor-processes">供应商进程</h2>
-<h3 id="default-linker-namespace">默认链接器命名空间</h3>
-<p>搜索路径和允许的路径：</p>
-<ol>
-<li><code>/vendor/lib[64]</code></li>
-<li><code>/vendor/lib[64]/vndk-sp</code></li>
-<li><code>/system/lib[64]/vndk-sp</code></li>
-<li><code>/system/lib[64]</code> # 适用于已退化的 VNDK 库</li>
-</ol>
+<p>下表列出了框架进程的命名空间配置（摘自 <code>ld.config.txt.in</code> 中的 <code>[system]</code> 部分）：</p>
+
+<table>
+ <tbody><tr>
+  <th>命名空间</th>
+  <th>属性</th>
+  <th>值</th>
+ </tr>
+
+ <tr>
+  <td rowspan="3"><code>default</code></td>
+  <td><code>search.paths</code></td>
+  <td><code>/system/${LIB}</code></td>
+ </tr>
+
+ <tr>
+  <td><code>permitted.paths</code></td>
+  <td>
+   <code>/system/${LIB}/drm</code><br />
+   <code>/system/${LIB}/hw</code><br />
+   <code>/system/framework</code><br />
+   <code>/system/app</code><br />
+   <code>/system/priv-app</code><br />
+   <code>/vendor/app</code><br />
+   <code>/vendor/framework</code><br />
+   <code>/oem/app</code><br />
+   <code>/data</code><br />
+   <code>/mnt/expand
+  </code></td>
+ </tr>
+
+ <tr>
+  <td><code>isolated</code></td>
+  <td><code>true</code></td>
+ </tr>
+
+ <tr>
+  <td rowspan="8"><code>sphal</code></td>
+  <td><code>search.paths</code></td>
+  <td>
+   <code>/vendor/${LIB}/egl</code><br />
+   <code>/vendor/${LIB}/hw</code><br />
+   <code>/vendor/${LIB}</code>
+  </td>
+ </tr>
+
+ <tr>
+  <td><code>permitted.paths</code></td>
+  <td>
+   <code>/vendor/${LIB}</code><br />
+   <code>/system/${LIB}/vndk-sp/hw</code>
+  </td>
+ </tr>
+
+ <tr>
+  <td><code>isolated</code></td>
+  <td><code>true</code></td>
+ </tr>
+
+ <tr>
+  <td><code>visible</code></td>
+  <td><code>true</code></td>
+ </tr>
+
+ <tr>
+  <td><code>links</code></td>
+  <td><code>default,vndk,rs</code></td>
+ </tr>
+
+ <tr>
+  <td><code>link.default.shared_libs</code></td>
+  <td><em>LL-NDK</em></td>
+ </tr>
+
+ <tr>
+  <td><code>link.vndk.shared_libs</code></td>
+  <td><em>VNDK-SP</em></td>
+ </tr>
+
+ <tr>
+  <td><code>link.rs.shared_libs</code></td>
+  <td><code>libRS_internal.so</code></td>
+ </tr>
+
+ <tr>
+  <td rowspan="6"><code>vndk</code>（适用于 VNDK-SP）</td>
+  <td><code>search.paths</code></td>
+  <td>
+   <code>/vendor/${LIB}/vndk-sp</code><br />
+   <code>/system/${LIB}/vndk-sp</code>
+  </td>
+ </tr>
+
+ <tr>
+  <td><code>permitted.paths</code></td>
+  <td>
+   <code>/vendor/${LIB}/egl</code><br />
+   <code>/vendor/${LIB}/hw</code>
+  </td>
+ </tr>
+
+ <tr>
+  <td><code>isolated</code></td>
+  <td><code>true</code></td>
+ </tr>
+
+ <tr>
+  <td><code>visible</code></td>
+  <td><code>true</code></td>
+ </tr>
+
+ <tr>
+  <td><code>links</code></td>
+  <td><code>default</code></td>
+ </tr>
+
+ <tr>
+  <td><code>link.default.shared_libs</code></td>
+  <td><em>LL-NDK</em></td>
+ </tr>
+
+ <tr>
+  <td rowspan="7"><code>rs</code>（适用于 Renderscript）</td>
+  <td><code>search.paths</code></td>
+  <td>
+   <code>/vendor/${LIB}/vndk-sp</code><br />
+   <code>/system/${LIB}/vndk-sp</code><br />
+   <code>/vendor/${LIB}</code>
+  </td>
+ </tr>
+
+ <tr>
+  <td><code>permitted.paths</code></td>
+  <td>
+   <code>/vendor/${LIB}</code><br />
+   <code>/data</code>（适用于已编译的 RS 内核）
+  </td>
+ </tr>
+
+ <tr>
+  <td><code>isolated</code></td>
+  <td><code>true</code></td>
+ </tr>
+
+ <tr>
+  <td><code>visible</code></td>
+  <td><code>true</code></td>
+ </tr>
+
+ <tr>
+  <td><code>links</code></td>
+  <td><code>default,vndk</code></td>
+ </tr>
+
+ <tr>
+  <td><code>link.default.shared_libs</code></td>
+  <td>
+   <em>LL-NDK</em><br />
+   <code>libmediandk.so</code><br />
+   <code>libft2.so</code>
+  </td>
+ </tr>
+
+ <tr>
+  <td><code>link.vndk.shared_libs</code></td>
+  <td><em>VNDK-SP</em></td>
+ </tr>
+</tbody></table>
+
+<p>下表列出了供应商进程的命名空间配置（摘自 <code>ld.config.txt.in</code> 中的 <code>[vendor]</code> 部分）：</p>
+
+<table>
+ <tbody><tr>
+  <th>命名空间</th>
+  <th>属性</th>
+  <th>值</th>
+ </tr>
+
+ <tr>
+  <td rowspan="5"><code>default</code></td>
+  <td><code>search.paths</code></td>
+  <td>
+   <code>/vendor/${LIB}/hw</code><br />
+   <code>/vendor/${LIB}/egl</code><br />
+   <code>/vendor/${LIB}</code><br />
+   <code>/vendor/${LIB}/vndk</code><br />
+   <code>/system/${LIB}/vndk</code><br />
+   <code>/vendor/${LIB}/vndk-sp</code><br />
+   <code>/system/${LIB}/vndk-sp</code>
+  </td>
+ </tr>
+
+ <tr>
+  <td><code>permitted.paths</code></td>
+  <td>
+   <code>/vendor</code><br />
+   <code>/system/${LIB}/vndk</code><br />
+   <code>/system/${LIB}/vndk-sp</code>
+  </td>
+ </tr>
+
+ <tr>
+  <td><code>isolated</code></td>
+  <td><code>true</code></td>
+ </tr>
+
+ <tr>
+  <td><code>links</code></td>
+  <td><code>system</code></td>
+ </tr>
+
+ <tr>
+  <td><code>link.system.shared_libs</code></td>
+  <td><em>LL-NDK</em></td>
+ </tr>
+
+ <tr>
+  <td rowspan="2"><code>system</code></td>
+  <td><code>search.paths</code></td>
+  <td><code>/system/${LIB}</code></td>
+ </tr>
+
+ <tr>
+  <td><code>permitted.paths</code></td>
+  <td><code>/system/${LIB}</code></td>
+ </tr>
+</tbody></table>
+
+<p>更多详情可以在 <code>android-src/system/core/rootdir/etc/ld.config.txt.in</code> 中找到。</p>
 
 </body></html>
