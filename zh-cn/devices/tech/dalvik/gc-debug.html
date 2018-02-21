@@ -36,9 +36,8 @@
 
 <ul>
   <li>与 Dalvik 相比，暂停次数从 2 次减少到 1 次。Dalvik 的第一次暂停主要是为了进行根标记，即在 ART 中进行并发标记，让线程标记自己的根，然后马上恢复运行。
-  </li><li>与 Dalvik 类似，ART GC 在清除过程开始之前也会暂停 1 次。
-两者在这方面的主要差异在于：在此暂停期间，某些 Dalvik 阶段在 ART 中并发进行。这些阶段包括 <code>java.lang.ref.Reference</code> 处理、系统弱清除（例如，jni 弱全局等）、重新标记非线程根和卡片预清理。在 ART 暂停期间仍进行的阶段包括扫描脏卡片以及重新标记线程根，这些操作有助于缩短暂停时间。
-  </li><li>相对于 Dalvik，ART GC 改进的最后一个方面是粘性 CMS 回收器增加了 GC 吞吐量。不同于普通的分代 GC，粘性 CMS 不移动。年轻对象会被保存在一个分配堆栈（基本上是 <code>java.lang.Object</code> 数组）中，而非为其设置一个专用区域。这样可以避免移动所需的对象以维持低暂停次数，但缺点是容易在堆栈中加入大量复杂对象图像而使堆栈变长。
+  </li><li>与 Dalvik 类似，ART GC 在清除过程开始之前也会暂停 1 次。两者在这方面的主要差异在于：在此暂停期间，某些 Dalvik 阶段在 ART 中并发进行。这些阶段包括 <code>java.lang.ref.Reference</code> 处理、系统弱清除（例如，jni 弱全局等）、重新标记非线程根和卡片预清理。在 ART 暂停期间仍进行的阶段包括扫描脏卡片以及重新标记线程根，这些操作有助于缩短暂停时间。
+  </li><li>相对于 Dalvik，ART GC 改进的最后一个方面是粘性 CMS 回收器增加了 GC 吞吐量。不同于普通的分代 GC，粘性 CMS 不移动。年轻对象被保存在一个分配堆栈（基本上是 <code>java.lang.Object</code> 数组）中，而非为其设置一个专用区域。这样可以避免移动所需的对象以维持低暂停次数，但缺点是容易在堆栈中加入大量复杂对象图像而使堆栈变长。
 </li></ul>
 
 <p>ART GC 与 Dalvik 的另一个主要区别在于 ART GC 引入了移动垃圾回收器。使用移动 GC 的目的在于通过堆压缩来减少后台应用使用的内存。目前，触发堆压缩的事件是 ActivityManager 进程状态的改变。当应用转到后台运行时，它会通知 ART 已进入不再“感知”卡顿的进程状态。此时 ART 会进行一些操作（例如，压缩和监视器压缩），从而导致应用线程长时间暂停。目前正在使用的两个移动 GC 是同构空间压缩和半空间压缩。</p>
@@ -71,7 +70,8 @@
 <p>堆验证可能是调试 GC 相关错误或堆损坏的最有用的 GC 选项。启用堆验证会使 GC 在垃圾回收过程中在几个点检查堆的正确性。堆验证与更改 GC 类型的选项相同。启用堆验证后，堆验证会验证根，并确保可访问对象仅引用其他可访问对象。通过传入以下 -<code>Xgc</code> 值可以启用 GC 验证：</p>
 
 <ul>
-  <li>如果启用 GC 验证，<code>[no]preverify</code> 将在 GC 启动之前执行堆验证。</li><li>如果启用 GC 验证，<code>[no]presweepingverify</code> 将在启动垃圾回收器清除过程之前执行堆验证。
+  <li>如果启用 GC 验证，<code>[no]preverify</code> 将在 GC 启动之前执行堆验证。
+  </li><li>如果启用 GC 验证，<code>[no]presweepingverify</code> 将在启动垃圾回收器清除过程之前执行堆验证。
   </li><li>如果启用 GC 验证，<code>[no]postverify</code> 将在 GC 完成清除后执行堆验证。
   </li><li><code>[no]preverify_rosalloc</code>、<code>[no]postsweepingverify_rosalloc</code> 和 <code>[no]postverify_rosalloc</code> 也是附加 GC 选项，仅验证 RosAlloc 内部计算的状态。验证的主要内容是，魔数值是否与预期常量匹配，以及可用内存块是否已在 <code>free_page_runs_</code> 映射中注册。
 </li></ul>
@@ -208,7 +208,7 @@ adb shell setprop dalvik.vm.checkjni true
 adb shell setprop dalvik.vm.jniopts forcecopy
 </pre>
 
-<p>CheckJNI 应捕获错误的一个示例是超出从 <code>GetPrimitiveArrayCritical</code> 获取的数组末端的写入。该操作很可能会破坏 Java 堆。如果写入位于 CheckJNI 红色区域内，则在调用相应 <code>ReleasePrimitiveArrayCritical</code> 时，CheckJNI 将会捕获该问题。否则，写入将最终损坏 Java 堆中的一些随机对象，并可能会导致之后出现 GC 崩溃。如果崩溃的内存是引用字段，则 GC 可能会捕获错误并输出“Tried to mark <ptr>not contained by any spaces</ptr>”的错误消息。<em></em></p>
+<p>CheckJNI 应捕获错误的一个示例是超出从 <code>GetPrimitiveArrayCritical</code> 获取的数组末端的写入。该操作很可能会破坏 Java 堆。如果写入位于 CheckJNI 红色区域内，则在调用相应 <code>ReleasePrimitiveArrayCritical</code> 时，CheckJNI 将会捕获该问题。否则，写入将最终损坏 Java 堆中的一些随机对象，并可能会导致之后出现 GC 崩溃。<em></em>如果崩溃的内存是引用字段，则 GC 可能会捕获错误并输出“Tried to mark <ptr>not contained by any spaces</ptr>”这一错误消息。</p>
 
 <p>当 GC 尝试标记无法找到空间的对象时，就会发生此错误。在此检查失败后，GC 会遍历根，并尝试查看无效对象是否为根。结果共有两个选项：对象为根或非根。</p>
 
@@ -253,7 +253,7 @@ com.google.gwt.corp.collections.JavaReadableJsArray.get(int)' at dex PC 0x0002
 
 <h3 id="corrupted_object_example">损坏的对象示例</h3>
 
-<p>如果对象不是根，则会输出类似于以下打印内容的消息：</p>
+<p>如果对象不是根，则会输出类似于以下输出内容的消息：</p>
 
 <pre class="devsite-click-to-copy">
 01-15 12:38:00.196  1217  1238 E art     : Attempting see if it's a bad root

@@ -20,7 +20,7 @@
       limitations under the License.
   -->
 
-<p>为了将供应商模块与系统模块分开考虑，VNDK 需要对代码库进行一些更改。请按照以下指南在供应商/OEM 代码库中启用 VNDK。</p>
+<p>为了区隔供应商模块与系统模块，您在启用 VNDK 前需要对代码库进行一些更改。请按照以下指南在供应商/OEM 代码库中启用 VNDK。</p>
 
 <h2 id="build-system-libraries">编译系统库</h2>
 <p>编译系统包含多种类型的对象，其中包括库（共享、静态或标头）和二进制文件：</p>
@@ -29,7 +29,7 @@
 <figcaption><strong>图 1.</strong> 编译系统库。</figcaption>
 
 <ul>
-<li><strong>核心</strong>：由系统映像在系统映像上使用。<code>vendor</code>、<code>vendor_available</code>、<code>vndk</code> 或 <code>vndk-sp</code> 库不能使用此类库。
+<li><strong>core</strong>：位于系统映像中，由系统映像使用。<code>vendor</code>、<code>vendor_available</code>、<code>vndk</code> 或 <code>vndk-sp</code> 库不能使用此类库。
 <pre class="prettyprint">
 cc_library {
     name: "libThatIsCore",
@@ -38,7 +38,7 @@ cc_library {
 </pre>
 </li>
 
-<li><strong>仅限供应商</strong>（或 <code>proprietary</code>）：由供应商映像在供应商映像上使用。
+<li><strong>vendor-only</strong>（或 <code>proprietary</code>）：位于供应商映像中，由供应商映像使用。
 <pre class="prettyprint">
 cc_library {
     name: "libThatIsVendorOnly",
@@ -49,7 +49,7 @@ cc_library {
 
 </pre></li>
 
-<li><strong>vendor_available</strong>：由供应商映像在供应商映像上使用（可能包含 <code>core</code> 的重复项）。
+<li><strong>vendor_available</strong>：位于供应商映像中，由供应商映像使用（可能包含 <code>core</code> 的重复项）。
 <pre class="prettyprint">
 cc_library {
     name: "libThatIsVendorAvailable",
@@ -59,7 +59,7 @@ cc_library {
 </pre>
 </li>
 
-<li><strong>vndk</strong>：由供应商映像在系统映像上使用（<code>vendor_available</code> 的子集）。
+<li><strong>vndk</strong>：位于系统映像中，由供应商映像使用（<code>vendor_available</code> 的子集）。
 <pre class="prettyprint">
 cc_library {
     name: "libThatIsVndk",
@@ -72,7 +72,7 @@ cc_library {
 </pre>
 </li>
 
-<li><strong>vndk-sp</strong>：由系统映像在系统映像上间接使用（<code>core</code> 的子集）。
+<li><strong>vndk-sp</strong>：位于系统映像中，由系统映像间接使用（<code>core</code> 的子集）。
 <pre class="prettyprint">
 cc_library {
     name: "libThatIsVndkSp",
@@ -95,34 +95,34 @@ llndk_library {
 </li>
 </ul>
 
-<p>当 lib 被标记为 <code>vendor_available:true</code> 时，它将编译两次：</p>
+<p>当一个库被标记为 <code>vendor_available:true</code> 时，它将编译两次：</p>
 <ul>
 <li>一次是为平台编译（因此被安装到 <code>/system/lib</code> 中）。</li>
 <li>一次是为供应商编译（因此被安装到 <code>/vendor/lib</code>、<code>/system/lib/vndk</code> 或 <code>/system/lib/vndk-sp</code> 中）。</li>
 </ul>
 
-<p>libs 的供应商版本是使用 <code>-D__ANDROID_VNDK__</code> 编译的。您可以使用此标记停用在 Android 未来版本中可能会发生显著变化的专用系统组件。此外，不同的库会导出一组不同的标头（例如 <code>liblog</code>）。可以在 <code>Android.bp</code> 文件中指定相应目标的供应商变体特有的选项：</p>
+<p>库的供应商版本使用 <code>-D__ANDROID_VNDK__</code> 标记编译。您可以使用此标记停用在 Android 未来版本中可能会发生显著变化的专用系统组件。此外，不同的库会导出一组不同的标头（例如 <code>liblog</code>）。可以在 <code>Android.bp</code> 文件中指定相应目标的供应商变体特有的选项：</p>
 <pre class="prettyprint">target: { vendor: { … } }</pre>
 
 <h2 id="enabling">为代码库启用 VNDK</h2>
 <p>要为代码库启用 VNDK，请执行以下操作：</p>
 <ol>
-<li>通过计算 <code>vendor.img</code> 和 <code>system.img</code> 分区的所需大小来确定是否符合资格。</li>
-<li>启用 <code>BOARD_VNDK_VERSION=current</code>。您可以添加到 <code>BoardConfig.mk</code>，也可以直接通过它编译组件（即 <code>m -j BOARD_VNDK_VERSION=current <var>MY-LIB</var></code>）。</li>
+<li>通过计算 <code>vendor.img</code> 和 <code>system.img</code> 分区的所需大小来确定是否符合条件。</li>
+<li>启用 <code>BOARD_VNDK_VERSION=current</code>。您可以将其添加到 <code>BoardConfig.mk</code>，也可以直接使用此选项来编译组件（即 <code>m -j BOARD_VNDK_VERSION=current <var>MY-LIB</var></code>）。</li>
 </ol>
 <p>在启用 <code>BOARD_VNDK_VERSION=current</code> 后，编译系统会强制执行以下依赖项和标头要求。</p>
 
 <h3 id="managing-dependencies">管理依赖项</h3>
-<p>如果 <code>vendor</code> 对象依赖的 <code>core</code> 组件在 <code>vndk</code> 中不存在或未以 <code>vendor</code> 对象的形式出现，则必须使用下列选项之一解析该对象：</p>
+<p>如果 <code>vendor</code> 对象依赖的 <code>core</code> 组件在 <code>vndk</code> 中不存在或未以 <code>vendor</code> 对象的形式存在，则必须通过以下某种方式解决该问题：</p>
 <ul>
-<li>可以移除依赖项。</li>
-<li>如果 <code>core</code> 组件归 <code>vendor</code> 所有，则可以将其标记为 <code>vendor_available</code> 或 <code>vendor</code>。</li>
-<li>构成 <code>vndk</code> 核心对象部分的更改可以在上游提交给 Google。</li>
+<li>可以移除该依赖项。</li>
+<li>如果该 <code>core</code> 组件归 <code>vendor</code> 所有，则可将其标记为 <code>vendor_available</code> 或 <code>vendor</code>。</li>
+<li>可以在上游向 Google 提交更改请求，以便将此核心对象列入 <code>vndk</code>。</li>
 </ul>
-<p>此外，如果 <code>core</code> 组件依赖于 <code>vendor</code> 组件，则必须使 <code>vendor</code> 组件成为 <code>core</code> 组件，<strong>或者</strong>必须以其他方式移除依赖项（例如，通过移除依赖项或将其移到 <code>vendor</code> 组件中）。</p>
+<p>此外，如果有 <code>core</code> 组件依赖于 <code>vendor</code> 组件，则必须使此 <code>vendor</code> 组件成为 <code>core</code> 组件，<strong>或者</strong>以其他方式移除此依赖项（例如，通过移除依赖项或将其移到 <code>vendor</code> 组件中）。</p>
 
 <h3 id="managing-headers">管理标头</h3>
-<p>必须移除全局标头依赖项，编译系统才能知道在编译标头时是否带 <code>-D__ANDROID_VNDK__</code>。例如，诸如 <code>utils/StrongPointer.h</code> 之类的 libutils 标头仍可以使用标头库 <a href="https://android.googlesource.com/platform/system/core/+/master/libutils/include/utils" class="external"><code>libutils_headers</code></a> 来访问。
+<p>必须移除全局标头依赖项，编译系统才能知道在编译标头时是否带 <code>-D__ANDROID_VNDK__</code>。例如，<code>utils/StrongPointer.h</code> 之类的 libutils 标头仍可使用标头库 <a href="https://android.googlesource.com/platform/system/core/+/master/libutils/include/utils" class="external"><code>libutils_headers</code></a> 来访问。
 </p>
 
 <p>某些标头（例如 <code>unistd.h</code>）无法再以传递方式包含在内，但可以包含在本地。</p>
@@ -130,7 +130,7 @@ llndk_library {
 <p>最后，<code>private/android_filesystem_config.h</code> 的公共部分已移至 <code>cutils/android_filesystem_config.h</code>。要管理这些标头，请执行下列操作之一：</p>
 
 <ul>
-<li>通过将所有 <code>AID_*</code> 宏替换为 <code><a href="http://man7.org/linux/man-pages/man3/getgrnam.3.html" class="external">getgrnam</a></code>/<code><a href="http://man7.org/linux/man-pages/man3/getpwnam.3.html" class="external">getpwnam</a></code> 调用（如果可能），移除 <code>private/android_filesystem_config.h</code> 的依赖项。例如：
+<li>通过将所有 <code>AID_*</code> 宏替换为 <code><a href="http://man7.org/linux/man-pages/man3/getgrnam.3.html" class="external">getgrnam</a></code>/<code><a href="http://man7.org/linux/man-pages/man3/getpwnam.3.html" class="external">getpwnam</a></code> 调用（如果可能），去除对 <code>private/android_filesystem_config.h</code> 的依赖。例如：
 
 <ul>
 <li><code>(uid_t)AID_WIFI</code> 会变为 <code>getpwnam("wifi")-&gt;pw_uid</code>。</li>
@@ -138,7 +138,7 @@ llndk_library {
 </ul>
 如需了解详情，请参阅 <code><a href="https://android.googlesource.com/platform/system/core/+/master/libcutils/include/private/android_filesystem_config.h" class="external">private/android_filesystem_config.h</a></code>。
 </li>
-<li>对于硬编码的 AIS，请添加 <code>cutils/android_filesystem_config.h</code>。</li>
+<li>对于硬编码的 AIS，请包含 <code>cutils/android_filesystem_config.h</code>。</li>
 </ul>
 
 </body></html>
