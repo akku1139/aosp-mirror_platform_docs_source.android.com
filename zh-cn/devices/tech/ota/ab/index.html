@@ -1,0 +1,586 @@
+<html devsite><head>
+    <title>A/B（无缝）系统更新</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+    <p>A/B 系统更新（也称为无缝更新）的目标是确保在<a href="/devices/tech/ota/index.html">无线下载 (OTA) 更新</a>期间在磁盘上保留一个可正常启动和使用的系统。采用这种方式可以降低更新之后设备无法启动的可能性，这意味着用户需要将设备送到维修和保修中心进行更换和刷机的情况将会减少。其他某些商业级操作系统（例如 <a href="https://www.chromium.org/chromium-os">ChromeOS</a>）也成功运用了 A/B 更新机制。
+    </p>
+
+    <p>A/B 系统更新可带来以下好处：</p>
+
+    <ul>
+      <li>
+OTA 更新可以在系统运行期间进行，而不会打断用户。用户可以在 OTA 期间继续使用其设备。在更新期间，唯一的一次宕机发生在设备重新启动到更新后的磁盘分区时。
+      </li>
+      <li>
+更新后，重新启动所用的时间不会超过常规重新启动所用的时间。
+      </li>
+      <li>
+如果 OTA 无法应用（例如，因为刷机失败），用户将不会受到影响。用户将继续运行旧的操作系统，并且客户端可以重新尝试进行更新。
+      </li>
+      <li>
+如果 OTA 更新已应用但无法启动，设备将重新启动回旧分区，并且仍然可以使用。客户端可以重新尝试进行更新。
+      </li>
+      <li>
+任何错误（例如 I/O 错误）都只会影响<strong>未使用</strong>的分区组，并且用户可以进行重试。由于 I/O 负载被特意控制在较低水平，以免影响用户体验，因此发生此类错误的可能性也会降低。
+      </li>
+      <li>
+更新包可以流式传输到 A/B 设备，因此在安装之前不需要先下载更新包。流式更新意味着用户没有必要在 <code>/data</code> 或 <code>/cache</code> 上留出足够的可用空间来存储更新包。
+      </li>
+      <li>
+缓存分区不再用于存储 OTA 更新包，因此无需确保缓存分区的大小要足以应对日后的更新。
+      </li>
+      <li>
+        <a href="/security/verifiedboot/dm-verity.html">dm-verity</a> 可保证设备将使用未损坏的启动映像。如果设备因 OTA 错误或 dm-verity 问题而无法启动，则可以重新启动到旧映像。（Android <a href="/security/verifiedboot/">验证启动</a>不需要 A/B 更新。）
+      </li>
+    </ul>
+
+    <h2 id="overview">关于 A/B 系统更新</h2>
+
+      <p>
+进行 A/B 更新时，客户端和系统都需要进行更改。不过，OTA 更新包服务器应该不需要进行更改：更新包仍通过 HTTPS 提供。对于使用 Google OTA 基础架构的设备，系统更改全部是在 AOSP 中进行，并且客户端代码由 Google Play 服务提供。不使用 Google OTA 基础架构的原始设备制造商 (OEM) 将能够重复使用 AOSP 系统代码，但需要自行提供客户端。
+      </p>
+
+      <p>
+如果 OEM 自行提供客户端，客户端需要：
+      </p>
+
+      <ul>
+        <li>
+确定何时进行更新。由于 A/B 更新是在后台进行，因此不再需要由用户启动。为了避免干扰用户，建议将更新安排在设备处于闲时维护模式（如夜间）并已连接到 WLAN 网络时进行。不过，客户端可以使用您希望使用的任何启发法。
+        </li>
+        <li>
+向 OTA 更新包服务器进行核查，确定是否有可用的更新。这应与您现有的客户端代码大体相同，不过您需要表明相应设备支持 A/B 更新。（Google 的客户端还包含<strong>立即检查</strong>按钮，以便用户检查是否有最新更新。）
+        </li>
+        <li>
+调用 <code>update_engine</code>（使用 HTTPS 网址），以获取更新包（假设有可用的更新包）。<code>update_engine</code> 将在流式传输更新包的同时，在当前未使用的分区上更新原始数据块。
+        </li>
+        <li>
+根据 <code>update_engine</code> 结果代码向您的服务器报告安装是成功了还是失败了。如果更新已成功应用，<code>update_engine</code> 将会告知引导加载程序在下次重新启动时启动到新的操作系统。如果新的操作系统无法启动，引导加载程序将会回退到旧的操作系统，因此无需在客户端执行任何操作。如果更新失败，客户端将需要根据详细的错误代码确定何时（以及是否）重试。例如，优秀的客户端能够识别出是一部分（“diff”）OTA 更新包失败，并改为尝试完整的 OTA 更新包。
+        </li>
+      </ul>
+
+      <p>客户端可能会：</p>
+
+      <ul>
+        <li>
+显示通知，以提醒用户重新启动系统。如果您想要实施鼓励用户定期更新的政策，则可以将该通知添加到客户端。如果客户端不提示用户，用户将会在下次重新启动系统时收到更新。（Google 的客户端会有延迟，该延迟可按每次更新进行配置。）
+        </li>
+        <li>
+显示通知，以告知用户他们是启动到了新的操作系统版本，还是应启动到新的操作系统版本，但却回退到了旧的操作系统版本。（Google 的客户端通常不会显示此类通知。）
+        </li>
+      </ul>
+
+      <p>在系统方面，A/B 系统更新会影响以下各项：</p>
+
+      <ul>
+        <li>
+分区选择（槽位）、<code>update_engine</code> 守护进程，以及引导加载程序交互（如下所述）
+        </li>
+        <li>
+编译过程和 OTA 更新包生成（如<a href="/devices/tech/ota/ab/ab_implement.html">实现 A/B 更新</a>中所述）
+        </li>
+      </ul>
+
+      <aside class="note">
+        <strong>注意</strong>：只有对于新设备，才建议通过 OTA 实现 A/B 系统更新。
+      </aside>
+
+      <h3 id="slots">分区选择（槽位）</h3>
+
+        <p>
+A/B 系统更新使用两组称为槽位（通常是槽位 A 和槽位 B）的分区。<em></em>系统从“当前”槽位运行，但在正常操作期间，运行中的系统不会访问未使用的槽位中的分区。<em></em><em></em>这种方法通过将未使用的槽位保留为后备槽位，来防范更新出现问题：如果在更新期间或更新刚刚完成后出现错误，系统可以回滚到原来的槽位并继续正常运行。为了实现这一目标，当前槽位使用的任何分区（包括只有一个副本的分区）都不应在 OTA 更新期间进行更新。<em></em>
+        </p>
+
+        <p>
+每个槽位都有一个“可启动”属性，该属性用于表明相应槽位存储的系统正确无误，设备可从相应槽位启动。<em></em>系统运行时，当前槽位处于可启动状态，但另一个槽位则可能包含旧版本（仍然正确）的系统、包含更新版本的系统，或包含无效的数据。无论当前槽位是哪一个，都有一个槽位是活动槽位（引导加载程序在下次启动时将使用的槽位，也称为首选槽位）。<em></em><em></em><em></em>
+        </p>
+
+        <p>
+此外，每个槽位还都有一个由用户空间设置的“成功”属性，仅当相应槽位处于可启动状态时，该属性才具有相关性。<em></em>被标记为成功的槽位应该能够自行启动、运行和更新。未被标记为成功的可启动槽位（多次尝试使用它启动之后）应由引导加载程序标记为不可启动，其中包括将活动槽位更改为另一个可启动的槽位（通常是更改为在尝试启动到新的活动槽位之前正在运行的槽位）。关于相应接口的具体详细信息在 <code><a href="https://android.googlesource.com/platform/hardware/libhardware/+/master/include/hardware/boot_control.h" class="external-link">
+          boot_control.h</a></code> 中定义。
+        </p>
+
+      <h3 id="update-engine">更新引擎守护进程</h3>
+
+        <p>
+A/B 系统更新过程会使用名为 <code>update_engine</code> 的后台守护进程来使系统做好准备，以启动到更新后的新版本。该守护进程可以执行以下操作：
+        </p>
+
+        <ul>
+          <li>
+按照 OTA 更新包的指示，从当前槽位 A/B 分区读取数据，然后将所有数据写入到未使用槽位 A/B 分区。
+          </li>
+          <li>
+在预定义的工作流程中调用 <code>boot_control</code> 接口。
+          </li>
+          <li>
+按照 OTA 更新包的指示，在将数据写入到所有未使用槽位分区之后，从新分区运行安装后程序。<em></em><em></em>（有关详细信息，请参阅<a href="#post-installation">安装后</a>）。
+          </li>
+        </ul>
+
+        <p>
+由于 <code>update_engine</code> 守护进程本身不会参与到启动流程中，因此该守护进程在更新期间可以执行的操作受当前槽位中的 <a href="/security/selinux/">SELinux</a> 政策和功能限制（在系统启动到新版本之前，此类政策和功能无法更新）。<em></em>为了维持一个稳定可靠的系统，更新流程<strong>不应</strong>修改分区表、当前槽位中各个分区的内容，以及无法通过恢复出厂设置擦除的非 A/B 分区的内容。
+        </p>
+
+        <h4 id="update_engine_source">更新引擎源代码</h4>
+
+        <p>
+<code>update_engine</code> 源代码位于 <code><a href="https://android.googlesource.com/platform/system/update_engine/" class="external">system/update_engine</a></code> 中。A/B OTA dexopt 文件分开放到了 <code>installd</code> 和一个程序包管理器中：
+        </p>
+
+        <ul>
+          <li>
+            <code><a href="https://android.googlesource.com/platform/frameworks/native/+/master/cmds/installd/" class="external-link">frameworks/native/cmds/installd/</a></code>ota* 包括安装后脚本、用于 chroot 的二进制文件、负责调用 dex2oat 的已安装克隆、OTA 后 move-artifacts 脚本，以及 move 脚本的 rc 文件。
+          </li>
+          <li>
+            <code><a href="https://android.googlesource.com/platform/frameworks/base/+/master/services/core/java/com/android/server/pm/OtaDexoptService.java" class="external-link">frameworks/base/services/core/java/com/android/server/pm/OtaDexoptService.java</a></code>（加上 <code><a href="https://android.googlesource.com/platform/frameworks/base/+/master/services/core/java/com/android/server/pm/OtaDexoptShellCommand.java" class="external-link">OtaDexoptShellCommand</a></code>）是负责为应用准备 dex2oat 命令的程序包管理器。
+          </li>
+        </ul>
+
+        <p>
+如需可使用的示例，请参阅 <code><a href="https://android.googlesource.com/device/google/marlin/+/nougat-dr1-release/device-common.mk" class="external-link">/device/google/marlin/device-common.mk</a></code>。
+        </p>
+
+        <h4 id="update_engine_logs">更新引擎日志</h4>
+
+          <p>
+对于 Android 8.x 及更低版本，可在 <code>logcat</code> 及错误报告中找到 <code>update_engine</code> 日志。要使 <code>update_engine</code> 日志可在文件系统中使用，请将以下更改添加到您的细分版本中：
+          </p>
+
+          <ul>
+            <li><a href="https://android-review.googlesource.com/c/platform/system/update_engine/+/486618">
+更改 486618</a></li>
+            <li><a href="https://android-review.googlesource.com/c/platform/system/core/+/529080">
+更改 529080</a></li>
+            <li><a href="https://android-review.googlesource.com/c/platform/system/update_engine/+/529081">
+更改 529081</a></li>
+            <li><a href="https://android-review.googlesource.com/c/platform/system/sepolicy/+/534660">
+更改 534660</a></li>
+          </ul>
+
+          <p>这些更改会将最新的 <code>update_engine</code> 日志的副本保存到 <code>/data/misc/update_engine_log/update_engine.log</code>。拥有<strong>日志</strong>组 ID 的用户将能够访问相应的文件系统日志。
+
+      </p><h3 id="bootloader-interactions">引导加载程序交互</h3>
+
+        <p>
+<code>boot_control</code> HAL 供 <code>update_engine</code>（可能还有其他守护进程）用于指示引导加载程序从何处启动。常见的示例情况及其相关状态包括：
+        </p>
+
+        <ul>
+          <li>
+            <strong>正常情况</strong>：系统正在从其当前槽位（槽位 A 或槽位 B）运行。到目前为止尚未应用任何更新。系统的当前槽位是可启动且被标记为成功的活动槽位。
+          </li>
+          <li>
+            <strong>正在更新</strong>：系统正在从槽位 B 运行，因此，槽位 B 是可启动且被标记为成功的活动槽位。由于槽位 A 中的内容正在更新，但是尚未完成，因此槽位 A 被标记为不可启动。在此状态下，应继续从槽位 B 重新启动。
+          </li>
+          <li>
+            <strong>已应用更新，正在等待重新启动</strong>：系统正在从槽位 B 运行，槽位 B 可启动且被标记为成功，但槽位 A 之前被标记为活动槽位（因此现在被标记为可启动）。槽位 A 尚未被标记为成功，引导加载程序应尝试从槽位 A 启动若干次。
+          </li>
+          <li>
+            <strong>系统已重新启动到新的更新</strong>：系统正在首次从槽位 A 运行，槽位 B 仍可启动且被标记为成功，而槽位 A 仅可启动，且仍是活动槽位，但未被标记为成功。在进行一些检查之后，用户空间守护进程 <code>update_verifier</code> 应将槽位 A 标记为成功。
+          </li>
+        </ul>
+
+      <h3 id="streaming-updates">流式更新支持</h3>
+
+        <p>
+用户设备并非在 <code>/data</code> 上总是有足够的空间来下载更新包。由于 OEM 和用户都不想浪费 <code>/cache</code> 分区上的空间，因此有些用户会因为设备上没有空间来存储更新包而不进行更新。为了解决这个问题，Android 8.0 中添加了对流式 A/B 更新（下载数据块后直接将数据块写入 B 分区，而无需将数据块存储在 <code>/data</code> 上）的支持。流式 A/B 更新几乎不需要临时存储空间，并且只需要能够存储大约 100KiB 元数据的存储空间即可。
+        </p>
+
+        <p>要在 Android 7.1 中实现流式更新，请选择以下补丁程序：</p>
+
+        <ul>
+          <li>
+            <a href="https://android-review.googlesource.com/333624" class="external">
+允许取消代理解析请求</a>
+          </li>
+          <li>
+            <a href="https://android-review.googlesource.com/333625" class="external">
+解决在解析代理时会终止传输的问题</a>
+          </li>
+          <li>
+            <a href="https://android-review.googlesource.com/333626" class="external">
+针对范围之间的 TerminateTransfer 添加单元测试</a>
+          </li>
+          <li>
+            <a href="https://android-review.googlesource.com/333627" class="external">
+清理 RetryTimeoutCallback()</a>
+          </li>
+        </ul>
+
+        <p>
+无论是使用 <a href="https://www.android.com/gms/">Google 移动服务 (GMS)</a>，还是使用任何其他更新客户端，都需要安装这些补丁程序，才能在 Android 7.1 中支持流式传输 A/B 更新包。
+        </p>
+
+    <h2 id="life-of-an-a-b-update">A/B 更新过程</h2>
+
+      <p>
+当有 OTA 更新包（在代码中称为有效负载）可供下载时，更新流程便开始了。<em></em>设备中的政策可以根据电池电量、用户活动、充电状态或其他政策来延迟下载和应用有效负载。此外，由于更新是在后台运行，因此用户可能并不知道正在进行更新。所有这些都意味着，更新流程可能随时会由于政策、意外重新启动或用户操作而中断。
+      </p>
+
+      <p>
+OTA 更新包本身所含的元数据可能会指示可进行流式更新，在这种情况下，相应更新包也可采用非流式安装方式。服务器可以利用这些元数据告诉客户端正在进行流式更新，以便客户端正确地将 OTA 移交给 <code>update_engine</code>。如果设备制造商具有自己的服务器和客户端，便可以通过确保以下两项来实现流式更新：确保服务器能够识别出更新是流式更新（或假定所有更新都是流式更新），并确保客户端能够正确调用 <code>update_engine</code> 来进行流式更新。制造商可以根据更新包是流式更新变体这一事实向客户端发送一个标记，以便在进行流式更新时触发向框架端的移交工作。
+      </p>
+
+      <p>有可用的有效负载后，更新流程将遵循如下步骤：</p>
+
+      <table>
+        <tbody><tr>
+          <th>步骤</th>
+          <th>操作</th>
+        </tr>
+        <tr>
+          <td>1</td>
+          <td>通过 <code>markBootSuccessful()</code> 将当前槽位（或“源槽位”）标记为成功（如果尚未标记）。</td>
+        </tr>
+        <tr>
+          <td>2</td>
+          <td>
+调用函数 <code>setSlotAsUnbootable()</code>，将未使用的槽位（或“目标槽位”）标记为不可启动。当前槽位始终会在更新开始时被标记为成功，以防止引导加载程序回退到未使用的槽位（该槽位中很快将会有无效数据）。如果系统已做好准备，可以开始应用更新，那么即使其他主要组件出现损坏（例如界面陷入崩溃循环），当前槽位也会被标记为成功，因为可以通过推送新软件来解决这些问题。
+            <br /><br />
+更新有效负载是不透明的 Blob，其中包含更新到新版本的指示。更新有效负载由以下部分组成：
+            <ul>
+              <li>
+                元数据。<em></em>元数据在更新有效负载中所占的比重相对较小，其中包含一系列用于在目标槽位上生成和验证新版本的操作。例如，某项操作可能会解压缩特定 Blob 并将其写入到目标分区中的特定块，或者从源分区读取数据、应用二进制补丁程序，然后写入到目标分区中的特定块。
+              </li>
+              <li>
+                额外数据。<em></em>与操作相关的额外数据在更新有效负载中占据了大部分比重，其中包含这些示例中的已压缩 Blob 或二进制补丁程序。
+              </li>
+            </ul>
+          </td>
+        </tr>
+        <tr>
+          <td>3</td>
+          <td>下载有效负载元数据。</td>
+        </tr>
+        <tr>
+          <td>4</td>
+          <td>
+对于元数据中定义的每项操作，都将按顺序发生以下行为：将相关数据（如果有）下载到内存中、应用操作，然后释放关联的内存。
+          </td>
+        </tr>
+        <tr>
+          <td>5</td>
+          <td>
+对照预期的哈希重新读取并验证所有分区。
+          </td>
+        </tr>
+        <tr>
+          <td>6</td>
+          <td>
+运行安装后步骤（如果有）。如果在执行任何步骤期间出现错误，则更新失败，系统可能会通过其他有效负载重新尝试更新。如果上述所有步骤均已成功完成，则更新成功，系统会执行最后一个步骤。
+          </td>
+        </tr>
+        <tr>
+          <td>7</td>
+          <td>
+<em></em>调用 <code>setActiveBootSlot()</code>，将未使用的槽位标记为活动槽位。将未使用的槽位标记为活动槽位并不意味着它将完成启动。如果引导加载程序（或系统本身）未读取到“成功”状态，则可以将活动槽位切换回来。
+          </td>
+        </tr>
+        <tr>
+          <td>8</td>
+          <td>
+安装后步骤（如下所述）包括从“新更新”版本中运行仍在旧版本中运行的程序。如果此步骤已在 OTA 更新包中定义，则为<strong>强制性</strong>步骤，且程序必须返回并显示退出代码 <code>0</code>，否则更新失败。
+          </td>
+        </tr>
+          <tr><td>9</td>
+          <td>
+在系统足够深入地成功启动到新槽位并完成重新启动后检查之后，系统会调用 <code>markBootSuccessful()</code>，将现在的当前槽位（原“目标槽位”）标记为成功。
+          </td>
+        </tr><tr>
+      </tr></tbody></table>
+
+      <aside class="note">
+        <strong>注意</strong>：第 3 步和第 4 步占用了大部分更新时间，因为这两个步骤涉及写入和下载大量数据，并且可能会因政策或重新启动等原因而中断。
+      </aside>
+
+      <h3 id="post-installation">安装后</h3>
+
+        <p>
+对于定义了安装后步骤的每个分区，<code>update_engine</code> 都会将新分区装载到特定位置，并执行与装载的分区相关的 OTA 中指定的程序。例如，如果安装后程序被定义为相应系统分区中的 <code>usr/bin/postinstall</code>，则系统会将未使用槽位中的这个分区装载到一个固定位置（例如 <code>/postinstall_mount</code>），然后执行 <code>/postinstall_mount/usr/bin/postinstall</code> 命令。
+        </p>
+
+        <p>
+为确保成功执行安装后步骤，旧内核必须能够：
+        </p>
+
+        <ul>
+          <li>
+            <strong>装载新的文件系统格式</strong>。文件系统类型不能更改（除非旧内核中支持这么做），包括使用的压缩算法（如果使用 SquashFS 等经过压缩的文件系统）等详细信息。
+          </li>
+          <li>
+            <strong>理解新分区的安装后程序格式</strong>。如果使用可执行且可链接格式 (ELF) 的二进制文件，则该文件应该与旧内核兼容（例如，如果架构从 32 位细分版本改为使用 64 位细分版本，则 64 位的新程序应该可以在旧的 32 位内核上运行）。除非加载程序 (<code>ld</code>) 收到使用其他路径或编译静态二进制文件的指令，否则将会从旧系统映像而非新系统映像加载各种库。
+          </li>
+        </ul>
+
+        <p>
+例如，您可以使用 shell 脚本作为安装后程序（由旧系统中顶部包含 <code>#!</code> 标记的 shell 二进制文件解析），然后从新环境设置库路径，以便执行更复杂的二进制安装后程序。或者，您可以从专用的较小分区执行安装后步骤，以便主系统分区中的文件系统格式可以得到更新，同时不会产生向后兼容问题或引发 stepping-stone 更新；这样一来，用户便可以从出厂映像直接更新到最新版本。
+        </p>
+
+        <p>
+新的安装后程序将受旧系统中定义的 SELinux 政策限制。因此，安装后步骤适用于在指定设备上执行设计所要求的任务或其他需要尽可能完成的任务（例如，更新支持 A/B 更新的固件或引导加载程序、为新版本准备数据库副本，等等）。安装后步骤<strong>不适用于</strong>重新启动之前的一次性错误修复（此类修复需要无法预见的权限）。
+        </p>
+
+        <p>
+所选的安装后程序在 <code>postinstall</code> SELinux 环境中运行。新装载的分区中的所有文件都将带有 <code>postinstall_file</code> 标记，无论在重新启动到新系统后它们的属性如何，都是如此。在新系统中对 SELinux 属性进行的更改不会影响安装后步骤。如果安装后程序需要额外的权限，则必须将这些权限添加到安装后环境中。
+        </p>
+
+      <h3 id="after_reboot">重新启动后</h3>
+
+        <p>
+重新启动后，<code>update_verifier</code> 会触发利用 dm-verity 进行完整性检查。系统会先启动该检查，然后再启动 zygote，以避免 Java 服务进行任何无法撤消且会导致无法进行安全回滚的更改。在此过程中，如果验证启动功能或 dm-verity 检测到任何损坏，引导加载程序和内核还可能会触发重新启动。检查完成后，<code>update_verifier</code> 会将启动标记为成功。
+        </p>
+
+        <p>
+          <code>update_verifier</code> 只会读取 <code>/data/ota_package/care_map.txt</code>（在使用 AOSP 代码时，该文件会包含在 A/B OTA 更新包中）中列出的数据块。Java 系统更新客户端（例如 GmsCore）会在重新启动设备前提取 <code>care_map.txt</code> 并设置访问权限，在系统成功启动到新版本后会删除所提取的这个文件。
+        </p>
+
+    <h2 id="faq">常见问题解答</h2>
+
+      <h3>Google 是不是在所有设备上都采用了 A/B OTA？</h3>
+
+        <p>
+是的。A/B 更新的营销名称是无缝更新。<em></em>从 2016 年 10 月份开始，Pixel 和 Pixel XL 手机在出厂时都具备 A/B 功能，并且所有 Chromebook 都使用相同的 <code>update_engine</code> A/B 实现。必要的平台代码实现在 Android 7.1 及更高版本中是公开的。
+        </p>
+
+      <h3>为什么 A/B OTA 更好？</h3>
+
+      <p>A/B OTA 能够为用户提供更好的更新体验。从每月安全更新数据中获得的指标显示，该功能被证明是成功的：截至 2017 年 5 月，95% 的 Pixel 用户在一个月内采纳最新的安全更新，而 Nexus 用户则为 87%，并且 Pixel 用户执行更新的时间早于 Nexus 用户。如果在 OTA 期间无法成功更新数据块，将不会再导致设备无法启动；在新系统映像成功启动之前，Android 仍能够回退到上一个可使用的系统映像。</p>
+
+      <h3>A/B 更新对 2016 Pixel 分区大小有什么影响？</h3>
+
+      <p>下表包含推出的 A/B 配置与经过内部测试的非 A/B 配置的详细信息：</p>
+
+      <table>
+        <tbody>
+          <tr>
+            <th>Pixel 分区大小</th>
+            <th width="33%">A/B</th>
+            <th width="33%">非 A/B</th>
+          </tr>
+          <tr>
+            <td>引导加载程序</td>
+            <td>50*2</td>
+            <td>50</td>
+          </tr>
+          <tr>
+            <td>启动</td>
+            <td>32*2</td>
+            <td>32</td>
+          </tr>
+          <tr>
+            <td>恢复</td>
+            <td>0</td>
+            <td>32</td>
+          </tr>
+          <tr>
+            <td>缓存</td>
+            <td>0</td>
+            <td>100</td>
+          </tr>
+          <tr>
+            <td>无线通讯</td>
+            <td>70*2</td>
+            <td>70</td>
+          </tr>
+          <tr>
+            <td>供应商</td>
+            <td>300*2</td>
+            <td>300</td>
+          </tr>
+          <tr>
+            <td>系统</td>
+            <td>2048*2</td>
+            <td>4096</td>
+          </tr>
+          <tr>
+            <td><strong>总计</strong></td>
+            <td><strong>5000</strong></td>
+            <td><strong>4680</strong></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p>要进行 A/B 更新，只需要在闪存中增加 320MiB，而通过移除恢复分区，可节省 32MiB，并且通过移除缓存分区，可另外节省 100MiB。这将平衡引导加载程序、启动分区和无线通讯分区的 B 分区带来的开销。供应商分区增大了一倍（在增加的大小中占了绝大部分）。Pixel 的 A/B 系统映像大小是原来的非 A/B 系统映像的一半。
+      </p>
+
+      <p>对于经过内部测试的 Pixel A/B 和非 A/B 变体（仅推出了 A/B 变体），所用空间仅差 320MiB。在空间为 32GiB 的设备上，这只相当于不到 1%。对于空间为 16GiB 的设备，这相当于不到 2%，对于空间为 8GiB 的设备，这几乎相当于 4%（假设所有三种设备都具有相同的系统映像）。</p>
+
+      <h3>你们为何不使用 SquashFS？</h3>
+
+      <p>我们尝试过 SquashFS，但无法实现高端设备所需的性能。我们不会为手持设备使用 SquashFS，也不推荐这么做。</p>
+
+      <p>更具体地说，使用 SquashFS 时，系统分区上节省了约 50% 的大小，但绝大多数压缩率较高的文件都是预编译的 .odex 文件。这些文件都具有非常高的压缩比（接近 80%），但系统分区其余部分的压缩比要低得多。另外，SquashFS 在 Android 7.0 中引发了以下性能问题：</p>
+
+      <ul>
+        <li>与以往的设备相比，Pixel 具有非常快的闪存，但并没有大量的空闲 CPU 周期，因此虽然从闪存读取的字节数更少，但却需要更多的 CPU 来处理 I/O，这是一个潜在的制约因素。</li>
+        <li>在没有任何负载的系统上，有些 I/O 变化在人为基准条件下不会出现任何问题，但在具有真实负载（如 Nexus 6 上的加密）的实际用例中有时则会出现问题。</li>
+        <li>在某些方面，基准化分析显示回归率达到 85%。</li>
+        </ul>
+
+      <p>随着 SquashFS 日趋成熟并且增加了旨在降低 CPU 影响的功能（例如，将不应压缩且经常访问的文件列入白名单），我们将继续对其进行评估并向设备制造商提供建议。</p>
+
+      <h3>在不使用 SquashFS 的情况下，你们是如何做到将系统分区的大小减半的？</h3>
+
+      <p>应用存储在 .apk 文件中，这些文件实际上是 ZIP 档案。每个 .apk 文件中都有一个或多个包含可移植 Dalvik 字节码的 .dex 文件。.odex 文件（经过优化的 .dex 文件）会与 .apk 文件分开放置，并且可以包含特定于设备的机器代码。如果存在 .odex 文件，Android 将能够以预先编译的速度运行应用，而无需在每次启动应用时等待系统编译代码。.odex 文件并不是绝对必需的：实际上 Android 可以通过解译或即时 (JIT) 编译来直接运行 .dex 代码，但使用 .odex 文件可以实现启动速度和运行时速度的最佳组合（如果有足够的空间）。</p>
+
+      <p>示例：对于运行 Android 7.1 且系统映像总大小为 2628MiB（2755792836 字节）的 Nexus 6P 中的 installed-files.txt，在系统映像总大小中占据比重最大的几种文件类型明细如下：
+      </p>
+
+      <table>
+      <tbody>
+      <tr>
+      <td>.odex</td>
+      <td>1391770312 字节</td>
+      <td>50.5%</td>
+      </tr>
+      <tr>
+      <td>.apk</td>
+      <td>846878259 字节</td>
+      <td>30.7%</td>
+      </tr>
+      <tr>
+      <td>.so（原生 C/C++ 代码）</td>
+      <td>202162479 字节</td>
+      <td>7.3%</td>
+      </tr>
+      <tr>
+      <td>.oat 文件/.art 映像</td>
+      <td>163892188 字节</td>
+      <td>5.9%</td>
+      </tr>
+      <tr>
+      <td>字体</td>
+      <td>38952361 字节</td>
+      <td>1.4%</td>
+      </tr>
+      <tr>
+      <td>icu 语言区域数据</td>
+      <td>27468687 字节</td>
+      <td>0.9%</td>
+      </tr>
+      </tbody>
+      </table>
+
+      <p>这些数字在其他设备上是类似的，因此在 Nexus/Pixel 设备上，.odex 文件会占用系统分区大约一半的空间。这意味着我们可以继续使用 EXT4，但会在出厂前将 .odex 文件写入 B 分区，然后在第一次启动时将它们复制到 <code>/data</code>。用于 EXT4 A/B 的实际存储空间与用于 SquashFS A/B 的相同，因为如果我们使用了 SquashFS，我们会将经过预先优化的 .odex 文件放入 system_a 而非 system_b。</p>
+
+      <h3>将 .odex 文件复制到 /data 难道不是意味着在 /system 上节省的空间会在 /data 上被用掉吗？</h3>
+
+      <p>不完全是。在 Pixel 上，.odex 文件占用的大部分空间会用于应用（通常位于 <code>/data</code> 上）。这些应用通过 Google Play 更新，因此系统映像上的 .apk 和 .odex 文件在设备生命周期的大部分时间内都不会用到。当用户实际使用每个应用时，此类文件可以被完全排除并替换为由配置文件驱动的小型 .odex 文件（因此，用户不使用的应用不需要空间）。有关详细信息，请观看 Google I/O 2016 演讲 <a href="https://www.youtube.com/watch?v=fwMM6g7wpQ8">ART 的演变</a>。</p>
+
+      <p>难以进行比较的几个主要原因：</p>
+      <ul>
+      <li>由 Google Play 更新的应用在收到其第一次更新时，始终会立即将 .odex 文件放在 <code>/data</code> 上。</li>
+      <li>用户不运行的应用根本不需要 .odex 文件。</li>
+      <li>配置文件驱动型编译生成的 odex 文件比预先编译生成的 .odex 文件要小（因为前者仅会优化对性能至关重要的代码）。</li>
+      </ul>
+
+      <p>如需详细了解可供 OEM 使用的调整选项，请参阅<a href="/devices/tech/dalvik/configure.html">配置 ART</a>。</p>
+
+      <h3>.odex 文件在 /data 上不是有两个副本吗？</h3>
+
+      <p>这个问题有点复杂。写入新的系统映像后，系统将针对新的 .dex 文件运行新版本的 dex2oat，以生成新的 .odex 文件。这个过程发生在旧系统仍在运行时，因此旧的和新的 .odex 文件同时位于 <code>/data</code> 上。
+      </p>
+
+      <p>在优化每个程序包之前，OtaDexoptService 中的代码 (<code><a href="https://android.googlesource.com/platform/frameworks/base/+/nougat-mr1-release/services/core/java/com/android/server/pm/OtaDexoptService.java#200" class="external">frameworks/base/+/nougat-mr1-release/services/core/java/com/android/server/pm/OtaDexoptService.java#200</a></code>) 都会调用 <code>getAvailableSpace</code>，以避免过度填充 <code>/data</code>。请注意，此处的可用数值仍然是保守估计：是指在达到通常的系统下限空间阈值之前剩余的空间量（以百分比和字节数计）。<em></em><em></em>所以如果 <code>/data</code> 已满，每个 .odex 文件便不会有两个副本。上述代码还有一个 BULK_DELETE_THRESHOLD：如果设备上的可用空间即将被填满（如上所述），则属于未使用应用的 .odex 文件将会被移除。这是每个 .odex 文件没有两个副本的另一种情况。</p>
+
+      <p>最糟糕的情况是 <code>/data</code> 已被完全填满，更新将等到设备重新启动到新系统，而不再需要旧系统的 .odex 文件时。PackageManager 可处理此情况：(<code><a href="https://android.googlesource.com/platform/frameworks/base/+/nougat-mr1-release/services/core/java/com/android/server/pm/PackageManagerService.java#7215" class="external">frameworks/base/+/nougat-mr1-release/services/core/java/com/android/server/pm/PackageManagerService.java#7215</a></code>)。在新系统成功启动之后，<code>installd</code> (<code><a href="https://android.googlesource.com/platform/frameworks/native/+/nougat-mr1-release/cmds/installd/commands.cpp#2192" class="external">frameworks/native/+/nougat-mr1-release/cmds/installd/commands.cpp#2192</a></code>) 可以移除旧系统此前使用的 .odex 文件，从而使设备返回到只有一个副本的稳定状态。</p>
+
+      <p>因此，尽管 <code>/data</code> 可能会包含所有 .odex 文件的两个副本，但 (a) 这是暂时的，并且 (b) 只有在 <code>/data</code> 上有足够的可用空间时才会发生。除了在更新期间，将始终只有一个副本。作为 ART 通用健壮性功能的一部分，它永远不会让 <code>/data</code> 中填满 .odex 文件（因为在非 A/B 系统上，这也会是一个问题）。</p>
+
+      <h3>这种写入/复制操作不会增加闪存磨损吗？</h3>
+
+      <p>只有一小部分闪存会被重写：完整 Pixel 系统更新会写入大约 2.3GiB 的数据。（应用也会被重新编译，但非 A/B 更新也是如此。）一直以来，基于块的完整 OTA 会写入类似数量的数据，所以闪存磨损率应该是类似的。</p>
+
+      <h3>刷写两个系统分区会增加出厂刷写时间吗？</h3>
+
+      <p>不会。Pixel 的系统映像大小并没有增加（只是将空间划分到了两个分区）。</p>
+
+      <h3>如果将 .odex 文件保留在 B 分区上，不会导致恢复出厂设置后重新启动速度变慢吗？</h3>
+
+      <p>会。如果您已实际使用了一台设备，进行了 OTA，并且执行了恢复出厂设置，则首次重新启动的速度将会比未进行这些操作时慢（在 Pixel XL 上，分别为 1 分 40 秒和 40 秒），因为在进行第一次 OTA 之后，B 中将会失去 .odex 文件，所以这些文件无法复制到 <code>/data</code>。正所谓有得有失。</p>
+
+      <p>与常规启动相比，恢复出厂设置应该是一项极少执行的操作，因此所花费的时间不是很重要。（这不会影响从工厂获取设备的用户或审核者，因为在这种情况下，B 分区可用。）使用 JIT 编译器意味着我们不需要重新编译所有内容，所以情况不会像您想象的那样糟糕。<em></em>此外，还可以通过在清单 (<code><a href="https://android.googlesource.com/platform/frameworks/base/+/nougat-mr1-release/packages/SystemUI/AndroidManifest.xml#23" class="external">frameworks/base/+/nougat-mr1-release/packages/SystemUI/AndroidManifest.xml#23</a></code>) 中使用 <code>coreApp="true"</code> 将应用标记为需要预先编译。这是 <code>system_server</code> 当前采用的方式，因为出于安全考虑，不允许此进程进行 JIT 编译。</p>
+
+      <h3>如果将 .odex 文件保留在 /data 而非 /system 上，不会导致 OTA 后重新启动速度变慢吗？</h3>
+
+      <p>不会。如上所述，系统会在旧系统映像仍在运行时运行新的 dex2oat，以生成新系统将会需要的文件。在相关工作完成之前，更新会被视为不可用。</p>
+
+      <h3>我们可以（应该）推出 32GiB、16GiB 或 8GiB 的 A/B 设备吗？</h3>
+
+      <p>经证明，32GiB 空间在 Pixel 上能够很好地满足需求，而占用 16GiB 中的 320MiB 则意味着空间减少了 2%。同样，占用 8GiB 中的 320MiB 则意味着空间减少了 4%。显然，在空间为 4GiB 的设备上，不推荐使用 A/B 更新，因为 320MiB 的开销几乎占总可用空间的 10%。</p>
+
+      <h3>AVB2.0 需要 A/B OTA 吗？</h3>
+
+      <p>不需要。Android <a href="/security/verifiedboot/">验证启动</a>一直以来都是需要基于块的更新，但不一定是 A/B 更新。</p>
+
+      <h3>A/B OTA 需要 AVB2.0 吗？</h3>
+
+      <p>不需要。</p>
+
+      <h3>A/B OTA 会破坏 AVB2.0 的回滚保护吗？</h3>
+
+      <p>不会。这里存在一些混淆，因为如果 A/B 系统无法启动到新的系统映像，则会在重试一定的次数（由引导加载程序确定）后，自动恢复到“之前”的系统映像。但关键在于，对于使用 A/B 更新的系统而言，“之前”的系统映像实际上仍然是“当前”的系统映像。设备成功启动新映像后，回滚保护功能就会立即启动，以确保您无法再使用以前的系统启动。但是，在您实际成功启动新映像之前，回滚保护功能不会将其视为当前系统映像。</p>
+
+      <h3>如果在系统运行时安装更新，速度会不会很慢？</h3>
+
+      <p>使用非 A/B 更新时，目标是尽快安装更新，因为用户正在等待，并且在系统应用更新时，用户将无法使用其设备。使用 A/B 更新时，情况则恰恰相反。这是因为用户仍在使用其设备，于是目标就变成了尽可能减少影响，所以系统会有意缓慢地进行更新。通过 Java 系统更新客户端中的逻辑（对于 Google 来说是 GMSCore - 由 GMS 提供的核心程序包），Android 还会尝试选择用户完全不使用其设备的时间进行更新。该平台支持暂停/恢复更新，如果用户开始使用设备，客户端可以使用该功能来暂停更新，并在设备再次空闲时恢复更新。</p>
+
+      <p>在进行 OTA 时分两个阶段，这两个阶段在界面中的进度条下清楚地显示为“第 1 步（共 2 步）”和“第 2 步（共 2 步）”。<em></em><em></em>第 1 步是写入数据块，第 2 步是预编译 .dex 文件。这两个阶段在对性能的影响方面有很大差异。第一个阶段是简单的 I/O。这需要很少的资源（RAM、CPU、I/O），因为它只是缓慢地复制数据块。</p>
+
+      <p>第二个阶段是运行 dex2oat 来预编译新的系统映像。这显然在资源要求上没有明确的界限，因为它会编译实际应用。与编译小而简单的应用相比，编译大而复杂的应用所涉及的工作量显然要多出许多；而在第一个阶段，没有任何磁盘块会比其他磁盘块更大或更复杂。</p>
+
+      <p>该过程类似于 Google Play 先在后台安装应用更新，然后显示“已更新 5 个应用”通知，而这是多年来一直采用的做法。<em></em></p>
+
+      <h3>如果用户实际上正在等待更新，将会怎样？</h3>
+
+      <p>GmsCore 中的当前实现不区分后台更新和用户启动的更新，但将来可能会加以区分。届时，如果用户明确要求安装更新或正在查看更新进度屏幕，我们将假设他们正在等待系统完成更新，从而优先安排更新工作。</p>
+
+      <h3>如果无法应用更新，将会怎样？</h3>
+
+      <p>对于非 A/B 更新，如果更新无法应用，过去经常会导致用户的设备无法使用。唯一的例外情况是在尚未应用更新之前就出现问题（比如说因为更新包验证失败）。对于 A/B 更新，无法应用更新不会影响当前正在运行的系统。可以稍后重新尝试更新。</p>
+
+      <h3>哪些系统芯片 (SoC) 支持 A/B 更新？</h3>
+
+      <p>截至 2017 年 3 月 15 日，我们得到的信息如下：</p>
+      <table class="style0">
+      <tbody>
+      <tr>
+      <td></td>
+      <td><strong>Android 7.x 版本</strong></td>
+      <td><strong>Android 8.x 版本</strong></td>
+      </tr>
+      <tr>
+      <td><strong>Qualcomm</strong></td>
+      <td>根据 OEM 的请求而定</td>
+      <td>所有芯片组都将受支持</td>
+      </tr>
+      <tr>
+      <td><strong>Mediatek</strong></td>
+      <td>根据 OEM 的请求而定</td>
+      <td>所有芯片组都将受支持</td>
+      </tr>
+      </tbody>
+      </table>
+
+      <p>有关时间表的详细信息，请咨询您的 SoC 联系人。对于上面未列出的 SoC，请直接与您的 SoC 供应商联系。</p>
+
+</body></html>

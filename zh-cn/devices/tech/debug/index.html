@@ -24,15 +24,19 @@
 
 <p class="note"><strong>注意</strong>：本部分和本网站其他部分的页面建议您使用 <code>adb</code> 和 <code>setprop</code> 参数一起调试 Android 的某些方面。请注意，在 Android 操作系统的 O 版本之前，属性名称的长度上限为 32 个字符。也就是说，要创建一个包含应用名称的 wrap 属性，您需要截断该名称以使其符合字符数限制。在 Android O 及更高版本中，此字符数上限值要大得多，应该不需要截断。</p>
 
-<p>本页面介绍了 <code>debuggerd</code> 的用法，debuggerd 是一种用于在应用崩溃后收集错误信息的守护进程。其他页面介绍了如何通过 <a href="https://developer.android.com/studio/command-line/dumpsys.html"><code>dumpsys</code></a> 了解系统服务状况，其中包括查看<a href="/devices/tech/debug/native-memory.html">本地内存</a>、<a href="https://developer.android.com/studio/command-line/dumpsys.html#network">网络</a>和 <a href="https://developer.android.com/studio/command-line/dumpsys.html#procstats">RAM</a> 使用情况、使用 <a href="/devices/tech/debug/asan.html">AddressSanitizer</a> 检测原生代码中的内存错误、评估<a href="/devices/tech/debug/eval_perf.html">性能问题</a>（包括 <a href="/devices/tech/debug/systrace">systrace</a>），以及使用 <a href="/devices/tech/debug/gdb.html">GNU 项目调试程序 (GDB)</a> 和其他调试工具。</p>
+<p>本页面介绍了与崩溃转储有关的基本信息（可以在 logcat 输出中找到）。
+其他页面更详细地介绍了如何<a href="/devices/tech/debug/native-crash.html">诊断原生代码崩溃问题</a>，通过 <a href="https://developer.android.com/studio/command-line/dumpsys.html"><code>dumpsys</code></a> 了解系统服务状况，查看<a href="/devices/tech/debug/native-memory.html">本机内存</a>、<a href="https://developer.android.com/studio/command-line/dumpsys.html#network">网络</a>和 <a href="https://developer.android.com/studio/command-line/dumpsys.html#procstats">RAM</a> 使用情况，使用 <a href="/devices/tech/debug/asan.html">AddressSanitizer</a> 检测原生代码中的内存错误，评估<a href="/devices/tech/debug/eval_perf.html">性能问题</a>（包括 <a href="/devices/tech/debug/systrace">systrace</a>），以及使用 <a href="/devices/tech/debug/gdb.html">GNU 调试程序 (GDB)</a> 和其他调试工具。</p>
 
-<h2 id="debuggerd">使用 debuggerd</h2>
+<h2 id="debuggerd">崩溃转储</h2>
 
-<p><code>debuggerd</code> 进程会转储寄存器并展开堆栈。当动态链接的可执行文件启动时，系统会注册多个信号处理程序，这些处理程序会在 SIGSEGV 或 SIGABRT 等信号发送至相应进程时连接到 <code>debuggerd</code>（或 <code>debuggerd64)</code>）。</p>
+<p>当动态链接的可执行文件启动时，系统会注册多个信号处理程序，这些处理程序会在出现崩溃时将基本崩溃转储写入 logcat，并将更详细的“tombstone”文件写入 <code>/data/tombstones/</code>。
+tombstone 是一个包含与崩溃进程相关的额外数据的文件。需要特别指出的是，它包含对以下内容进行的堆栈跟踪：崩溃进程中的所有线程（而不只是捕捉到信号的线程）、完整的内存映射，以及所有打开的文件描述符的列表。</p>
 
-<p><code>debuggerd</code> 仅在未连接任何其他内容时才可连接。这意味着，在使用 <code>strace</code> 或 <code>gdb</code> 等工具时，将无法使用 <code>debuggerd</code>。此外，您还可以通过调用 <code>prctl(PR_SET_DUMPABLE, 0)</code> 明确阻止 <code>debuggerd</code> 进行连接，这一点在您需要选择停用崩溃报告时非常有用。</p>
+在 Android 8.0 之前，崩溃由 <code>debuggerd</code> 和 <code>debuggerd64</code> 守护进程处理。在 Android O 和更高版本中，<code>crash_dump32</code> 和 <code>crash_dump64</code> 是根据需要生成的。<p></p>
 
-<p><code>debuggerd</code> 输出示例（已去除时间戳和无关信息）：</p>
+<p>崩溃转储程序仅在未连接任何其他内容时才可连接。这意味着，在使用 <code>strace</code> 或 <code>gdb</code> 等工具时，将无法进行崩溃转储。</p>
+
+<p>输出示例（已去除时间戳和无关信息）：</p>
 
 <pre class="devsite-click-to-copy">
 *** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***
@@ -57,17 +61,17 @@ backtrace:
 Tombstone written to: /data/tombstones/tombstone_06
 </pre>
 
-<p><code>debuggerd</code> 输出的最后一行会向日志转储一个摘要，并向磁盘写入完整的 tombstone。<em></em>tombstone 仅仅是一个包含与崩溃进程相关的额外数据的文件；文件中的信息在调试崩溃时会非常有用，尤其是对崩溃进程中的所有线程（而不只是捕捉到信号的线程）和完整内存映射进行堆栈跟踪时。</p>
+<p>输出的最后一行提供了完整 tombstone 在磁盘上的位置。<em></em></p>
 
-<p>假设可以找到未剥离的二进制文件，您可以将上述示例粘贴到 <code>development/scripts/stack</code>，从而获取更详细的展开信息（包含行数信息）：</p>
+<p>假设您有可用的未剥离二进制文件，则可以将堆栈粘贴到 <code>development/scripts/stack</code> 中，从而获取更详细的展开信息（包含行号信息）：</p>
 
-<p class="key-point"><strong>提示</strong>：为方便起见，如果您已启动 <code>stack</code>，它将在您的 $PATH 上显示，因此您无需提供完整路径。</p>
+<p class="key-point"><strong>提示</strong>：为方便起见，如果您已运行 <code>lunch</code>，<code>stack</code> 将自动包含在您的 $PATH 中，因此您无需提供完整路径。</p>
 
 <pre class="devsite-terminal devsite-click-to-copy">
 development/tools/stack
 </pre>
 
-<p>输出示例：</p>
+<p>输出示例（基于上述 logcat 输出）：</p>
 <pre class="devsite-click-to-copy">
 Reading native crash info from stdin
 03-02 23:53:49.477 17951 17951 F DEBUG   : *** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***
@@ -112,7 +116,7 @@ Stack Trace:
   0001a7e5  __start_thread+34          bionic/libc/bionic/clone.cpp:46 (discriminator 1)
 </pre>
 
-<p class="note"><strong>注意</strong>：某些系统库是使用 <code>LOCAL_STRIP_MODULE := keep_symbols</code> 编译的，可直接从 <code>debuggerd</code> 提供可用的回溯，而不会像未剥离版本那样占用较大的空间。</p>
+<p class="note"><strong>注意</strong>：某些系统库是使用 <code>LOCAL_STRIP_MODULE := keep_symbols</code> 编译的，可直接提供可用的回溯，而不会像未剥离版本那样占用较大的空间。</p>
 
 <p>您也可以 <code>stack</code> 整个 tombstone。示例：</p>
 <pre class="devsite-terminal devsite-click-to-copy">
@@ -123,6 +127,7 @@ stack &lt; FS/data/tombstones/tombstone_05
 
 <h2 id="tombstone">从正在运行的进程获取堆栈跟踪/tombstone</h2>
 
-<p>您也可以对正在运行的进程使用 <code>debuggerd</code>。在命令行中，使用进程 ID (PID) 调用 <code>debuggerd</code>，以将完整的 tombstone 转储至 <code>stdout</code>。要确切获取进程中每个线程的堆栈，请添加 <code>-b</code> 或 <code>--backtrace</code> 标记。</p>
+<p>您也可以使用 <code>debuggerd</code> 工具从正在运行的进程获取堆栈转储。
+在命令行中，使用进程 ID (PID) 调用 <code>debuggerd</code>，以将完整的 tombstone 转储至 <code>stdout</code>。要确切获取进程中每个线程的堆栈，请添加 <code>-b</code> 或 <code>--backtrace</code> 标记。</p>
 
 </body></html>

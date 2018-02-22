@@ -20,23 +20,23 @@
       limitations under the License.
   -->
 
-<p>本页中介绍了如何配置 ART 及其编译选项。讨论的主题包括：系统映像预编译配置、dex2oat 编译选项，以及如何在系统分区空间、数据分区空间和性能这三者之间取得平衡。</p>
+<p>本页面介绍了如何配置 ART 及其编译选项。讨论的主题包括：系统映像预编译配置、dex2oat 编译选项，以及如何在系统分区空间、数据分区空间和性能这三者之间取得平衡。</p>
 
-<p>请参阅 <a href="http://source.android.com/devices/tech/dalvik/index.html">ART 和 Dalvik</a>、<a href="http://source.android.com/devices/tech/dalvik/dex-format.html">Dalvik 可执行文件格式</a>，以及 source.android.com 上的其他页面，了解如何使用 ART。请参阅<a href="http://developer.android.com/guide/practices/verifying-apps-art.html">在 Android Runtime (ART) 上验证应用行为</a>，了解如何确保您的应用能够正常运行。</p>
+<p>请参阅 <a href="/devices/tech/dalvik/index.html">ART 和 Dalvik</a>、<a href="/devices/tech/dalvik/dex-format.html">Dalvik 可执行文件格式</a>，以及 source.android.com 上的其他页面，了解如何使用 ART。请参阅<a href="http://developer.android.com/guide/practices/verifying-apps-art.html">在 Android Runtime (ART) 上验证应用行为</a>，了解如何确保您的应用能够正常运行。</p>
 
 <h2 id="how_art_works">ART 的运作方式</h2>
 
-<p>ART 使用预先 (AOT) 编译，并且从 Android 7.0（Nougat 或 N）开始使用 AOT、即时 (JIT) 编译和配置文件引导型编译的混合组合。所有这些编译模式的组合均可配置，我们将在本部分中对此进行介绍。例如，Pixel 设备配置了以下编译流程：</p>
+<p>ART 使用预先 (AOT) 编译，并且从 Android 7.0（代号 Nougat，简称 N）开始结合使用 AOT、即时 (JIT) 编译和配置文件引导型编译。所有这些编译模式的组合均可配置，我们将在本部分中对此进行介绍。例如，Pixel 设备配置了以下编译流程：</p>
 <ol>
-<li>最初安装应用时不进行任何 AOT 编译。应用在前几次运行时，系统会对其进行解译，并且会对经常执行的方法进行 JIT 编译。</li>
+<li>最初安装应用时不进行任何 AOT 编译。应用前几次运行时，系统会对其进行解译，并对经常执行的方法进行 JIT 编译。</li>
 <li>当设备闲置和充电时，编译守护进程会运行，以便根据在应用前几次运行期间生成的配置文件对常用代码进行 AOT 编译。</li>
-<li>下一次重新启动应用时将会使用配置文件引导型代码，并避免在运行时对已经过编译的方法进行 JIT 编译。在应用后续运行期间被 JIT 编译的方法将会被添加到配置文件中，然后编译守护进程将会收集这些方法。</li>
+<li>下一次重新启动应用时将会使用配置文件引导型代码，并避免在运行时对已经过编译的方法进行 JIT 编译。在应用后续运行期间进行了 JIT 编译的方法将会被添加到配置文件中，然后编译守护进程将会对这些方法进行 AOT 编译。</li>
 </ol>
 
-<p>ART 包括一个编译器（<code>dex2oat</code> 工具）和一个为启动 Zygote 而加载的运行时 (<code>libart.so</code>)。<code>dex2oat</code> 工具将会收到一个 APK 文件，并生成一个或多个编译软件工件文件，然后运行时将会加载这些文件。文件的个数、扩展名和名称会因版本而异，但从 Android O 版本开始，将会生成以下文件：</p>
+<p>ART 包括一个编译器（<code>dex2oat</code> 工具）和一个为启动 Zygote 而加载的运行时 (<code>libart.so</code>)。<code>dex2oat</code> 工具接受一个 APK 文件，并生成一个或多个编译工件文件，然后运行时将会加载这些文件。文件的个数、扩展名和名称会因版本而异，但在 Android O 版本中，将会生成以下文件：</p>
 <ul>
 <li><code>.vdex</code>：其中包含 APK 的未压缩 DEX 代码，另外还有一些旨在加快验证速度的元数据。</li>
-<li><code>.odex</code>：其中包含 APK 中的方法的代码（已经过 AOT 编译）。</li>
+<li><code>.odex</code>：其中包含 APK 中已经过 AOT 编译的方法代码。</li>
 <li><code>.art (optional)</code>：其中包含 APK 中列出的某些字符串和类的 ART 内部表示，用于加快应用启动速度。</li>
 </ul>
 
@@ -49,7 +49,7 @@
 </ol>
 <p></p>
 
-<p>用于配置这两个类别的一个核心 ART 选项是编译过滤器。<em></em>编译过滤器可控制 ART 如何编译 DEX 代码，是一个传递给 <code>dex2oat</code> 工具的选项。从 Android O 开始，有四个官方支持的过滤器：</p>
+<p>用于配置这两个类别的一个核心 ART 选项是“编译过滤器”。<em></em>编译过滤器可控制 ART 如何编译 DEX 代码，是一个传递给 <code>dex2oat</code> 工具的选项。从 Android O 开始，有四个官方支持的过滤器：</p>
 <ul>
 <li>verify：只运行 DEX 代码验证。<em></em></li>
 <li>quicken：运行 DEX 代码验证，并优化一些 DEX 指令，以获得更好的解译器性能。<em></em></li>
@@ -59,9 +59,9 @@
 
 <h3 id="system_rom">系统 ROM 配置</h3>
 
-<p>有一些 ART 编译选项可用于配置系统 ROM。如何配置这些选项取决于 <code>/system</code> 的可用存储空间以及预先安装的应用数量。编译到系统 ROM 的 JAR/APK 可以分为以下四个类别：</p>
+<p>有一些 ART 编译选项可用于配置系统 ROM。如何配置这些选项取决于 <code>/system</code> 的可用存储空间以及预先安装的应用数量。编译到系统 ROM 中的 JAR/APK 可以分为以下四个类别：</p>
 <ul>
-<li>启动相关的类路径代码：默认使用 speed 编译过滤器进行编译。<em></em></li>
+<li>启动类路径代码：默认使用 speed 编译过滤器进行编译。<em></em></li>
 <li>系统服务器代码：默认使用 speed 编译过滤器进行编译。<em></em></li>
 <li>产品专属的核心应用：默认使用 speed 编译过滤器进行编译。<em></em></li>
 <li>所有其他应用：默认使用 quicken 编译过滤器进行编译。<em></em></li>
@@ -72,23 +72,23 @@
 
 <li><code>WITH_DEXPREOPT</code></li>
 <p>
-是否针对在系统映像上安装的 DEX 代码调用 <code>dex2oat</code>。默认处于启用状态。
+是否对系统映像上安装的 DEX 代码调用 <code>dex2oat</code>。默认处于启用状态。
 </p>
 
 <li><code>DONT_DEXPREOPT_PREBUILTS</code>（从 Android 5.0 开始）</li>
 <p>
-启用 <code>DONT_DEXPREOPT_PREBUILTS</code> 可防止对经过预编译的应用进行预先优化。这些都是在 <code>Android.mk</code> 中指定了 <code>include $(BUILD_PREBUILT)</code> 的应用，例如 Gmail。不对可能通过 Google Play 进行更新且经过预编译的应用进行预先优化可以节省 <code>/system</code> 空间，但是会增加首次启动时间。
+启用 <code>DONT_DEXPREOPT_PREBUILTS</code> 可防止对预编译的应用进行预先优化。这些都是在 <code>Android.mk</code> 中指定了 <code>include $(BUILD_PREBUILT)</code> 的应用，例如 Gmail。不对这些很可能要通过 Google Play 进行更新的预编译应用进行预先优化可以节省 <code>/system</code> 的空间，但是会增加首次启动时间。
 </p>
 
-<li><code>WITH_DEXPREOPT_BOOT_IMG_ONLY</code></li>
+<li><code>WITH_DEXPREOPT_BOOT_IMG_AND_SYSTEM_SERVER_ONLY</code>（Android O MR1 中的新增选项）</li>
 
-<p>如果启用 <code>WITH_DEXPREOPT_BOOT_IMG_ONLY</code>，将只会预先优化启动相关的类路径。
+<p>如果启用 <code>WITH_DEXPREOPT_BOOT_IMG_AND_SYSTEM_SERVER_ONLY</code>，将只会对启动类路径和系统服务器 JAR 进行预先优化。</p>
 
-</p><li><code>LOCAL_DEX_PREOPT</code></li>
+<li><code>LOCAL_DEX_PREOPT</code></li>
 
-<p>通过在模块定义中指定 <code>LOCAL_DEX_PREOPT</code> 选项，还可以针对个别应用启用或停用预先优化功能。这有助于停用对于可能会立即收到 Google Play 更新的应用的预先优化，因为更新会在已过时的系统映像中执行预先优化的代码。此外，这还有助于在进行主要版本升级 OTA 时节省空间，因为用户的数据分区中可能已经有了较新版本的应用。</p>
+<p>通过在模块定义中指定 <code>LOCAL_DEX_PREOPT</code> 选项，还可以针对个别应用启用或停用预先优化功能。这有助于避免对那些可能会立即收到 Google Play 更新的应用进行预先优化，因为更新之后，对系统映像中的代码所做的预先优化都成了无用功。此外，这还有助于在进行重大版本 OTA 升级时节省空间，因为用户的数据分区中可能已经有了更高版本的应用。</p>
 
-<p><code>LOCAL_DEX_PREOPT</code> 支持分别通过值“true”和“false”来启用和停用预先优化功能。此外，如果预先优化不应将 <code>classes.dex</code> 文件从 APK 或 JAR 文件中剥离出来，则可以指定“nostripping”。通常情况下，该文件会被剥离出来，因为预先优化之后将不再需要该文件；但若要使第三方 APK 签名仍保持有效，最后的这个选项则是必需的。</p>
+<p><code>LOCAL_DEX_PREOPT</code> 支持分别使用值“true”和“false”来启用和停用预先优化功能。此外，如果在预先优化过程中不应将 <code>classes.dex</code> 文件从 APK 或 JAR 文件中剥离出来，则可以指定“nostripping”。通常情况下，该文件会被剥离出来，因为在进行预先优化之后将不再需要该文件；但若要使第三方 APK 签名仍保持有效，则必须使用最后这个选项。</p>
 
 <li><code>PRODUCT_DEX_PREOPT_BOOT_FLAGS</code></li>
 <p>
@@ -102,12 +102,12 @@
 
 <li><code>PRODUCT_DEX_PREOPT_MODULE_CONFIGS</code></li>
 <p>
-用于为特定模块和产品配置传递 <code>dex2oat</code> 选项。可以通过 <code>$(call add-product-dex-preopt-module-config,&lt;modules&gt;,&lt;option&gt;)</code> 在产品的 <code>device.mk</code> 文件中设置该选项，其中 <code>&lt;modules&gt;</code> 是一个列表，用于列出 JAR 和 APK 文件各自的 LOCAL_MODULE 和 LOCAL_PACKAGE 名称。
+用于为特定模块和产品配置传递 <code>dex2oat</code> 选项。可以在产品的 <code>device.mk</code> 文件中通过 <code>$(call add-product-dex-preopt-module-config,&lt;modules&gt;,&lt;option&gt;)</code> 设置该选项，其中 <code>&lt;modules&gt;</code> 是一个列表，用于列出 JAR 和 APK 文件各自的 LOCAL_MODULE 和 LOCAL_PACKAGE 名称。
 </p>
 
 <li><code>PRODUCT_DEXPREOPT_SPEED_APPS (New in Android O)</code></li>
 <p>
-应用列表，用于列出哪些应用已被确定为产品的核心应用并且最好是使用 speed 编译过滤器进行编译。<em></em>例如，常驻应用（如 SystemUI）只有在下次系统重新启动时才有机会使用配置文件引导型编译，因此对于产品来说，让这些应用始终采用 AOT 编译可能会更好。
+一个应用列表，用于列出哪些应用已被确定为产品的核心应用并且应使用 speed 编译过滤器对其进行编译。<em></em>例如，常驻应用（如 SystemUI）只有在下次系统重新启动时才有机会使用配置文件引导型编译，因此对于产品来说，让这些应用始终采用 AOT 编译可能会更好。
 </p>
 
 <li><code>PRODUCT_SYSTEM_SERVER_APPS (New in Android O)</code></li>
@@ -120,23 +120,28 @@
 是否在设备上包含 ART 的调试版本。默认情况下，系统会针对 userdebug 和 eng 细分版本启用该选项。可以通过将该选项明确设为“true”或“false”来覆盖此行为。<em></em><em></em>
 </p>
 <p>
-默认情况下，设备将使用非调试版本 (<em>libart.so</em>)。要进行切换，请将系统属性 <code>persist.sys.dalvik.vm.lib.2</code> 设为 <em>libartd.so</em>。
+默认情况下，设备将使用非调试版本 (<em>libart.so</em>)。要进行切换，请将系统属性 <code>persist.sys.dalvik.vm.lib.2</code> 设为 libartd.so。<em></em>
 </p>
 
 <li><code>WITH_DEXPREOPT_PIC (Removed in Android O)</code></li>
 
-<p>在 Android 5.1.0 到 Android 6.0.1 的所有版本中，都可以指定 <code>WITH_DEXPREOPT_PIC</code> 来启用位置无关代码 (PIC)。这样一来，就不必将来自映像的编译代码从 /system 迁移到 /data/dalvik-cache，因此可以节省数据分区中的空间。不过，因为该选项会停用利用位置相关代码进行的优化，所以会对运行时产生轻微的影响。通常情况下，需要节省 /data 空间的设备应启用 PIC 编译。</p>
+<p>从 Android 5.1.0 到 Android 6.0.1 的所有版本中，都可以指定 <code>WITH_DEXPREOPT_PIC</code> 来启用位置无关代码 (PIC)。这样一来，就不必将来自映像的编译代码从 /system 迁移到 /data/dalvik-cache，因此可以节省数据分区中的空间。不过，因为该选项会停用根据位置相关代码进行的优化，所以会对运行时产生轻微的影响。通常情况下，需要节省 /data 空间的设备应启用 PIC 编译。</p>
 
 <p>在 Android 7.0 中，PIC 编译默认处于启用状态。</p>
 
+<li><code>WITH_DEXPREOPT_BOOT_IMG_ONLY</code>（已在 Android O MR1 中移除）</li>
+<p>
+此选项已被 WITH_DEXPREOPT_BOOT_IMG_AND_SYSTEM_SERVER_ONLY 取代，后者还会预先优化系统服务器 JAR。
+</p>
+
 </ul>
 
-<h4 id="boot_classpath">启动相关的类路径配置</h4>
+<h4 id="boot_classpath">启动类路径配置</h4>
 
 <ul>
 <li>预加载类列表</li>
 
-<p>预加载类列表是 zygote 将在启动时初始化的一个类列表。通过该列表，每个应用无需单独运行这些类初始化程序，从而可以更快地启动并共享内存中的页面。预加载类列表文件默认位于 frameworks/base/preloaded-classes 中，其中包含一个针对典型的手机用途微调的列表。这可能不适用于其他设备（如穿戴式设备），而应进行相应的微调。做微调时应格外小心，因为添加太多的类会造成加载不使用的类而浪费内存；而添加的类太少又会导致每个应用都必须拥有自己的副本，同样会造成内存浪费。</p>
+<p>预加载类列表列出了 zygote 将在启动时初始化的类。利用该列表，每个应用无需单独运行这些类初始化程序，从而可以更快地启动并共享内存中的页面。预加载类列表文件默认位于 frameworks/base/preloaded-classes 中，其中包含一个针对典型手机使用场景优化的列表。其他设备（如穿戴式设备）可能不适合使用此列表，而应进行相应调整。做调整时应格外小心，因为添加太多的类会造成加载未用到的类而浪费内存；而添加的类太少又会导致每个应用都各有一份副本，同样会造成内存浪费。</p>
 
 <p>使用示例（在产品的 device.mk 中）：</p>
 
@@ -144,11 +149,11 @@
 PRODUCT_COPY_FILES += &lt;filename&gt;:system/etc/preloaded-classes
 </pre>
 
-<p class="note"><strong>注意</strong>：必须将此行放在沿用任何从 <code>build/target/product/base.mk</code> 获得默认值的产品配置 Makefile 之前</p>
+<p class="note"><strong>注意</strong>：如果有任何从 <code>build/target/product/base.mk</code> 提取默认值的产品配置 Makefile，此行必须放在沿用此类 Makefile 的行之前。</p>
 
 <li>映像类列表</li>
 
-<p>映像类列表是 dex2oat 预先初始化并存储在 boot.art 文件中的类列表。通过该列表，zygote 可以在启动时从 boot.art 文件中加载这些结果，而无需在预加载期间自行运行这些类的初始化程序。其中一个重要特点是，从映像加载并在进程之间共享的页面是干净的，因此可在内存不足的情况下轻松将它们交换出去。在 L 版本中，默认情况下，映像类列表和预加载类列表使用同一个列表。从 L 之后的 AOSP 版本开始，可以使用以下命令指定自定义映像类列表：</p>
+<p>映像类列表列出了 dex2oat 预先初始化并存储在 boot.art 文件中的类。利用该列表，zygote 可以在启动时从 boot.art 文件中加载这些结果，而无需在预加载期间自行运行这些类的初始化程序。这种做法的一个重要特点是，从映像加载并在进程之间共享的页面是干净的，因此可在内存不足的情况下轻松将它们交换出去。在 L 版本中，默认情况下，映像类列表和预加载类列表是同一个列表。从 L 之后的 AOSP 版本开始，可使用以下选项指定自定义映像类列表：</p>
 
 <pre class="devsite-click-to-copy">
 PRODUCT_DEX_PREOPT_BOOT_FLAGS
@@ -162,7 +167,7 @@ PRODUCT_DEX_PREOPT_BOOT_FLAGS += --image-classes=&lt;filename&gt;
 
 <li>已编译类列表</li>
 
-<p>在 L 之后的 AOSP 版本中，可以指定使用已编译类的列表，在预先优化期间编译来自启动的类路径的类子集。对于空间非常紧张且无法满足整个预先优化启动映像需求的设备来说，此选项很有帮助。不过，请注意，此列表未指定的类将不会被编译（即使在设备上也不会被编译），且必须对其进行解释，这可能会影响运行时性能。默认情况下，dex2oat 会在 $OUT/system/etc/compiled-classes 中查找已编译类列表，因此，可以通过 device.mk 将自定义类列表复制到该位置。也可以使用以下命令指定特定文件位置：
+<p>在 L 之后的 AOSP 版本中，可使用此列表来指定一个启动类路径的类子集，以便在预先优化期间编译这些类。如果设备存储空间非常紧张，无法完整容纳经过预先优化的启动映像，此选项就很有帮助。不过请注意，此列表未指定的类将不会被编译（即使在设备上也不会被编译），而必须对其进行解译，这可能会影响运行时性能。默认情况下，dex2oat 会在 $OUT/system/etc/compiled-classes 中查找已编译类列表，因此，可以通过 device.mk 将自定义类列表复制到该位置。也可使用以下选项指定文件位置：
 
 </p><pre class="devsite-click-to-copy">
 PRODUCT_DEX_PREOPT_BOOT_FLAGS
@@ -174,7 +179,7 @@ PRODUCT_DEX_PREOPT_BOOT_FLAGS
 PRODUCT_COPY_FILES += &lt;filename&gt;:system/etc/compiled-classes
 </pre>
 
-<p class="note"><strong>注意</strong>：必须将此行放在沿用任何从 <code>build/target/product/base.mk</code> 获得默认值的产品配置 Makefile 之前</p>
+<p class="note"><strong>注意</strong>：如果有任何从 <code>build/target/product/base.mk</code> 提取默认值的产品配置 Makefile，此行必须放在沿用此类 Makefile 的行之前。</p>
 </ul>
 
 <h3 id="runtime_configuration">运行时配置</h3>
@@ -185,10 +190,10 @@ PRODUCT_COPY_FILES += &lt;filename&gt;:system/etc/compiled-classes
 
 <ul>
 <li>dalvik.vm.usejit：是否启用 JIT。</li>
-<li>dalvik.vm.jitinitialsize（默认为 64K）：代码缓存初始容量。代码缓存将定期进行垃圾回收 (GC)，并将视需要增加。
+<li>dalvik.vm.jitinitialsize（默认为 64K）：代码缓存初始容量。代码缓存将定期进行垃圾回收 (GC)，并将视需要增加容量。
 </li><li>dalvik.vm.jitmaxsize（默认为 64M）：代码缓存最大容量。
-</li><li>dalvik.vm.jitthreshold（默认为 10000）：方法的“热度”计数器必须超过该阈值，系统才会对方法进行 JIT 编译。“热度”计数器是运行时的内部指标。它包括调用次数、后向分支及其他因素。
-</li><li>dalvik.vm.usejitprofiles：是否启用 JIT 配置文件；即使 dalvik.vm.usejit 为 false，也可以使用该选项。请注意，如果该选项为 false，编译过滤器 speed-profile 将不会对任何方法进行 AOT 编译，并且相当于 quicken。<em></em><em></em>
+</li><li>dalvik.vm.jitthreshold（默认为 10000）：方法的“热度”计数器必须超过该阈值，系统才会对方法进行 JIT 编译。“热度”计数器是运行时的内部指标。它的影响因素包括调用次数、后向分支及其他因素。
+</li><li>dalvik.vm.usejitprofiles：是否启用 JIT 配置文件；即使 dalvik.vm.usejit 为 false，也可以使用该选项。请注意，如果该选项为 false，编译过滤器 speed-profile 将不会对任何方法进行 AOT 编译，效果与 quicken 相同。<em></em><em></em>
 </li><li>dalvik.vm.jitprithreadweight（默认为 dalvik.vm.jitthreshold/20）：应用界面线程的 JIT“样本”（请参阅 jitthreshold）的权重。用于加快以下方法的编译速度：当用户与应用交互时，会直接影响用户体验的方法。
 </li><li>dalvik.vm.jittransitionweight（默认为 dalvik.vm.jitthreshold/10）：调用时需要在编译代码和解译器之间进行转换的方法的权重。这有助于确保对所涉及的方法进行编译以尽可能减少转换（转换需要很大开销）。
 </li>
@@ -197,7 +202,7 @@ PRODUCT_COPY_FILES += &lt;filename&gt;:system/etc/compiled-classes
 <h4 id="pkg_mgr_options">软件包管理器选项</h4>
 
 <p>
-从 Android 7.0 开始，提供了一种用于指定在各个阶段发生的编译/验证级别的通用方式。可以通过系统属性配置编译级别，默认级别为：
+从 Android 7.0 开始，系统提供了一种通用方式来指定各个阶段的编译/验证级别。编译级别通过系统属性来配置，默认值如下：
 </p>
 
 <ul>
@@ -210,11 +215,11 @@ PRODUCT_COPY_FILES += &lt;filename&gt;:system/etc/compiled-classes
 </p>
 <li>pm.dexopt.boot=verify</li>
 <p>
-无线下载更新后使用的编译过滤器。对于该选项，我们<strong>强烈</strong>建议使用 <em>verify</em> 编译过滤器，以免启动时间过长。
+OTA 更新后使用的编译过滤器。对于该选项，我们<strong>强烈</strong>建议使用 verify 编译过滤器，以免启动时间过长。<em></em>
 </p>
 <li>pm.dexopt.first-boot=quicken</li><li>
 <p>
-在设备初次启动时使用的编译过滤器。此时使用的过滤器只会影响出厂后的启动时间。对于这种情况，我们建议使用 quicken 过滤器，以免用户在首次使用手机时需要很长时间等待手机启动。<em></em>请注意，如果 <code>/system</code> 中的所有应用都已使用 quicken 编译过滤器进行编译，或者已使用 speed 或 speed-profile 编译过滤器进行编译，<code>pm.dexopt.first-boot</code> 将不会产生任何影响。<em></em><em></em><em></em>
+在设备初次启动时使用的编译过滤器。此过滤器只会影响出厂后第一次启动的时间。我们建议使用 quicken 过滤器，以免用户在首次使用手机时需要花很长时间等待手机启动。<em></em>请注意，如果 <code>/system</code> 中的所有应用都已使用 quicken 编译过滤器进行编译，或者已使用 speed 或 speed-profile 编译过滤器进行编译，<code>pm.dexopt.first-boot</code> 将不会产生任何影响。<em></em><em></em><em></em>
 </p>
 
 </li></ul>
@@ -243,15 +248,15 @@ PRODUCT_COPY_FILES += &lt;filename&gt;:system/etc/compiled-classes
 
 <p>Android 7.1 及之后的版本提供了两个选项来控制编译除启动映像之外的所有内容时的内存使用方式：</p>
 <ul>
-  <li>dalvik.vm.dex2oat-very-large：停用 AOT 编译的最小总 dex 文件大小（以字节为单位）</li><li>dalvik.vm.dex2oat-swap：使用 dex2oat 交换文件（用于内存较低的设备）</li></ul>
+  <li>dalvik.vm.dex2oat-very-large：停用 AOT 编译的最小总 dex 文件大小（以字节为单位）</li><li>dalvik.vm.dex2oat-swap：使用 dex2oat 交换文件（用于内存较小的设备）</li></ul>
 
-<p>不应减少用于控制 <code>dex2oat</code> 初始堆大小和最大堆大小的选项，因为它们可以限制可对哪些应用进行编译。</p>
+<p>不应减小用于控制 <code>dex2oat</code> 初始堆大小和最大堆大小的选项数值，因为它们可能会限制可对哪些应用进行编译。</p>
 
-<h2 id="other_odex">A/B 具体配置</h2>
+<h2 id="other_odex">A/B 专有配置</h2>
 
 <h3 id="rom_config">ROM 配置</h3>
 
-<p>从 Android 7.0 开始，设备可以使用两个系统分区来实现 <a href="/devices/tech/ota/ab_updates.html">A/B 系统更新</a>。为了节省系统分区大小，可以将经过预先优化的文件安装在未使用的第二个系统分区中。在系统首次启动时，这些文件会被复制到数据分区。</p>
+<p>从 Android 7.0 开始，设备可以使用两个系统分区来实现 <a href="/devices/tech/ota/ab_updates.html">A/B 系统更新</a>。为了减小系统分区大小，可以将经过预先优化的文件安装在未使用的第二个系统分区中。在系统首次启动时，这些文件会被复制到数据分区。</p>
 
 <p>使用示例（在 <code>device-common.mk</code> 中）：</p>
 
@@ -268,7 +273,7 @@ PRODUCT_PROPERTY_OVERRIDES += \
 BOARD_USES_SYSTEM_OTHER_ODEX := true
 </pre>
 
-<p>请注意，启动相关的类路径代码、系统服务器代码以及产品专属的核心应用始终会被编译到系统分区。默认情况下，所有其他应用都会被编译到未使用的第二个系统分区。可以使用 <code>SYSTEM_OTHER_ODEX_FILTER</code> 控制此行为，其值默认为：</p>
+<p>请注意，启动类路径代码、系统服务器代码以及产品专属的核心应用始终会被编译到系统分区中。默认情况下，所有其他应用都会被编译到未使用的第二个系统分区中。可以使用 <code>SYSTEM_OTHER_ODEX_FILTER</code> 控制此行为，其值默认为：</p>
 
 <pre class="devsite-click-to-copy">
 SYSTEM_OTHER_ODEX_FILTER ?= app/% priv-app/%
@@ -276,7 +281,7 @@ SYSTEM_OTHER_ODEX_FILTER ?= app/% priv-app/%
 
 <h3 id="background_ota">后台 dexopt OTA</h3>
 
-<p>在启用了 A/B 的设备上，可以在后台对应用进行编译，以更新到新的系统映像。如需在系统映像中选择性地包含编译脚本和二进制文件，请参阅<a href="/devices/tech/ota/ab_updates.html#compilation">后台中的应用编译</a>。可以通过以下命令控制用于此编译的编译过滤器：</p>
+<p>在启用了 A/B 的设备上，可以在后台对应用进行编译，以更新到新的系统映像。如需在系统映像中选择性地加入编译脚本和二进制文件，请参阅<a href="/devices/tech/ota/ab_updates.html#compilation">在后台编译应用</a>。可通过以下选项控制用于此类编译的编译过滤器：</p>
 <pre class="devsite-click-to-copy">
 pm.dexopt.ab-ota=speed-profile
 </pre>
