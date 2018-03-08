@@ -62,7 +62,7 @@ Point[3] triangle;   // sized array
 <p>注释使用 Java 语法：<code>@annotation</code>、<code>@annotation(value)</code> 或 <code>@annotation(id=value, id=value…)</code>，其中值可以是常量表达式、字符串或在 <code>{}</code> 中列出的一系列值，正如在 Java 中一样。可以将多个名称相同的注释附加到同一项内容。</p>
 
 <h2 id="forward">前向声明</h2>
-<p>在 HIDL 中，结构体不能采用前向声明，因此无法实现用户定义的自指数据类型（例如，您不能在 HIDL 中描述关联的列表，也不能描述树）。大多数现有（Android O 之前的）HAL 都对使用前向声明有限制，这种限制可以通过重新排列数据结构声明来移除。</p>
+<p>在 HIDL 中，结构体不能采用前向声明，因此无法实现用户定义的自指数据类型（例如，您不能在 HIDL 中描述关联的列表，也不能描述树）。大多数现有（Android 8.x 之前的）HAL 都对使用前向声明有限制，这种限制可以通过重新排列数据结构声明来移除。</p>
 
 <p>由于存在这种限制，因此可以通过简单的深层复制按值复制数据结构，而无需跟踪可以在一个自指数据结构中出现多次的指针值。如果将同一项数据传递两次（例如，使用两个方法参数或使用两个指向该数据的 <code>vec&lt;T&gt;</code>），则会生成并传送两个单独的副本。</p>
 
@@ -165,14 +165,16 @@ typedef struct native_handle
 
 <p><code>native_handle_t</code> 的大小可变，因此无法直接包含在结构体中。句柄字段会生成指向单独分配的 <code>native_handle_t</code> 的指针。</p>
 
-<p>在早期版本的 Android 中，原生句柄是使用 <a href="https://android.googlesource.com/platform/system/core/+/master/libcutils/native_handle.c">libcutils</a> 中的相同函数创建的。在 Android O 中，这些函数现在被复制到了 <code>android::hardware::hidl</code> 命名空间或移到了 NDK 中。HIDL 自动生成的代码会自动对这些函数进行序列化和反序列化，而无需用户编写的代码参与。</p>
+<p>在早期版本的 Android 中，原生句柄是使用 <a href="https://android.googlesource.com/platform/system/core/+/master/libcutils/native_handle.c">libcutils</a> 中的相同函数创建的。在 Android 8.0 中，这些函数现在被复制到了 <code>android::hardware::hidl</code> 命名空间或移到了 NDK 中。HIDL 自动生成的代码会自动对这些函数进行序列化和反序列化，而无需用户编写的代码参与。</p>
 
 <h3 id="ownership">句柄和文件描述符所有权</h3>
 <p>当您调用传递（或返回）<code>hidl_handle</code> 对象（复合类型的顶级或一部分）的 HIDL 接口方法时，其中包含的文件描述符的所有权如下所述：</p>
 
 <ul>
-<li>将 <code>hidl_handle</code> 对象作为参数传递时，调用程序会保留对其封装的 <code>native_handle_t</code> 中包含的文件描述符的所有权，并且调用程序必须在对这些文件描述符的相关操作完成后将其关闭。同样，返回 <code>hidl_handle</code> 对象（通过将其传递到 <code>_cb</code> 函数）时，返回相应对象的进程保留对其封装的 <code>native_handle_t</code> 中包含的文件描述符的所有权，并且该进程必须在对这些文件描述符的相关操作完成后将其关闭。</li>
-<li>接收 <code>hidl_handle</code> 对象时，<strong>transport</strong> 是其封装的 <code>native_handle_t</code> 中的文件描述符的所有者；接收器可在事务回调期间按原样使用这些描述符，但如果想要在回调完成之后继续使用这些文件描述符，则必须克隆相应的原生句柄。事务完成时，transport 将自动对文件描述符执行 <code>close()</code> 操作。</li>
+<li>将 <code>hidl_handle</code> 对象作为参数传递的<strong>调用程序</strong>会保留对其封装的 <code>native_handle_t</code> 中包含的文件描述符的所有权；该调用程序必须在对这些文件描述符的相关操作完成后将其关闭。</li>
+<li>返回 <code>hidl_handle</code> 对象（通过将其传递到 <code>_cb</code> 函数）的<strong>进程</strong>会保留对相应对象封装的 <code>native_handle_t</code> 中包含的文件描述符的所有权；该进程必须在对这些文件描述符的相关操作完成后将其关闭。
+</li>
+<li>接收 <code>hidl_handle</code> 的 <strong>transport</strong> 是相应对象封装的 <code>native_handle_t</code> 中的文件描述符的所有者；接收器可在事务回调期间按原样使用这些文件描述符，但如果想要在回调完成后继续使用这些文件描述符，则必须克隆相应的原生句柄。事务完成时，transport 将自动对文件描述符执行 <code>close()</code> 操作。</li>
 </ul>
 
 <p>HIDL 不支持在 Java 中使用句柄（因为 Java 根本不支持句柄）。</p>
