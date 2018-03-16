@@ -20,19 +20,22 @@
       limitations under the License.
   -->
 
-<p>对于支持<a href="multi-user.html">多用户</a>的设备，设备上的应用应能够感知不同的用户。</p>
+<p>对于支持<a href="multi-user.html">多用户</a>的设备，设备上的应用必须能够感知不同的用户。</p>
 
 <p>某些应用需要将一些组件作为单例运行，并且可接受来自任意用户的请求。目前只有系统应用可以使用此功能。</p>
 
 <p>这类设备具有以下优势：</p>
 
 <ul>
-  <li>节约资源</li><li>判定各个用户之间的一个或多个共享资源</li><li>通过使用单个服务器连接减少网络开销</li></ul>
+  <li>节约资源
+  </li><li>判定各个用户之间的一个或多个共享资源
+  </li><li>通过使用单个服务器连接减少网络开销
+</li></ul>
 
 <p>有关多用户权限流程的描述，请参见下图。</p>
 
-<p><img src="images/multi-user-perms.png" alt="Multiple users permissions flow"/>
-</p><p class="img-caption"><strong>图 1</strong> 多用户权限</p>
+<p><img src="/devices/tech/admin/images/multi-user-perms.png" alt="多用户权限流程"/>
+</p><p class="img-caption"><strong>图 1.</strong> 多用户权限</p>
 
 <h2 id="enabling_a_singleton_component">启用单例组件</h2>
 
@@ -48,7 +51,7 @@
 
 <p>需要下列权限：</p>
 
-<pre>
+<pre class="devsite-click-to-copy">
 INTERACT_ACROSS_USERS (signature|system)
 INTERACT_ACROSS_USERS_FULL (signature)
 </pre>
@@ -58,22 +61,25 @@ INTERACT_ACROSS_USERS_FULL (signature)
 <p>使用下列 API，确保应用能够感知多个用户。</p>
 
 <ol>
-  <li>从传入的 Binder 调用中提取用户句柄：<ul>
+  <li>从传入的 Binder 调用中提取用户句柄：
+  <ul>
     <li> <code>int userHandle = UserHandle.getCallingUserId()</code>
   </li></ul>
-  </li><li>使用受保护的全新 API 启动特定用户的服务、活动和广播：<ul>
+  </li><li>使用受保护的全新 API 启动特定用户的服务、Activity 和广播：
+  <ul>
     <li><code>Context.startActivityAsUser(Intent, UserHandle)</code>
     </li><li><code>Context.bindServiceAsUser(Intent, …, UserHandle)</code>
     </li><li><code>Context.sendBroadcastAsUser(Intent, … , UserHandle)</code>
     </li><li><code>Context.startServiceAsUser(Intent, …, UserHandle)
-UserHandle</code> 可能是显式用户或是特殊句柄之一：<code>UserHandle.CURRENT</code> 或 <code>UserHandle.ALL</code>。<code>CURRENT</code> 表示当前处于前台的用户。如果您想向所有用户发送广播，则可以使用 <code>ALL</code>。
+UserHandle</code> 可能是显式用户或特殊句柄之一：<code>UserHandle.CURRENT</code> 或 <code>UserHandle.ALL</code>。<code>CURRENT</code> 表示当前处于前台的用户。如果您想向所有用户发送广播，则可以使用 <code>ALL</code>。
   </li></ul>
   </li><li>要与您自己应用中的组件通信，请使用：
 <code>(INTERACT_ACROSS_USERS)</code>
 要与其他应用中的组件通信，请使用：
 <code>(INTERACT_ACROSS_USERS_FULL)</code>
   </li><li>您可能需要创建代理组件，这些代理组件在用户进程中运行，之后会访问用户 0 中的 <code>singleUser</code> 组件。
-  </li><li>采用新的 <code>UserManager</code> 系统服务查询用户及其句柄：<ul>
+  </li><li>使用新的 <code>UserManager</code> 系统服务查询用户及其句柄：
+  <ul>
     <li><code>UserManager.getUsers()</code>
     </li><li><code>UserManager.getUserInfo()</code>
     </li><li><code>UserManager.supportsMultipleUsers()</code>
@@ -81,7 +87,23 @@ UserHandle</code> 可能是显式用户或是特殊句柄之一：<code>UserHand
     </li><li><code>UserManager.getUserHandle(int serialNumber)</code>
     </li><li><code>UserManager.getUserProfiles() </code>- 返回用户本人个人资料和托管个人资料的集合（如有）。
   </li></ul>
-  </li><li>注册即可借助 ContentObserver、PackageMonitor 和 BroadcastReceiver 上的新 API 侦听特定或所有用户以及回调（可提供与回调发起用户相关的其他信息）。
+  </li><li>注册即可借助 ContentObserver、PackageMonitor 和 BroadcastReceiver 上的新 API 监听特定或所有用户以及回调（可提供与回调发起用户相关的其他信息）。
 </li></ol>
+
+<h3 id="work-profiles">多个用户或资料中的服务</h3>
+
+<p>并非所有服务都需要在其他用户或工作资料中运行实例。如果您的系统服务只需要以用户 0 的身份运行，则在以其他用户的身份运行时停用该服务的组件，以帮助保留资源。以下示例显示了如何在服务的入口点执行此操作：</p>
+
+<pre class="devsite-click-to-copy">
+// Add on all entry points such as boot_completed or other manifest-listed receivers and providers
+if (!UserManager.isSystemUser()) {
+    // Disable the service
+    ComponentName targetServiceName = new ComponentName(this, TargetService.class);
+    context.getPackageManager().setComponentEnabledSetting(
+        targetServiceName, COMPONENT_ENABLED_STATE_DISABLED, 0);
+}
+</pre>
+
+<p>该示例还可以使用 <code>PackageManager.setApplicationEnabledSetting()</code> 来停用整个应用。</p>
 
 </body></html>
