@@ -20,23 +20,23 @@
       limitations under the License.
   -->
 
-<p>本页介绍了为减少不同编译之间不必要的文件变更而添加到 AOSP 的编译变更。负责自行维护编译系统的设备实现人员可根据这项信息减小无线下载 (OTA) 更新的大小。
+<p>本页介绍了为减少多次编译之间不必要的文件变更而对 AOSP 编译系统所做的改动。使用专有编译系统的设备实现人员可根据这项信息采取措施，减小无线下载 (OTA) 更新的大小。
 </p>
 
-<p>有时，Android OTA 包含的变更文件并非对应于代码变更，而是对应于编译系统的软件工件。在不同时间、不同目录或不同机器上编译相同的代码时会产生大量变更文件，这时便会发生上述情况。这些多余的文件不仅会增加 OTA 的大小，还会导致难以确定 OTA 中发生变更的代码。</p>
+<p>有时，Android OTA 包含的变更文件并非源于代码变更，而是编译系统造成的。在不同时间、不同目录或不同机器上编译相同的代码时可能会发生上述情况，产生大量变更文件。这些多余的文件不仅会增加 OTA 的大小，还会导致难以确定 OTA 中发生变更的代码。</p>
 
-<p>为了使 OTA 的内容更加透明，AOSP 纳入了编译系统变更，目的是通过消除不同编译之间不必要的文件变更来减小 OTA 的大小。这样做是为了减小 OTA 的大小，使其只包含与 OTA 中所含补丁程序相关的文件。AOSP 还会加入<a href="#the_build_diff_tool">编译 diff 工具</a>（可过滤出常见的编译相关文件变更，并提供更清晰的编译文件 diff）以及<a href="#block-mapping-tool">块映射工具</a>（协助您确保块分配的一致性）。</p>
+<p>为了使 OTA 的内容更加透明，我们对 AOSP 编译系统做了多项改动，目的是消除多次编译之间不必要的文件变更，以此减小 OTA 的大小。这样做是为了减小 OTA 的大小，使其只包含与 OTA 中所含补丁程序相关的文件。AOSP 还包括<a href="#the_build_diff_tool">编译 diff 工具</a>（可过滤出常见的编译相关文件变更，并提供更清晰的编译文件 diff）以及<a href="#block-mapping-tool">块映射工具</a>（协助您确保块分配的一致性）。</p>
 
 <p>编译系统可能会通过多种方式创建不必要的文件 diff。下文讨论了其中一些问题和解决方案，并尽可能提供了 AOSP 中的修复示例。</p>
 
 <h2 id="file_order">文件顺序</h2>
 
-<p><strong>问题</strong>：文件系统在请求目录中的文件列表时，并不保证文件顺序，尽管对于同一项查询，文件顺序通常是相同的。<code>ls</code> 等工具在默认情况下会对结果进行排序，但 <code>find</code> 和 <code>make</code> 等命令使用的通配符函数却不会对结果进行排序。用户在使用这类工具之前，务必要对输出进行排序。
+<p><strong>问题</strong>：文件系统在请求目录中的文件列表时，并不保证文件顺序，尽管对于同一个检出，文件顺序通常是相同的。<code>ls</code> 等工具在默认情况下会对结果进行排序，但 <code>find</code> 和 <code>make</code> 等命令使用的通配符函数却不会对结果进行排序。用户在使用这类工具之前，务必要对输出进行排序。
 </p>
 
 <p><strong>解决方案</strong>：用户在使用带通配符的 <code>find</code> 和 <code>make</code> 等工具之前，务必要对这些命令的输出进行排序。要在 <code>Android.mk</code> 文件中使用 <code>$(wildcard)</code> 或 <code>$(shell find)</code>，也应该进行排序。有些工具（如 Java）确实会对输入进行排序，因此有必要先对排序进行验证。</p>
 
-<p><strong>示例</strong>：很多实例使用内建的 <code>all-*-files-under</code> 宏固定在核心编译系统中，其中包括 <code>all-cpp-files-under</code>（一些定义分散在其他 makefile 中）。有关详情，请参阅以下 CL：</p>
+<p><strong>示例</strong>：多处问题在核心编译系统中通过内置的 <code>all-*-files-under</code> 宏得到修正，其中包括 <code>all-cpp-files-under</code>（一些定义分散在其他 makefile 中）。有关详情，请参阅以下 CL：</p>
 
 <ul>
   <li><a href="https://android.googlesource.com/platform/build/+/4d66adfd0e6d599d8502007e4ea9aaf82e95569f" class="external">https://android.googlesource.com/platform/build/+/4d66adfd0e6d599d8502007e4ea9aaf82e95569f</a>
@@ -47,14 +47,14 @@
 
 <h2 id="build_directory">编译目录</h2>
 
-<p><strong>问题</strong>：变更编译内容所在的目录会导致二进制文件有所不同。Android 编译中的大多数路径都是相对路径，因此 C/C++ 中的 <code>__FILE__</code> 不是问题。不过，默认情况下调试符号会对完整的路径名进行编码，而对预剥离二进制文件进行哈希处理会生成 <code>.note.gnu.build-id</code>，因此调试符号发生变更会致使二进制文件发生变化。</p>
+<p><strong>问题</strong>：变更编译内容所在的目录会导致二进制文件有所不同。Android 编译系统中的大多数路径都是相对路径，因此 C/C++ 中的 <code>__FILE__</code> 不是问题。不过，默认情况下调试符号会对完整的路径名进行编码，而对预剥离二进制文件进行哈希处理会生成 <code>.note.gnu.build-id</code>，因此调试符号发生变更会致使二进制文件发生变化。</p>
 
 <p><strong>解决方案</strong>：AOSP 现在会使调试路径变成相对路径。有关详情，请参阅 CL：<a href="https://android.googlesource.com/platform/build/+/6a66a887baadc9eb3d0d60e26f748b8453e27a02" class="external">https://android.googlesource.com/platform/build/+/6a66a887baadc9eb3d0d60e26f748b8453e27a02</a>。
 </p>
 
 <h2 id="timestamps">时间戳</h2>
 
-<p><strong>问题</strong>：编译输出中的时间戳会导致不必要的文件变更。这可能发生在以下位置：</p>
+<p><strong>问题</strong>：编译输出中的时间戳会导致不必要的文件变更。这可能会发生在以下位置：</p>
 
 <ul>
   <li>C 或 C++ 代码中的 <code>__DATE__/__TIME__/__TIMESTAMP__</code> 宏。</li>
@@ -86,7 +86,7 @@
 
 <h2 id="version_strings">版本字符串</h2>
 
-<p><strong>问题</strong>：APK 版本字符串通常包含附加到硬编码版本的 <code>BUILD_NUMBER</code>。即使 APK 中并未发生任何其他变更，APK 也仍然会有所不同。</p>
+<p><strong>问题</strong>：APK 版本字符串的硬编码版本通常附加了 <code>BUILD_NUMBER</code>。即使 APK 中并未发生任何其他变更，APK 也仍然会有所不同。</p>
 
 <p><strong>解决方案</strong>：从 APK 版本字符串中移除版本号。</p>
 
@@ -106,12 +106,13 @@
 <ul>
   <li><strong>NOTICE 文件创建工具</strong>。NOTICE 文件创建工具需要变更。请参阅 CL：<a href="https://android.googlesource.com/platform/build/+/8ae4984c2c8009e7a08e2a76b1762c2837ad4f64" class="external">https://android.googlesource.com/platform/build/+/8ae4984c2c8009e7a08e2a76b1762c2837ad4f64</a>。
   </li>
-  <li><strong>Java Android 编译器套件 (Jack)</strong>。Jack 工具链需要更新才能处理生成的构造函数排序的偶然性变更。请参阅 CL：<a href="https://android.googlesource.com/toolchain/jack/+/056a5425b3ef57935206c19ecb198a89221ca64b" class="external">https://android.googlesource.com/toolchain/jack/+/056a5425b3ef57935206c19ecb198a89221ca64b</a>。</li>
-  <li><strong>ART AOT 编译器 (dex2oat)</strong>。ART 编译器二进制文件需要更新才能创建确定性图像。请参阅 CL：<a href="https://android.googlesource.com/platform/art/+/ace0dc1dd5480ad458e622085e51583653853fb9" class="external">https://android.googlesource.com/platform/art/+/ace0dc1dd5480ad458e622085e51583653853fb9</a>。
+  <li><strong>Java Android 编译器套件 (Jack)</strong>。Jack 工具链需要更新才能处理生成的构造函数排序的偶然性变更。请参阅 CL：<a href="https://android.googlesource.com/toolchain/jack/+/056a5425b3ef57935206c19ecb198a89221ca64b" class="external">https://android.googlesource.com/toolchain/jack/+/056a5425b3ef57935206c19ecb198a89221ca64b</a>。
   </li>
-  <li><strong>libpac.so 文件 (V8)</strong>。每项编译会创建不同的 <code>/system/lib/libpac.so</code> 文件，因为 V8 快照会针对每项编译发生变更。解决方案是移除快照。请参阅 CL：<a href="https://android.googlesource.com/platform/external/v8/+/e537f38c36600fd0f3026adba6b3f4cbcee1fb29" class="external">https://android.googlesource.com/platform/external/v8/+/e537f38c36600fd0f3026adba6b3f4cbcee1fb29</a>。
+  <li><strong>ART AOT 编译器 (dex2oat)</strong>。ART 编译器二进制文件需要更新才能创建确定性映像。请参阅 CL：<a href="https://android.googlesource.com/platform/art/+/ace0dc1dd5480ad458e622085e51583653853fb9" class="external">https://android.googlesource.com/platform/art/+/ace0dc1dd5480ad458e622085e51583653853fb9</a>。
   </li>
-  <li><strong>预先经过 dexopt 处理 (.odex) 的应用文件</strong>。预先经过 dexopt 处理 (.odex) 的文件包含 64 位系统上的未初始化填充。请参阅 CL：<a href="https://android.googlesource.com/platform/art/+/34ed3afc41820c72a3c0ab9770be66b6668aa029" class="external">https://android.googlesource.com/platform/art/+/34ed3afc41820c72a3c0ab9770be66b6668aa029</a>。
+  <li><strong>libpac.so 文件 (V8)</strong>。每项编译会创建不同的 <code>/system/lib/libpac.so</code> 文件，因为 V8 快照会针对每项编译发生变更。解决方案是移除该快照。请参阅 CL：<a href="https://android.googlesource.com/platform/external/v8/+/e537f38c36600fd0f3026adba6b3f4cbcee1fb29" class="external">https://android.googlesource.com/platform/external/v8/+/e537f38c36600fd0f3026adba6b3f4cbcee1fb29</a>。
+  </li>
+  <li><strong>预先经过 dexopt 处理的 (.odex) 应用文件</strong>。预先经过 dexopt 处理的 (.odex) 文件在 64 位系统上包含未初始化填充。请参阅 CL：<a href="https://android.googlesource.com/platform/art/+/34ed3afc41820c72a3c0ab9770be66b6668aa029" class="external">https://android.googlesource.com/platform/art/+/34ed3afc41820c72a3c0ab9770be66b6668aa029</a>。
   </li>
 </ul>
 

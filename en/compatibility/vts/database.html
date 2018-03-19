@@ -43,30 +43,28 @@ creating an effective backend for the VTS Dashboard web service.
 The following entities store summaries and resources from VTS test runs:
 </p>
 <ul>
-<li><strong>Test Entity</strong>. The test entity stores metadata
-about test runs of a particular test. Its key is the test name and its
-properties include the failure count, passing count, and list of test case
-breakages from when the alert jobs update it.</li>
-<li><strong>Test Run Entity</strong>. The test run entity contains metadata
-from runs of a particular test. It must store the test start and end timestamps,
-the test build ID, the number of passing and failing test cases, the type of run
-(e.g. pre-submit, post-submit, or local), a list of log links, the host machine
-name, and coverage summary counts.</li>
-<li><strong>Device Information Entity</strong>. Device information entities
-contain details about the devices used during the test run. It includes the
-device build ID, product name, build target, branch, and ABI information. This
-is stored separately from the test run entity to support multi-device test runs
-in a one-to-many fashion.</li>
-<li><strong>Profiling Point Run Entity</strong>. The profiling point run entity
-summarizes the data gathered for a particular profiling point within a test
-run. It describes the axis labels, profiling point name, values, type, and
-regression mode of the profiling data.</li>
-<li><strong>Coverage Entity</strong>. Each coverage entity describes the
-coverage data gathered for one file. It contains the GIT project information,
-file path, and the list of coverage counts per line in the source file.
-<li><strong>Test Case Run Entity</strong>. A test case run describes the outcome
-of a particular test case from a test run, including the test case name and its
-result.</li>
+<li><strong>Test Entity</strong>. Stores metadata about test runs of a
+particular test. Its key is the test name and its properties include the failure
+count, passing count, and list of test case breakages from when the alert jobs
+update it.</li>
+<li><strong>Test Run Entity</strong>. Contains metadata from runs of a
+particular test. It must store the test start and end timestamps, the test build
+ID, the number of passing and failing test cases, the type of run (e.g.
+pre-submit, post-submit, or local), a list of log links, the host machine name,
+and coverage summary counts.</li>
+<li><strong>Device Information Entity</strong>. Contains details about the
+devices used during the test run. It includes the device build ID, product name,
+build target, branch, and ABI information. This is stored separately from the
+test run entity to support multi-device test runs in a one-to-many fashion.</li>
+<li><strong>Profiling Point Run Entity</strong>. Summarizes the data gathered
+for a particular profiling point within a test run. It describes the axis
+labels, profiling point name, values, type, and regression mode of the profiling
+data.</li>
+<li><strong>Coverage Entity</strong>. Describes the coverage data gathered for
+one file. It contains the Git project information, file path, and the list of
+coverage counts per line in the source file.</li>
+<li><strong>Test Case Run Entity</strong>. Describes the outcome of a particular
+test case from a test run, including the test case name and its result.</li>
 <li><strong>User Favorites Entity</strong>. Each user subscription can be
 represented in an entity containing a reference to the test and the user ID
 generated from the App Engine user service. This allows for efficient
@@ -76,19 +74,19 @@ tests favorited by a user).</li>
 
 <h2 id=entity-grouping>Entity grouping</h2>
 <p>
-When designing ancestry relationships, you must balance the need to provide
-effective and consistent querying mechanisms against the limitations enforced by
-the database.
+Each test module represents the root of an entity group. Test run entities
+are both children of this group and parents for device entities, profiling point
+entities, and coverage entities relevant to the respective test and test run
+ancestor.
 </p>
 
-<p>
-Each test module will represent the root of an entity group, with test run
-entities as children. Each test run entity is also a parent for device entities,
-profiling point entities, and coverage entities relevant to the respective test
-and test run ancestor.
-</p>
-<img src="../images/treble_vts_dash_entity_ancestry.png">
+<img src="images/treble_vts_dash_entity_ancestry.png">
 <figcaption><strong>Figure 1</strong>. Test entity ancestry.</figcaption>
+
+<p class="key-point"><strong>Key Point:</strong> When designing ancestry
+relationships, you must balance the need to provide effective and consistent
+querying mechanisms against the limitations enforced by the database.
+</p>
 
 <h3 id=benefits>Benefits</h3>
 <p>
@@ -119,9 +117,9 @@ test runs usually take at least one minute including the overhead of the VTS
 framework; unless a test is consistently being executed simultaneously on more
 than 60 different hosts, there cannot be a write bottleneck. This becomes even
 more unlikely given that each module is part of a test plan which often takes
-longer than one hour. However, anomalies can easily be handled if hosts run the
-tests at the same time, causing short bursts of writes to the same hosts (e.g.
-by catching write errors and trying again).
+longer than one hour. Anomalies can easily be handled if hosts run the tests at
+the same time, causing short bursts of writes to the same hosts (e.g. by
+catching write errors and trying again).
 </p>
 
 <h3 id=scaling>Scaling considerations</h3>
@@ -145,11 +143,11 @@ operative constraints are the write throughput maximum within of an entity group
 of one per second, along with a maximum transaction size of 500 entities.
 </p>
 <p>
-One natural approach would be to specify a test case that has a test run as an
-ancestor (similar to how coverage data, profiling data, and device information
+One approach would be to specify a test case that has a test run as an ancestor
+(similar to how coverage data, profiling data, and device information
 are stored):
 </p>
-<img src="../images/treble_vts_descend_not.png">
+<img src="images/treble_vts_descend_not.png">
 <figcaption><strong>Figure 2</strong>. Test Cases descend from Test Runs (NOT
 RECOMMENDED).</figcaption>
 
@@ -169,7 +167,7 @@ the test cases can be stored independently and their keys provided to the test
 run (a test run contains a list of identifiers to its test cases entities):
 </p>
 
-<img src="../images/treble_vts_descend.png">
+<img src="images/treble_vts_descend.png">
 <figcaption><strong>Figure 3</strong>. Test Cases stored independently
 (RECOMMENDED).</figcaption>
 
@@ -178,11 +176,8 @@ At first glance, this may appear to break the strong consistency guarantee.
 However, if the client has a test run entity and a list of test case
 identifiers, it doesn't need to construct a query; it can instead directly get
 the test cases by their identifiers, which is always guaranteed to be
-consistent.
-</p>
-<p>
-This approach vastly alleviates the constraint on the number of test cases a
-test run may have while gaining strong consistency without threatening
+consistent. This approach vastly alleviates the constraint on the number of test
+cases a test run may have while gaining strong consistency without threatening
 excessive writing within an entity group.
 </p>
 
@@ -191,13 +186,13 @@ excessive writing within an entity group.
 The VTS Dashboard uses the following data access patterns:
 </p>
 <ul>
-<li><strong>User favorites</strong>. User favorites can be queried for by using
-an equality filter on user favorites entities having the particular App Engine
-User object as a property.</li>
-<li><strong>Test listing</strong>. Test listing is a simple query of test
-entities; to reduce bandwidth to render the home page, a projection can be used
-on passing and failing counts so as to omit the potentially long listing of
-failed test case IDs and other metadata used by the alerting jobs.</li>
+<li><strong>User favorites</strong>. Can be queried for by using an equality
+filter on user favorites entities having the particular App Engine User object
+as a property.</li>
+<li><strong>Test listing</strong>. Simple query of test entities. To reduce
+bandwidth to render the home page, a projection can be used on passing and
+failing counts so as to omit the potentially long listing of failed test case
+IDs and other metadata used by the alerting jobs.</li>
 <li><strong>Test runs</strong>. Querying for test run entities requires a sort
 on the key (timestamp) and possible filtering on the test run properties such as
 build ID, passing count, etc. By performing an ancestor query with a test entity
@@ -217,7 +212,7 @@ consistent.</li>
 
 <p>
 For details on the UI and screenshots of these data patterns in action, see
-<a href="/devices/architecture/testing/ui.html">VTS Dashboard UI</a>.
+<a href="ui.html">VTS Dashboard UI</a>.
 </p>
 
   </body>
