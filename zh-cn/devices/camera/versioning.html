@@ -119,7 +119,7 @@
 
 <ul>
 <li>若在 HAL1 上，则不受 cameraservice 移动的影响，并且<strong>不需要供应商更新</strong>。</li>
-<li>若在 HAL3 上，则受到 cameraservice 移动的影响，但<strong>不需要供应商更新</strong>：<em></em>
+<li>若在 HAL3 上，则会受到 cameraservice 移动的影响，但<strong>不需要供应商更新</strong>：<em></em>
 <p><img src="images/ape_camera_n_api2_hal3.png" alt="HAL2 上 API2 中的 Android 7.0 相机和媒体堆栈" id="figure1"/></p>
 <p class="img-caption"><strong>图 3. </strong>HAL3 上 API2 中的 Android 7.0 相机和媒体堆栈。</p>
 </li>
@@ -131,7 +131,7 @@
 <ul>
 <li><strong>常规</strong>。由于 IPC，设备需要额外带宽，这可能会影响对时间敏感的相机使用情况，例如高速视频录制。供应商可以通过运行 <code>android.hardware.camera2.cts.PerformanceTest</code> 和 Google 相机应用进行 120/240 FPS 高速视频录制，以衡量实际影响。设备还需要少量额外的 RAM 来创建新进程。</li>
 <li><strong>在视频缓冲区中传递元数据</strong>（仅限 HAL1）。<em></em>如果 HAL1 在视频缓冲区中存储元数据而非实际的 YUV 帧数据，则 HAL 必须使用 <code>kMetadataBufferTypeNativeHandleSource</code> 作为元数据缓冲区类型，并在视频缓冲区中传递 <code>VideoNativeHandleMetadata</code>（<code>kMetadataBufferTypeCameraSource</code> 在 Android 7.0 中不再受支持）。通过 <code>VideoNativeHandleMetadata</code>，相机和媒体框架能够正确地对原生句柄进行序列化和反序列化，从而在进程之间传递视频缓冲区。</li>
-<li><strong>缓冲区句柄地址不一定始终存储相同的缓冲区</strong>（仅限 HAL3）。<em></em>对于每个捕获请求，HAL3 会获取缓冲区句柄的地址。HAL 不能使用地址来识别缓冲区，因为地址可能会在 HAL 返回缓冲区之后存储另一个缓冲区句柄。您必须更新 HAL，以便使用缓冲区句柄来标识缓冲区。例如：HAL 接收缓冲区句柄地址 A，该地址存储缓冲区句柄 A。在 HAL 返回缓冲区句柄 A 之后，缓冲区句柄地址 A 可能在 HAL 下次接收到它时存储缓冲区句柄 B。</li>
+<li><strong>缓冲区句柄地址并不总是存储相同的缓冲区</strong>（仅限 HAL3）。<em></em>对于每个捕获请求，HAL3 会获取缓冲区句柄的地址。HAL 不能使用地址来识别缓冲区，因为地址可能会在 HAL 返回缓冲区之后存储另一个缓冲区句柄。您必须更新 HAL，以便使用缓冲区句柄来标识缓冲区。例如：HAL 接收缓冲区句柄地址 A，该地址存储缓冲区句柄 A。在 HAL 返回缓冲区句柄 A 之后，缓冲区句柄地址 A 可能在 HAL 下次接收到它时存储缓冲区句柄 B。</li>
 <li><strong>更新用于 cameraserver 的 SELinux 策略</strong>。如果设备特定的 SELinux 策略向 mediaserver 授予运行相机的权限，则您必须更新 SELinux 策略，以授予 cameraserver 正确的权限。我们建议不要为 cameraserver 复制 mediaserver 的 SELinux 策略（因为 mediaserver 和 cameraserver 通常需要系统中的不同资源）。Cameraserver 应仅具有执行相机功能所需的权限，并且 mediaserver 中任何不必要的相机相关权限均应被移除。<p></p>
 
 <h3 id="hardening_validation">验证</h3>

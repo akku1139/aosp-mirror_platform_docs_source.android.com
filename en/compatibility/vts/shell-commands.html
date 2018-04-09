@@ -1,0 +1,166 @@
+<html devsite>
+  <head>
+    <title>Device Shell Commands</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2018 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+
+<p>During VTS testing, shell commands are used to execute a target-side test
+binary, to get/set properties, environment variables, and system information,
+and to start/stop the Android framework. You can execute VTS device shell
+commands using the <code>adb shell</code> command or the VTS shell driver
+running on the device (recommended).</p>
+
+<h2 id="adb-shell">Using ADB shell</h2>
+<p>Tests that require shutting down the USB port or rebooting the device during
+testing must use ADB shell as the VTS shell driver is unavailable without a
+persistent USB connection. You can invoke ADB shell from the
+<code>AndroidDevice</code> object in the Python test script. Examples:</p>
+<ul>
+<li>Get an Android device object:
+<pre class="devsite-click-to-copy">
+self.device = self.android_devices[0]
+</pre>
+</li>
+<li>Issue a single shell command:
+<pre class="devsite-click-to-copy">
+result = self.device.adb.shell(‘ls')
+</pre>
+</li>
+</ul>
+
+<h2 id="vts-shell-driver">Using the VTS shell driver</h2>
+<p>The VTS shell driver is an agent binary that runs on the device and executes
+shell commands. By default, VTS uses the shell driver if the driver is running
+on device because this method has less latency than using the <code>adb
+shell</code> command.</p>
+
+<p><img src="images/vts_shell_driver.png"></p>
+<figcaption><strong>Figure 1.</strong> VTS shell driver.</figcaption>
+
+<p>The VTS framework supports multi-device testing where each Android device
+is represented as an AndroidDevice object in base runner. By default, VTS
+framework pushes VTS agent and VTS shell driver binaries to each Android device
+and establishes TCP connections to the VTS agents on those devices.</p>
+
+<p>To execute a shell command, the host-side Python script makes a function
+call to the ShellMirror object inside AndroidDevice object. The ShellMirror
+object packs the shell command texts into a
+<a href="https://developers.google.com/protocol-buffers/" class="external">protobuf</a>
+message and sends it (via the TCP channel) to the VTS agent on the Android
+device. The agent running on device then forwards the shell command to VTS shell
+driver via the Unix socket.</p>
+
+<p>When the VTS shell driver receives a shell command, it executes the command
+via <a href="https://en.wikipedia.org/wiki/Nohup" class="external">nohup</a> on
+the device shell to prevent hanging. Stdout, stderr, and return code are then
+retrieved from <code>nohup</code> and sent back to VTS agent. Finally, the agent
+replies to the host by wrapping the command result(s) into a
+<code>protobuf</code> message.</p>
+
+<h3 id="advantages">Advantages</h3>
+<p>The advantages of using the VTS shell driver instead of <code>adb
+shell</code> include:</p>
+<ul>
+<li><strong>Reliability.</strong> The VTS shell driver uses
+<code>nohup</code> to execute commands on default setting. As VTS tests are
+mostly lower level HAL and kernel tests, <code>nohup</code> ensures shell
+commands do not hang during execution.</li>
+<li><strong>Performance</strong>. While the <code>adb shell</code> command
+caches some results (such as listing files in a directory) it has a connection
+overhead when performing tasks such as executing a test binary. VTS shell driver
+maintains an active connection throughout the test so the only overhead is USB
+communication. In our testing, using VTS shell driver to execute a command with
+100 calls to an empty gtest binary is about 20 percent faster than using
+<code>adb shell</code>; the actual difference is larger since VTS shell
+communication has extensive logging.</li>
+<li><strong>State-keeping</strong>. The VTS shell driver maintains a terminal
+session for each terminal name (default terminal name is
+<em>default</em>). Environment variables set in one terminal session are
+available only to subsequent commands in the same session.</li>
+<li><strong>Extendable</strong>. Shell command communications between VTS
+framework and device driver are wrapped in protobuf to enable potential
+compression, remoting, encryption, etc. in the future. Other possibilities for
+improving performance are also available, including device-side result parsing
+when the communication overhead becomes larger than result string parsing.</li>
+</ul>
+
+<h3 id="disadvantages">Disadvantages</h3>
+<p>The disadvantages of using the VTS shell driver instead of <code>adb
+shell</code> include:</p>
+<ul>
+<li><strong>Additional binaries</strong>. VTS agent files must be pushed to
+device and cleaned up after test execution.</li>
+<li><strong>Requires active connection</strong>. If the TCP connection between
+host and agent is lost during testing (due to USB disconnection, port shutdown,
+device crash, etc.) either intentionally or unintentionally, a shell command
+cannot be transmitted to the VTS agent. Even with automatic switching to
+<code>adb shell</code>, the result and state of the command before disconnection
+would be unknown.</li>
+</ul>
+
+<h3 id="examples">Examples</h3>
+<p>Examples of using shell commands in a VTS host-side Python test script:</p>
+<ul>
+<li>Get an Android device object:
+<pre class="devsite-click-to-copy">
+self.device = self.android_devices[0]
+</pre>
+</li>
+<li>Get an shell object for the selected device:
+<pre class="devsite-click-to-copy">
+self.shell = self.device.shell
+</pre>
+</li>
+<li>Issue a single shell command:
+<pre class="devsite-click-to-copy">
+results = self.shell.Execute(‘ls')
+</pre>
+</li>
+<li>Issue a list of shell commands:
+<pre class="devsite-click-to-copy">
+results = self.shell.Execute([‘cd /data/local/tmp', ‘ls'])
+</pre>
+</li>
+</ul>
+
+<h3 id="command-result-object">Command result object</h3>
+<p>The return object from shell command execution is a dictionary containing the
+keys <code>stdouts</code>, <code>stderrs</code>, and <code>return_codes</code>.
+Regardless of whether the shell command is provided as a single string or a list
+of command strings, each value of the result dictionary is always a list.</p>
+
+<p>To verify the return code of a list of commands, the test script must check
+the indices. Example:</p>
+
+<pre class="devsite-click-to-copy">
+asserts.assertFalse(any(results[‘return_codes']), ‘some command failed.')
+</pre>
+
+<p>Alternatively, the script can check each command index individually.
+Example:</p>
+
+<pre class="devsite-click-to-copy">
+asserts.assertEqual(results[‘return_codes'][0], 0, ‘first command failed')<br>
+asserts.assertEqual(results[‘return_codes'][1], 0, ‘second command failed')
+</pre>
+
+</body>
+</html>

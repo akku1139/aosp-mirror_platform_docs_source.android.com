@@ -1,0 +1,359 @@
+<html devsite>
+  <head>
+    <title>Compiling with Jack</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<aside class="warning"><strong>Warning:</strong> As of this
+<a href="https://android-developers.googleblog.com/2017/03/future-of-java-8-language-feature.html" class="external">March
+14, 2017 announcement</a>, the Jack toolchain is deprecated. While you may
+continue to use Jack, we strongly encourage using the latest
+<a href="https://developer.android.com/studio/preview/index.html" class="external">preview
+version of Android Studio</a> instead, which provides improved support for
+<a href="https://developer.android.com/studio/preview/features/java8-support.html" class="external">Java
+8 language features</a> built into the default toolchain.</aside>
+
+<p>Jack is an Android toolchain that compiles Java source into Android dex
+bytecode. It replaces the previous Android toolchain that consisted of multiple
+tools such as javac, ProGuard, jarjar, and dx. As Jack is the default Android
+build toolchain for Android 6.x, you don’t have to do anything differently to
+use Jack&mdash;just use your standard makefile commands to compile the tree or
+your project.</p>
+
+<h2 id="overview">About Jack</h2>
+<p>The Jack toolchain provides the following advantages:</p>
+
+<img src="../images/jack_overview.png" alt="Jack overview"/>
+<figcaption><strong>Figure 1.</strong> Jack overview.</figcaption>
+
+<ul>
+<li><strong>Completely open source</strong>. Jack is available in AOSP and users
+are welcome to contribute.</li>
+<li><strong>Speeds compilation time</strong>. Jack has specific support for
+reducing compilation time using pre-dexing, incremental compilation, and a Jack
+compilation server.</li>
+<li><strong>Handles shrinking, obfuscation, repackaging, and multidex</strong>.
+Using a separate package (such as ProGuard) is no longer necessary.</li>
+</ul>
+
+<p>As of Android 7.0, Jack supports code coverage with JaCoCo. For details,
+refer to
+<a href="https://android.googlesource.com/platform/prebuilts/sdk/+/master/tools/README-jack-code-coverage.md" class="external">Code
+Coverage with JaCoCo</a> and
+<a href="https://developer.android.com/preview/j8-jack.html" class="external">Java
+8 Language Features</a>.</p>
+
+<h3 id=jack_library>Jack library format</h3>
+
+<p>Jack has its own .jack file format that contains the pre-compiled dex code
+for the library, allowing for faster compilation (pre-dex).</p>
+
+<img src="../images/jack_library.png" alt="Jack library file contents"/>
+<figcaption><strong>Figure 2.</strong> Jack library file contents.</figcaption>
+
+<h3 id=jill>Jill</h3>
+
+<p>The Jill tool translates the existing .jar libraries into the new library
+format, as shown below.</p>
+
+<img src="../images/jack_jill.png" alt="Importing .jar libraries with Jill"/>
+<figcaption><strong>Figure 3.</strong> Workflow to import an existing .jar
+library.</figcaption>
+
+<h2 id=using_jack>Jack compilation server</h2>
+
+<aside class="note"><strong>Note:</strong> The following instructions apply only
+to using Jack in Android 6.x; for instructions on using Jack in Android 7.x and
+higher, refer to
+<a href="https://android.googlesource.com/platform/prebuilts/sdk/+/master/tools/README-jack-server.md" class="external">Jack
+server documentation</a>.</aside>
+
+<p>The first time Jack is used, it launches a local Jack compilation server on
+your computer. This server:</p>
+
+<ul>
+<li>Brings an intrinsic speedup because it avoids launching a new host JRE JVM,
+loading Jack code, initializing Jack, and warming up the JIT at each
+compilation. It also provides very good compilation times during small
+compilations (e.g. in incremental mode).</li>
+<li>Is a short-term solution to control the number of parallel Jack
+compilations. It avoids overloading your computer (memory or disk issue) because
+it limits the number of parallel compilations.</li>
+</ul>
+
+<p>The Jack server shuts itself down after an idle time without any compilation.
+It uses two TCP ports on the localhost interface and is not available
+externally. All parameters (number of parallel compilations, timeout, ports
+number, etc.) can be modified by editing the <code>$HOME/.jack</code> file.</p>
+
+<h3 id=home_jack_file>$HOME/.jack file</h3>
+
+<p>The <code>$HOME/.jack</code> file contains the following settings for Jack
+server variables in a full bash syntax:</p>
+
+<ul>
+<li><code>SERVER=true</code>. Enable the server feature of Jack.</li>
+<li><code>SERVER_PORT_SERVICE=8072</code>. Set the TCP port number of the server
+for compilation purposes.</li>
+<li><code>SERVER_PORT_ADMIN=8073</code>. Set the TCP port number of the server
+for admin purposes.</li>
+<li><code>SERVER_COUNT=1</code>. Unused.
+<li><code>SERVER_NB_COMPILE=4</code>. Set the maximum number of allowed parallel
+compilations.</li>
+<li><code>SERVER_TIMEOUT=60</code>. Set the number of idle seconds the server
+must wait without any compilation before shutting itself down.</li>
+<li><code>SERVER_LOG=${SERVER_LOG:=$SERVER_DIR/jack-$SERVER_PORT_SERVICE.log}</code>.
+Set the file where server logs are written. By default, this variable can be
+overloaded by an environment variable.</li>
+<li><code>JACK_VM_COMMAND=${JACK_VM_COMMAND:=java}</code>. Set the default
+command used to launch a JVM on the host. By default, this variable can be
+overloaded by environment variable.</li>
+</ul>
+
+<h3 id=jack_troubleshooting>Troubleshooting Jack compilations</h3>
+
+<table>
+<tr>
+<th>Problem</th>
+<th>Action</th>
+</tr>
+<tr>
+<td>Your computer becomes unresponsive during compilation or you experience
+Jack compilations failing on “Out of memory error”</td>
+<td>You can improve the situation by reducing the number of simultaneous Jack
+compilations by editing <code>$HOME/.jack</code> and changing
+<code>SERVER_NB_COMPILE</code> to a lower value.</td>
+</tr>
+<tr>
+<td>Compilations are failing on “Cannot launch background server”</td>
+<td>The most likely cause is TCP ports are already used on your computer. Change
+ports by editing <code>$HOME/.jack</code> (<code>SERVER_PORT_SERVICE</code> and
+<code>SERVER_PORT_ADMIN</code> variables).
+
+<br><br>If it doesn’t solve the problem, report the error (be sure to attach
+your compilation log and the <a href="#jack_log">Jack server log</a>). To
+unblock the situation, disable the Jack compilation server by editing
+<code>$HOME/.jack</code> and changing <code>SERVER</code> to false.
+Unfortunately this will significantly slow down your compilation and may force
+you to launch <code>make -j</code> with load control (option <code>-l</code>
+of <code>make</code>).
+</td>
+</tr>
+<tr>
+<td>Compilation gets stuck without any progress</td>
+<td>Report and provide the following information when possible:
+<br>
+<ul>
+<li>Command line at which you are stuck.</li>
+<li>Output of this command line.</li>
+<li>Result of executing <code>jack-admin server-stat</code>.</li>
+<li><code>$HOME/.jack</code> file.</li>
+<li>Content of the <a href="#jack_log">Jack server log</a> with the server state
+dumped. To get the server log:
+ <ul>
+ <li>Find the Jack background server process by running
+ <code>jack-admin list-server</code>.</li>
+ <li>Send a <code>kill -3</code> command to this server to dump its state into
+ the log file.</li>
+ </ul>
+</li>
+<li>Result of executing <code>ls -lR $TMPDIR/jack-$USER</code>.</li>
+<li>Result of running <code>ps j -U $USER</code>.</li>
+</ul>
+
+To unblock the situation, kill the Jack background server using
+<code>jack-admin kill-server</code>) then remove the temporary directories
+contained in <code>jack-$USER</code> of your temporary directory
+(<code>/tmp</code> or <code>$TMPDIR</code>).
+</td>
+</tr>
+<tr>
+<td>Other issues</td>
+<td>To report bugs or request features, use the public issue tracker at
+<a href="http://b.android.com" class="external">http://b.android.com</a>.
+Use the
+<a href="https://code.google.com/p/android/issues/entry?template=Jack%20bug%20report" class="external">Jack
+tool bug report</a> or
+<a href="https://code.google.com/p/android/issues/entry?template=Jack%20feature%20request" class="external">Jack
+tool feature request</a> templates and remember to attach the Jack log to the
+bug report.</td>
+</tr>
+</table>
+
+<h3 id="jack_log">Finding the Jack log</h3>
+If you ran a <code>make</code> command with a dist target, the Jack log is
+located at <code>$ANDROID_BUILD_TOP/out/dist/logs/jack-server.log</code>.
+Otherwise, you can find the log by running <code>jack-admin server-log</code>.
+In case of reproducible Jack failures, you can get a more detailed log by
+setting the following variable:</p>
+
+<pre class="devsite-terminal devsite-click-to-copy">
+export ANDROID_JACK_EXTRA_ARGS="--verbose debug --sanity-checks on -D sched.runner=single-threaded"
+</pre>
+
+<p>Use standard makefile commands to compile the tree (or your project) and
+attach standard output and error. To remove detailed build logs, run:</p>
+
+<pre class="devsite-terminal devsite-click-to-copy">
+unset ANDROID_JACK_EXTRA_ARGS
+</pre>
+
+<h3 id=jack_limitations>Jack limitations</h3>
+
+<ul>
+<li>By default, the Jack server is mono-user and can be used by only one user on
+a computer. To support additional users, select different port numbers for each
+user and adjust <code>SERVER_NB_COMPILE</code> accordingly. You can also disable
+the Jack server by setting <code>SERVER=false</code> in
+<code>$HOME/.jack</code>.</li>
+<li>CTS compilation is slow due to current <code>vm-tests-tf</code> integration.
+<li>Bytecode manipulation tools (such as JaCoCo) are not supported.</li>
+</ul>
+
+<h2 id=using_jack_features>Using Jack</h2>
+
+<p>Jack supports Java programming language 1.7 and integrates the additional
+features described below.</p>
+
+<h3 id=predexing>Predexing</h3>
+
+<p>When generating a Jack library file, the <code>.dex</code> of the library is
+generated and stored inside the <code>.jack</code> library file as a pre-dex.
+When compiling, Jack reuses the pre-dex from each library. All libraries are
+pre-dexed:</p>
+
+<img src="../images/jack_predex.png" alt="Jack libraries with pre-dex" />
+<figcaption><strong>Figure 4.</strong> Jack libraries with pre-dex.</figcaption>
+
+<p>Jack does not reuse the library pre-dex if shrinking, obfuscation, or
+repackaging is used in the compilation.</p>
+
+<h3 id=incremental_compilation>Incremental compilation</h3>
+
+<p>Incremental compilation means that only the components touched since the last
+compilation (and their dependencies) are recompiled. Incremental compilation can
+be significantly faster than a full compilation when changes are limited to a
+set of components.</p>
+
+<p>Incremental compilation is not enabled by default (and is automatically
+deactivated when shrinking, obfuscation, repackaging or multi-dex legacy is
+enabled). To enable incremental builds, add the following line to the
+<code>Android.mk</code> file of the project you want to build incrementally:</p>
+
+<pre class="devsite-click-to-copy">LOCAL_JACK_ENABLED := incremental</pre>
+
+<aside class="note"><strong>Note:</strong> If some dependencies are not built
+the first time you build your project with Jack, use <code>mma</code> to build
+them. After doing so you can use the standard build command.</aside>
+
+<h3 id=shrinking_and_obfuscation>Shrinking and obfuscation</h3>
+
+<p>Jack uses proguard configuration files to enable shrinking and obfuscation.</p>
+
+<p>Common options include the following:</p>
+
+<ul>
+  <li> <code>@</code>
+  <li> <code>-include</code>
+  <li> <code>-basedirectory</code>
+  <li> <code>-injars</code>
+  <li> <code>-outjars // only 1 output jar supported</code>
+  <li> <code>-libraryjars</code>
+  <li> <code>-keep</code>
+  <li> <code>-keepclassmembers</code>
+  <li> <code>-keepclasseswithmembers</code>
+  <li> <code>-keepnames</code>
+  <li> <code>-keepclassmembernames</code>
+  <li> <code>-keepclasseswithmembernames</code>
+  <li> <code>-printseeds</code>
+</ul>
+
+<p>Shrinking options include the following:</p>
+
+<ul>
+  <li><code>-dontshrink</code>
+</ul>
+
+<p>Obfuscation options include the following:</p>
+
+<ul>
+  <li> <code>-dontobfuscate</code>
+  <li> <code>-printmapping</code>
+  <li> <code>-applymapping</code>
+  <li> <code>-obfuscationdictionary</code>
+  <li> <code>-classobfuscationdictionary</code>
+  <li> <code>-packageobfuscationdictionary</code>
+  <li> <code>-useuniqueclassmembernames</code>
+  <li> <code>-dontusemixedcaseclassnames</code>
+  <li> <code>-keeppackagenames</code>
+  <li> <code>-flattenpackagehierarchy</code>
+  <li> <code>-repackageclasses</code>
+  <li> <code>-keepattributes</code>
+  <li> <code>-adaptclassstrings</code>
+</ul>
+
+<p>Ignored options include the following:</p>
+
+<ul>
+  <li> <code>-dontoptimize // Jack does not optimize</code>
+  <li> <code>-dontpreverify // Jack does not preverify</code>
+  <li> <code>-skipnonpubliclibraryclasses</code>
+  <li> <code>-dontskipnonpubliclibraryclasses</code>
+  <li> <code>-dontskipnonpubliclibraryclassmembers</code>
+  <li> <code>-keepdirectories</code>
+  <li> <code>-target</code>
+  <li> <code>-forceprocessing</code>
+  <li> <code>-printusage</code>
+  <li> <code>-whyareyoukeeping</code>
+  <li> <code>-optimizations</code>
+  <li> <code>-optimizationpasses</code>
+  <li> <code>-assumenosideeffects</code>
+  <li> <code>-allowaccessmodification</code>
+  <li> <code>-mergeinterfacesaggressively</code>
+  <li> <code>-overloadaggressively</code>
+  <li> <code>-microedition</code>
+  <li> <code>-verbose</code>
+  <li> <code>-dontnote</code>
+  <li> <code>-dontwarn</code>
+  <li> <code>-ignorewarnings</code>
+  <li> <code>-printconfiguration</code>
+  <li> <code>-dump</code>
+</ul>
+
+<aside class="note"><strong>Note:</strong> Other options will generate an
+error.</aside>
+
+<h3 id=repackaging>Repackaging</h3>
+
+<p>Jack uses jarjar configuration files to do repackaging. While Jack is
+compatible with "rule" rule types, it is not compatible with "zap" or
+"keep" rule types. If you need "zap" or "keep" rule types, file a feature
+request with a description of how you use the feature in your app.</p>
+
+<h3 id=multidex_support>Multidex support</h3>
+
+<p>Jack offers native and legacy multidex support. Since dex files are limited
+to 65K methods, apps with over 65K methods must be split into multiple dex
+files. For more details, refer to
+<a href="http://developer.android.com/tools/building/multidex.html" class="external">Building
+Apps with Over 65K Methods</a>.</p>
+
+  </body>
+</html>

@@ -1,0 +1,382 @@
+<html devsite>
+  <head>
+    <title>Test Templates</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2018 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>AOSP includes test templates for test modules that are not host-side Python
+subclass of VTS runner's BaseTest. </p>
+
+<p><img src="images/vts_template_arch.png"></p>
+<figcaption><strong>Figure 1.</strong> Test template architecture.</figcaption>
+
+<p>Developers can use these templates to minimize the effort involved in
+integrating such tests. This section covers configuring and using the test
+templates (located in the VTS
+<a href="https://android.googlesource.com/platform/test/vts/+/master/testcases/template/">testcases/template</a>
+directory) and provides examples for commonly used templates.</p>
+
+<h2 id="binarytest">BinaryTest template</h2>
+<p>Use the
+<a href="https://android.googlesource.com/platform/test/vts/+/sdk-release/testcases/template/binary_test/binary_test.py" class="external">BinaryTest
+template</a> to integrate tests that execute on target device in VTS.
+Target-side tests include:</p>
+
+<ul>
+<li><strong>C++</strong> based tests compiled and pushed to device</li>
+<li>Target-side <strong>Python</strong> tests compiled as binaries</li>
+<li><strong>Shell scripts</strong> executable on devices</li>
+</ul>
+
+<p>These tests can be integrated into VTS with or without the BinaryTest
+template.</p>
+
+<h3 id="target-side">Integrating target-side tests with
+BinaryTest template</h3>
+<p>The BinaryTest template is designed to help developers easily integrate
+target-side tests. In most cases, you can add a few simple lines of
+configuration in <code>AndroidTest.xml</code>. Example configuration from
+<a href="https://android.googlesource.com/platform/test/vts-testcase/kernel/+/master/api/early_mount/AndroidTest.xml" class="external">VtsDeviceTreeEarlyMountTest</a>:
+</p>
+
+<pre class="devsite-click-to-copy">
+&lt;configuration description="Config for VTS VtsDeviceTreeEarlyMountTest."&gt;
+  ...
+&lt;test class="com.android.tradefed.testtype.VtsMultiDeviceTest"&gt;
+&lt;option name="test-module-name" value="VtsDeviceTreeEarlyMountTest"/&gt;
+&lt;option name="binary-test-source" value="_32bit::DATA/nativetest/dt_early_mount_test/dt_early_mount_test" /&gt;
+&lt;option name="binary-test-source" value="_64bit::DATA/nativetest64/dt_early_mount_test/dt_early_mount_test" /&gt;
+&lt;option name="test-timeout" value="5m"/&gt;
+&lt;/test&gt;
+&lt;/configuration&gt;
+</pre>
+
+<p>In this configuration:</p>
+<ul>
+<li><code>binary-test-source</code> and <code>binary-test-type</code> are
+template-specific.</li>
+<li>Specifying the test binary source's relative host path enables the template
+to handle preparation, file pushing, test execution, result parsing, and
+cleanup.</li>
+<li>The template contains test case creation-related methods for subclasses to
+override.</li>
+<li>The template assumes one test case per test binary module, and the binary
+source file name is used as test case name by default.</li>
+</ul>
+
+<h4>Configuration options</h4>
+<p>The BinaryTest template supports the following configuration options:</p>
+
+<table>
+<thead>
+<tr>
+<th width="25%">Option name</th>
+<th width="12%">Value type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>binary-test-source</td>
+<td>strings</td>
+<td>Binary test source paths relative to vts test-case directory on
+host.<br>
+Example: <code>DATA/nativetest/test</code></td>
+</tr>
+<tr>
+<td>binary-test-working-directory</td>
+<td>strings</td>
+<td>Working directories (device-side path).<br>
+Example: <code>/data/local/tmp/testing/</code></td>
+</tr>
+<tr>
+<td>binary-test-envp</td>
+<td>strings</td>
+<td>Environment variables for binary.<br>
+Example: <code>PATH=/new:$PATH</code></td>
+</tr>
+<tr>
+<td>binary-test-args</td>
+<td>strings</td>
+<td>Test arguments or flags.<br>
+Example: <code>--gtest_filter=test1</code></td>
+</tr>
+<tr>
+<td>binary-test-ld-library-path</td>
+<td>strings</td>
+<td><code>LD_LIBRARY_PATH</code> environment variable.<br>
+Example: <code>/data/local/tmp/lib</code></td>
+</tr>
+<tr>
+<td>binary-test-disable-framework</td>
+<td>boolean</td>
+<td>Run <code>adb stop</code> to turn off the Android Framework before test.
+Example: <code>true</code></td>
+</tr>
+<tr>
+<td>binary-test-stop-native-servers</td>
+<td>boolean</td>
+<td>Stop all properly configured native servers during the testing. Example:
+<code>true</code></td>
+</tr>
+<tr>
+<td>binary-test-type</td>
+<td>string</td>
+<td>Template type. Other template types extend from this template, but you
+don't have to specify this option for this template because you already
+specified <code>binary-test-source</code>.</td>
+</tr>
+</tbody>
+</table>
+
+<p>For options with value type <code>strings</code>, you can add multiple values
+by repeating the options in the configuration. For example, set
+<code>binary-test-source</code> twice (as shown in the
+<code>VtsDeviceTreeEarlyMountTest</code> example).</p>
+
+<h4>Test tags</h4>
+<p>You can add test tags by prefixing them to options with <code>strings</code>
+values and using <code>::</code> as the delimiter. Test tags are especially
+useful when including binary sources with the same name but with different
+bitness or parent directories. For example, to avoid file push or result name
+collision for sources with the same name but from different source directories,
+you can specify different tags for these sources.</p>
+
+<p>As shown in the <code>VtsDeviceTreeEarlyMountTest</code> example with the
+two <code>dt_early_mount_test</code> sources, the test tags are the 
+<code>_32bit::</code> and <code>_64bit::</code> prefixes on
+<code>binary-test-source</code>. Tags ending with <code>32bit</code> or
+<code>64bit</code> automatically mark the tests as available to one ABI bitness;
+i.e. tests with the tag <code>_32bit</code> are not executed on 64-bit ABI. Not
+specifying a tag is equal to using a tag with an empty string.</p>
+
+<p>Options with the same tags are grouped and isolated from other tags. For
+example, <code>binary-test-args</code> with the <code>_32bit</code> tag is
+applied only to <code>binary-test-source</code> with the same tag and executed
+in <code>binary-test-working-directory</code> with the same tag. The
+<code>binary-test-working-directory</code> option is optional for binary tests,
+allowing you to specify a single working directory for a tag. When the
+<code>binary-test-working-directory</code> option is left unspecified, default
+directories are used for each tag.</p>
+
+<p>The tag name is directly appended to test case name in the result report.
+For example, test case <code>testcase1</code> with tag <code>_32bit</code>
+appears as <code>testcase1_32bit</code> in the result report.</p>
+
+<h3 id="no-target-side">Integrating target-side tests without
+BinaryTest template</h2>
+<p>In VTS, the default test format is host-side Python tests extended from
+BaseTest in VTS runner. To integrate target-side tests, you must first push the
+test files to device, execute the tests using shell commands, then parse the
+results using host-side Python scripts.</p>
+
+<h4>Pushing test binaries</h4>
+<p>We recommend pushing files using <code>VtsFilePusher</code> target preparer.
+Example:</p>
+
+<pre class="devsite-click-to-copy">
+&lt;target_preparer class="com.android.compatibility.common.tradefed.targetprep.VtsFilePusher"&gt;
+        &lt;option name="push" value="DATA/test-&gt;/data/local/tmp/test"/&gt;
+    &lt;/target_preparer&gt;
+</pre>
+
+<p>The <code>VtsFilePusher</code> does the following:</p>
+<ol>
+<li>Checks device connectivity.</li>
+<li>Determines the absolute source file path.</li>
+<li>Pushes the files using <code>adb push</code> command.</li>
+<li>Deletes the files after tests complete.</li>
+</ol>
+<p>Alternatively, you can push files manually using a host-side Python test
+script that follows a similar procedure.</p>
+
+<h4>Running tests</h4>
+<p>After pushing files to the device, run the test using shell commands in a
+host-side Python test script. Example:</p>
+
+<pre class="devsite-click-to-copy">
+device = self.android_devices[0]
+res = device.shell.Execute(["chmod a+x /data/local/tmp/test", "/data/local/tmp/test"])
+asserts.AssertFalse(any(res[return_codes]))
+</pre>
+
+<h2 id="gtestbinarytest">GtestBinaryTest template</h2>
+<p>The
+<a href="https://android.googlesource.com/platform/test/vts/+/sdk-release/testcases/template/gtest_binary_test/gtest_binary_test.py" class="external">GtestBinaryTest
+template</a> hosts GTest test binaries, each of which usually contains
+multiple test cases. This template extends the BinaryTest template by overriding
+setup, test case creation, and result parsing methods, so all BinaryTest
+configurations are inherited.</p>
+
+<p>GtestBinaryTest adds the option <code>gtest-batch-mode</code>:</p>
+
+<table>
+<thead>
+<tr>
+<th>Option name</th>
+<th>Value type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>binary-test-type</td>
+<td>string</td>
+<td>Template type. Uses the value <code>gtest</code>.</td>
+</tr>
+<tr>
+<td>gtest-batch-mode</td>
+<td>boolean</td>
+<td>Run Gtest binaries in batch mode. Example: <code>true</code></td>
+</tr>
+</tbody>
+</table>
+
+<p>In general, setting <code>gtest-batch-mode</code> to <code>true</code>
+increases performance while decreasing reliability slightly. In VTS compliance
+tests, many modules use batch mode to improve performance. For reliability
+however, if the mode is unspecified it defaults to non-batch. </p>
+
+<h3 id=non-batch-mode>Non-batch mode</h3>
+<p>Non-batch mode makes individual calls to GTest binary for each test case. For
+example, if the GTest binary contains 10 test cases (after filtering by host
+side configuration), the binary is called 10 times on device shell each time
+with a different test filter. For each test case, a unique GTest result output
+XML is generated and parsed by the template.</p>
+
+<p><img src="images/vts_non_batch.png"></p>
+<figcaption><strong>Figure 2.</strong> Non-batch mode.</figcaption>
+
+<p>The advantages of using non-batch mode include:</p>
+<ul>
+<li><strong>Test case isolation</strong>. A crash or hang in one test case
+does not affect other test cases.</li>
+<li><strong>Granularity</strong>. Easier to get per-test-case profiling/coverage
+measurement, systrace, bugreport, logcat, etc. Test results and logs are
+retrieved immediately after each test case finishes.</li>
+</ul>
+
+<p>The disadvantages of using non-batch mode include:</p>
+<ul>
+<li><strong>Redundant loading</strong>. Each time GTest binary is called,
+it loads related libraries and performs initial class setups.</li>
+<li><strong>Communication overhead</strong>. After a test completes, the host
+and target device communicate for result parsing and next commands (future
+optimizations possible).</li>
+</ul>
+
+<h3 id="batch-mode">Batch mode</h3>
+<p>In GTest batch mode, the test binary is called only once with a long test
+filter value containing all test cases filtered by host-side configuration (this
+avoids the redundant loading issue in non-batch mode). You can parse test
+results for GTest using output.xml or using terminal output.</p>
+
+<p>When using output.xml (default):</p>
+
+<p><img src="images/vts_batch_output_xml.png"></p>
+<figcaption><strong>Figure 3.</strong> Batch mode, output.xml.</figcaption>
+
+<p>As in non-batch mode, the test result is parsed through GTest output xml
+file. However, because the output xml is generated after all tests are
+completed, if a test case crashed the binary or device no result xml file is
+generated.
+
+<p>When using terminal output:</p>
+
+<p><img src="images/vts_batch_terminal_output.png"></p>
+<figcaption><strong>Figure 4.</strong> Batch mode, terminal output.</figcaption>
+
+<p>While GTest is running, it prints the test log and progress to the terminal
+in a format that can be parsed by the framework for test status, results, and
+logs.</p>
+
+<p>The advantages of using batch mode include:</p>
+<ul>
+<li><strong>Test case isolation</strong>. Provides the same level of test
+case isolation as non-batch mode if the framework restarts the binary/device
+after a crash with a reduced test filter (excluding finished and crashed test
+cases).</li>
+<li><strong>Granularity</strong>. Provides the same test-case granularity as
+non-batch mode.</li>
+</ul>
+
+<p>The disadvantages of using batch mode include:</p>
+<ul>
+<li><strong>Maintenance cost</strong>. If the GTest logging format changes,
+all tests will break.</li>
+<li><strong>Confusion</strong>. A test case can print something similar to GTest
+progress format, which can confuse the format.</li>
+</ul>
+<p>Because of these disadvantages, we have temporarily removed the option to use
+command line output. We will revisit this option in the future to improve the
+reliability of this function.</p>
+
+<h2 id="hostbinarytest">HostBinaryTest template</h2>
+<p>The HostBinaryTest template includes host-side executables that do not exist
+in other directories or in Python scripts. These tests include:</p>
+<ul>
+<li>Compiled test binaries executable on host</li>
+<li>Executable scripts in shell, Python, or other languages</li>
+</ul>
+<p>One example is the
+<a href="https://android.googlesource.com/platform/test/vts-testcase/security/+/master/selinux/policy/AndroidTest.xml" class="external">VTS
+Security SELinux policy host-side test</a>:</p>
+
+<pre class="devsite-click-to-copy">
+&lt;configuration description="Config for VTS  Security SELinux policy host-side test cases"&gt;
+    ...
+    &lt;test class="com.android.tradefed.testtype.VtsMultiDeviceTest"&gt;
+        &lt;option name="test-module-name" value="VtsSecuritySelinuxPolicyHost"/&gt;
+        &lt;option name="binary-test-source" value="out/host/linux-x86/bin/VtsSecuritySelinuxPolicyHostTest" /&gt;
+        &lt;option name="binary-test-type" value="host_binary_test"/&gt;
+    &lt;/test&gt;
+&lt;/configuration&gt;
+</pre>
+
+<p>HostBinaryTest does not extend the BinaryTest template but does use similar
+test configurations. In the above example, the <code>binary-test-source</code>
+option specifies a host-side relative path to the test executable, and
+<code>binary-test-type</code> is <code>host_binary_test</code>. Similar to
+BinaryTest template, the binary filename is used as the test case name by
+default.</p>
+
+<h2 id="extending-existing-templates">Extending existing templates</h2>
+<p>You can use templates directly in the test config to include non-Python tests
+or extend them in a subclass to handle specific test requirements. Templates in
+the VTS repo have the following extensions:</p>
+
+<p><img src="images/vts_template_extension.png"></p>
+<figcaption><strong>Figure 5.</strong> Extending existing templates in the VTS
+repo.</figcaption>
+
+<p>Developers are encouraged to extend any existing template for any specific
+test requirements. Common reasons to extend templates include:</p>
+<ul>
+<li>Special test setup procedures, such as preparing a device with special
+commands.</li>
+<li>Generating different test cases and test names.</li>
+<li>Parsing results by reading command output or using other conditions.</li>
+</ul>
+<p>To make it easier to extend existing templates, the templates contain methods
+specialized for each functionality. If you have improved designs for existing
+templates, we encourage you to contribute to the VTS code base.</p>
+
+</body>
+</html>
