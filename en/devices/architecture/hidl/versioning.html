@@ -112,6 +112,54 @@ types from the older version of the package, and inheritance of a subset of
 old-package interfaces.</li>
 </ul>
 
+<h2 id=structuring>Structuring interfaces</h2>
+
+<p>For a well structured interface, adding new types of functionality that
+are not part of the original design should require a modification to the HIDL
+interface. Conversely, if you can or expect to make a change on both sides of
+the interface that introduces new functionality without changing the interface
+itself, then the interface is not structured.</p>
+
+<p>Treble supports separately-compiled vendor and system components in which the
+<code>vendor.img</code> on a device and the <code>system.img</code> can be
+compiled separately. All interactions between <code>vendor.img</code> and
+<code>system.img</code> must be explicitly and thoroughly defined so they can
+continue to work for many years. This includes many API surfaces, but a major
+surface is the IPC mechanism HIDL uses for interprocess communication on the
+<code>system.img</code>/<code>vendor.img</code> boundary.</p>
+
+<h3 id="structuring-requirements">Requirements</h3>
+<p>All data passed through HIDL must be explicitly defined. To ensure an
+implementation and client can continue to work together even when compiled
+separately or developed on independently, data must adhere to the following
+requirements:</p>
+
+<ul>
+<li>Can be described in HIDL directly (using structs enums, etc.) with
+semantic names and meaning.</li>
+<li>Can be described by a public standard such as ISO/IEC 7816.</li>
+<li>Can be described by a hardware standard or physical layout of hardware.</li>
+<li>Can be opaque data (such as public keys, ids, etc.) if necessary.</li>
+</ul>
+
+<p>If opague data is used, it must be read only by one side of the HIDL
+interface. For example, if <code>vendor.img</code> code gives a component on the
+<code>system.img</code> a string message or <code>vec&lt;uint8_t&gt;</code>
+data, that data cannot be parsed by the <code>system.img</code> itself; it can
+only be passed back to <code>vendor.img</code> to interpret. <strong>When
+passing a value from <code>vendor.img</code> to vendor code on
+<code>system.img</code> or to another device, the format of the data and how it
+is to be interpreted must be exactly described and is still part of the
+interface</strong>.</p>
+
+<h3 id="structuring-guidelines">Guidelines</h3>
+
+<p>You should be able to write an implementation or client of a HAL using only
+the .hal files (i.e. you should not need to look at the Android source or public
+standards). We recommend specifying the exact required behavior. Statements such
+as "an implementation may do A or B" encourage implementations to become
+intertwined with the clients they are developed with.</p>
+
 <h2 id=code-layout>HIDL code layout</h2>
 <p>HIDL includes core and vendor packages.</p>
 

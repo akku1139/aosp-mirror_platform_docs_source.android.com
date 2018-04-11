@@ -255,16 +255,26 @@ us uncover many meaningful bugs in some Android device drivers).
 Many processes launch during boot, but only components in critical path
 (bootloader > kernel > init > file system mount > zygote > system server)
 directly affect boot time. Profile <strong>initcall</strong> during kernel
-booting to identify peripheral/components that are not critical to the
-start init process, then delay those peripherals/components until later
-in the boot process.
+booting to identify peripheral/components that are slow and not critical
+to start init process, then delay those peripherals/components until later
+in the boot process by moving into loadable kernel modules. Moving to
+asynchronous device/driver probe can also help to parallel slow components
+in kernel > init critical path.
 </p>
 
 <pre
 class="prettyprint">
 BoardConfig-common.mk:
     BOARD_KERNEL_CMDLINE += initcall_debug ignore_loglevel
+
+driver:
+    .probe_type = PROBE_PREFER_ASYNCHRONOUS,
 </pre>
+
+<p class="note">
+<strong>Note:</strong> Driver dependencies must be resolved carefully by adding
+<code>EPROBEDEFER</code> support.
+</p>
 
 <h2 id="optimizing-i-o-efficiency">Optimizing I/O efficiency</h2>
 
@@ -421,6 +431,12 @@ first.
 early stage init should be deferred to boot completed.</li></ul>
 </li>
 </ul>
+
+<p class="note">
+<strong>Note:</strong> Property service is part of init process, so calling
+<code>setproperty</code> during boot can lead a long delay if init is busy in
+builtin commands.
+</p>
 
 <h3 id="using-scheduler-tuning">Using scheduler tuning</h3>
 
