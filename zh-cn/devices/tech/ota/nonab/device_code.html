@@ -72,8 +72,8 @@ device/yoyodyne/tardis/recovery.fstab
 
 <h2 id="recovery-ui">恢复界面</h2>
 <p>要支持配备不同可用硬件（物理按钮、LED、屏幕等）的设备，您可以自定义恢复界面以显示状态，并访问每台设备的手动操作隐藏功能。</p>
-<p>您的目标是编译一个包含一些 C++ 对象的小型静态库，以提供设备专属功能。默认情况下会使用 <code>
-<b>bootable/recovery/default_device.cpp</b></code> 文件，该文件可在为您的设备编写这一文件时供您参考。</p>
+<p>您的目标是编译一个包含几个 C++ 对象的小型静态库，以提供设备专属功能。默认情况下会使用 <code>
+<b>bootable/recovery/default_device.cpp</b></code> 文件，该文件正好可在您为设备编写此文件的某个版本时供您复制。</p>
 
 <pre class="devsite-click-to-copy">
 device/yoyodyne/tardis/recovery/recovery_ui.cpp
@@ -230,7 +230,7 @@ const char* const* GetMenuItems() { return ITEMS; }
 <p>由于 <code>HandleMenuKey()</code> 隐含在可见参数中，因此，即使菜单不可见，也会进行调用。与 <code>CheckKey()</code> 不同的是，当恢复系统执行清除数据或安装软件包等操作时，系统不会调用该函数，只有恢复系统处于闲置状态并等待输入时才会调用该函数。<i></i></p>
 
 <h4 id="trackball-mechanism">轨迹球机制</h4>
-<p>如果您的设备采用类似于轨迹球的输入机制（生成类型为 EV_REL、代码为 REL_Y 的输入事件），那么，只要类似于轨迹球的输入设备报告 Y 轴的动作，恢复系统就会合成 KEY_UP 和 KEY_DOWN 按键。您只需将 KEY_UP 和 KEY_DOWN 事件映射到相应的菜单操作即可。<i></i>由于无法针对 <code>CheckKey()</code> 实现此映射，因此不能将轨迹球动作作为重新启动或切换显示状态的触发器。</p>
+<p>如果您的设备采用类似于轨迹球的输入机制（生成类型为 EV_REL、代码为 REL_Y 的输入事件），那么，只要类似于轨迹球的输入设备报告 Y 轴的动作，恢复系统就会合成 KEY_UP 和 KEY_DOWN 按键。您只需将 KEY_UP 和 KEY_DOWN 事件映射到相应的菜单操作即可。<i></i>由于无法针对 <code>CheckKey()</code> 实现此映射，因此您不能将轨迹球运动用作重新启动或切换显示状态的触发器。</p>
 
 <h4 id="modifier-keys">辅助键</h4>
 <p>要查看作为辅助键按下的键，请调用您自己的界面对象的 <code>IsKeyPressed()
@@ -515,7 +515,7 @@ Value* ReprogramTardisFn(const char* name, State* state, int argc, Expr* argv[])
     }
 </pre>
 
-<p><code>ReadValueArgs()</code> 不执行类型检查，因此您必须在这里执行这项检查；使用 <b>if</b> 语句执行这项检查会更方便，不过这样做也有一个弊端，那就是，如果操作失败，所显示的错误消息会不够具体。不过，如果有任何评估失败，<code>ReadValueArgs()</code> 会处理每个参数的评估操作，并释放之前评估的所有参数（以及设置有用的错误消息）。您可以使用 <code>
+<p><code>ReadValueArgs()</code> 不会执行类型检查，因此您必须在这里执行这项检查；使用 <b>if</b> 语句执行这项检查会更方便，不过这样做也有一个弊端，那就是，如果操作失败，所显示的错误消息会不够具体。不过，如果有任何评估失败，<code>ReadValueArgs()</code> 会处理每个参数的评估操作，并释放之前评估的所有参数（以及设置有用的错误消息）。您可以使用 <code>
 ReadValueVarArgs()</code> 便捷函数来评估数量不定的参数（它会返回 <code>Value*</code> 的数组）。</p>
 
 <p>对参数进行评估后，执行以下函数：</p>
@@ -544,7 +544,7 @@ ReadValueVarArgs()</code> 便捷函数来评估数量不定的参数（它会返
 }
 </pre>
 
-<p>便捷函数 <code>StringValue()</code> 会将字符串封装到新的 Value 对象中。使用此函数可以简化上述代码：</p>
+<p>便捷函数 <code>StringValue()</code> 会将字符串封装到新的 Value 对象中。使用此函数可以简化上述代码的编写流程：</p>
 
 <pre class="prettyprint">
    FreeValue(key);
@@ -581,7 +581,7 @@ LOCAL_MODULE := librecovery_updater_tardis
 include $(BUILD_STATIC_LIBRARY)
 </pre>
 
-<p>最后，配置 recovery 的编译版本以拉入您的库。将您的库添加到 TARGET_RECOVERY_UPDATER_LIBS（它可能包含多个库；所有库均已注册）。如果您的代码依赖于本身不是 edify 扩展的其他静态库（即，它们没有 <code>Register_<i>libname</i></code> 函数），您可以将这些库列于 TARGET_RECOVERY_UPDATER_EXTRA_LIBS 中，以将其关联到更新程序，而无需调用其（不存在的）注册函数。例如，如果您的设备专属代码需要使用 zlib 解压缩数据，您可以在此处包含 libz。</p>
+<p>最后，配置 recovery 的编译版本以拉入您的库。将您的库添加到 TARGET_RECOVERY_UPDATER_LIBS（它可能包含多个库；所有库均已注册）。如果您的代码依赖于本身不是 edify 扩展程序的其他静态库（即，它们没有 <code>Register_<i>libname</i></code> 函数），您可以将这些库列于 TARGET_RECOVERY_UPDATER_EXTRA_LIBS 中，以将其关联到更新程序，而无需调用其（不存在的）注册函数。例如，如果您的设备专属代码需要使用 zlib 解压缩数据，您可以在此处包含 libz。</p>
 
 <pre class="devsite-click-to-copy">
 device/yoyodyne/tardis/BoardConfig.mk

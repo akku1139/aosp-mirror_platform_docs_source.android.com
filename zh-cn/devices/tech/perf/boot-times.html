@@ -212,21 +212,13 @@ CONFIG_MOBICORE_DRIVER=y
 <h3 id="deferring-initialization">延迟初始化</h3>
 
 <p>
-很多进程都在设备启动期间启动，但只有关键路径 (bootloader &gt; kernel &gt; init &gt; file system mount &gt; zygote &gt; system server) 中的组件才会直接影响启动时间。在内核启动期间分析 <strong>initcall</strong> 的执行情况来识别执行缓慢并且对启动 init 进程不重要的外设/组件，将这些外设/组件编译为内核模块并延迟到启动过程的后期来启动。将外设/组件的初始化过程改为异步并行也有助于解决从内核到init的关键路径。
+很多进程都在设备启动期间启动，但只有关键路径 (bootloader &gt; kernel &gt; init &gt; file system mount &gt; zygote &gt; system server) 中的组件才会直接影响启动时间。在内核启动期间执行 <strong>initcall</strong> 来识别对启动 init 进程不重要的外设/组件，然后将这些外设/组件延迟到启动过程的后期来启动。
 </p>
 
-<pre
-class="prettyprint">
+<pre class="prettyprint">
 BoardConfig-common.mk:
     BOARD_KERNEL_CMDLINE += initcall_debug ignore_loglevel
-
-驱动程序:
-    .probe_type = PROBE_PREFER_ASYNCHRONOUS,
 </pre>
-
-<p class="note">
-<strong>注意</strong> ：谨慎处理驱动程序的依赖性，如有其他驱动程序依赖于被异步的驱动程序，要确保 <code>EPROBEDEFER</code> 的支持情况。
-</p>
 
 <h2 id="optimizing-i-o-efficiency">优化 I/O 效率</h2>
 
@@ -353,10 +345,6 @@ Init 是从内核到框架建立之前的衔接过程，设备通常会在不同
 
 </li><li>启动服务并及早启用关键路径中的外围设备。例如，有些 SOC 需要先启动安全相关服务，然后再启动 SurfaceFlinger。在 ServiceManager 返回“wait for service”（等待服务）时查看系统日志 - 这通常表明必须先启动依赖服务。
 </li><li>移除 init.*.rc 中所有未使用的服务和命令。只要是早期阶段的 init 中没有使用的服务和命令，都应推迟到启动完成后再使用。</li></ul>
-
-<p class="note">
-<strong>注意</strong> ：属性服务是 init 进程的一部分，如果在init执行内部脚本命令期间，在代码中调用设置属性的函数有可能被延迟
-</p>
 
 <h3 id="using-scheduler-tuning">使用调度程序调整</h3>
 
