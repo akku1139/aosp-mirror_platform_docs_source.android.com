@@ -1,6 +1,6 @@
 <html devsite>
   <head>
-    <title>Implementing Ambient Capabilities</title>
+    <title>Ambient Capabilities</title>
     <meta name="project_path" value="/_project.yaml" />
     <meta name="book_path" value="/_book.yaml" />
   </head>
@@ -31,17 +31,60 @@
     those capabilities.
     </p>
     <p>
-    Ambient capabilities allows system services to configure capabilities in their
-    <code>.rc</code> files, bringing all their configuration into a single file,
-    instead of having to split capabilities configuration to the
-    <code>fs_config.c</code> file.
+    Ambient capabilities allows system services launched by init to configure
+    capabilities in their <code>.rc</code> files, bringing configuration into
+    a single file instead of splitting configuration in the
+    <code>fs_config.c</code> file. This means that for any service launched by
+    init, you can use the <code>.rc</code> file associated with the service to
+    configure capabilities for that service.
     </p>
+    <p>
+    Ambient capabilities are the preferred mechanism for setting capabilities
+    for services launched by init (this method keeps all aspects for the service
+    configuration in a single <code>.rc</code> file). We recommend using ambient
+    capabilities instead of <a href="/devices/tech/config/filesystem#configuring-the-caps-section">
+    configuring file system capabilities using the caps
+    section</a> in <code>config.fs</code> files.
+    </p>
+    <p>
+    When setting capabilities for services <strong>not launched by init</strong>,
+    continue to configure file system capabilities using
+    <code>fs_config.c</code>.
+    </p>
+
+    <h2 id="enabling-ambient-capabilities">Enabling ambient capabilities</h2>
+    <p>
+    To enable ambient capabilities for a given service, use the
+    <code>capabilities</code> keyword in init. For current init language
+    details, refer to the
+    <a href="https://android.googlesource.com/platform/system/core/+/master/init/README.md">
+    init README.md</a>.
+    </p>
+    <p>
+    For example, to enable ambient capabilities for the AOSP service
+    <code>wificond</code>, the
+    <a href="https://android.googlesource.com/platform/system/connectivity/wificond/+/master/wificond.rc">
+    .rc file</a> for the <code>wificond</code> service sets up the appropriate
+    user and groups and gives the service the specified capabilities using the
+    <code>capabilities</code> keyword:
+    </p>
+
+<pre class="prettyprint">
+service wificond /system/bin/wificond
+    class main
+    user wifi
+    group wifi net_raw net_admin
+    capabilities NET_RAW NET_ADMIN
+</pre>
+
     <h2 id="reference-implementation">Reference implementation</h2>
     <p>
     The reference implementation is the Android common kernel <a
     href="https://android.googlesource.com/kernel/common/">https://android.googlesource.com/kernel/common/</a>
     </p>
     <h2 id="required-patches">Required patches</h2>
+    <aside class="note"><strong>Note:</strong> The Android kernels 3.10 (android-3.10) and 3.14 (android-3.14) have been deprecated and removed.</aside>
+
     <p>
     Required patches have been backported to all the relevant Android common kernel
     branches.
@@ -52,17 +95,7 @@
     has been backported in:
     </p>
     <ul>
-    <li>android-3.10 branch:
-    <ul>
-      <li><a
-    href="https://android.googlesource.com/kernel/common/+/bdcd4484f1b399dfcb2fd7dd82b6869b2b6b60cd">https://android.googlesource.com/kernel/common/+/bdcd4484f1b399dfcb2fd7dd82b6869b2b6b60cd</a>
-    </ul>
-    <li>android-3.14 branch:
-    <ul>
-      <li><a
-    href="https://android.googlesource.com/kernel/common/+/5440f16f1296ca05f33dfde51e8bb7ad48699640">https://android.googlesource.com/kernel/common/+/5440f16f1296ca05f33dfde51e8bb7ad48699640</a>
-    </ul>
-    <li>android-3.18: 
+    <li>android-3.18:
     <ul>
       <li><a
     href="https://android.googlesource.com/kernel/common/+/d6a9a74487e86b528c44965f871de75671b6adb0">https://android.googlesource.com/kernel/common/+/d6a9a74487e86b528c44965f871de75671b6adb0</a>
@@ -81,16 +114,6 @@
     </p>
 
     <ul>
-      <li>android-3.10 branch:
-      <ul>
-        <li><a
-    href="https://android.googlesource.com/kernel/common/+/ef89def080c52eb7ea6a9455eb32b1b05867133b">https://android.googlesource.com/kernel/common/+/ef89def080c52eb7ea6a9455eb32b1b05867133b</a>
-      </ul>
-    <li>android-3.14 branch:
-    <ul>
-      <li><a
-    href="https://android.googlesource.com/kernel/common/+/f75626b3092fad4e0bd8f2aed06947352781eb77">https://android.googlesource.com/kernel/common/+/f75626b3092fad4e0bd8f2aed06947352781eb77</a>
-    </ul>
     <li>android-3.18:
     <ul>
       <li><a
@@ -102,20 +125,6 @@
     href="https://android.googlesource.com/kernel/common/+/dda568cc40d855bde2dfa9c04a7a1628c80b7f63">https://android.googlesource.com/kernel/common/+/dda568cc40d855bde2dfa9c04a7a1628c80b7f63</a></li>
     </ul>
     </ul>
-
-    <p>
-    A memory leak fix <a
-    href="https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/commit/?id=6d6f3328422a3bc56b0d8dd026a5de845d2abfa7">https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/commit/?id=6d6f3328422a3bc56b0d8dd026a5de845d2abfa7</a>,
-    needed for kernels < 3.18, has been backported in:
-    </p>
- 
-    <ul>
-    <li>android-3.10 branch:
-    <ul>
-      <li><a
-    href="https://android.googlesource.com/kernel/common/+/900e52782988ee11a1cb7d600e9edea48fc70f0f">https://android.googlesource.com/kernel/common/+/900e52782988ee11a1cb7d600e9edea48fc70f0f</a></li>
-    </ul>
-  </ul>
 
     <h2 id="validation">Validation</h2>
     <p>
