@@ -125,8 +125,7 @@ Android 8.0 支持一系列组件的多项改进，因而可以缩短启动时�
 </p>
 
 <ul>
-<li><strong>识别未使用的驱动程序</strong>。查看 <code>/dev</code> 和 <code>/sys</code> 目录，并查找带有常规 SELinux 标签的节点（这种标签表示相应节点未配置为可由用户空间访问）。
-如果找到此类节点，请将其移除。
+<li><strong>识别未使用的驱动程序</strong>。查看 <code>/dev</code> 和 <code>/sys</code> 目录，并查找带有常规 SELinux 标签的节点（这种标签表示相应节点未配置为可由用户空间访问）。如果找到此类节点，请将其移除。
 </li><li><strong>取消设置未使用的配置</strong>。查看由内核版本生成的 .config 文件，以明确取消设置所有已默认启用但并未使用的配置。例如，我们从 Google Pixel 中移除了以下未使用的配置：
 
 <pre class="prettyprint">
@@ -212,13 +211,20 @@ CONFIG_MOBICORE_DRIVER=y
 <h3 id="deferring-initialization">延迟初始化</h3>
 
 <p>
-很多进程都在设备启动期间启动，但只有关键路径 (bootloader &gt; kernel &gt; init &gt; file system mount &gt; zygote &gt; system server) 中的组件才会直接影响启动时间。在内核启动期间执行 <strong>initcall</strong> 来识别对启动 init 进程不重要的外设/组件，然后将这些外设/组件延迟到启动过程的后期来启动。
+很多进程都在设备启动期间启动，但只有关键路径 (bootloader &gt; kernel &gt; init &gt; file system mount &gt; zygote &gt; system server) 中的组件才会直接影响启动时间。在内核启动期间执行 <strong>initcall</strong> 来识别启动速度缓慢且对启动 init 进程不重要的外设/组件，然后通过将这些外设/组件移入可加载的内核模块将其延迟到启动过程的后期来启动。移入异步设备/驱动程序探测还有助于并行启动内核 &gt; init 重要路径中启动速度缓慢的组件。
 </p>
 
 <pre class="prettyprint">
 BoardConfig-common.mk:
     BOARD_KERNEL_CMDLINE += initcall_debug ignore_loglevel
+
+driver:
+    .probe_type = PROBE_PREFER_ASYNCHRONOUS,
 </pre>
+
+<p class="note">
+<strong>注意</strong>：必须添加 <code>EPROBEDEFER</code> 支持来妥善解决驱动程序依赖问题。
+</p>
 
 <h2 id="optimizing-i-o-efficiency">优化 I/O 效率</h2>
 
@@ -345,6 +351,10 @@ Init 是从内核到框架建立之前的衔接过程，设备通常会在不同
 
 </li><li>启动服务并及早启用关键路径中的外围设备。例如，有些 SOC 需要先启动安全相关服务，然后再启动 SurfaceFlinger。在 ServiceManager 返回“wait for service”（等待服务）时查看系统日志 - 这通常表明必须先启动依赖服务。
 </li><li>移除 init.*.rc 中所有未使用的服务和命令。只要是早期阶段的 init 中没有使用的服务和命令，都应推迟到启动完成后再使用。</li></ul>
+
+<p class="note">
+<strong>注意</strong>：“属性”服务是 init 进程的一部分，因此，在启动期间调用 <code>setproperty</code> 可能会导致较长时间的延迟（如果 init 忙于执行内置命令）。
+</p>
 
 <h3 id="using-scheduler-tuning">使用调度程序调整</h3>
 

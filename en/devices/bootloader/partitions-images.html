@@ -1,0 +1,240 @@
+<html devsite>
+  <head>
+    <title>Partitions and Images</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+
+<h2 id="partitions">Partitions</h2>
+<p>
+Android devices include several partitions that serve different functions in the
+boot process. To support <a href="/devices/tech/ota/ab/">A/B
+updates</a>, the device will need one slot per partition for
+<code>boot</code>, <code>system</code>, <code>vendor</code>, and
+<code>radio</code>.
+</p>
+<ul>
+<li><strong>boot</strong>: The <code>boot</code> partition contains a kernel
+image and a RAM disk combined via <code>mkbootimg</code>. In order to flash the
+kernel directly without flashing a new boot partition, a virtual partition can
+be used: <ul>
+ <li><strong>kernel</strong>: The virtual <code>kernel</code> partition
+overwrites only the kernel (zImage, zImage-dtb, Image.gz-dtb) by writing the new
+image over the old one. To do this, it determines the start location of the
+existing kernel image in eMMC and copies to that location, keeping in mind that
+the new kernel image may be larger than the existing one. The bootloader can
+either make space by moving any data following it or abandoning the operation
+with an error. If the development kernel supplied is incompatible, you may need
+to update the dtb partition if present, or vendor or system partition with
+associated kernel modules.
+ <li><strong>ramdisk</strong>: The virtual <code>ramdisk</code> partition
+overwrites only the RAM disk by writing the new image over the old one. To do
+this, it determines the start location of the existing <code>ramdisk.img</code>
+in eMMC and copies to that location, keeping in mind that the new RAM disk maybe
+be larger than the existing one. The bootloader can either make space by moving
+any data following it or abandon the operation with an error.</ul>
+<li><strong>system</strong>: The <code>system</code> partition mainly contains
+the Android framework.
+<li><strong>recovery</strong>: The <code>recovery</code> partition stores the
+recovery image, booted during the OTA process. If the device supports <a
+href="/devices/tech/ota/ab/">A/B updates</a>,
+recovery can be a RAM disk contained in the boot image rather than a separate
+image.
+<li><strong>cache</strong>: The <code>cache</code> partition stores temporary
+data and is optional if a device uses A/B updates. The cache partition doesn't
+need to be writable from the bootloader, only erasable. The size depends on the
+device type and the availability of space on userdata. Currently 50MB-100MB
+should be ok.
+<li><strong>misc</strong>: The <code>misc</code> partition is used by recovery
+and is 4KB or larger.
+<li><strong>userdata</strong>: The <code>userdata</code> partition contains
+user-installed applications and data, including customization data.
+<li><strong>metadata</strong>: The <code>metadata</code> partition is used when
+device is encrypted and is 16MB or larger.
+<li><strong>vendor</strong>: The <code>vendor</code> partition contains any
+binary that is not distributable to the Android Open Source Project (AOSP). If
+there is no proprietary information, this partition may be omitted.
+<li><strong>radio</strong>: The <code>radio</code> partition contains the radio
+image. This partition is only necessary for devices that include a radio that
+have radio-specific software in a dedicated partition.
+<li><strong>tos</strong>: The <code>tos</code> partition stores the binary image
+of the Trusty OS and is only used if the device includes Trusty.</li>
+</li></ul>
+<h2 id="flow">Flow</h2>
+<p>
+Here is how the bootloader operates:
+</p><ol>
+<li>The bootloader gets loaded first.
+<li>The bootloader initializes memory.
+<li>If <a href="/devices/bootloader/flashing-updating#a-b-updates">A/B
+updates</a> are used, determine the current slot to boot.
+<li>Determine whether recovery mode should be booted instead as described in <a
+href="/devices/bootloader/flashing-updating#supporting-updates">Supporting
+updates</a>.
+<li>The bootloader loads the image, which contains the kernel and RAM disk (and
+in <a href="/devices/architecture/treble">Treble</a> even more).
+<li>The bootloader starts loading the kernel into memory as a self-executable
+compressed binary.
+<li>The kernel decompresses itself and starts executing into memory.
+<li>From there on, older devices load <code>init</code> from the RAM disk and
+newer devices load it from the <code>/system</code> partition.
+<li>From <code>/system</code>, <code>init</code> launches and starts mounting
+all the other partitions, such as <code>/vendor</code>, <code>/oem</code>, and
+<code>/odm</code>, and then starts executing code to start the device</li>
+</ol>
+<h2 id="images">Images</h2>
+<p>
+The bootloader relies upon these images.
+</p>
+<h3 id="kernel-images">Kernel images</h3>
+<p>
+Kernel images are created in a standard Linux format, such as zImage, Image, or
+Image.gz. Kernel images can be flashed independently, combined with RAM disk
+images, and flashed to the boot partition or booted from memory. When creating
+kernel images, concatenated device-tree binaries are recommended over using a
+separate partition for the device tree. When using multiple Device Tree Blobs
+(DTBs) for different board revisions, concatenate multiple DTBs in descending
+order of board revision.
+</p>
+<h3 id="ram-disk-images">RAM disk images</h3>
+<p>
+RAM disks should contain a root file system suitable for mounting as a rootfs.
+RAM disk images are combined with kernel images using mkbootfs and then flashed
+into the boot partition.
+</p>
+<h3 id="boot-images">Boot images</h3>
+<p>
+Boot images should contain a kernel and RAM disk combined using an unmodified
+<code>mkbootimg</code>.
+</p>
+<p>
+The <code>mkbootimg</code> implementation can be found at: <code><a
+href="https://android.googlesource.com/platform/system/core/+/master/mkbootimg">system/core/mkbootimg</a></code>
+</p>
+<p>
+The bootloader reads the <code><a
+href="https://android.googlesource.com/platform/system/core/+/master/mkbootimg/bootimg.h">bootimg.h</a></code>
+header file generated by mkbootimg and updates the kernel header to contain the
+correct location and size of the RAM disk in flash, base address of the kernel,
+command line parameters, and more. The bootloader then appends the command line
+specified in the boot image to the end of the bootloader-generated command
+line.
+
+<h3 id="file-system-images-system-userdata-recovery">File system images (system,
+userdata, recovery)</h3>
+<h4 id="sparse-image-format">YAFFS2 image format</h4>
+<p>
+If using raw NAND storage, these images must be YAFFS2, generated by an unmodified mkyaffs2image, as found in the Android Open Source Project (AOSP) at <a href="https://android.googlesource.com/platform/external/yaffs2/+/master/yaffs2/utils/" class="external"><code>external/yaffs2/yaffs2/utils</code></a>. They have the format:
+<pre>
+<code>
+| 2k bytes of data| yaffs extra data | padding | | 0  2048 | 0 64 | variable|
+</code>
+</pre>
+<p>
+The bootloader is responsible for consuming these images and relocating the
+yaffs extra data into the appropriate location in the out-of-band area for the
+given nand hardware.  If software ECC is required, the bootloader should also
+do that computation at this time.
+</p>
+<h4 id="sparse-image-format">Sparse image format</h4>
+<p>
+The sparse image format should be supported. It is described in the document
+"ext4 compressed images" and in <code><a
+href="https://android.googlesource.com/platform/system/core/+/master/libsparse/sparse_format.h">system/core/libsparse/sparse_format.h</a></code>;
+it is implemented in: <code><a
+href="https://android.googlesource.com/platform/system/core/+/master/libsparse/sparse_read.cpp">system/core/libsparse/sparse_read.cpp</a></code>
+</p>
+<p>
+If using a block-based storage device, ext4 or f2fs should be supported. To
+quickly transfer and flash large, empty ext4 file systems (userdata), store the
+image in a sparse format that contains information about which areas of the file
+system can be left unwritten. The file format is written by the
+<code>mke2fs</code> utility that is also used to create the images the file
+format is read and flashed by the bootloader. See the sections below for
+attributes:
+</p>
+<p>
+
+<h5 id="file-format">File format</h5>
+<ul>
+<li>All fields are unsigned little-endian
+<li>The file contains a file header, followed by a series of chunks
+<li>The file header, chunk header, and chunk data are all multiples of 4 bytes
+long</li></ul>
+<h5 id="header">Header</h5>
+<ul>
+<li>32-bit magic: 0xed26ff3a
+<li>16-bit major version (0x1) - reject images with higher major versions
+<li>16-bit minor version (0x0) - allow images with higher minor versions
+<li>16-bit file header size in bytes (28 in v1.0)
+<li>16-bit chunk header size in bytes (12 in v1.0)
+<li>32-bit block size in bytes, must be multiple of 4
+<li>32-bit total blocks in output file
+<li>32-bit total chunks in input file</li></ul>
+<p>
+32-bit CRC32 checksum of original data, counting "don't care" as 0 Standard
+802.3 polynomial, use a public domain table implementation
+</p>
+<h5 id="chunk">Chunk</h5>
+<ul>
+<li>16-bit chunk type:
+  <ul>
+    <li>0xCAC1 raw
+    <li>0xCAC2 fill
+    <li>0xCAC3 don't care
+  </ul>
+<li>16 bits reserved (write as 0, ignore on read)
+<li>32-bit chunk size in blocks in output image
+<li>32-bit total size in bytes of chunk input file including chunk header and
+data</li></ul>
+<h5 id="data">Data</h5>
+<ul>
+<li> for raw, raw data, size in blocks * block size in bytes
+<li> for fill, 4 bytes of fill data</li></ul>
+<h5 id="implementing-the-writer">Implementing the writer</h5>
+<p>
+The <code>mke2fs</code> utility already knows what areas of the image need
+to be written, and will encode "don't care" chunks between them. Another tool,
+<code>img2simg</code>, will convert regular (non-sparse) images to sparse
+images.  Regular images have no information about "don't care" areas; the best a
+conversion can do is look for blocks of repeated data to reduce the resulting
+image size.
+</p>
+<h5 id="implementing-the-reader">Implementing the reader</h5>
+<p>
+Readers should reject images with unknown major versions and should accept images
+with unknown minor versions. Readers may reject images with chunk sizes they do
+not support.
+</p>
+<p>
+Once the major version is validated, the reader should ignore chunks with unknown
+type fields.  It should skip over the chunk in the file using the "chunk size in
+file" and skip "chunk size in blocks" blocks on the output.
+</p>
+<p>
+A Cyclic Redundancy Check - 802.3 CRC32 - should be calculated for the data that
+will be written to disk. Any area that is not written (don't care, or a skipped
+chunk), should be counted as 0s in the CRC. The total number of blocks written
+or skipped should be compared against the "total blocks" field in the header.
+The tool <code>simg2img</code> will convert the sparse image format to a
+standard image, which will lose the sparse information.
+</p>
+</body>
+</html>

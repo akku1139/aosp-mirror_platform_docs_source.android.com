@@ -26,8 +26,8 @@
 <p>This page details version differences in Camera HALs, APIs, and associated
 Android Compatibility Test Suite (CTS) tests. It also covers several
 architectural changes made to harden and secure the camera framework in Android
-7.0 and the updates vendors must make to support these changes in their camera
-implementations.</p>
+7.0, the switch to Treble in Android 8.0, and the updates vendors must make to
+support these changes in their camera implementations.</p>
 
 <h2 id=glossary>Terminology</h2>
 
@@ -59,6 +59,20 @@ API1.</dd>
 
 <dt>Camera API2 CTS</dt>
 <dd>Additional set of camera CTS tests that run on top of Camera API2.</dd>
+
+<dt>Treble</dt>
+<dd>Separates the vendor implementation (device-specific, lower-level software
+written by silicon manufacturers) from the Android OS framework via a new
+vendor interface.</dd>
+
+<dt>HIDL</dt>
+<dd><a href="/devices/architecture/hidl/">HAL interface definition language</a>
+introduced with Treble and used to specify the interface between a HAL and
+its users.</dd>
+
+<dt>VTS</dt>
+<dd><a href="/compatibility/vts/">Vendor test suite</a> introduced alongside
+Treble.</dd>
 
 </dl>
 
@@ -129,7 +143,7 @@ allow Google Play filtering of Camera API2 camera apps.</p>
 
 <h2 id=cts_requirements>CTS requirements</h2>
 
-<p>Devices running Android 5.0 and later must pass the Camera API1 CTS, Camera
+<p>Devices running Android 5.0 and higher must pass the Camera API1 CTS, Camera
 API2 CTS, and CTS Verifier camera tests.</p>
 
 <p>Devices that do not feature a Camera HAL3.2 implementation and are not
@@ -146,13 +160,19 @@ are bugs already present in the device’s existing Camera HAL, and thus would
 be found by existing Camera API1 apps. We do not expect many bugs of this nature
 (however, any such bugs must be fixed to pass the Camera API2 CTS tests).</p>
 
+<h2 id="vts-requirements">VTS requirements</h2>
+<p>Devices running Android 8.0 and higher with binderized HAL implementations must
+pass the Camera
+<a href="/compatibility/vts/">VTS tests</a>.</p>
+
 <h2 id=hardening>Camera framework hardening</h2>
 
 <p>To harden media and camera framework security, Android 7.0 moves camera
-service out of mediaserver. Vendors may need to make changes in the camera HAL
-depending on the API and HAL versions in use. The following sections detail
-architectural changes in AP1 and AP2 for HAL1 and HAL3, as well as general
-requirements.</p>
+service out of mediaserver. Starting with Android 8.0, each binderized Camera
+HAL runs in a process separate from camera service. Vendors may need to make
+changes in the camera HAL depending on the API and HAL versions in use. The
+following sections detail architectural changes in AP1 and AP2 for HAL1 and
+HAL3, as well as general requirements.</p>
 
 <h3 id=hardening_api1>Architectural changes for API1</h3>
 <p>API1 video recording may assume camera and video encoder live in the same
@@ -204,7 +224,7 @@ recording. Vendors can measure actual impact by running
 <code>android.hardware.camera2.cts.PerformanceTest</code> and the Google Camera
 App for 120/240 FPS high speed video recording. Devices also require a small
 amount of additional RAM to create the new process.</li>
-<li><strong>Pass metadata in video buffers</strong>(<em>HAL1 only</em>). If HAL1
+<li><strong>Pass metadata in video buffers</strong> (<em>HAL1 only</em>). If HAL1
 stores metadata instead of real YUV frame data in video buffers, the HAL must
 use <code>kMetadataBufferTypeNativeHandleSource</code> as the metadata buffer
 type and pass <code>VideoNativeHandleMetadata</code> in video buffers.
@@ -227,13 +247,21 @@ do not encourage replicating the mediaserver's SELinux policies for cameraserver
 (as mediaserver and cameraserver generally require different resources in the
 system). Cameraserver should have only the permissions needed to perform camera
 functionalities and any unnecessary camera-related permissions in mediaserver
-should be removed.</p>
+should be removed.</li>
+<li><strong>Separation between Camera HAL and cameraserver</strong>. Android
+8.0 and higher additionally separate the binderized Camera HAL in a process
+different from cameraserver. IPC goes through
+  <a href="/devices/architecture/hidl/">HIDL-defined</a> interfaces.</li>
+</ul>
 
 <h3 id=hardening_validation>Validation</h3>
 <p>For all devices that include a camera and run Android 7.0, verify the
 implementation by running Android 7.0 CTS. Although Android 7.0 does not include
 new CTS tests that verify camera service changes, existing CTS tests will fail
 if you have not made the updates indicated above.</p>
+
+<p>For all devices that include a camera and run Android 8.0 and higher, verify
+the vendor implementation by running VTS.</p>
 
 <h2 id="version-history">Camera HAL version history</h2>
 <p>For a list of tests available for evaluating the Android Camera HAL, see the
@@ -243,11 +271,14 @@ Checklist</a>.</p>
 <h3 id="80">Android 8.0</h3>
 
 <p>
-The Android 8.0 release contains these key enhancements to the Camera service:
+The Android 8.0 release introduces Treble. With Treble, vendor Camera HAL
+implementations must be
+<a href="/devices/architecture/hal-types">binderized</a>. Android 8.0 also
+contains these key enhancements to the Camera service:
 </p>
 
 <ul>
-  <li>Shared surfaces - Enable multiple surfaces sharing the same
+  <li>Shared surfaces: Enable multiple surfaces sharing the same
     <code>OutputConfiguration</code></li>
   <li>System API for custom camera modes</li>
   <li><code>onCaptureQueueEmpty</code></li>
@@ -284,9 +315,10 @@ The public camera API defines two operating modes: normal and constrained
 high-speed recording. They have fairly different semantics; high-speed mode is
 limited to at most two specific outputs at once, etc. Various OEMs have
 expressed interest in defining other custom modes for hardware-specific
-capabilities. Under the hood, the mode is just an integer passed to the
-configure_streams. See:
-<code>hardware/libhardware/+/master/include/hardware/camera3.h#1736</code>
+capabilities. Under the hood, the mode is just an integer passed to
+<code>configure_streams</code>. See:
+<a href="https://source.android.com/reference/hidl/android/hardware/camera/device/3.2/ICameraDeviceSession#configurestreams">
+<code>hardware/camera/device/3.2/ICameraDeviceSession#configurestreams</code></a>
 </p>
 
 <p>
@@ -305,10 +337,12 @@ their custom camera app use the system API.
 The method name is <code><a
     href="https://developer.android.com/reference/android/hardware/camera2/CameraCaptureSession.StateCallback.html#onCaptureQueueEmpty(android.hardware.camera2.CameraCaptureSession)">android.hardware.camera2.CameraDevice#createCustomCaptureSession</a></code>.
 See:
-<code>frameworks/base/core/java/android/hardware/camera2/CameraDevice.java#797</code>
+<a href="https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/hardware/camera2/CameraDevice.java#805">
+  <code>frameworks/base/core/java/android/hardware/camera2/CameraDevice.java#797</code></a></p>
 
-<p class="note"><strong>Note:</strong> In the Android 8.0 MR1 release, applications must be preinstalled on the system image to access this API.
-</p>
+<aside class="note"><strong>Note:</strong> In the Android 8.1 release,
+  applications must be preinstalled on the system image to access this API.
+</aside>
 
 <h4 id="oncapturequeueempty">onCaptureQueueEmpty</h4>
 
@@ -320,6 +354,12 @@ want to take advantage of it need to add a listener to that callback and respond
 appropriately. Generally that's by sending another capture request to the camera
 device.
 </p>
+
+<h4 id="camera-hidl-interface">Camera HIDL interface</h4>
+<p>The Camera HIDL interface is a complete overhaul of the Camera HAL interface
+that uses stable HIDL-defined APIs. All features and camera capabilities
+introduced in the most recent legacy versions 3.4 and 2.4 (for the camera
+module) are also part of the HIDL definitions.</p>
 
 <h3 id="34">3.4</h3>
 
@@ -421,7 +461,7 @@ API.</li>
 capture, reprocessing of RAW data, etc.</li>
 </ul>
 
-<h3 id="10">1.0</strong></h3>
+<h3 id="10">1.0</h3>
 
 <p>Initial Android camera HAL (Android 4.0) [camera.h]:</p>
 
