@@ -21,32 +21,113 @@
       limitations under the License.
   -->
 
-
-
 <img style="float: right; margin: 0px 15px 15px 15px;" src="images/ape_fwk_hal_camera.png" alt="Android Camera HAL icon"/>
 
 <p>Android's camera Hardware Abstraction Layer (HAL) connects the higher level
 camera framework APIs in
-<a href="http://developer.android.com/reference/android/hardware/package-summary.html">android.hardware</a>
+<a href="http://developer.android.com/reference/android/hardware/package-summary.html">Camera 2</a>
 to your underlying camera driver and hardware. The camera subsystem includes
 implementations for camera pipeline components while the camera HAL provides
 interfaces for use in implementing your version of these components.</p>
 
-<p>For the most up-to-date information, refer to the following resources:</p>
-<ul>
-<li><a href="https://android.googlesource.com/platform/hardware/libhardware/+/master/include/hardware/camera.h">camera.h</a> source
-file</li>
-<li><a href="https://android.googlesource.com/platform/hardware/libhardware/+/master/include/hardware/camera3.h">camera3.h</a>
-source file</li>
-<li><a href="https://android.googlesource.com/platform/hardware/libhardware/+/master/include/hardware/camera_common.h">camera_common.h</a>
-source file</li>
-<li><a href="https://developer.android.com/reference/android/hardware/camera2/CameraMetadata.html">CameraMetadata</a>
-developer reference</li>
-</ul>
-
+<aside class="note"><strong>Note:</strong> If you are implementing the Camera
+  HAL on Android 8.0 and higher, you must use the HIDL interface. For
+  information on the legacy components, see
+  <a href="#architecture-legacy">Legacy HAL components</a>.</aside>
 
 <h2 id="architecture">Architecture</h2>
 <p>The following figure and list describe the HAL components:</p>
+
+<img src="images/ape_fwk_camera2.png" alt="Android camera architecture" id="figure1" />
+<p class="img-caption"><strong>Figure 1.</strong> Camera architecture</p>
+
+<dl>
+  <dt>Application framework</dt>
+  <dd>At the application framework level is the app's code, which uses the
+  <a href="https://developer.android.com/reference/android/hardware/camera2/package-summary">
+  Camera 2</a>
+  API to interact with the camera hardware. Internally, this code calls
+  corresponding <a href="https://developer.android.com/reference/android/os/Binder.html">Binder</a>
+  interfaces to access the native code that interacts with the camera.</dd>
+  <dt>AIDL</dt>
+  <dd>The binder interface associated with CameraService can be found at
+  <a href="https://android.googlesource.com/platform/frameworks/av/+/master/camera/aidl/android/hardware/ICameraService.aidl">frameworks/av/camera/aidl/android/hardware</a>.
+  The generated code calls the lower level native code to obtain access to the
+  physical camera and returns data that is used to create the
+  <a href="https://developer.android.com/reference/android/hardware/camera2/CameraDevice">
+  CameraDevice</a> and eventually
+  <a href="https://developer.android.com/reference/android/hardware/camera2/CameraCaptureSession.html">CameraCaptureSession</a>
+  objects at the framework level.</dd>
+  <dt>Native framework<dt>
+  <dd>This framework residing in <code>frameworks/av/</code> provides a
+  native equivalent to the
+  <a href="https://developer.android.com/reference/android/hardware/camera2/CameraDevice">CameraDevice</a>
+  and
+  <a href="https://developer.android.com/reference/android/hardware/camera2/CameraCaptureSession">CameraCaptureSession</a>
+  classes. See also, <a href="https://developer.android.com/ndk/reference/group/camera">
+    NDK camera2 reference</a>.</dd>
+  <dt>Binder IPC interface</dt>
+  <dd>The IPC binder interface facilitates communication over process boundaries.
+  There are several camera binder classes located in the
+  <code>frameworks/av/camera/camera/aidl/android/hardware</code> directory that
+  call into camera service.
+  <a href="https://android.googlesource.com/platform/frameworks/av/+/master/camera/aidl/android/hardware/ICameraService.aidl">ICameraService</a>
+  is the interface to the camera service;
+  <a href="https://android.googlesource.com/platform/frameworks/av/+/master/camera/aidl/android/hardware/camera2/ICameraDeviceUser.aidl">ICameraDeviceUser</a>
+  is the interface to a specific opened camera device; and
+  <a href="https://android.googlesource.com/platform/frameworks/av/+/master/camera/aidl/android/hardware/ICameraServiceListener.aidl">ICameraServiceListener</a>
+  and
+  <a href="https://android.googlesource.com/platform/frameworks/av/+/master/camera/aidl/android/hardware/camera2/ICameraDeviceCallbacks.aidl">ICameraDeviceCallbacks</a>
+  are the respective CameraService and CameraDevice callbacks to the application
+  framework.</dd>
+  <dt>Camera service</dt>
+  <dd>The camera service, located in
+  <code>frameworks/av/services/camera/libcameraservice/CameraService.cpp</code>,
+  is the actual code that interacts with the HAL.</dd>
+  <dt>HAL</dt>
+  <dd>The hardware abstraction layer defines the standard interface that the
+  camera service calls into and that you must implement to have your camera
+  hardware function correctly.</dd>
+</dl>
+
+<h2 id="implementing">Implementing the HAL</h2>
+<p>The HAL sits between the camera driver and the higher level Android framework
+and defines an interface you must implement so apps can correctly operate the
+camera hardware. From Android 8.0, the Camera HAL interface is part of Project
+<a href="/devices/architecture/treble">Treble</a> and the corresponding
+<a href="/devices/architecture/hidl/">HIDL</a> interfaces are defined in
+<a href="https://android.googlesource.com/platform/hardware/interfaces/+/master/camera/">hardware/interfaces/camera</a>.</p>
+
+<p>A typical binderized HAL must implement the following HIDL interfaces:</p>
+<ul>
+  <li><a href="/reference/hidl/android/hardware/camera/provider/2.4/ICameraProvider">ICameraProvider</a>:
+  For enumerating individual devices and managing their status.</li>
+  <li><a href="/reference/hidl/android/hardware/camera/device/3.2/ICameraDevice">ICameraDevice</a>:
+  The camera device interface.</li>
+  <li><a href="/reference/hidl/android/hardware/camera/device/3.2/ICameraDeviceSession">ICameraDeviceSession</a>:
+  The active camera device session interface.</li>
+</ul>
+<p>Reference HIDL implementations are available for
+<a href="https://android.googlesource.com/platform/hardware/interfaces/+/master/camera/provider/2.4/default/CameraProvider.cpp">CameraProvider.cpp</a>,
+<a href="https://android.googlesource.com/platform/hardware/interfaces/+/master/camera/device/3.2/default/CameraDevice.cpp">CameraDevice.cpp</a>
+and
+<a href="https://android.googlesource.com/platform/hardware/interfaces/+/master/camera/device/3.2/default/CameraDeviceSession.cpp">CameraDeviceSession.cpp</a>.
+The implementation wraps old HALs that still use the
+<a href="https://android.googlesource.com/platform/hardware/libhardware/+/master/include/hardware/camera3.h">legacy API</a>.
+Starting with Android 8.0, Camera HAL implementations must use the HIDL API; use
+of the legacy interface is not supported.</p>
+
+<p>For more information on Treble and HAL development, see
+<a href="https://source.android.com/devices/architecture/treble#treble-resources">Treble Resources</a>.</p>
+
+<h2 id="legacy-hal">Legacy HAL components</h2>
+<p>This section describes the architecture of the legacy HAL components and how to
+implement the HAL. Camera HAL implementations on Android 8.0 and higher must use
+the HIDL API instead, described above.</p>
+
+<h3 id="architecture-legacy">Architecture (legacy)</h3>
+
+<p>The following figure and list describe the legacy camera HAL components:</p>
 
 <img src="images/ape_fwk_camera.png" alt="Android camera architecture" id="figure1" />
 <p class="img-caption"><strong>Figure 1.</strong> Camera architecture</p>
@@ -94,7 +175,7 @@ developer reference</li>
   display and video recording.</dd>
 </dl>
 
-<h2 id="implementing">Implementing the HAL</h2>
+<h3 id="implementing-legacy">Implementing the HAL (legacy)</h3>
 <p>The HAL sits between the camera driver and the higher level Android framework
 and defines an interface you must implement so apps can correctly operate the
 camera hardware. The HAL interface is defined in the
@@ -122,7 +203,7 @@ These parameters are set with the function pointed to by <code>int
 Galaxy Nexus HAL in <code>hardware/ti/omap4xxx/camera</code>.</p>
 
 
-<h2 id="configuring">Configuring the shared library</h2>
+<h3 id="configuring">Configuring the shared library</h3>
 <p>Set up the Android build system to correctly package the HAL implementation
 into a shared library and copy it to the appropriate location by creating an
 <code>Android.mk</code> file:</p>
