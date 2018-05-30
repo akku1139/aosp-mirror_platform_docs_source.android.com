@@ -37,7 +37,7 @@
 <aside class="note"><strong>注意</strong>：虽然您仍可以使用<a href="#older">旧版 Android 中的文件系统替换方法</a>，但不能同时再使用新的 AID 机制。建议您尽可能使用新的机制。</aside>
 
 <h2 id="adding-android-ids-aids">添加 Android ID (AID)</h2>
-<p>Android 8.0 从 Android 开源项目 (AOSP) 中移除了 <code>android_ids[]</code> 数组。所有适合 AID 的名称都改为在生成 Bionic <code>android_ids[]</code> 数组时从 <code>system/core/include/private/android_filesystem_config.h</code> 标头文件生成。这种工具会提取与 <code>define</code> 匹配的所有 <code>AID_*</code>，且 <strong>*</strong> 会变为小写名称。</p>
+<p>Android 8.0 从 Android 开源项目 (AOSP) 中移除了 <code>android_ids[]</code> 数组。所有适合 AID 的名称都改为在生成 Bionic <code>android_ids[]</code> 数组时从 <code>system/core/include/private/android_filesystem_config.h</code> 标头文件生成。这种机制会发现与 <code>AID_*</code> 匹配的所有 <code>define</code>，且 <strong>*</strong> 会变为小写名称。</p>
 
 <p>例如，在 <code>private/android_filesystem_config.h</code> 中：</p>
 
@@ -56,7 +56,7 @@
 <p>
 要启用新的 AID 机制，请在 <code>BoardConfig.mk</code> 文件中设置 <code>TARGET_FS_CONFIG_GEN</code>。此变量含有配置文件列表，使您可以根据需要附加文件。</p>
 
-<aside class="caution"><strong>注意</strong>：请勿通过旧版 Android 中早期的 <code>TARGET_ANDROID_FILESYSTEM_CONFIG_H</code> 方法使用 <code>TARGET_FS_CONFIG_GEN</code>！否则，您会收到错误提示。</aside>
+<aside class="caution"><strong>注意</strong>：请勿通过旧版 Android 中早期的 <code>TARGET_FS_CONFIG_GEN</code> 方法使用 <code>TARGET_ANDROID_FILESYSTEM_CONFIG_H</code>！否则，您会收到错误提示。</aside>
 
 <p>按照惯例，配置文件使用名称 <code>config.fs</code>，但在实际使用中，您可以使用任何名称。<code>config.fs</code> 文件采用 <a href="https://docs.python.org/2/library/configparser.html" class="external">Python ConfigParser ini 格式</a>，并包含 caps 部分（用于配置文件系统权能）和 AID 部分（用于配置 OEM 专属 AID）。
 </p>
@@ -129,7 +129,7 @@
   <td><code>value</code></td>
   <td>&lt;number&gt;</td>
   <td>有效的 C 样式的数字字符串（十六进制、八进制、二进制和十进制）。
-  <br /><br />使用同一值选项指定多个部分<strong>或</strong>指定超出收录的 OEM 范围（在 <code>system/core/include/private/android_filesystem_config.h</code> 中指定）的值的做法都是错误：
+  <br /><br />使用同一值选项指定多个部分<strong>或</strong>指定超出收录的 OEM 范围（在 <code>system/core/include/private/android_filesystem_config.h</code> 中指定）的值都是错误的做法：
   <ul>
   <li>AID_OEM_RESERVED_START(2900) - AID_OEM_RESERVED_END(2999)</li>
   <li>AID_OEM_RESERVED_2_START(5000) - AID_OEM_RESERVED_2_END(5999)</li>
@@ -161,7 +161,8 @@ value: 2900
 <h3 id="using-an-oem-specific-aid">使用 OEM 专属 AID</h3>
 <p>要通过 C 或 C++ 代码访问 AID 的 <code>#define</code> 值，请使用自动生成的标头文件，方法是：将其添加到模块的 <code>Android.mk</code> 中并纳入空的仿库。例如，在 <code>Android.mk</code> 中添加以下内容：</p>
 
-<pre class="prettyprint"> LOCAL_STATIC_LIBRARIES := liboemaids</pre>
+<pre class="prettyprint">LOCAL_HEADER_LIBRARIES := oemaids_headers</pre>
+
 <p>在您的 C 代码中，<code>#include "generated_oem_aid.h"</code> 并开始使用所声明的标识符。例如，在 <code>my_file.c</code> 中添加以下内容：</p>
 
 <pre class="prettyprint">
@@ -305,7 +306,7 @@ index 0c71d21..235c1a7 100644
 <p>当从 Android 5.x 及更低版本迁移文件系统时，请注意以下事项：</p>
 <ul>
 <li>Android 6.x 移除了部分头文件、结构和内嵌定义。</li>
-<li>Android 6.x 需要引用 <code>libcutils</code>，而不是直接从 <code>system/core/include/private/android_filesystem_config.h</code> 运行。依赖于 <code>system/code/include/private_filesystem_config.h</code> 的文件/目录结构或者 <code>fs_config</code> 的设备制造商私有可执行文件必须添加 <code>libcutils</code> 库依赖项。</li>
+<li>Android 6.x 需要引用 <code>libcutils</code>，而不是直接从 <code>system/core/include/private/android_filesystem_config.h</code> 运行。依赖于 <code>system/code/include/private_filesystem_config.h</code> 的文件/目录结构或者 <code>fs_config</code> 的设备制造商私密可执行文件必须添加 <code>libcutils</code> 库依赖项。</li>
 <li>Android 6.x 需要 <code>system/core/include/private/android_filesystem_config.h</code> 的设备制造商专有分支副本，该副本应包含有关现有目标的附加内容，以便移至 <code>device/<em>vendor</em>/<em>device</em>/android_filesystem_config.h</code>。
 </li>
 <li>由于 Android 保留将 SELinux 强制访问控制 (MAC) 应用于目标系统中配置文件的权利，因此包含使用 <code>fs_config()</code> 的自定义目标可执行文件的实现必须确保具有访问权限。
