@@ -41,7 +41,7 @@
 <p>
 以下说明适用于所有分支（包括 <code>master</code>）。
 </p>
-<p>我们会定期在最近推出的一些 Ubuntu LTS (14.04) 版本中对 Android 编译系统进行内部测试，但大多数 Ubuntu 分发版本都应该具有所需的编译工具。欢迎向我们报告在其他分发版本中的测试结果（无论结果是成功还是失败）。
+<p>我们会定期在最近推出的一些 Ubuntu LTS (14.04) 和 Debian 测试版本中对 Android 编译系统进行内部测试。其他大多数分发版本都应该具有所需的编译工具。
 </p>
 <p>
 如果是 Gingerbread (2.3.x) 及更高版本（包括 <code>master</code> 分支），需要使用 64 位环境。如果是较低的版本，则可以在 32 位系统中进行编译。
@@ -50,7 +50,8 @@
 </aside>
 
 <h3 id="installing-the-jdk">安装 JDK</h3>
-<p><a href="https://android.googlesource.com/" class="external">Android 开源项目 (AOSP)</a> 中 Android 的 <code>master</code> 分支在 <code>prebuilts/jdk/</code> 下有预编译版本的 OpenJDK，因此无需另行安装。
+<p>
+<a href="https://android.googlesource.com/" class="external">Android 开源项目 (AOSP)</a> 中 Android 的 <code>master</code> 分支在 <code>prebuilts/jdk/</code> 下有预编译版本的 OpenJDK，因此无需另行安装。
 </p>
 <p>
 较低版本的 Android 需要另行安装 JDK。在 Ubuntu 上，请使用 <a href="http://openjdk.java.net/install/" class="external">OpenJDK</a>。要了解确切的版本，请参阅 <a href="requirements.html#jdk">JDK 要求</a>；要了解相关说明，请参阅以下各个部分。
@@ -102,16 +103,16 @@
 <code class="devsite-terminal">sudo update-alternatives --config java</code>
 <code class="devsite-terminal">sudo update-alternatives --config javac</code>
 </pre>
-<p>
-在编译过程中，如果您遇到 Java 版本错误，请按照<a href="building.html#wrong-java-version">错误的 Java 版本</a>部分中的说明设置其路径。
-</p>
+<aside class="note">
+  <b>注意</b>：在编译过程中，如果您遇到 Java 版本错误，请参阅<a href="building.html#wrong-java-version">错误的 Java 版本</a>以查找可能的原因和解决方案。
+ </aside>
 
 <h3 id="installing-required-packages-ubuntu-1404">安装所需的软件包 (Ubuntu 14.04)</h3>
 <p>
 您将需要 64 位版本的 Ubuntu。建议您使用 Ubuntu 14.04。
 </p>
 <pre class="devsite-terminal devsite-click-to-copy">
-sudo apt-get install git-core gnupg flex bison gperf build-essential zip curl zlib1g-dev gcc-multilib g++-multilib libc6-dev-i386 lib32ncurses5-dev x11proto-core-dev libx11-dev lib32z-dev ccache libgl1-mesa-dev libxml2-utils xsltproc unzip
+sudo apt-get install git-core gnupg flex bison gperf build-essential zip curl zlib1g-dev gcc-multilib g++-multilib libc6-dev-i386 lib32ncurses5-dev x11proto-core-dev libx11-dev lib32z-dev libgl1-mesa-dev libxml2-utils xsltproc unzip
 </pre>
 <aside class="note"><strong>注意</strong>：要使用 SELinux 工具进行政策分析，您还需要安装 <code>python-networkx</code> 软件包。
 </aside>
@@ -183,7 +184,7 @@ export OUT_DIR_COMMON_BASE=&lt;path-to-your-out-directory&gt;
 
 <h3 id="creating-a-case-sensitive-disk-image">创建区分大小写的磁盘映像</h3>
 <p>
-您可以使用磁盘映像在现有的 Mac OS 环境中创建区分大小写的文件系统。要创建磁盘映像，请启动磁盘工具，然后选择“新建映像”。完成编译至少需要 25GB 空间；更大的空间能够更好地满足未来的需求。使用稀疏映像有助于节省空间，而且以后可以随着需求的增加进行扩展。请务必选择“Case sensitive, Journaled”存储卷格式。
+您可以使用磁盘映像在现有的 Mac OS 环境中创建区分大小写的文件系统。要创建磁盘映像，请启动磁盘工具，然后选择<strong>新建映像</strong>。完成编译至少需要 25GB 空间；更大的空间能够更好地满足未来的需求。使用稀疏映像有助于节省空间，而且以后可以随着需求的增加进行扩展。请务必选择 <strong>Case sensitive, Journaled</strong> 存储卷格式。
 </p>
 <p>
 您也可以通过 shell 使用以下命令创建磁盘映像：
@@ -280,51 +281,6 @@ hdiutil create -type SPARSE -fs 'Case-sensitive Journaled HFS+' -size 40g ~/andr
 <pre class="devsite-click-to-copy">
 # set the number of open files to be 1024
 ulimit -S -n 1024</pre>
-
-<h2 id="optimizing-a-build-environment">优化编译环境（可选）</h2>
-<p>
-您可以视需要指示编译系统使用 ccache 编译工具，ccache 是适用于 C 和 C++ 的编译器缓存，有助于提高编译速度。这对于编译服务器和其他高容量生产环境来说尤其有用。ccache 可用作用于加快重新编译速度的编译器缓存。如果您经常使用 <code>make clean</code>，或者经常在不同的编译产品之间切换，则非常适合使用 ccache。
-</p>
-<aside class="note"><strong>注意</strong>：如果您是在执行增量编译（例如个人开发者而非编译服务器），ccache 可能会让您为缓存未命中埋单，从而减慢您的编译速度。
-</aside>
-<p>
-要使用 ccache，请在源代码树的根目录下执行以下命令：
-</p>
-<pre class="devsite-click-to-copy">
-<code class="devsite-terminal">export USE_CCACHE=1</code>
-<code class="devsite-terminal">export CCACHE_DIR=/&lt;path_of_your_choice&gt;/.ccache</code>
-<code class="devsite-terminal">prebuilts/misc/linux-x86/ccache/ccache -M 50G</code>
-</pre>
-<p>
-建议的缓存大小为 50G 到 100G。请将以下内容添加到 <code>.bashrc</code>（或等同文件）中：
-</p>
-<pre class="devsite-click-to-copy">
-export USE_CCACHE=1
-</pre>
-<p>
-默认情况下，缓存将存储在 <code>~/.ccache</code> 下。如果您的主目录位于 NFS 或一些其他的非本地文件系统中，您还需要在 <code>.bashrc</code> 文件中指定目录。
-</p>
-<p>
-在 Mac OS 中，您应将 <code>linux-x86</code> 替换成 <code>darwin-x86</code>：
-</p>
-<pre class="devsite-click-to-copy">
-prebuilts/misc/darwin-x86/ccache/ccache -M 50G
-</pre>
-<p>
-在编译 Ice Cream Sandwich (4.0.x) 或更低版本时，ccache 位于其他位置：
-</p>
-<pre class="devsite-click-to-copy">
-prebuilt/linux-x86/ccache/ccache -M 50G
-</pre>
-<p>
-该设置会存储在 CCACHE_DIR 中，并且为永久设置。
-</p>
-<p>
-在 Linux 中，您可以运行以下命令来观看使用 ccache 时的情况：
-</p>
-<pre class="devsite-terminal devsite-click-to-copy">
-watch -n1 -d prebuilts/misc/linux-x86/ccache/ccache -s
-</pre>
 
 <h2 id="next-download-the-source">下一篇：下载源代码</h2>
 <p>
