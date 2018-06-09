@@ -26,7 +26,7 @@ while the contents of the Tuning tab reside in the devices/tech subdirectory.
 ## Edit Instructions ##
 
 1. Initialize and sync the repository and download the Android source per:
-https://source.android.com/source/downloading.html
+https://source.android.com/setup/build/downloading
 
 2. Navigate to the docs/source.android.com project.
 
@@ -34,7 +34,7 @@ https://source.android.com/source/downloading.html
 $ repo start <topic-branch-name> .
 
 See the Repo command reference for more details:
-http://source.android.com/source/using-repo.html#start
+https://source.android.com/setup/develop/repo#start
 
 4. Add or edit the file(s) and save your changes:
 $ git add <file>
