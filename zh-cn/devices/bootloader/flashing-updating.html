@@ -1,0 +1,109 @@
+<html devsite><head>
+    <title>刷写、启动和更新</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+  <h2 id="flashing-images">刷写映像</h2>
+<p>
+除非主机 <code>fastboot</code> 工具先发送 <code>erase</code> 命令，否则 <code>flash</code> 命令不得清空分区。这样的话，便可以使用多个以“跳过”块开始的稀疏映像刷写非常庞大的分区（包含多个较小的区块），以寻找并跳过已经写入的区域。实时创建这些映像的任务已由 <code>fastboot</code> 主机端工具处理。
+</p>
+<p>
+在解锁模式下刷写之前，应该对无线装置和引导加载程序映像进行健全性检查。例如，与从细分版本创建的 <code>android-info.txt</code> 进行比较并确认版本匹配。此外，还应在刷写时检查引导加载程序映像签名，以确保它在启动（可能包括防回滚功能）过程中能够通过验证。
+</p>
+<p>
+在 Google 品牌设备上，刷写到较低版本的引导加载程序应该能够正常工作，从首款以商业形式推出的引导加载程序开始支持，理想情况下，也能支持更早的版本。
+</p>
+<h2 id="booting-kernel-command-line">启动：内核命令行</h2>
+<p>
+内核命令行应该从以下位置连接在一起：
+</p>
+<ul>
+<li>引导加载程序命令行：由引导加载程序确定的一组静态和动态参数</li>
+<li>设备树：从 chosen/bootargs 节点</li>
+<li><code>defconfig</code>：从 CONFIG_CMDLINE</li>
+<li><code>boot.img</code>：从命令行（有关偏移和大小，请参见 <a href="https://android.googlesource.com/platform/system/core/+/master/mkbootimg/include/bootimg/bootimg.h" class="external"><code>system/core/mkbootimg/bootimg.h</code></a>）</li>
+<li>通过 PMIC（电源管理集成电路）确定的遵循 <a href="/compatibility/cdd">Android 兼容性定义文档</a>的规范重新启动或关闭原因、其他硬件资源和重新启动魔数参数 (<code>LINUX_REBOOT_CMD_RESTART2</code>) 消息传递，记录为：<code>androidboot.bootreason=&lt;reason&gt;</code></li>
+
+</ul>
+<h2 id="booting-device-tree">启动：设备树/设备树叠加层</h2>
+<p>
+为了支持各种配置，引导加载程序可以识别自己在其中运行的硬件/产品版本，并加载一组正确的设备树叠加层。
+</p>
+<h3 id="kaslr-seed-from-bootloader">支持随机生成内核地址空间布局</h3>
+<p>
+为了支持随机生成加载内核映像的虚拟地址（由内核配置 RANDOMIZE_BASE 启用），引导加载程序需要通过在 DT 节点 /chosen/kaslr-seed 中传递一个随机的 u64 值来提供熵。
+</p>
+
+<h2 id="implementing-verified-boot">实现验证启动</h2>
+<p>
+请参阅<a href="/security/verifiedboot/verified-boot.html">验证启动</a>。
+</p>
+<h2 id="supporting-updates">支持更新</h2>
+<p>
+要支持 Google <a href="/devices/tech/ota/">无线</a> (GOTA) 更新流程，必须存在恢复 RAM 磁盘。
+</p>
+
+<p>
+如果使用标准 AOSP 恢复映像，那么在启动过程中，引导加载程序应该读取 misc 分区上的前 32 个字节，如果相应的数据匹配，它将启动到恢复映像：“启动-恢复”。这样一来，可以继续执行任何待处理的恢复工作（例如，应用 OTA、执行数据移除等），直到成功完成为止。
+</p>
+<p>
+要详细了解刷写过程中恢复进程与引导加载程序进行通信时用到的块内容，请参见 <a href="https://android.googlesource.com/platform/bootable/recovery/+/master/bootloader_message/include/bootloader_message/bootloader_message.h#64" class="external"><code>bootable/recovery/bootloader_message/bootloader_message.h</code></a>。
+</p>
+<h3 id="a-b-updates">A/B 更新</h3>
+<p>
+对于给定设备，如果 OEM 选择支持 <a href="/devices/tech/ota/ab/">A/B 更新</a>，则引导加载程序应满足以下条件：</p>
+<ul>
+<li>所有通过 OTA 更新的分区都应可以在主系统启动时更新，而不是通过恢复来更新。
+</li><li>对于 A/B 更新，更新程序将查询<a href="/reference/hidl/android/hardware/boot/1.0/IBootControl">启动控件 HAL</a>，更新当前未使用的启动槽位，通过 HAL 更改活动槽位，并重新启动到更新后的操作系统。请参见<a href="/devices/tech/ota/ab/ab_implement#bootcontrol" class="external">实现启动控件 HAL</a>
+</li><li>所有支持 A/B 的分区都会在其名称后面附加一个后缀。此后缀可区分属于引导加载程序中特定槽位的分区。对于每个这样的分区，都有一个相应的变量 <code>has-slot:<partition base name></partition></code>，其值为“yes”</li><li>槽位按字母顺序命名为 a、b、c 等，与后缀为 _a、_b、_c 等的分区相对应。</li><li>引导加载程序应通过以下某种方式通知操作系统启动了哪个槽位：<ul>
+ <li>DT 属性：<code>/firmware/android/slot_suffix</code>
+或：
+</li><li>命令行属性：<code>androidboot.slot_suffix</code>
+</li></ul>
+</li><li>引导加载程序应支持 boot_control HAL (<code>hardware/libhardware/include/hardware/boot_control.h</code>)。
+</li><li>要在 A/B 下启动 <code>/system</code>，引导加载程序应在内核命令行上传递 <code>ro
+root=/dev/[node] rootwait skip_initramfs init=/init</code>。如果不传递 skip_initramfs，将启动到恢复模式。
+</li><li><code>slot-retry-count</code> 将由启动控件 HAL 通过 <code>setActiveBootSlot</code> 回调或通过 <code>fastboot set_active</code> 命令重置为一个正值（通常为“3”）。
+</li><li>修改属于某个槽位的分区时，引导加载程序会清除“成功启动”的分区，并为相应的槽位重置 try_count。</li>
+
+<li>引导加载程序还应确定要加载的槽位。有关决策流程的描述，请参见本部分中的示意图，一般步骤如下：</li><ol>
+<li>确定要尝试加载的槽位。不要尝试加载标记为“slot-unbootable”的槽位。此槽位应与 fastboot 返回的值一致，并且从现在开始称为当前槽位。
+</li><li>当前槽位是否未标记为 <code>slot-successful</code> 且 <code>slot-retry-count</code> = 0？<br />将当前槽位标记为“slot-unbootable”，并选择一个未标记为“slot-unbootable”而是标记为“slot-successful”的不同槽位。此槽位现在是选定的槽位。如果没有当前槽位可用，则系统会启动到恢复模式或向用户显示一条有意义的错误消息。
+</li><li>选择相应的 boot.img，并在内核命令行上添加正确的 system 分区的路径。
+</li><li>如果不启动到恢复模式，请将 skip_initramfs 添加到内核命令行</li><li>填充 DT 或命令行 slot_suffix 参数</li><li>启动。如果未标记为“slot-successful”，请递减 slot-retry-count。
+<figure id="bootloader-flow">
+    <img src="/devices/bootloader/images/bootloader_slotting.png" width="786" alt="引导加载程序槽位加载流程"/>
+              <figcaption><b>图 1.</b> 引导加载程序槽位加载流程</figcaption>
+</figure>
+</li></ol>
+<li>fastboot 实用程序将确定在运行任何刷写命令时要刷写的分区：例如，<code>fastboot
+flash system system.img</code> 将首先查询 <code>current-slot</code> 变量，然后将结果与 system 连接在一起，生成应刷写的分区的名称（例如 system_a 或 system_b）。</li><li>通过 fastboot <code>set_active</code> 或启动控件 HAL 的 <code>setActiveBootSlot</code> 设置当前槽位时，引导加载程序应更新当前槽位、清除 <code>slot-unbootable</code>、清除 <code>slot-successful</code> 并重置 <code>retry-count</code>。只能通过这些方法来清除 <code>slot-unbootable</code>。
+</li><li>Android 框架负责从 HAL 调用 <code>markBootSuccessful</code>。引导加载程序绝不应将分区标记为已成功启动。</li>
+</ul>
+<h3 id="gota-updates-with-recovery-mode">非 A/B 更新</h3>
+<p><a href="/devices/tech/ota/nonab/">非 A/B 更新</a>设备应满足以下条件才能支持更新：</p>
+<ul>
+<li>recovery 分区应包含能够从某些受支持的分区（cache 和 userdata）读取系统映像并将其写入 system 分区的映像。
+</li><li>引导加载程序应支持直接重新启动到恢复模式。
+</li><li>如果支持无线装置映像更新，则 recovery 分区也应能够刷写无线装置。这可通过以下两种方式来完成：<ul>
+ <li>引导加载程序刷写无线装置。在这种情况下，应该可以从 recovery 分区重新启动回引导加载程序以完成更新。
+ </li><li>恢复映像刷写无线装置。可以采用二进制库或实用程序的形式来提供此功能。</li></ul>
+</li>
+
+</ul></body></html>
