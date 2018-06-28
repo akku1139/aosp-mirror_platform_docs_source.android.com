@@ -105,8 +105,8 @@ backtrace:
     #09 pc 00000abc  /system/xbin/crasher
 </pre>
 <p>
-You can reproduce an instance of this type of crash using: <code>crasher
-abort</code>
+You can reproduce an instance of this type of crash using <code>crasher
+abort</code>.
 </p>
 <h3 id=nullpointer>Pure null pointer dereference</h3>
 <p>
@@ -140,8 +140,8 @@ backtrace:
     #05 pc 000010e4  /system/xbin/crasher (_start+96)
 </pre>
 <p>
-You can reproduce an instance of this type of crash using: <code>crasher
-strlen-NULL</code>
+You can reproduce an instance of this type of crash using <code>crasher
+strlen-NULL</code>.
 </p>
 <h3 id=lowaddress>Low-address null pointer dereference</h3>
 <p>
@@ -215,8 +215,8 @@ stack and directly accuse the calling code. But not always, and this is how you
 would present a compelling case.
 </p>
 <p>
-You can reproduce instances of this kind of crash using: <code>crasher
-fprintf-NULL</code> or <code>crasher readdir-NULL</code>
+You can reproduce instances of this kind of crash using <code>crasher
+fprintf-NULL</code> or <code>crasher readdir-NULL</code>.
 </p>
 <h3 id=fortify>FORTIFY failure</h3>
 <p>
@@ -248,8 +248,8 @@ backtrace:
     #07 pc 00001110  /system/xbin/crasher (_start+96)
 </pre>
 <p>
-You can reproduce an instance of this type of crash using: <code>crasher
-fortify</code>
+You can reproduce an instance of this type of crash using <code>crasher
+fortify</code>.
 </p>
 <h3 id=stackcorruption>Stack corruption detected by -fstack-protector</h3>
 <p>
@@ -288,9 +288,48 @@ You can distinguish this from other kinds of abort by the presence of
 <code>__stack_chk_fail</code> in the backtrace and the specific abort message.
 </p>
 <p>
-You can reproduce an instance of this type of crash using: <code>crasher
-smash-stack</code>
+You can reproduce an instance of this type of crash using <code>crasher
+smash-stack</code>.
 </p>
+<h3 id="seccomp">Seccomp SIGSYS from a disallowed system call</h3>
+<p>
+The <a href="https://en.wikipedia.org/wiki/Seccomp">seccomp</a> system (specifically seccomp-bpf)
+restricts access to system calls. For more information about seccomp for platform developers, see
+the blog post
+<a href="https://android-developers.googleblog.com/2017/07/seccomp-filter-in-android-o.html">Seccomp filter in Android O</a>.
+A thread that calls a restricted system call
+will receive a SIGSYS signal with code SYS_SECCOMP. The system call number will be shown in the
+cause line, along with the architecture. It is important to note that system call numbers vary
+between architectures. For example, the readlinkat(2) system call is number 305 on x86
+but 267 on x86-64. The call number is different again on both arm and arm64. Because system call
+numbers vary between architectures, it's usually easier to use the stack trace to find out which
+system call was disallowed rather than looking for the system call number in the headers.
+</p>
+<pre class="devsite-click-to-copy">
+pid: 11046, tid: 11046, name: crasher  >>> crasher <<<
+signal 31 (SIGSYS), code 1 (<i style="color:Orange">SYS_SECCOMP</i>), fault addr --------
+<i style="color:Orange">Cause: seccomp prevented call to disallowed arm system call 99999</a>
+    r0 cfda0444  r1 00000014  r2 40000000  r3 00000000
+    r4 00000000  r5 00000000  r6 00000000  r7 0001869f
+    r8 00000000  r9 00000000  sl 00000000  fp fffefa58
+    ip fffef898  sp fffef888  lr 00401997  pc f74f3658  cpsr 600f0010
+
+backtrace:
+    #00 pc 00019658  /system/lib/libc.so (syscall+32)
+    #01 pc 00001993  /system/bin/crasher (do_action+1474)
+    #02 pc 00002699  /system/bin/crasher (main+68)
+    #03 pc 0007c60d  /system/lib/libc.so (__libc_init+48)
+    #04 pc 000011b0  /system/bin/crasher (_start_main+72)
+</pre>
+<p>
+You can distinguish disallowed system calls from other crashes by the presence of
+<code>SYS_SECCOMP</code> on the signal line and the description on the cause line.
+</p>
+<p>
+You can reproduce an instance of this type of crash using <code>crasher
+seccomp</code>.
+</p>
+
 
 <h2 id=crashdump>Crash dumps</h2>
 

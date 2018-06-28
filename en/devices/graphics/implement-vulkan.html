@@ -66,13 +66,12 @@ the driver.</p>
 same symbols as the loader and which is used for linking. When running on a
 device, applications call the Vulkan functions exported from
 <code>libvulkan.so</code> (the real library, not the stub) to enter trampoline
-functions in the loader (which then dispatch to the appropriate layer or driver
-based on their first argument). The <code>vkGetDeviceProcAddr</code> calls
+functions in the loader, which dispatch to the appropriate layer or driver
+based on their first argument. The <code>vkGet*ProcAddr</code> calls
 return the function pointers to which the trampolines would dispatch (i.e. it
 calls directly into the core API code), so calling through these function
 pointers (rather than the exported symbols) is slightly more efficient as it
-skips the trampoline and dispatch. However, <code>vkGetInstanceProcAddr</code>
-must still call into trampoline code.</p>
+skips the trampoline and dispatch.</p>
 
 <h2 id=driver_emun>Driver enumeration and loading</h2>
 <p>Android expects the GPUs available to the system to be known when the system
@@ -102,12 +101,12 @@ driver, though that driver can support multiple physical devices. The
 <code>vkGetInstanceProcAddr</code> functions. The loader can find all other
 <code>VkInstance</code>, <code>VkPhysicalDevice</code>, and
 <code>vkGetDeviceProcAddr</code> functions by calling
-<code>vkGetInstanceProcAddr</code>.</p>
+the <code>hw_device_t</code>'s <code>vkGetInstanceProcAddr</code>.</p>
 
 <h2 id=layer_discover>Layer discovery and loading</h2>
 <p>The Vulkan loader supports enumerating and loading layers that can expose
 additional extensions and/or intercept core API calls on their way to the
-driver. Android 7.0 does not include layers on the system image; however,
+driver. Android does not include layers on the system image; however,
 applications may include layers in their APK.</p>
 <p>When using layers, keep in mind that Android's security model and policies
 differ significantly from other platforms. In particular, Android does not allow
@@ -170,8 +169,36 @@ and will not be exposed to applications.</p>
 <h3 id=gralloc_usage_flags>Gralloc usage flags</h3>
 <p>Implementations may need swapchain buffers to be allocated with
 implementation-defined private gralloc usage flags. When creating a swapchain,
-the platform asks the driver to translate the requested format and image usage
+Android 8.0 asks the driver to translate the requested format and image usage
 flags into gralloc usage flags by calling:</p>
+
+<pre class="devsite-click-to-copy">
+typedef enum VkSwapchainImageUsageFlagBitsANDROID {
+    VK_SWAPCHAIN_IMAGE_USAGE_SHARED_BIT_ANDROID = 0x00000001,
+    VK_SWAPCHAIN_IMAGE_USAGE_FLAG_BITS_MAX_ENUM = 0x7FFFFFFF
+} VkSwapchainImageUsageFlagBitsANDROID;
+typedef VkFlags VkSwapchainImageUsageFlagsANDROID;
+
+VkResult VKAPI vkGetSwapchainGrallocUsage2ANDROID(
+    VkDevice                          device,
+    VkFormat                          format,
+    VkImageUsageFlags                 imageUsage,
+    VkSwapchainImageUsageFlagsANDROID swapchainUsage,
+    uint64_t*                         grallocConsumerUsage,
+    uint64_t*                         grallocProducerUsage
+);
+</pre>
+
+<p>The <code>format</code> and <code>imageUsage</code> parameters are taken from
+the <code>VkSwapchainCreateInfoKHR</code> structure. The driver should fill
+<code>*grallocConsumerUsage</code> and <code>*grallocProducerUsage</code> with
+the gralloc usage flags required for the format
+and usage. The usage returned by the driver will be combined with the usage flags
+requested by the swapchain consumer when allocating buffers.</p>
+
+<p>An earlier version of this function is called by Android 7.x. In Android 8.0
+it is deprecated but will still be called if
+<code>vkGetSwapchainGrallocUsage2ANDROID</code> isn't provided by the driver:
 
 <pre class="devsite-click-to-copy">
 VkResult VKAPI vkGetSwapchainGrallocUsageANDROID(
@@ -180,13 +207,10 @@ VkResult VKAPI vkGetSwapchainGrallocUsageANDROID(
     VkImageUsageFlags   imageUsage,
     int*                grallocUsage
 );
-</pre>
+<pre>
 
-<p>The <code>format</code> and <code>imageUsage</code> parameters are taken from
-the <code>VkSwapchainCreateInfoKHR</code> structure. The driver should fill
-<code>*grallocUsage</code> with the gralloc usage flags required for the format
-and usage (which are combined with the usage flags requested by the swapchain
-consumer when allocating buffers).</p>
+<p>This earlier version does not support swapchain usage flags or extended gralloc
+usage flags.</p>
 
 <h3 id=gralloc_usage_flags>Gralloc-backed images</h3>
 
@@ -211,6 +235,15 @@ typedef struct {
     // Gralloc format and usage requested when the buffer was allocated.
     int                         format;
     int                         usage;
+    // Beginning in Android 8.0, the usage field above is deprecated and the
+    // usage2 struct below was added. The usage field is still filled in for
+    // compatibility with Android 7.0 drivers. Drivers for Android 8.0
+    // should prefer the usage2 struct, especially if the
+    // android.hardware.graphics.allocator HAL uses the extended usage bits.
+    struct {
+        uint64_t                consumer;
+        uint64_t                producer;
+    } usage2;
 } VkNativeBufferANDROID;
 </pre>
 
@@ -232,7 +265,22 @@ the following data:</p>
   .pQueueFamilyIndices = VkSwapChainCreateInfoWSI::pQueueFamilyIndices
 </pre>
 
-<h3 id=acquire_image>Aquiring images</h3>
+In Android 8.0 and later, the platform will provide a
+<code>VkSwapchainImageCreateInfo</code> extension structure in the
+<code>VkImageCreateInfo</code> chain provided to <code>vkCreateImage</code>
+when any swapchain image usage flags are required for the swapchain.
+The extension structure contains the swapchain image usage flags:
+
+<pre class="devsite-click-to-copy">
+typedef struct {
+    VkStructureType                        sType; // must be VK_STRUCTURE_TYPE_SWAPCHAIN_IMAGE_CREATE_INFO_ANDROID
+    const void*                            pNext;
+
+    VkSwapchainImageUsageFlagsANDROID      usage;
+} VkSwapchainImageCreateInfoANDROID;
+</pre>
+
+<h3 id=acquire_image>Acquiring images</h3>
 <p><code>vkAcquireImageANDROID</code> acquires ownership of a swapchain image
 and imports an externally-signalled native fence into both an existing
 <code>VkSemaphore</code> object and an existing <code>VkFence</code> object:</p>
@@ -267,33 +315,40 @@ it is as if the native fence was already signalled.</p>
 
 <h3 id=acquire_image>Releasing images</h3>
 <p><code>vkQueueSignalReleaseImageANDROID</code> prepares a swapchain image for
-external use, and creates a native fence and schedules it to be signalled when
-prior work on the queue has completed:</p>
+external use, and creates a native fence and schedules it to be signalled after
+the input semaphores have signaled:</p>
 
 <pre class="devsite-click-to-copy">
 VkResult VKAPI vkQueueSignalReleaseImageANDROID(
     VkQueue             queue,
+    uint32_t            waitSemaphoreCount,
+    const VkSemaphore*  pWaitSemaphores,
     VkImage             image,
     int*                pNativeFenceFd
 );
 </pre>
 
-<p>This API is called during <code>vkQueuePresentWSI</code> on the provided
+<p>This API is called during <code>vkQueuePresentKHR</code> on the provided
 queue. Effects are similar to <code>vkQueueSignalSemaphore</code>, except with a
-native fence instead of a semaphore. Unlike <code>vkQueueSignalSemaphore</code>,
+native fence instead of a semaphore. The native fence must not signal until the
+<code>waitSemaphoreCount</code> semaphores in <code>pWaitSemaphores</code> have
+signaled. Unlike <code>vkQueueSignalSemaphore</code>,
 however, this call creates and returns the synchronization object that will be
 signalled rather than having it provided as input. If the queue is already idle
 when this function is called, it is allowed (but not required) to set
 <code>*pNativeFenceFd</code> to -1. The file descriptor returned in
 *<code>pNativeFenceFd</code> is owned and will be closed by the caller.</p>
 
-<h3 id=update_drivers>Updating drivers</h3>
-
 <p>Many drivers can ignore the image parameter, but some may need to prepare
 CPU-side data structures associated with a gralloc buffer for use by external
 image consumers. Preparing buffer contents for use by external consumers should
 have been done asynchronously as part of transitioning the image to
 <code>VK_IMAGE_LAYOUT_PRESENT_SRC_KHR</code>.</p>
+
+If the image was created with
+<code>VK_SWAPCHAIN_IMAGE_USAGE_SHARED_BIT_ANDROID</code>, then the driver must
+allow <code>vkQueueSignalReleaseImageANDROID</code> to be called repeatedly
+without intervening calls to <code>vkAcquireImageANDROID</code>.
 
 <h2 id=validation>Validation</h2>
 <p>OEMs can test their Vulkan implementation using CTS, which includes

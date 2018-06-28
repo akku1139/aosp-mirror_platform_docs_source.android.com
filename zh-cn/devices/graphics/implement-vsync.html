@@ -34,13 +34,13 @@ int (waitForVsync*) (int64_t *timestamp)
 
 <p>显式同步是必需的，它提供了一种以同步方式获取和释放 Gralloc 缓冲区的机制。显式同步允许图形缓冲区的生产方和消耗方在完成对缓冲区的处理时发出信号。这允许 Android 异步地将要读取或写入的缓冲区加入队列，并且确定另一个消耗方或生产方当前不需要它们。有关详细信息，请参阅<a href="/devices/graphics/index.html#synchronization_framework">同步框架</a>一文。</p>
 
-<p>显式同步的优点包括不同设备上的行为差异较小、对调试的支持更好，并且测试指标更完善。例如，同步框架输出可以很容易地识别问题区域和根本原因，而集中的 SurfaceFlinger 演示时间戳可以显示何时在系统的正常流程中发生事件。</p>
+<p>显式同步的优点包括不同设备上的行为差异较小、对调试的支持更好，并且测试指标更完善。例如，同步框架输出可以轻松指出问题区域和根本原因，而集中的 SurfaceFlinger 演示时间戳可以显示系统的正常流程中发生事件的时间。</p>
 
 <p>该通信是通过使用同步栅栏来促进的。在请求用于消耗或生产的缓冲区时，必须使用同步栅栏。同步框架由三个主要构造块组成：<code>sync_timeline</code>、<code>sync_pt</code> 和 <code>sync_fence</code>。</p>
 
 <h3 id="sync_timeline">sync_timeline</h3>
 
-<p><code>sync_timeline</code> 是一个单调递增的时间轴，应为每个驱动程序实例（如 GL 上下文、显示控制器或 2D 位块传送器）实现该时间轴。这本质上是针对提交到特定硬件内核的作业的计数器。它为相关操作的顺序提供了保证，并允许特定于硬件的实现。</p>
+<p><code>sync_timeline</code> 是一个单调递增的时间轴，应为每个驱动程序实例（如 GL 上下文、显示控制器或 2D 位块传送器）实现该时间轴。这本质上是提交到内核的针对特定硬件的作业的计数器。它为相关操作的顺序提供了保证，并允许特定于硬件的实现。</p>
 
 <p>sync_timeline 作为仅限 CPU 的参考实现进行提供（称为 <code>sw_sync</code>（软件同步））。如果可能，请使用它而不是 <code>sync_timeline</code>，以节省资源并避免复杂性。如果您没有使用硬件资源，则 <code>sw_sync</code> 应该就够了。</p>
 
@@ -56,23 +56,23 @@ int (waitForVsync*) (int64_t *timestamp)
 
 <ul>
 <li>使其基于任何实际的时间。例如，当一个挂钟到达某个时间点或其他工作可能结束时的时间点。最好创建一个您可以控制的抽象时间轴。</li>
-<li>允许用户空间明确创建栅栏或使其变为有信号量状态。这会导致一个用户通道创建可停止所有功能的拒绝服务攻击。这是因为用户空间不能代表内核做出承诺。</li>
+<li>允许用户空间明确创建栅栏或发出栅栏信号。这可导致用户管道组件发起可阻塞所有功能的拒绝服务攻击。这是因为用户空间不能代表内核做出承诺。</li>
 <li>明确访问 <code>sync_timeline</code>、<code>sync_pt</code> 或 <code>sync_fence</code> 元素，因为 API 应该提供所有必需的函数。</li>
 </ul>
 
 <h3 id="sync_pt">sync_pt</h3>
 
-<p><code>sync_pt</code> 是 sync_timeline 上的单个值或点。点具有三种状态：活动、有信号量和错误。点最初处于活动状态，然后转变为有信号量状态或错误状态。例如，当图像消耗方不再需要缓冲区时，此 sync_point 会处于有信号量状态，以便图像生产方知道可以再次写入缓冲区。</p>
+<p><code>sync_pt</code> 是 sync_timeline 上的单个值或点。点具有三种状态：活动、有信号和错误。点最初处于活动状态，然后转变为有信号状态或错误状态。例如，当图像消耗方不再需要缓冲区时，此 sync_point 会处于有信号状态，以便图像生产方知道可以再次写入缓冲区。</p>
 
 <h3 id="sync_fence">sync_fence</h3>
 
 <p><code>sync_fence</code> 是 <code>sync_pts</code> 的集合，它通常具有不同的 <code>sync_timeline</code> 父项（例如，用于显示控制器和 GPU）。这些是驱动程序和用户空间用来传达依赖关系的主要基元。栅栏是内核在接受已加入队列的工作时给予的承诺，可确保工作在有限的时间内完成。</p>
 
-<p>可让多个消耗方或生产方发出信号，指明它们正在使用一个缓冲区，并允许通过一个函数参数来传达该信息。栅栏由文件描述符提供支持，可以从内核空间传递到用户空间。例如，栅栏可以包含两个 <code>sync_points</code>，它们指示两个单独的图像消耗方何时完成缓冲区读取。当栅栏变为有信号量状态时，图像生产方便知道两个消耗方都已完成消耗。</p>
+<p>可让多个消耗方或生产方发出信号，指明它们正在使用一个缓冲区，并允许通过一个函数参数来传达该信息。栅栏由文件描述符提供支持，可以从内核空间传递到用户空间。例如，栅栏可以包含两个 <code>sync_points</code>，它们指示两个单独的图像消耗方何时完成缓冲区读取。当栅栏变为有信号状态时，图像生产方便知道两个消耗方都已完成消耗。</p>
 
-<p>栅栏（如 <code>sync_pts</code>）最初处于活动状态，然后根据它们的点的状态改变状态。如果所有 <code>sync_pts</code> 都变为有信号量状态，<code>sync_fence</code> 就会变为有信号量状态。如果一个 <code>sync_pt</code> 变为错误状态，则整个 sync_fence 会变为错误状态。</p>
+<p>栅栏（如 <code>sync_pts</code>）最初处于活动状态，然后根据它们的点的状态改变状态。如果所有 <code>sync_pts</code> 都变为有信号状态，<code>sync_fence</code> 就会变为有信号状态。如果一个 <code>sync_pt</code> 变为错误状态，则整个 sync_fence 会变为错误状态。</p>
 
-<p>创建栅栏后，<code>sync_fence</code> 中的成员是不可变的。由于 <code>sync_pt</code> 只能在一个栅栏中，因此它是作为副本包含在内。即使两个点具有相同的值，栅栏中也会有两个 <code>sync_pt</code> 副本。为了在栅栏中获得多个点，当来自两个完全不同栅栏的点添加到第三个栅栏时，将进行合并操作。如果其中一个点在原始栅栏中处于有信号量状态，另一个点未处于有信号量状态，那么第三个栅栏也不会处于有信号量状态。</p>
+<p>创建栅栏后，<code>sync_fence</code> 中的成员是不可变的。由于 <code>sync_pt</code> 只能在一个栅栏中，因此它是作为副本包含在内。即使两个点具有相同的值，栅栏中也会有两个 <code>sync_pt</code> 副本。为了在栅栏中获得多个点，当来自两个完全不同栅栏的点添加到第三个栅栏时，将进行合并操作。如果其中一个点在原始栅栏中处于有信号状态，另一个点未处于有信号状态，那么第三个栅栏也不会处于有信号状态。</p>
 
 <p>要实现显式同步，请提供以下内容：</p>
 
@@ -166,9 +166,9 @@ struct sync_fence* display_buffer(struct dma_buf *buf, struct sync_fence
 <p>Hardware Composer 可处理三种类型的同步栅栏：</p>
 
 <ul>
-<li><em></em>获取栅栏。每层一个，在调用 <code>HWC::set</code> 之前设置。当 Hardware Composer 可以读取缓冲区时，该栅栏会变为有信号量状态。</li>
-<li><em></em>释放栅栏。每层一个，在 <code>HWC::set</code> 中由驱动程序填充。当 Hardware Composer 完成对缓冲区的读取时，该栅栏会变为有信号量状态，以便框架可以再次开始将该缓冲区用于特定层。</li>
-<li><em></em>退出栅栏。整个框架一个，每次调用 <code>HWC::set</code> 时由驱动程序填充。HWC::set 操作会覆盖所有的层，并且当所有层的 HWC::set 操作完成时会变成有信号量状态并通知框架。当在屏幕上进行下一设置操作时，退出栅栏将变为有信号量状态。</li>
+<li><em></em>获取栅栏。每层一个，在调用 <code>HWC::set</code> 之前设置。当 Hardware Composer 可以读取缓冲区时，该栅栏会变为有信号状态。</li>
+<li><em></em>释放栅栏。每层一个，在 <code>HWC::set</code> 中由驱动程序填充。当 Hardware Composer 完成对缓冲区的读取时，该栅栏会变为有信号状态，以便框架可以再次开始将该缓冲区用于特定层。</li>
+<li><em></em>退出栅栏。整个框架一个，每次调用 <code>HWC::set</code> 时由驱动程序填充。HWC::set 操作会覆盖所有的层，并且当所有层的 HWC::set 操作完成时会变成有信号状态并通知框架。当在屏幕上进行下一设置操作时，退出栅栏将变为有信号状态。</li>
 </ul>
 
 <p>退出栅栏可用于确定每个帧在屏幕上的显示时长。这有助于识别延迟的位置和来源，例如卡顿的动画。</p>
@@ -208,19 +208,19 @@ struct sync_fence* display_buffer(struct dma_buf *buf, struct sync_fence
 <ul>
 <li><em></em>参考。HW_VSYNC_0。</li>
 <li><em></em>输出。VSYNC 和 SF VSYNC。</li>
-<li><em></em>反馈。来自 Hardware Composer 的退出栅栏有信号量状态时间戳。
+<li><em></em>反馈。来自 Hardware Composer 的退出栅栏有信号状态时间戳。
 </li>
 </ul>
 
 <h3 id="vsync_retire_offset">VSYNC/退出偏移</h3>
 
-<p>退出栅栏的有信号量状态时间戳必须与 HW VSYNC 相符，即使在不使用偏移相位的设备上也是如此。否则，实际造成的错误会严重得多。智能面板通常有一个增量：退出栅栏是对显示设备内存进行直接内存访问 (DMA) 的终点，但是实际的显示切换和 HW VSYNC 会晚一段时间。</p>
+<p>退出栅栏的有信号状态时间戳必须与 HW VSYNC 相符，即使在不使用偏移相位的设备上也是如此。否则，实际造成的错误会严重得多。智能面板通常有一个增量：退出栅栏是对显示设备内存进行直接内存访问 (DMA) 的终点，但是实际的显示切换和 HW VSYNC 会晚一段时间。</p>
 
 <p><code>PRESENT_TIME_OFFSET_FROM_VSYNC_NS</code> 在设备的 BoardConfig.mk Makefile 中设置。它基于显示控制器和面板特性。从退出栅栏时间戳到 HW VSYNC 信号的时间是以纳秒为单位进行测量。</p>
 
 <h3 id="vsync_and_sf_vsync_offsets">VSYNC 和 SF_VSYNC 偏移</h3>
 
-<p><code>VSYNC_EVENT_PHASE_OFFSET_NS</code> 和 <code>SF_VSYNC_EVENT_PHASE_OFFSET_NS</code> 是在高负载用例的基础上进行保守设置，例如在窗口转换期间进行部分 GPU 合成或 Chrome 滚动显示包含动画的网页。这些偏移允许较长的应用渲染时间和较长的 GPU 合成时间。</p>
+<p><code>VSYNC_EVENT_PHASE_OFFSET_NS</code> 和 <code>SF_VSYNC_EVENT_PHASE_OFFSET_NS</code> 根据高负载用例进行了保守设置，例如在窗口过渡期间进行部分 GPU 合成或 Chrome 滚动显示包含动画的网页。这些偏移允许较长的应用渲染时间和较长的 GPU 合成时间。</p>
 
 <p>超过一两毫秒的延迟时间是非常明显的。我们建议集成彻底的自动化错误测试，以便在不显著增加错误计数的前提下最大限度减少延迟时间。</p>
 
