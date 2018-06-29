@@ -54,6 +54,16 @@ simultaneously or out of order by a server with more than one thread, and
 <code>oneway</code> calls may be processed concurrently with a subsequent
 blocking call.</p>
 
+<p>Multiple nested calls will be sent on the same hwbinder thread. For instance,
+if a process (A) makes a synchronous call from a hwbinder thread into process (B),
+and then process (B) makes a synchronous call back into process (A), the call will
+be executed on the original hwbinder thread in (A) which is blocked on the original
+call. This optimization makes it possible to have a single threaded server able to
+handle nested calls, but it does not extend to cases where the calls travel through
+another sequence of IPC calls. For instance, if process (B) had made a
+binder/vndbinder call which called into a process (C) and then process (C) calls
+back into (A), it cannot be served on the original thread in (A).</p>
+
 <h2 id=model>Server threading model</h2>
 <p>Except for passthrough mode, server implementations of HIDL interfaces live
 in a different process than the client and need one or more threads waiting for

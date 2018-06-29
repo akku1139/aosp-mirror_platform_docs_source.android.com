@@ -83,7 +83,7 @@ HAL files and is a good reference). When transferring over HALs from
 <pre class="prettyprint">
 PACKAGE=android.hardware.nfc@1.0
 LOC=hardware/interfaces/nfc/1.0/default/
-make hidl-gen -j64
+m -j hidl-gen
 hidl-gen -o $LOC -Lc++-impl -randroid.hardware:hardware/interfaces \
     -randroid.hidl:system/libhidl/transport $PACKAGE
 hidl-gen -o $LOC -Landroidbp-impl -randroid.hardware:hardware/interfaces \
@@ -117,19 +117,29 @@ a binderized service. Example daemon code (for pure binderized service):</p>
 
 <pre class="prettyprint">
 int main(int /* argc */, char* /* argv */ []) {
+    // This function must be called before you join to ensure the proper
+    // number of threads are created. The threadpool will never exceed
+    // size one because of this call.
+    ::android::hardware::configureRpcThreadpool(1 /*threads*/, true /*willJoin*/);
+
     sp<INfc> nfc = new Nfc();
     const status_t status = nfc-&gt;registerAsService();
     if (status != ::android::OK) {
         return 1; // or handle error
     }
-    // join pool or do other things
+
+    // Adds this thread to the threadpool, resulting in one total
+    // thread in the threadpool. We could also do other things, but
+    // would have to specify 'false' to willJoin in configureRpcThreadpool.
+    ::android::hardware::joinRpcThreadpool();
+    return 1; // joinRpcThreadpool should never return
 }
 </pre>
 
-<p>This daemon should live in <code>$PACKAGE + "-service"</code> (for example,
-<code>android.hardware.nfc@1.0-service</code>). The
-<a href="/security/selinux/device-policy.html">sepolicy</a> for a specific class
-of HALs is the attribute <code>hal_&lt;module&gt;</code> (for instance,
+<p>This daemon usually lives in <code>$PACKAGE + "-service-suffix"</code> (for
+example, <code>android.hardware.nfc@1.0-service</code>), but it could be anywhere.
+The <a href="/security/selinux/device-policy.html">sepolicy</a> for a specific
+class of HALs is the attribute <code>hal_&lt;module&gt;</code> (for instance,
 <code>hal_nfc)</code>. This attribute must be applied to the daemon that runs a
 particular HAL (if the same process serves multiple HALs, multiple attributes
 can be applied to it).</p>
