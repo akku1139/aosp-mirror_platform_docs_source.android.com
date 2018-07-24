@@ -20,7 +20,7 @@
       limitations under the License.
   -->
 
-<p>本页详细介绍了 Camera HAL、API 和相关的 Android 兼容性测试套件 (CTS) 测试中的版本差异，还介绍了在 Android 7.0 中为增强和提高相机框架安全性而进行的几项架构更改，以及供应商在其相机实现中为支持这些更改所必须进行的更新。</p>
+<p>本页详细介绍了 Camera HAL、API 和相关的 Android 兼容性测试套件 (CTS) 测试中的版本差异，还介绍了在 Android 7.0 中为增强和提高相机框架安全性而进行的几项架构更改，在 Android 8.0 中引入 Treble，以及供应商在其相机实现中为支持这些更改而必须进行的更新。</p>
 
 <h2 id="glossary">术语</h2>
 
@@ -48,6 +48,15 @@
 
 <dt>Camera API2 CTS</dt>
 <dd>在 Camera API2 之上运行的另一个相机 CTS 测试集。</dd>
+
+<dt>Treble</dt>
+<dd>利用新的供应商接口，将供应商实现（由芯片制造商编写的设备专属底层软件）与 Android 操作系统框架分离开来。</dd>
+
+<dt>HIDL</dt>
+<dd><a href="/devices/architecture/hidl/">HAL 接口定义语言</a>随 Treble 引入，用于指定 HAL 和其用户之间的接口。</dd>
+
+<dt>VTS</dt>
+<dd><a href="/compatibility/vts/">供应商测试套件</a>随 Treble 引入。</dd>
 
 </dl>
 
@@ -96,9 +105,12 @@
 
 <p>在旧版设备上，未跳过的 Camera API2 CTS 测试使用现有的公共 Camera API1 接口和功能，没有新的要求。显示的错误（并导致 Camera API2 CTS 失败）是设备现有 Camera HAL 中已经存在的错误，因此可由现有 Camera API1 应用找到。我们预计不会出现太多此类错误（但是，任何此类错误均必须修复，才能通过 Camera API2 CTS 测试）。</p>
 
+<h2 id="vts-requirements">VTS 要求</h2>
+<p>采用绑定式 HAL 实现的运行 Android 8.0 及更高版本的设备必须通过相机 <a href="/compatibility/vts/">VTS 测试</a>。</p>
+
 <h2 id="hardening">相机框架强化</h2>
 
-<p>为了增强媒体和相机框架安全性，Android 7.0 已将相机服务从 mediaserver 中移出。供应商可能需要根据正在使用的 API 和 HAL 版本对 Camera HAL 进行更改。以下部分详细介绍了在 HAL1 和 HAL3 的 AP1 和 AP2 中进行的架构更改，以及常规要求。</p>
+<p>为了增强媒体和相机框架安全性，Android 7.0 已将相机服务从 mediaserver 中移出。从 Android 8.0 开始，每个绑定式相机 HAL 都会在与相机服务不同的进程中运行。供应商可能需要根据正在使用的 API 和 HAL 版本对 Camera HAL 进行更改。以下部分详细介绍了在 HAL1 和 HAL3 的 AP1 和 AP2 中进行的架构更改，以及常规要求。</p>
 
 <h3 id="hardening_api1">API1 的架构更改</h3>
 <p>API1 视频录制可能会假定相机和视频编码器存在于同一进程中。在以下对象上使用 API1 时：</p>
@@ -132,10 +144,14 @@
 <li><strong>常规</strong>。由于 IPC，设备需要额外带宽，这可能会影响对时间敏感的相机使用情况，例如高速视频录制。供应商可以运行 <code>android.hardware.camera2.cts.PerformanceTest</code> 和 Google 相机应用，以进行 120/240 FPS 高速视频录制，从而衡量实际影响。设备还需要少量额外的 RAM 来创建新进程。</li>
 <li><strong>在视频缓冲区中传递元数据</strong>（仅限 HAL1）。<em></em>如果 HAL1 在视频缓冲区中存储元数据而非实际的 YUV 帧数据，则 HAL 必须使用 <code>kMetadataBufferTypeNativeHandleSource</code> 作为元数据缓冲区类型，并在视频缓冲区中传递 <code>VideoNativeHandleMetadata</code>（<code>kMetadataBufferTypeCameraSource</code> 在 Android 7.0 中不再受支持）。通过 <code>VideoNativeHandleMetadata</code>，相机和媒体框架能够正确地对原生句柄进行序列化和反序列化，从而在进程之间传递视频缓冲区。</li>
 <li><strong>缓冲区句柄地址并不总是存储相同的缓冲区</strong>（仅限 HAL3）。<em></em>对于每个捕获请求，HAL3 会获取缓冲区句柄的地址。HAL 不能使用地址来识别缓冲区，因为地址可能会在 HAL 返回缓冲区之后存储另一个缓冲区句柄。您必须更新 HAL，以便使用缓冲区句柄来标识缓冲区。例如：HAL 接收缓冲区句柄地址 A，该地址存储缓冲区句柄 A。在 HAL 返回缓冲区句柄 A 之后，缓冲区句柄地址 A 可能在 HAL 下次接收到它时存储缓冲区句柄 B。</li>
-<li><strong>更新用于 cameraserver 的 SELinux 策略</strong>。如果设备特定的 SELinux 策略向 mediaserver 授予运行相机的权限，则您必须更新 SELinux 策略，以授予 cameraserver 正确的权限。我们建议不要为 cameraserver 复制 mediaserver 的 SELinux 策略（因为 mediaserver 和 cameraserver 通常需要系统中的不同资源）。Cameraserver 应仅具有执行相机功能所需的权限，并且 mediaserver 中任何不必要的相机相关权限均应被移除。<p></p>
+<li><strong>更新用于 cameraserver 的 SELinux 策略</strong>。如果设备特定的 SELinux 策略向 mediaserver 授予运行相机的权限，则您必须更新 SELinux 策略，以授予 cameraserver 正确的权限。我们建议不要为 cameraserver 复制 mediaserver 的 SELinux 策略（因为 mediaserver 和 cameraserver 通常需要系统中的不同资源）。Cameraserver 应仅具有执行相机功能所需的权限，并且 mediaserver 中任何不必要的相机相关权限均应被移除。</li>
+<li><strong>将相机 HAL 与 cameraserver 分离开</strong>。此外，搭载 Android 8.0 或更高版本的设备会在与 cameraserver 不同的进程中分离绑定式相机 HAL。IPC 会通过 <a href="/devices/architecture/hidl/">HIDL 定义的</a>接口。</li>
+</ul>
 
 <h3 id="hardening_validation">验证</h3>
 <p>对于包含相机且运行 Android 7.0 的所有设备，请通过运行 Android 7.0 CTS 来验证相关实现。尽管 Android 7.0 不包含验证相机服务更改的新 CTS 测试，但如果您尚未进行上述更新，则现有 CTS 测试将失败。</p>
+
+<p>对于包含相机并运行 Android 8.0 或更高版本的所有设备，请通过运行 VTS 来验证供应商实现。</p>
 
 <h2 id="version-history">Camera HAL 版本历史记录</h2>
 <p>要获取可用于评估 Android Camera HAL 的测试列表，请参阅 <a href="/compatibility/cts/camera-hal.html">Camera HAL 测试核对清单</a>。</p>
@@ -143,7 +159,7 @@
 <h3 id="80">Android 8.0</h3>
 
 <p>
-Android 8.0 版本中包含以下针对相机服务的主要增强功能：
+Android 8.0 版本引入了 Treble。引入 Treble 后，供应商相机 HAL 实现必须为<a href="/devices/architecture/hal-types">绑定式</a>。Android 8.0 还包含对相机服务的以下主要增强功能：
 </p>
 
 <ul>
@@ -168,7 +184,7 @@ Android 8.0 版本中包含以下针对相机服务的主要增强功能：
 <h4 id="system-api-for-custom-camera-modes">适用于自定义相机模式的系统 API</h4>
 
 <p>
-公共相机 API 定义了两种操作模式：正常模式和受限高速录制模式。这两种模式的语义截然不同；高速模式受限于一次最多只能有两个具体输出等。各个原始设备制造商 (OEM) 已表现出极大的兴趣想要针对特定于硬件的功能定义其他自定义模式。说白了，模式只是一个传递到 configure_streams 的整数。请参阅：<code>hardware/libhardware/+/master/include/hardware/camera3.h#1736</code>
+公共相机 API 定义了两种操作模式：正常模式和受限高速录制模式。这两种模式的语义截然不同；高速模式受限于一次最多只能有两个具体输出等。各个原始设备制造商 (OEM) 已表现出极大的兴趣想要针对特定于硬件的功能定义其他自定义模式。说白了，模式只是一个传递到 <code>configure_streams</code> 的整数。请参阅：<a href="https://source.android.com/reference/hidl/android/hardware/camera/device/3.2/ICameraDeviceSession#configurestreams"><code>hardware/camera/device/3.2/ICameraDeviceSession#configurestreams</code></a>
 </p>
 
 <p>
@@ -179,16 +195,19 @@ Android 8.0 版本中包含以下针对相机服务的主要增强功能：
 要支持这一功能，OEM 只需将新模式添加到其 HAL 即可，传递至 HAL 的这一整数会在 configure_streams 上触发该模式，然后 OEM 就可以让其自定义相机应用使用系统 API。</p>
 
 <p>
-此方法的名称是 <code><a href="https://developer.android.com/reference/android/hardware/camera2/CameraCaptureSession.StateCallback.html#onCaptureQueueEmpty(android.hardware.camera2.CameraCaptureSession)">android.hardware.camera2.CameraDevice#createCustomCaptureSession</a></code>。
-请参阅：<code>frameworks/base/core/java/android/hardware/camera2/CameraDevice.java#797</code>
+此方法的名称是 <code><a href="https://developer.android.com/reference/android/hardware/camera2/CameraCaptureSession.StateCallback.html#onCaptureQueueEmpty(android.hardware.camera2.CameraCaptureSession)">android.hardware.camera2.CameraDevice#createCustomCaptureSession</a></code>。请参阅：<a href="https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/hardware/camera2/CameraDevice.java#805"><code>frameworks/base/core/java/android/hardware/camera2/CameraDevice.java#805</code></a></p>
 
-</p><p class="note"><strong>注意</strong>：在 Android 8.0 MR1 版本中，应用必须预安装到系统映像上才能访问此 API。</p>
+<aside class="note"><strong>注意</strong>：在 Android 8.1 版本中，应用必须预安装到系统映像上才能访问此 API。
+</aside>
 
 <h4 id="oncapturequeueempty">onCaptureQueueEmpty</h4>
 
 <p>
 此 API 的目的是通过尽可能让请求队列为空，来缩短控制更改（如缩放）的延迟时间。<code>onCaptureQueueEmpty</code> 不需要 HAL 发挥作用；它只是一种框架端补充。想要利用此 API 的应用需要向该回调添加监听器，并相应地做出响应。通常，响应方式是向相机设备发送另一个捕获请求。
 </p>
+
+<h4 id="camera-hidl-interface">相机 HIDL 接口</h4>
+<p>相机 HIDL 接口在相机 HAL 接口（使用以 HIDL 定义的稳定 API）基础上进行了全面改造。在最近的旧版本 3.4 和 2.4（针对相机模块）中引入的所有功能和相机功能也是 HIDL 定义的一部分。</p>
 
 <h3 id="34">3.4</h3>
 
@@ -318,4 +337,4 @@ Android 8.0 版本中包含以下针对相机服务的主要增强功能：
 
 <p>报告这些版本号的相机模块实现了初始相机模块 HAL 接口。可通过此模块打开的所有相机设备仅支持版本 1 的相机设备 HAL。<code>camera_info</code> 的 <code>device_version</code> 和 <code>static_camera_characteristics</code> 字段无效。只有 <code>android.hardware.Camera</code> API 受该模块及其设备的支持。</p>
 
-</li></ul></body></html>
+</body></html>

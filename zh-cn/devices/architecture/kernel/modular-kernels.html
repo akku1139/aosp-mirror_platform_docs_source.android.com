@@ -196,15 +196,13 @@ on early-init
 <ol>
 <li>设备节点路径必须在 <code>fstab</code> 和设备树条目中使用其 by-name 符号链接。<em></em>例如，确保对分区进行命名且设备节点为 <code>/dev/block/…./by-name/{system,vendor,odm}</code>，而不是使用 <code>/dev/block/mmcblk0pX</code> 指定分区。
 </li>
-<li>在产品的设备配置中（即 <code>device/<em>oem</em>/<em>project</em>/device.mk</code> 中）为 <code>PRODUCT_{SYSTEM,VENDOR}_VERITY_PARTITION</code> 和 <code>CUSTOM_IMAGE_VERITY_BLOCK_DEVICE</code> 指定的路径必须与 <code>fstab</code>/设备树条目中指定 by-name 的相应块设备节点相匹配。<em></em>例如：
-<pre class="prettyprint">
+<li>在产品的设备配置中（即 <code>device/<em>oem</em>/<em>project</em>/device.mk</code> 中）为 <code>PRODUCT_{SYSTEM,VENDOR}_VERITY_PARTITION</code> 和 <code>CUSTOM_IMAGE_VERITY_BLOCK_DEVICE</code> 指定的路径必须与 <code>fstab</code>/设备树条目中指定 by-name 的相应块设备节点相匹配。<em></em>例如：<pre class="prettyprint">
 PRODUCT_SYSTEM_VERITY_PARTITION := /dev/block/…./by-name/system
 PRODUCT_VENDOR_VERITY_PARTITION := /dev/block/…./by-name/vendor
 CUSTOM_IMAGE_VERITY_BLOCK_DEVICE := /dev/block/…./by-name/odm
 </pre>
 </li>
 <li>通过设备树叠加层提供的条目不得在 <code>fstab</code> 文件片段中出现重复。例如，指定某个条目以在设备树中装载 <code>/vendor</code> 时，<code>fstab</code> 文件不得重复该条目。</li>
-<li>只能提前装载 <code>/system</code>、<code>/odm</code> 或 <code>/vendor</code>。Android 不支持在 <code>init</code> 第一阶段装载其他任何分区。</li>
 <li><strong>不得</strong>提前装载需要 <code>verifyatboot</code> 的分区（此操作不受支持）。</li>
 <li>必须在内核命令行中使用 <code>androidboot.veritymode</code> 选项指定验证分区的真实模式/状态（现有要求）。</li>
 </ol>
@@ -293,9 +291,8 @@ fstab 条目采取以下形式：</p>
 <p>VBoot 2.0 是 <a href="https://android.googlesource.com/platform/external/avb/" class="external">Android 验证启动 (AVB)</a>。 使用 VBoot 2.0 提前装载分区的要求如下：</p>
 <ol>
 <li>设备节点路径必须在 <code>fstab</code> 和设备树条目中使用其 by-name 符号链接。<em></em>例如，确保对分区进行命名且设备节点为 <code>/dev/block/…./by-name/{system,vendor,odm}</code>，而不是使用 <code>/dev/block/mmcblk0pX</code> 指定分区。</li>
-<li>VBoot 1.0 所用的编译系统变量（如 <code>PRODUCT_{SYSTEM,VENDOR}_VERITY_PARTITION</code> 和 <code>CUSTOM_IMAGE_VERITY_BLOCK_DEVICE</code>）对 VBoot 2.0 而言并非必需的。相反，应该定义 VBoot 2.0 中引入的新编译系统变量（包括 <code>BOARD_AVB_ENABLE := true</code>）；有关完整配置，请参阅<a href="https://android.googlesource.com/platform/external/avb/#Build-System-Integration" class="external">适用于 AVB 的编译系统集成</a>。</li>
+<li>VBoot 1.0 所用的编译系统变量（如 <code>PRODUCT_{SYSTEM,VENDOR}_VERITY_PARTITION</code> 和 <code>CUSTOM_IMAGE_VERITY_BLOCK_DEVICE</code>）对 VBoot 2.0 而言并非必需的。相反，您应该定义 VBoot 2.0 中引入的新编译系统变量（包括 <code>BOARD_AVB_ENABLE := true</code>）；有关完整配置，请参阅<a href="https://android.googlesource.com/platform/external/avb/#Build-System-Integration" class="external">适用于 AVB 的编译系统集成</a>。</li>
 <li>通过设备树叠加层提供的条目不得在 <code>fstab</code> 文件片段中出现重复。例如，如果您指定某个条目以在设备树中装载 <code>/vendor</code>，则 <code>fstab</code> 文件不得重复该条目。</li>
-<li>只能提前装载 <code>/system</code>、<code>/odm</code> 或 <code>/vendor</code>。Android 不支持在 <code>init</code> 第一阶段装载其他任何分区。</li>
 <li>VBoot 2.0 不支持 <code>verifyatboot</code>，无论是否启用了提前装载。</li>
 <li>必须在内核命令行中使用 <code>androidboot.veritymode</code> 选项指定验证分区的真实模式/状态（现有要求）。
 确保包含以下 AVB 修复程序：
@@ -485,7 +482,7 @@ CONFIG_PROC_DEVICETREE=y (kernels prior to 3.15)
 <h3 id="upstreaming">上游化</h3>
 <p>为了更轻松且近乎自动地更新为较新的内核版本，并为 ODM 提供更安全可靠的平台来开发产品，我们强烈建议 SoC 供应商将其内核更改上游化，并使它们被 kernel.org 主代码库接受。虽然这样做需要前期投入额外的时间和工程资源，但事实证明，从长远的角度来看，这样会节省时间和资金。另据证实，与未经社区审核的代码相比，合并后的代码质量高很多，错误和安全漏洞问题也更少（这些错误和安全漏洞问题的严重程度通常更低）。</p>
 
-<p>如果将对 SoC 的全面支持合并到上游，社区便可以在内部的内核 API 随时间不断发展的同时，做出必要的 API 更改，从而自动延长平台的使用寿命。通过将硬件平台添加到诸多社区管理的内核测试平台的其中一个（如 <code><a href="https://kernelci.org" class="external">kernelci.org</a></code>），还可以在开发和稳定版本中针对任何回归自动测试内核。
+<p>如果将对 SoC 的全面支持合并到上游，社区便可以在内部的内核 API 随时间不断发展的同时，做出必要的 API 更改，从而自动延长平台的使用寿命。通过将硬件平台添加到诸多社区管理的内核测试平台的其中一个（如 <code><a href="https://kernelci.org" class="external">kernelci.org</a></code>），您还可以在开发和稳定版本中针对任何回归自动测试内核。
 </p>
 
 <p>要获取与 Linux 内核社区协作以将您的代码上游化的相关帮助，请参阅以下资源：</p>
@@ -495,6 +492,6 @@ CONFIG_PROC_DEVICETREE=y (kernels prior to 3.15)
 <li><code>Documentation/SubmittingPatches</code></li>
 </ul>
 
-<p>社区会稍作审核就接受独立的驱动程序和文件系统并将其纳入内核的暂存区，然后在其中努力提高代码质量。</p>
+<p>社区会稍作审核就接受独立的驱动程序和文件系统，并将其纳入内核的暂存区，然后在其中努力提高代码质量。</p>
 
 </body></html>
