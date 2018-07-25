@@ -78,13 +78,13 @@ backtrace:
 </pre>
 <p>
 您可以使用 <code>crasher
-abort</code> 重现此类崩溃问题的实例
+abort</code> 重现此类崩溃问题的实例。
 </p>
 <h3 id="nullpointer">纯 Null 指针解引用</h3>
 <p>这是典型的原生代码崩溃问题，虽然它只是下一类崩溃问题的特殊情况，但值得单独说明，因为这类崩溃问题通常无需细细思量。
 </p>
 <p>
-在以下示例中，尽管崩溃函数在 <code>libc.so</code> 中，但因为字符串函数仅在指定给它们的指针处进行操作，所以您可以推断出在调用 <code><a href="http://man7.org/linux/man-pages/man3/strlen.3.html">strlen(3)</a></code> 时指定的是 Null 指针；对于此类崩溃问题，应直接找调用代码的作者加以解决。在这种情况下，帧 #01 是不良调用程序。
+在以下示例中，尽管崩溃函数在 <code>libc.so</code> 中，但由于字符串函数仅在指定给它们的指针处进行操作，因此您可以推断出在调用 <code><a href="http://man7.org/linux/man-pages/man3/strlen.3.html">strlen(3)</a></code>strlen(3) 时指定的是 Null 指针；对于此类崩溃问题，应直接找调用代码的作者加以解决。在这种情况下，帧 #01 是不良调用程序。
 </p>
 
 <pre class="devsite-click-to-copy">
@@ -104,10 +104,9 @@ backtrace:
     #05 pc 000010e4  /system/xbin/crasher (_start+96)
 </pre>
 <p>您可以使用 <code>crasher
-strlen-NULL</code> 重现此类崩溃问题的实例
-</p>
+strlen-NULL</code> 重现此类崩溃问题的实例。</p>
 <h3 id="lowaddress">低地址 Null 指针解引用</h3>
-<p>在许多情况下，故障地址不会为 0，而是其他一些小数字。两位或三位地址尤其常见，而六位地址几乎肯定不是 Null 指针解引用 - 这需要 1 MiB 的偏移量。通常，当您有代码将 Null 指针解引用为看似有效的结构时，就会发生这种情况。常见的函数是 <code><a href="http://man7.org/linux/man-pages/man3/fprintf.3.html">fprintf(3)</a></code>（或任何其他使用 FILE* 的函数）和 <code><a href="http://man7.org/linux/man-pages/man3/readdir.3.html">readdir(3)</a></code>，因为代码通常无法检查到底是 <code><a href="http://man7.org/linux/man-pages/man3/fopen.3.html">fopen(3)</a></code> 先成功还是 <code><a href="http://man7.org/linux/man-pages/man3/opendir.3.html">opendir(3)</a></code> 调用先成功。
+<p>在许多情况下，故障地址不会为 0，而是其他一些小数字。两位或三位地址尤其常见，而六位地址几乎肯定不是 Null 指针解引用 - 这需要 1 MiB 的偏移量。通常，当您有代码将 Null 指针解引用为看似有效的结构时，就会发生这种情况。常见的函数是 <code><a href="http://man7.org/linux/man-pages/man3/fprintf.3.html">fprintf(3)</a></code>（或任何其他使用 FILE* 的函数）和 <code><a href="http://man7.org/linux/man-pages/man3/readdir.3.html">readdir(3)</a></code>，因为代码通常无法检查到底是 <code><a href="http://man7.org/linux/man-pages/man3/fopen.3.html">fopen(3)</a></code> 调用先成功还是 <code><a href="http://man7.org/linux/man-pages/man3/opendir.3.html">opendir(3)</a></code> 调用先成功。
 </p>
 
 <p>
@@ -144,13 +143,14 @@ backtrace:
     long current_pos_;
   };
 </pre>
-<p>在大多数情况下，实际上您可以跳过此分析。一个充分的低位故障地址通常意味着您可以跳过堆栈中的任意 <code>libc.so</code> 帧，并直接归咎于调用的代码。但情况并非总是如此，这些例外将是您用作展示的绝佳机会。
+<p>在大多数情况下，实际上您可以跳过此分析。一个充分的低位故障地址通常意味着您可以跳过堆栈中的任意 <code>libc.so</code> 帧，并直接归咎于调用的代码。不过，情况并非总是如此，这些例外将是您用作展示的绝佳机会。
 </p>
-<p>您可以使用 <code>crasher
-fprintf-NULL</code> 或 <code>crasher readdir-NULL</code> 重现此类崩溃问题的实例
+<p>
+您可以使用 <code>crasher
+fprintf-NULL</code> 或 <code>crasher readdir-NULL</code> 重现此类崩溃问题的实例。
 </p>
 <h3 id="fortify">FORTIFY 失败</h3>
-<p>FORTIFY 失败是中止的一种特殊情况，当 C 库检测到可能导致安全漏洞的问题时，就会发生 FORTIFY 失败。很多 C 库函数已得到加强；它们需要一个额外的参数来确定缓冲区的实际大小，并在运行时检查您尝试执行的操作是否真的适合。<em></em>以下示例显示代码尝试 <code>read(fd, buf, 32)</code> 入实际上只有 10 字节长的缓冲区…
+<p>FORTIFY 失败是中止的一种特殊情况，当 C 库检测到可能导致安全漏洞的问题时，就会发生 FORTIFY 失败。很多 C 库函数已得到加强；它们需要一个额外的参数来确定缓冲区的实际大小，并在运行时检查您尝试执行的操作是否真的适合。<em></em>以下示例显示代码尝试使用 <code>read(fd, buf, 32)</code> 读入实际上只有 10 字节长的缓冲区…
 </p>
 <pre class="devsite-click-to-copy">
 pid: 25579, tid: 25579, name: crasher  &gt;&gt;&gt; crasher &lt;&lt;&lt;
@@ -171,8 +171,9 @@ backtrace:
     #06 pc 000177a1  /system/lib/libc.so (__libc_init+48)
     #07 pc 00001110  /system/xbin/crasher (_start+96)
 </pre>
-<p>您可以使用 <code>crasher
-fortify</code> 重现此类型崩溃问题的实例
+<p>
+您可以使用 <code>crasher
+fortify</code> 重现此类崩溃问题的实例。
 </p>
 <h3 id="stackcorruption">-fstack-protector 检测到的堆栈损坏</h3>
 <p>编译器的 <code>-fstack-protector</code> 选项会在具有栈上缓冲区的函数中插入检查机制，以防止缓冲区溢出。默认情况下，此选项会为平台代码而非应用启用。如果启用此选项，编译器会向<a href="https://en.wikipedia.org/wiki/Function_prologue">函数序言</a>添加指令，以在堆栈上写入刚刚超过上一局部值的随机值，并向函数结尾添加指令以进行回读并确认是否发生更改。如果该值已更改，则已被缓冲区溢出覆盖，因此该结尾会调用 <code>__stack_chk_fail</code> 来记录消息和中止。
@@ -199,8 +200,36 @@ backtrace:
 </pre>
 <p>您可以通过回溯中是否出现 <code>__stack_chk_fail</code> 以及特定中止消息将此中止与其他类型的中止区分开来。
 </p>
-<p>您可以使用 <code>crasher
-smash-stack</code> 重现此类型崩溃问题的实例
+<p>
+您可以使用 <code>crasher
+smash-stack</code> 重现此类崩溃问题的实例。
+</p>
+<h3 id="seccomp">来自不允许的系统调用的 Seccomp SIGSYS</h3>
+<p>
+<a href="https://en.wikipedia.org/wiki/Seccomp">seccomp</a> 系统（具体是指 seccomp-bpf）会限制对系统调用的访问权限。要查看更多针对平台开发者的 seccomp 相关信息，请参阅博文 <a href="https://android-developers.googleblog.com/2017/07/seccomp-filter-in-android-o.html">Android O 中的 Seccomp 过滤器</a>。调用受限系统调用的线程将收到信号 SIGSYS 及代码 SYS_SECCOMP。系统调用编号将与架构一起显示在原因行中。需要注意的是，系统调用编号会因架构而异。例如，readlinkat(2) 系统调用在 x86 系统上的编号为 305，而在 x86-64 系统上的编号则为 267。在 arm 和 arm64 平台上，调用编号也不一样。因为系统调用编号因架构而异，所以在通常情况下，使用堆栈跟踪来找出不允许的系统调用比在标头中寻找系统调用编号更容易。
+</p>
+<pre class="devsite-click-to-copy">
+pid: 11046, tid: 11046, name: crasher  &gt;&gt;&gt; crasher &lt;&lt;&lt;
+signal 31 (SIGSYS), code 1 (<i style="color:Orange">SYS_SECCOMP</i>), fault addr --------
+<i style="color:Orange">Cause: seccomp prevented call to disallowed arm system call 99999
+    r0 cfda0444  r1 00000014  r2 40000000  r3 00000000
+    r4 00000000  r5 00000000  r6 00000000  r7 0001869f
+    r8 00000000  r9 00000000  sl 00000000  fp fffefa58
+    ip fffef898  sp fffef888  lr 00401997  pc f74f3658  cpsr 600f0010
+
+backtrace:
+    #00 pc 00019658  /system/lib/libc.so (syscall+32)
+    #01 pc 00001993  /system/bin/crasher (do_action+1474)
+    #02 pc 00002699  /system/bin/crasher (main+68)
+    #03 pc 0007c60d  /system/lib/libc.so (__libc_init+48)
+    #04 pc 000011b0  /system/bin/crasher (_start_main+72)
+</i></pre><i style="color:Orange">
+<p>
+您可以根据信号行中是否出现 <code>SYS_SECCOMP</code> 以及原因行中的说明，将不允许的系统调用与其他崩溃问题区分开来。
+</p>
+<p>
+您可以使用 <code>crasher
+seccomp</code> 重现此类崩溃问题的实例。
 </p>
 
 <h2 id="crashdump">崩溃转储</h2>
@@ -309,7 +338,7 @@ Tombstone written to: /data/tombstones/tombstone_06
 <p>您可由此得知 <code>debuggerd</code> 写入额外信息的位置。
 <code>debuggerd</code> 会保留最多 10 个 tombstone，从编号 00 至 09 循环并根据需要覆盖现有 tombstone。</p>
 
-<p>Tombstone 包含与崩溃转储相同的信息，还包含一些其他信息。例如，它包含所有线程（不仅仅是崩溃线程）的回溯、浮点寄存器、原始堆栈转储，以及寄存器中地址周围的内存转储。<i></i>最有用的是，它还包含完整的内存映射（类似于 <code>/proc/<i>pid</i>/maps</code>）。以下是 32 位 ARM 进程崩溃的示例（带注释）：</p>
+<p>Tombstone 包含与崩溃转储相同的信息，还包含一些其他信息。例如，它包含所有线程（不仅仅是崩溃线程）的回溯、浮点寄存器、原始堆栈转储，以及寄存器中地址附近的内存转储。<i></i>最有用的是，它还包含完整的内存映射（类似于 <code>/proc/<i>pid</i>/maps</code>）。以下是 32 位 ARM 进程崩溃的示例（带注释）：</p>
 
 <pre class="devsite-click-to-copy">
 memory map: (fault address prefixed with ---&gt;)
@@ -418,4 +447,4 @@ ffff0000-ffff0fff r-x         0      1000  [vectors]
 
 <p>您看到的是 <code>[vector]</code> 还是 <code>[vdso]</code> 取决于架构。ARM 使用 [vector]，而所有其他架构均使用 <a href="http://man7.org/linux/man-pages/man7/vdso.7.html">[vdso]</a>。</p>
 
-</body></html>
+</i></body></html>

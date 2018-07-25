@@ -48,11 +48,11 @@ available, it blocks until one is available.</p>
 
 <p>If the server has only one thread, then calls into the server are completed
 in order. A server with more than one thread may complete calls out of order
-even if the client has only one thread. As <code>oneway</code> calls do not
-block the client, multiple <code>oneway</code> calls may be processed
-simultaneously or out of order by a server with more than one thread, and
-<code>oneway</code> calls may be processed concurrently with a subsequent
-blocking call.</p>
+even if the client has only one thread. However, for a given interface object,
+<code>oneway</code> calls are guaranteed to be ordered (see
+<a href="#model">Server threading model</a>). For a multi-threaded server that
+hosts multiple interfaces, <code>oneway</code> calls to different interfaces
+may be processed concurrently with each other or other blocking calls.</p>
 
 <p>Multiple nested calls will be sent on the same hwbinder thread. For instance,
 if a process (A) makes a synchronous call from a hwbinder thread into process (B),
@@ -160,7 +160,19 @@ server returns a <code>Return&lt;void&gt;</code> object.</p>
 
 <h3 id=oneway>Oneway calls</h3>
 <p>When a function is marked <code>oneway</code>, the client returns immediately
-and does not wait for the server to complete its function call invocation.</p>
+and does not wait for the server to complete its function call invocation. At the
+surface (and in aggregate), this means the function call takes half the
+time because it is executing half the code, but when writing implementations that
+are performance sensitive, this has some scheduling implications. Normally,
+using a oneway call causes the callee to continue to be scheduled whereas
+using a normal synchronous call causes the scheduler to immediately transfer
+from the callee to the caller process. This is a performance optimization in
+binder. For services where the oneway call must be executed in the target process
+with a high priority, the scheduling policy of the receiving service can be
+changed. In C++, using <code>libhidltransport</code>'s method
+<code>setMinSchedulerPolicy</code> with the scheduler priorities and policies
+defined in <code>sched.h</code> ensures that all calls into the service run at
+least at the set scheduling policy and priority.</p>
 
   </body>
 </html>

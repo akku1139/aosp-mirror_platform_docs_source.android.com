@@ -68,8 +68,9 @@ The static version of the library is also available as
 <pre class="prettyprint">
 import android.hardware.foo.V1_0.IFoo;
 ...
-IFoo server = IFoo.getService(); // throws exception if not available
-IFoo anotherServer = IFoo.getService("second_impl");
+// retry to wait until the service starts up if it is in the manifest
+IFoo server = IFoo.getService(true /* retry */); // throws NoSuchElementException if not available
+IFoo anotherServer = IFoo.getService("second_impl", true /* retry */);
 server.doSomething(&hellip;);
 </pre>
 </li>
@@ -81,6 +82,9 @@ callbacks from HALs.</p>
 
 <p class=warning><strong>Warning</strong>: Do not implement a driver (HAL) in
 Java. We strongly recommend you implement drivers in C++.</p>
+
+<p class=warning><strong>Warning</strong>: Java drivers must be in a separate
+process from their clients (same process communication is not supported).</p>
 
 <p>For interface <code>IFooCallback</code> in version 1.0 of package
 <code>android.hardware.foo</code>, you can implement your interface in Java
@@ -142,7 +146,7 @@ class FooCallback extends IFooCallback.Stub {
 ....
 // Get the service you will be receiving callbacks from.
 // This also starts the threadpool for your callback service.
-IFoo server = IFoo.getService(); // throws exception if not available
+IFoo server = IFoo.getService(true /* retry */); // throws NoSuchElementException if not available
 ....
 // This must be a persistent instance variable, not local,
 //   to avoid premature garbage collection.
@@ -173,7 +177,7 @@ interface IBetterFoo extends IFoo {
 extended interface:</p>
 
 <pre class="prettyprint">
-IFoo baseService = Foo.getService();
+IFoo baseService = IFoo.getService(true /* retry */); // throws NoSuchElementException if not available
 IBetterFoo extendedService = IBetterFoo.castFrom(baseService);
 if (extendedService != null) {
   // The service implements the extended interface.

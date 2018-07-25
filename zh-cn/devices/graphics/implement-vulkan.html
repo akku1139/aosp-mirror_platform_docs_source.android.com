@@ -34,7 +34,7 @@
 <h2 id="vulkan_loader">Vulkan 加载程序</h2>
 <p>Vulkan 应用和设备的 Vulkan 驱动程序之间的主要接口是 Vulkan 加载程序，它是 Android 开放源代码项目 (AOSP) (<code>platform/frameworks/native/vulkan</code>) 的一部分，并安装在 <code>/system/lib[64]/libvulkan.so</code>。加载程序会提供核心 Vulkan API 入口点，以及 Android 上必需且始终存在的一些扩展程序的入口点。尤其是，窗口系统集成 (WSI) 扩展程序由加载程序导出，并主要在加载程序（而非驱动程序）中实现。此外，加载程序还支持枚举和加载可显示其他扩展程序且/或在核心 API 调用到达驱动程序的途中对其进行拦截的层。</p>
 
-<p>NDK 包含一个存根 <code>libvulkan.so</code> 库，该库可导出与加载程序相同的符号（用于进行关联）。在设备上运行时，应用会调用从 <code>libvulkan.so</code>（真正的库，而非存根）导出的 Vulkan 函数，以进入加载程序中的 trampoline 函数（然后根据其第一个参数分派到相应的层或驱动程序）。<code>vkGetDeviceProcAddr</code> 调用返回 trampoline 将分派到的函数指针（即它直接调用核心 API 代码），由于通过这些函数指针（而非导出的符号）进行调用跳过了 trampoline 和分派，因此其效率更高一些。不过，<code>vkGetInstanceProcAddr</code> 必须仍调用 trampoline 代码。</p>
+<p>NDK 包含一个存根 <code>libvulkan.so</code> 库，该库可导出与加载程序相同的符号（用于进行关联）。在设备上运行时，应用会调用从 <code>libvulkan.so</code>（真正的库，而非存根）导出的 Vulkan 函数，以进入加载程序中的 trampoline 函数（根据其第一个参数分派到相应的层或驱动程序）。<code>vkGet*ProcAddr</code> 调用会返回 trampoline 将分派到的函数指针（即它会直接调用核心 API 代码），由于通过这些函数指针（而非导出的符号）进行调用跳过了 trampoline 和分派，因此其效率更高一些。</p>
 
 <h2 id="driver_emun">驱动程序枚举和加载</h2>
 <p>Android 要求在构建系统映像时系统可用的 GPU 是已知状态。加载程序使用现有 HAL 机制（请参阅 <code><a href="https://android.googlesource.com/platform/hardware/libhardware/+/master/include/hardware/hardware.h">hardware.h</a></code>）来发现和加载驱动程序。32 位和 64 位 Vulkan 驱动程序的首选路径分别为：</p>
@@ -48,11 +48,11 @@
 
 <p>在 Android 7.0 中，Vulkan <code>hw_module_t</code> 衍生微不足道；仅支持一个驱动程序，并将常量字符串 <code>HWVULKAN_DEVICE_0</code> 传递给 open 函数。如果在 Android 后续版本中添加对多个驱动程序的支持，则 HAL 模块将导出可以传递给 <code>module open</code> 调用的字符串列表。</p>
 
-<p>Vulkan <code>hw_device_t</code> 衍生对应单个驱动程序，尽管该驱动程序可以支持多个物理设备。可以扩展 <code>hw_device_t</code> 结构，以导出 <code>vkGetGlobalExtensionProperties</code>、<code>vkCreateInstance</code> 和 <code>vkGetInstanceProcAddr</code> 函数。加载程序可以通过调用 <code>vkGetInstanceProcAddr</code> 找到所有其他 <code>VkInstance</code>、<code>VkPhysicalDevice</code> 和 <code>vkGetDeviceProcAddr</code> 函数。</p>
+<p>Vulkan <code>hw_device_t</code> 衍生对应单个驱动程序，尽管该驱动程序可以支持多个物理设备。可以扩展 <code>hw_device_t</code> 结构，以导出 <code>vkGetGlobalExtensionProperties</code>、<code>vkCreateInstance</code> 和 <code>vkGetInstanceProcAddr</code> 函数。加载程序可以通过调用 <code>hw_device_t</code> 的 <code>vkGetInstanceProcAddr</code> 找到所有其他的 <code>VkInstance</code>、<code>VkPhysicalDevice</code> 和 <code>vkGetDeviceProcAddr</code> 函数。</p>
 
 <h2 id="layer_discover">发现和加载层</h2>
-<p>Vulkan 加载程序支持枚举和加载可显示其他扩展程序且/或在核心 API 调用到达驱动程序的途中对其进行拦截的层。Android 7.0 在系统映像上不包含层；但是，应用可以在其 APK 中包含层。</p>
-<p>使用层时请注意，Android 的安全模型和政策与其他平台截然不同。尤其是，Android 不允许将外部代码加载到正式版（未取得 root 权限）设备上的不可调试进程中，也不允许外部代码检查或控制进程的内存、状态等。这包括禁止将核心转储、API 跟踪等保存到磁盘以供日后进行检查。只有作为应用一部分提交的层会在正式版设备上启用，而且驱动程序不得提供违反这些政策的功能。</p>
+<p>Vulkan 加载程序支持枚举和加载可显示其他扩展程序且/或在核心 API 调用到达驱动程序的途中对其进行拦截的层。Android 在系统映像上不包含层；不过，应用可以在其 APK 中包含层。</p>
+<p>使用层时请注意，Android 的安全模型和政策与其他平台存在很大差异。尤其是，Android 不允许将外部代码加载到正式版（未取得 root 权限）设备上的不可调试进程中，也不允许外部代码检查或控制进程的内存、状态等。这包括禁止将核心转储、API 跟踪等保存到磁盘以供日后进行检查。只有作为应用一部分提交的层会在正式版设备上启用，而且驱动程序不得提供违反这些政策的功能。</p>
 
 <p>层的使用情形包括：</p>
 <ul>
@@ -69,23 +69,49 @@
 <p>窗口系统集成 (WSI) 扩展程序 <code>VK_KHR_surface</code>、<code>VK_KHR_android_surface</code> 和 <code>VK_KHR_swapchain</code> 由 Android 平台实现并存在于 <code>libvulkan.so</code> 中。<code>VkSurfaceKHR</code> 和 <code>VkSwapchainKHR</code> 对象以及与 <code>ANativeWindow</code> 的所有互动都由 Android 平台处理，不会提供给驱动程序。WSI 实现依赖于必须受驱动程序支持的 <code>VK_ANDROID_native_buffer</code> 扩展程序（如下所述）；此扩展程序仅由 WSI 实现使用，不会提供给应用。</p>
 
 <h3 id="gralloc_usage_flags">Gralloc 用途标记</h3>
-<p>实现可能需要使用由实现定义的私密 gralloc 用途标记来分配交换链缓冲区。创建交换链时，Android 平台要求驱动程序将请求的格式和图像用途标记转换为 gralloc 用途标记，具体方法是调用：</p>
+<p>实现可能需要使用由实现定义的私密 gralloc 用途标记来分配交换链缓冲区。创建交换链时，Android 8.0 会要求驱动程序将请求的格式和图像用途标记转换为 gralloc 用途标记，具体方法是调用以下内容：</p>
 
 <pre class="devsite-click-to-copy">
+typedef enum VkSwapchainImageUsageFlagBitsANDROID {
+    VK_SWAPCHAIN_IMAGE_USAGE_SHARED_BIT_ANDROID = 0x00000001,
+    VK_SWAPCHAIN_IMAGE_USAGE_FLAG_BITS_MAX_ENUM = 0x7FFFFFFF
+} VkSwapchainImageUsageFlagBitsANDROID;
+typedef VkFlags VkSwapchainImageUsageFlagsANDROID;
+
+VkResult VKAPI vkGetSwapchainGrallocUsage2ANDROID(
+    VkDevice                          device,
+    VkFormat                          format,
+    VkImageUsageFlags                 imageUsage,
+    VkSwapchainImageUsageFlagsANDROID swapchainUsage,
+    uint64_t*                         grallocConsumerUsage,
+    uint64_t*                         grallocProducerUsage
+);
+</pre>
+
+<p><code>format</code> 和 <code>imageUsage</code> 参数来自 <code>VkSwapchainCreateInfoKHR</code> 结构。驱动程序应使用相关格式和用途所需的 gralloc 用途标记来填充 <code>*grallocConsumerUsage</code> 和 <code>*grallocProducerUsage</code>。驱动程序返回的用途将在系统分配缓冲区时与交换链消费者请求的用途标记配合使用。</p>
+
+<p>此函数的早期版本由 Android 7.x 调用。在 Android 8.0 中，此函数的早期版本已被弃用，但如果驱动程序未提供 <code>vkGetSwapchainGrallocUsage2ANDROID</code>，系统仍会调用它的早期版本：</p><pre class="devsite-click-to-copy">
 VkResult VKAPI vkGetSwapchainGrallocUsageANDROID(
     VkDevice            device,
     VkFormat            format,
     VkImageUsageFlags   imageUsage,
     int*                grallocUsage
 );
-</pre>
+<pre>
 
-<p><code>format</code> 和 <code>imageUsage</code> 参数来自 <code>VkSwapchainCreateInfoKHR</code> 结构。驱动程序应使用相关格式和用途所需的 gralloc 用途标记来填充 <code>*grallocUsage</code>（分配缓冲区时，与交换链消费者请求的用途标记配合使用）。</p>
+<p>This earlier version does not support swapchain usage flags or extended gralloc
+usage flags.</p>
 
-<h3 id="gralloc_usage_flags">由 Gralloc 支持的图像</h3>
+<h3 id="gralloc_usage_flags">Gralloc-backed images</h3>
 
-<p><code>VkNativeBufferANDROID</code> 是一个 <code>vkCreateImage</code> 扩展程序结构，用于创建由 gralloc 缓冲区支持的图像。该结构提供给 <code>VkImageCreateInfo</code> 结构链中的 <code>vkCreateImage</code>。对具有此结构的 <code>vkCreateImage</code> 的调用发生在第一次调用 <code>vkGetSwapChainInfoWSI(..
-VK_SWAP_CHAIN_INFO_TYPE_IMAGES_WSI ..)</code> 期间。WSI 实现为交换链分配请求的原生缓冲区数，然后为每个缓冲区创建一个 <code>VkImage</code>：</p>
+<p><code>VkNativeBufferANDROID</code> is a <code>vkCreateImage</code> extension
+structure for creating an image backed by a gralloc buffer. This structure is
+provided to <code>vkCreateImage</code> in the <code>VkImageCreateInfo</code>
+structure chain. Calls to <code>vkCreateImage</code> with this structure happen
+during the first call to <code>vkGetSwapChainInfoWSI(..
+VK_SWAP_CHAIN_INFO_TYPE_IMAGES_WSI ..)</code>. The WSI implementation allocates
+the number of native buffers requested for the swapchain, then creates a
+<code>VkImage</code> for each one:</p>
 
 <pre class="devsite-click-to-copy">
 typedef struct {
@@ -99,10 +125,20 @@ typedef struct {
     // Gralloc format and usage requested when the buffer was allocated.
     int                         format;
     int                         usage;
+    // Beginning in Android 8.0, the usage field above is deprecated and the
+    // usage2 struct below was added. The usage field is still filled in for
+    // compatibility with Android 7.0 drivers. Drivers for Android 8.0
+    // should prefer the usage2 struct, especially if the
+    // android.hardware.graphics.allocator HAL uses the extended usage bits.
+    struct {
+        uint64_t                consumer;
+        uint64_t                producer;
+    } usage2;
 } VkNativeBufferANDROID;
 </pre>
 
-<p>创建由 gralloc 支持的图像时，<code>VkImageCreateInfo</code> 具有以下数据：</p>
+<p>When creating a gralloc-backed image, the <code>VkImageCreateInfo</code> has
+the following data:</p>
 
 <pre class="devsite-click-to-copy">
  .imageType           = VK_IMAGE_TYPE_2D
@@ -119,8 +155,25 @@ typedef struct {
   .pQueueFamilyIndices = VkSwapChainCreateInfoWSI::pQueueFamilyIndices
 </pre>
 
-<h3 id="acquire_image">获取图像</h3>
-<p><code>vkAcquireImageANDROID</code> 会获取交换链图像的所有权，并将已获得外部信号量的原生栅栏同时导入到现有的 <code>VkSemaphore</code> 对象和现有的 <code>VkFence</code> 对象：</p>
+In Android 8.0 and later, the platform will provide a
+<code>VkSwapchainImageCreateInfo</code> extension structure in the
+<code>VkImageCreateInfo</code> chain provided to <code>vkCreateImage</code>
+when any swapchain image usage flags are required for the swapchain.
+The extension structure contains the swapchain image usage flags:
+
+<pre class="devsite-click-to-copy">
+typedef struct {
+    VkStructureType                        sType; // must be VK_STRUCTURE_TYPE_SWAPCHAIN_IMAGE_CREATE_INFO_ANDROID
+    const void*                            pNext;
+
+    VkSwapchainImageUsageFlagsANDROID      usage;
+} VkSwapchainImageCreateInfoANDROID;
+</pre>
+
+<h3 id="acquire_image">Acquiring images</h3>
+<p><code>vkAcquireImageANDROID</code> acquires ownership of a swapchain image
+and imports an externally-signalled native fence into both an existing
+<code>VkSemaphore</code> object and an existing <code>VkFence</code> object:</p>
 
 <pre class="devsite-click-to-copy">
 VkResult VKAPI vkAcquireImageANDROID(
@@ -132,28 +185,64 @@ VkResult VKAPI vkAcquireImageANDROID(
 );
 </pre>
 
-<p>此函数在 <code>vkAcquireNextImageWSI</code> 期间被调用，以将原生栅栏导入到应用提供的 <code>VkSemaphore</code> 和 <code>VkFence</code> 对象中（不过，在此调用中，信号量和栅栏对象均是可选的）。驱动程序可能也会借此机会识别和处理 gralloc 缓冲区状态的所有外部更改；许多驱动程序在此无需进行任何操作。此调用会将 <code>VkSemaphore</code> 和 <code>VkFence</code> 分别置于与 <code>vkQueueSignalSemaphore</code> 和 <code>vkQueueSubmit</code> 相同的待处理状态，因此队列可以等待信号量，应用可以等待栅栏。</p>
+<p>This function is called during <code>vkAcquireNextImageWSI</code> to import a
+native fence into the <code>VkSemaphore</code> and <code>VkFence</code> objects
+provided by the application (however, both semaphore and fence objects are
+optional in this call). The driver may also use this opportunity to recognize
+and handle any external changes to the gralloc buffer state; many drivers won't
+need to do anything here. This call puts the <code>VkSemaphore</code> and
+<code>VkFence</code> into the same pending state as
+<code>vkQueueSignalSemaphore</code> and <code>vkQueueSubmit</code> respectively,
+so queues can wait on the semaphore and the application can wait on the fence.</p>
 
-<p>当底层的原生栅栏发出信号时，两个对象都处于有信号量的状态；如果原生栅栏已经处于有信号量状态，则当该函数返回时，信号量也处于有信号量的状态。驱动程序拥有栅栏 fd 的所有权，负责在其不再需要时将其关闭。即使没有提供信号量或栅栏对象，或者即使 <code>vkAcquireImageANDROID</code> 失败并返回错误，它也必须这样做。如果 fenceFd 为 -1，就如同原生栅栏已处于有信号量的状态。</p>
+<p>Both objects become signalled when the underlying native fence signals; if
+the native fence has already signalled, then the semaphore is in the signalled
+state when this function returns. The driver takes ownership of the fence fd and
+is responsible for closing it when no longer needed. It must do so even if
+neither a semaphore or fence object is provided, or even if
+<code>vkAcquireImageANDROID</code> fails and returns an error. If fenceFd is -1,
+it is as if the native fence was already signalled.</p>
 
-<h3 id="acquire_image">释放图像</h3>
-<p><code>vkQueueSignalReleaseImageANDROID</code> 会准备交换链图像以供外部使用，创建一个原生栅栏，并安排其在队列上的前期工作完成后收到信号：</p>
+<h3 id="acquire_image">Releasing images</h3>
+<p><code>vkQueueSignalReleaseImageANDROID</code> prepares a swapchain image for
+external use, and creates a native fence and schedules it to be signalled after
+the input semaphores have signaled:</p>
 
 <pre class="devsite-click-to-copy">
 VkResult VKAPI vkQueueSignalReleaseImageANDROID(
     VkQueue             queue,
+    uint32_t            waitSemaphoreCount,
+    const VkSemaphore*  pWaitSemaphores,
     VkImage             image,
     int*                pNativeFenceFd
 );
 </pre>
 
-<p>此 API 在提供的队列上的 <code>vkQueuePresentWSI</code> 期间被调用。具体效果与 <code>vkQueueSignalSemaphore</code> 类似，但使用的是原生栅栏，而非信号量。不过，与 <code>vkQueueSignalSemaphore</code> 不同的是，此调用会创建并返回将收到信号（而非作为输入进行提供）的同步对象。如果调用此函数时队列已经闲置，则允许其（但并非必需）将 <code>*pNativeFenceFd</code> 设置为 -1。调用方拥有 *<code>pNativeFenceFd</code> 中返回的文件描述符并会将其关闭。</p>
+<p>This API is called during <code>vkQueuePresentKHR</code> on the provided
+queue. Effects are similar to <code>vkQueueSignalSemaphore</code>, except with a
+native fence instead of a semaphore. The native fence must not signal until the
+<code>waitSemaphoreCount</code> semaphores in <code>pWaitSemaphores</code> have
+signaled. Unlike <code>vkQueueSignalSemaphore</code>,
+however, this call creates and returns the synchronization object that will be
+signalled rather than having it provided as input. If the queue is already idle
+when this function is called, it is allowed (but not required) to set
+<code>*pNativeFenceFd</code> to -1. The file descriptor returned in
+*<code>pNativeFenceFd</code> is owned and will be closed by the caller.</p>
 
-<h3 id="update_drivers">更新驱动程序</h3>
+<p>Many drivers can ignore the image parameter, but some may need to prepare
+CPU-side data structures associated with a gralloc buffer for use by external
+image consumers. Preparing buffer contents for use by external consumers should
+have been done asynchronously as part of transitioning the image to
+<code>VK_IMAGE_LAYOUT_PRESENT_SRC_KHR</code>.</p>
 
-<p>很多驱动程序可以忽略图像参数，但有些驱动程序可能需要准备与 gralloc 缓冲区相关联的 CPU 端数据结构，以供外部图像消费者使用。作为将图像转换为 <code>VK_IMAGE_LAYOUT_PRESENT_SRC_KHR</code> 的一个环节，准备外部消费者使用的缓冲区内容应该异步完成。</p>
+If the image was created with
+<code>VK_SWAPCHAIN_IMAGE_USAGE_SHARED_BIT_ANDROID</code>, then the driver must
+allow <code>vkQueueSignalReleaseImageANDROID</code> to be called repeatedly
+without intervening calls to <code>vkAcquireImageANDROID</code>.
 
-<h2 id="validation">验证</h2>
-<p>原始设备制造商 (OEM) 可以使用 CTS 测试其 Vulkan 实现，其中包括使用 Vulkan 运行时的 <a href="/devices/graphics/cts-integration.html">drawElements 质量计划 (dEQP)</a> 测试。</p>
+<h2 id="validation">Validation</h2>
+<p>OEMs can test their Vulkan implementation using CTS, which includes
+<a href="/devices/graphics/cts-integration.html">drawElements
+Quality Program (dEQP)</a> tests that exercise the Vulkan Runtime.</p>
 
-</body></html>
+</pre></pre></body></html>
