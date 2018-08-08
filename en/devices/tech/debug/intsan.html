@@ -1,0 +1,255 @@
+<html devsite>
+  <head>
+    <title>Integer Overflow Sanitization</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2018 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          //www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>
+Unintended integer overflows can cause memory corruption or information
+disclosure vulnerabilities in variables associated with memory accesses or
+memory allocations. To combat this, we added Clang's
+<a href="https://clang.llvm.org/docs/UndefinedBehaviorSanitizer.html">UndefinedBehaviorSanitizer</a>
+(UBSan) signed and unsigned integer overflow sanitizers to
+<a href="https://android-developers.googleblog.com/2016/05/hardening-media-stack.html">harden
+the media framework</a> in Android 7.0. In Android 9, we
+<a href="https://android-developers.googleblog.com/2018/06/compiler-based-security-mitigations-in.html">expanded
+UBSan to cover more components</a> and improved build system support for it.
+</p>
+<p>
+If a signed or unsigned integer overflows, overflow sanitization is designed to
+safely abort process execution by instrumenting arithmetic instructions which
+may overflow. These sanitizers can mitigate an entire class of memory corruption
+and information disclosure vulnerabilities where the root cause is an integer
+overflow, such as the original Stagefright vulnerability.
+</p>
+<h2 id="examples-and-source">Examples and source</h2>
+<p>
+Integer Overflow Sanitization (IntSan) is provided by the compiler and adds
+instrumentation into the binary during compile time to detect arithmetic
+overflows. It is enabled by default in various components throughout the
+platform, for example
+<a href="https://android.googlesource.com/platform/external/libnl/+/master/Android.bp#64"><code>/platform/external/libnl/Android.bp</code></a>.
+</p>
+
+<h2 id="implementation">Implementation</h2>
+<p>
+IntSan uses UBSan's signed and unsigned integer overflow sanitizers. This
+mitigation is enabled on a per-module level. It helps keep critical components
+of Android secure and should not be disabled.
+</p>
+<p>
+We strongly encourage you to enable Integer Overflow Sanitization for additional
+components. Ideal candidates are privileged native code or native code that
+parses untrusted user input. There is a small performance overhead associated
+with the sanitizer that is dependent on code's usage and the prevalence of
+arithmetic operations. Expect a small overhead percentage and test if
+performance is a concern.
+</p>
+<h3 id="intsan-in-makefiles">Supporting IntSan in makefiles</h3>
+<p>
+To enable IntSan in a makefile, add:
+</p>
+
+<pre class="prettyprint">LOCAL_SANITIZE := integer_overflow
+# Optional features
+LOCAL_SANITIZE_DIAG := integer_overflow
+LOCAL_SANITIZE_BLACKLIST := modulename_blacklist.txt</pre>
+<ul>
+  <li><code>LOCAL_SANITIZE</code> takes a comma separated list of sanitizers,
+    with <code>integer_overflow</code> being a pre-packaged set of options for
+    the individual signed and unsigned integer overflow sanitizers with a
+    <a href="https://android.googlesource.com/platform/build/soong/+/master/cc/config/integer_overflow_blacklist.txt">default
+    blacklist</a>.</li>
+  <li><code>LOCAL_SANITIZE_DIAG</code> turns on diagnostics mode for the
+    sanitizers. Use diagnostics mode only during testing because this will not
+    abort on overflows, completely negating the security advantage of the
+    mitigation. See <a href="#troubleshooting">Troubleshooting</a>
+    for additional details.</li>
+  <li><code>LOCAL_SANITIZE_BLACKLIST</code> allows you to specify a blacklist
+    file to prevent functions and source files from being sanitized. See
+    <a href="#troubleshooting">Troubleshooting</a> for additional
+    details.</li>
+</ul>
+<p>
+If you want more granular control, enable the sanitizers individually using one
+or both flags:
+</p>
+
+<pre class="prettyprint">LOCAL_SANITIZE := signed-integer-overflow, unsigned-integer-overflow
+LOCAL_SANITIZE_DIAG := signed-integer-overflow, unsigned-integer-overflow</pre>
+
+<aside class="caution"><strong>Caution</strong>: The individual sanitizers <strong>must</strong>
+be specified as above for static binaries/libraries; the
+<code>integer_overflow</code> flag does not support static binaries/libraries.
+Use both signed and unsigned sanitizers when specifying individually.</aside>
+
+<h3 id="intsan-in-bp">Supporting IntSan in blueprint files</h3>
+<p>
+To enable integer overflow sanitization in a blueprint file, such as
+<a href="https://android.googlesource.com/platform/external/libnl/+/master/Android.bp#64"><code>/platform/external/libnl/Android.bp</code></a>,
+add:
+</p>
+
+
+<pre class="prettyprint">   sanitize: {
+      integer_overflow: true,
+      diag: {
+          integer_overflow: true,
+      },
+      blacklist: "modulename_blacklist.txt",
+   },</pre>
+<p>
+As with make files, the <code>integer_overflow</code> property is a pre-packaged
+set of options for the individual signed and unsigned integer overflow
+sanitizers with a <a
+href="https://android.googlesource.com/platform/build/soong/+/master/cc/config/integer_overflow_blacklist.txt">default
+blacklist</a>.
+</p>
+<p>
+The <code>diag</code> set of properties enables diagnostics mode for the
+sanitizers. Use diagnostics mode only during testing. Diagnostics mode doesn't
+abort on overflows, which completely negates the security advantage of the
+mitigation in user builds. See <a
+href="#troubleshooting">Troubleshooting</a> for additional details.
+</p>
+<p>
+The <code>blacklist</code> property allows specification of a blacklist file
+that allows developers to prevent functions and source files from being
+sanitized. See <a href="#troubleshooting">Troubleshooting</a> for
+additional details.
+</p>
+<p>
+To enable the sanitizers individually, use:
+</p>
+
+<pre class="prettyprint">   sanitize: {
+      misc_undefined: ["signed-integer-overflow", "unsigned-integer-overflow"],
+      diag: {
+          misc_undefined: ["signed-integer-overflow",
+                           "unsigned-integer-overflow",],
+      },
+      blacklist: "modulename_blacklist.txt",
+   },</pre>
+<aside class="caution"><strong>Caution</strong>: The individual sanitizers <strong>must</strong>
+be specified as above for static binaries/libraries in Android 9; the
+<code>integer_overflow</code> flag does not support static binaries/libraries.
+Use both signed and unsigned sanitizers when specifying individually.</aside>
+
+<h3 id="troubleshooting">Troubleshooting</h3>
+<p>
+If you are enabling integer overflow sanitization in new components, or rely on
+platform libraries that have had integer overflow sanitization, you may run into
+a few issues with benign integer overflows causing aborts. You should test
+components with sanitization enabled to ensure benign overflows can be surfaced.
+</p>
+<p>
+To find, aborts caused by sanitization in user builds, search for
+<code>SIGABRT</code> crashes with Abort messages indicating an overflow caught
+by UBSan, such as:
+</p>
+
+
+<pre
+class="prettyprint">pid: ###, tid: ###, name: Binder:###  &gt;&gt;&gt; /system/bin/surfaceflinger &lt;&lt;&lt;
+signal 6 (SIGABRT), code -6 (SI_TKILL), fault addr --------
+Abort message: 'ubsan: sub-overflow'</pre>
+
+<p>
+The stack trace should include the function causing the abort, however,
+overflows that occur in inline functions may not be evident in the stack trace.
+</p>
+<p>
+To more easily determine the root cause, enable diagnostics in the library
+triggering the abort and attempt to reproduce the error. <strong>With
+diagnostics enabled, the process will not abort</strong> and will instead
+continue to run. Not aborting helps maximize the number of benign overflows in a
+particular execution path without having to recompile after fixing each bug.
+Diagnostics produces an error message which includes the line number and source
+file causing the abort:
+</p>
+
+
+<pre
+class="prettyprint">frameworks/native/services/surfaceflinger/SurfaceFlinger.cpp:2188:32: runtime error: unsigned integer overflow: 0 - 1 cannot be represented in type 'size_t' (aka 'unsigned long')</pre>
+<p>
+Once the problematic arithmetic operation is located, ensure that the overflow
+is benign and intended (e.g. has no security implications). You can address the
+sanitizer abort by:
+</p>
+<ul>
+<li>Refactoring the code to avoid the overflow (<a
+href="https://android-review.googlesource.com/c/platform/frameworks/av/+/572808">example</a>)
+<li>Overflow explicitly via Clang's <a
+href="https://clang.llvm.org/docs/LanguageExtensions.html#checked-arithmetic-builtins">__builtin_*_overflow</a>
+functions (<a
+href="https://android-review.googlesource.com/c/platform/frameworks/av/+/588160">example</a>)
+<li>Disabling sanitization the function via an attribute (<a
+href="https://android-review.googlesource.com/c/platform/frameworks/base/+/531720">example</a>)
+<li>Disabling sanitization of a function or source file via a blacklist file (<a
+href="https://android-review.googlesource.com/c/platform/frameworks/base/+/574222">example</a>)</li></ul>
+<p>
+You should use the most granular solution possible. For example, a large
+function with many arithmetic operations and a single overflowing operation
+should have the single operation refactored rather than the entire function
+blacklisted.
+</p>
+<p>
+Common patterns that may result in benign overflows include:
+</p><ul>
+<li>Implicit casts where an unsigned overflow occurs before being cast to a
+signed type (<a
+href="https://android-review.googlesource.com/c/platform/frameworks/av/+/574011">example</a>)
+<li>Linked list deletions which decrements the loop index on deletion (<a
+href="https://android-review.googlesource.com/c/platform/frameworks/base/+/588158">example</a>)
+<li>Assigning an unsigned type to -1 as shorthand for the max value (<a
+href="https://android-review.googlesource.com/c/platform/frameworks/native/+/574088/1/services/surfaceflinger/Layer.cpp">example</a>)
+<li>Loops which decrement an unsigned integer in the condition (<a
+href="https://android-review.googlesource.com/c/platform/frameworks/native/+/573763/1/services/inputflinger/InputReader.cpp">example</a>,
+<a
+href="https://android-review.googlesource.com/c/platform/frameworks/rs/+/572756">example</a>)</li></ul>
+<p>
+It is recommended that developers assure that cases where the sanitizer detects
+an overflow that it is indeed benign with no unintended side-effects or security
+implications before disabling sanitization.
+</p>
+<h3 id="disabling-intsan">Disabling IntSan</h3>
+<p>
+You can disable IntSan with blacklists or function attributes. Disable sparingly
+and only when refactoring the code is otherwise unreasonable or if there is
+problematic performance overhead.
+</p>
+<p>
+See the upstream Clang documentation for more information on disabling IntSan
+with <a
+href="https://clang.llvm.org/docs/UndefinedBehaviorSanitizer.html#disabling-instrumentation-with-attribute-no-sanitize-undefined">function
+attributes</a> and <a
+href="https://clang.llvm.org/docs/SanitizerSpecialCaseList.html">blacklist file
+formatting</a>. Blacklisting should be scoped to the particular sanitizer by
+using section names specifying the target sanitizer to avoid impacting other
+sanitizers.
+</p>
+<h2 id="validation">Validation</h2>
+<p>
+Currently, there are no CTS test specifically for Integer Overflow Sanitization.
+Instead, make sure that CTS tests pass with or without IntSan enabled to verify
+that it is not impacting the device.
+</p>
+</body>
+</html>

@@ -32,7 +32,7 @@ individual settings and their values.
 
 <img src="images/settings-guidelines01.png" width="250" class="screenshot">
 
-**Figure 1:** Settings and their current values are presented on the top-level
+**Figure 1.** Settings and their current values are presented on the top-level
 screen
 
 ### Organize items intuitively
@@ -43,7 +43,7 @@ Create intuitive menus by moving some settings to a separate screen.
 
 <img src="images/settings-guidelines02.png" width="250" class="screenshot">
 
-**Figure 2:** Common settings are at the top of the screen
+**Figure 2.** Common settings are at the top of the screen
 
 ### Make settings easy to find
 
@@ -61,7 +61,7 @@ points from different places.
   </tr>
 </table>
 
-**Figure 3 & 4:** "Default notification sound" appears on both the
+**Figure 3 & 4.** "Default notification sound" appears on both the
 "Notification" and "Sound" screens
 
 ### Use a clear title and status
@@ -99,7 +99,7 @@ If there are many settings in one category, they can be grouped together. See
 
 <img src="images/settings-guidelines05.png" width="250" class="screenshot">
 
-**Figure 5**: Example of settings list
+**Figure 5.** Example of settings list
 
 ### List view
 
@@ -108,7 +108,7 @@ more. Controls to filter or sort can be added to the screen.
 
 <img src="images/settings-guidelines06.png" width="250" class="screenshot">
 
-**Figure 6**: Example of List view
+**Figure 6.** Example of List view
 
 ### Entity screen
 
@@ -120,11 +120,11 @@ settings on this screen must be related to this entity.
 
 <img src="images/settings-guidelines07.png" width="250" class="screenshot">
 
-**Figure 7**: Example of Entity screen used in App info
+**Figure 7.** Example of Entity screen used in App info
 
 <img src="images/settings-guidelines08.png" width="250" class="screenshot">
 
-**Figure 8**: Example of Entity screen used in Storage
+**Figure 8.** Example of Entity screen used in Storage
 
 ### Master setting
 
@@ -142,12 +142,12 @@ having multiple switches in different places for the same setting.
 
 <img src="images/settings-guidelines09.png" width="250" class="screenshot">
 
-**Figure 9**: Example of master setting used in App notifications screen;
+**Figure 9.** Example of master setting used in App notifications screen;
 turning off the master toggle will turn of the entire feature for this app
 
 <img src="images/settings-guidelines10.png" width="250" class="screenshot">
 
-**Figure 10**: Example of master setting used in App notifications screen with
+**Figure 10.** Example of master setting used in App notifications screen with
 master toggle turned off
 
 ### Radio button selection screen
@@ -161,11 +161,11 @@ bottom. The individual radio buttons can have subtext along with a title.
 
 <img src="images/settings-guidelines11.png" width="250" class="screenshot">
 
-**Figure 11:** Radio buttons should not be used in settings list
+**Figure 11.** Radio buttons should not be used in settings list
 
 <img src="images/settings-guidelines12.png" width="250" class="screenshot">
 
-**Figure 12:** This is how to use radio buttons correctly in settings
+**Figure 12.** This is how to use radio buttons correctly in settings
 
 ## Components
 
@@ -175,17 +175,17 @@ Starting in Android 8.0, the action toolbar presents search and help along with
 other related actions. Overflow menus are discouraged as users may not discover
 actions hidden in these menus.
 
-**For toolbars with no screen-specific actions**: Show search and help actions.
+**For toolbars with no screen-specific actions.** Show search and help actions.
 
 <img src="images/settings-guidelines13.png" width="250" class="screenshot">
 
-**Figure 13:** Toolbar with search and help actions
+**Figure 13.** Toolbar with search and help actions
 
 **For toolbars with one action**: Present the action before search.
 
 <img src="images/settings-guidelines14.png" width="250" class="screenshot">
 
-**Figure 14:** Toolbar with one action before the search and help actions
+**Figure 14.** Toolbar with one action before the search and help actions
 
 **For toolbars with more than 1 action**: Consider placing the primary action
 before search, while putting advanced actions in the overflow menu.
@@ -195,7 +195,7 @@ placing all actions in the overflow menu.
 
 <img src="images/settings-guidelines15.png" width="250" class="screenshot">
 
-**Figure 15:** Toolbar with an overflow menu for actions
+**Figure 15.** Toolbar with an overflow menu for actions
 
 ### Entity header
 
@@ -205,13 +205,13 @@ maximum of two actions.
 
 <img src="images/settings-guidelines16.png" width="250" class="screenshot">
 
-**Figure 16:** Entity header
+**Figure 16.** Entity header
 
 The icon and heading (App1) part will scroll under the header (App info).
 
 <img src="images/settings-guidelines17.png" width="250" class="screenshot">
 
-**Figure 17:** App info title here is part of the toolbar, while the rest of the
+**Figure 17.** App info title here is part of the toolbar, while the rest of the
 screen will scroll under it
 
 ### Menu link
@@ -227,15 +227,15 @@ Examples:
 
 <img src="images/settings-guidelines18.png" width="250" class="screenshot">
 
-**Figure 18:** Menu link with icon, title, and subtext
+**Figure 18.** Menu link with icon, title, and subtext
 
 <img src="images/settings-guidelines19.png" width="250" class="screenshot">
 
-**Figure 19:** Menu link with title and subtext
+**Figure 19.** Menu link with title and subtext
 
 <img src="images/settings-guidelines20.png" width="250" class="screenshot">
 
-**Figure 20:** Menu link with title only
+**Figure 20.** Menu link with title only
 
 **Menu link with icon, title, subtext and a separate hit target on the right**
 
@@ -243,7 +243,7 @@ Other tap targets should use the theme color.
 
 <img src="images/settings-guidelines21.png" width="250" class="screenshot">
 
-**Figure 21:** Example of two-tap target menu
+**Figure 21.** Example of two-tap target menu
 
 **Menu link with icon, title, subtext and stats/number/alert icon**
 
@@ -255,7 +255,7 @@ glance and compare them.
 
 <img src="images/settings-guidelines22.png" width="250" class="screenshot">
 
-**Figure 22:** Example of menu with icon, title, stat and graph
+**Figure 22.** Example of menu with icon, title, stat and graph
 
 ### Grouping & dividers
 
@@ -268,7 +268,7 @@ you use a group heading, you should always include a divider.
 
 <img src="images/settings-guidelines23.png" width="250" class="screenshot">
 
-**Figure 23:** Settings grouped with dividers
+**Figure 23.** Settings grouped with dividers
 
 ### Switch
 
@@ -276,13 +276,13 @@ you use a group heading, you should always include a divider.
 
 <img src="images/settings-guidelines24.png" width="250" class="screenshot">
 
-**Figure 24:** Switch with icon, title, and subtext
+**Figure 24.** Switch with icon, title, and subtext
 
 **Switch with title and subtext**
 
 <img src="images/settings-guidelines25.png" width="250" class="screenshot">
 
-**Figure 25:** Switch with title and subtext
+**Figure 25.** Switch with title and subtext
 
 **Switch with title only**
 
@@ -290,7 +290,7 @@ Titles can be accompanied by an icon on the left.
 
 <img src="images/settings-guidelines26.png" width="250" class="screenshot">
 
-**Figure 26:** Switch with title only
+**Figure 26.** Switch with title only
 
 ### List item + switch
 
@@ -303,7 +303,7 @@ are optional.
 
 <img src="images/settings-guidelines27.png" width="250" class="screenshot">
 
-**Figure 27:** List item and a switch
+**Figure 27.** List item and a switch
 
 ### Slider
 
@@ -311,7 +311,7 @@ The icon is optional in the slider.
 
 <img src="images/settings-guidelines28.png" width="250" class="screenshot">
 
-**Figure 28:** Slider
+**Figure 28.** Slider
 
 ### On-screen button
 
@@ -322,11 +322,11 @@ etc.
 
 <img src="images/settings-guidelines29.png" width="250" class="screenshot">
 
-**Figure 29:** Gray buttons for "Uninstall" and "Force stop"
+**Figure 29.** Gray buttons for "Uninstall" and "Force stop"
 
 <img src="images/settings-guidelines30.png" width="250" class="screenshot">
 
-**Figure 30:** Blue button for "Turn on now"
+**Figure 30.** Blue button for "Turn on now"
 
 ### Progressive disclosure (Advanced)
 
@@ -338,7 +338,7 @@ should be only one line. Additional text gets truncated with an ellipsis.
 
 <img src="images/settings-guidelines31.png" width="250" class="screenshot">
 
-**Figure 31:** Advanced used on the "Display'" screen
+**Figure 31.** Advanced used on the "Display'" screen
 
 ### Drop-down menu
 
@@ -351,7 +351,7 @@ options.
 
 <img src="images/settings-guidelines32.png" width="250" class="screenshot">
 
-**Figure 32:** Drop-down menu
+**Figure 32.** Drop-down menu
 
 ### Checkbox
 
@@ -364,7 +364,7 @@ Checkboxes can be used:
 
 <img src="images/settings-guidelines33.png" width="250" class="screenshot">
 
-**Figure 33**: Checkboxes are used to reduce the number of switches on this
+**Figure 33.** Checkboxes are used to reduce the number of switches on this
 screen
 
 ### Links
@@ -374,7 +374,7 @@ necessary. Links should use an accent color with no underline.
 
 <img src="images/settings-guidelines34.png" width="250" class="screenshot">
 
-**Figure 34:** Link used in settings
+**Figure 34.** Link used in settings
 
 ### Footer
 
@@ -384,7 +384,7 @@ Footers can have links, if needed.
 
 <img src="images/settings-guidelines35.png" width="250" class="screenshot">
 
-**Figure 35:** Footer text
+**Figure 35.** Footer text
 
 ## Patterns
 
@@ -397,11 +397,11 @@ Other less critical data can be presented by using a regular list view.
 
 <img src="images/settings-guidelines36.png" width="250" class="screenshot">
 
-**Figure 36:** Example showing Storage
+**Figure 36.** Example showing Storage
 
 <img src="images/settings-guidelines37.png" width="250" class="screenshot">
 
-**Figure 37:** Example showing Network
+**Figure 37.** Example showing Network
 
 ### User education
 
@@ -412,7 +412,7 @@ explanation.
 
 <img src="images/settings-guidelines38.png" width="250" class="screenshot">
 
-**Figure 38:** Setting using animation and footer text
+**Figure 38.** Setting using animation and footer text
 
 ### Forms
 
@@ -424,7 +424,7 @@ This provides more screen space to arrange the fields in a clear pattern.
 
 <img src="images/settings-guidelines39.png" width="250" class="screenshot">
 
-**Figure 39:** Form with a normal dialog
+**Figure 39.** Form with a normal dialog
 
 ### Search results
 
@@ -433,4 +433,4 @@ location of the setting.
 
 <img src="images/settings-guidelines40.png" width="250" class="screenshot">
 
-**Figure 40:** Search result
+**Figure 40.** Search result

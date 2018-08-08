@@ -20,10 +20,10 @@
       See the License for the specific language governing permissions and
       limitations under the License.
   -->
- 
+
 <p>
 In Keymaster 1, all keymaster keys were cryptographically bound to the device
-<em>Root of Trust</em>, or the verified boot key. In Keymaster 2 and above, all
+<em>Root of Trust</em>, or the Verified Boot key. In Keymaster 2 and 3, all
 keys are also bound to the operating system and patch level of the system image.
 This ensures that an attacker who discovers a weakness in an old
 version of system or TEE software cannot roll a device back to the vulnerable
@@ -35,6 +35,55 @@ upgraded, the keys will "ratchet" forward along with the device, but any
 reversion of the device to a previous release will cause the keys to be
 unusable.
 </p>
+<p>
+To support Treble's modular structure and break the binding of system.img to
+boot.img, Keymaster 4 changed the key version binding model to have separate
+patch levels for each partition. This allows each partition to be updated
+independently, while still providing rollback protection.
+</p>
+<p>
+In Android 9 the <code>boot</code>, <code>system</code> and <code>vendor</code>
+partitions each have their own patch level.
+<ul>
+  <li>Devices with Android Verified Boot
+(AVB) can put all of the patch levels and the system version in vbmeta, so the
+bootloader can provide them to Keymaster. For chained partitions, the version
+info for the partition will be in the chained vbmeta. In general, version
+information should be in the vbmeta struct that contains the verification data
+(hash or hashtree) for a given partition.
+</li>
+<li>On devices without AVB:
+  <ul>
+    <li>Verified Boot implementations need to provide a hash of the version
+      metadata to bootloader, so that bootloader can provide them to Keymaster.
+    </li>
+    <li>boot.img can continue storing patch level in the header</li>
+    <li>system.img can continue storing patch level and OS version in read-only
+      properties</li>
+    <li>vendor.img stores the patch level in the read-only property
+      <code>ro.vendor.build.version.security_patch</code>.</li>
+    <li>The bootloader can provide a hash of all data validated by verified boot
+      to keymaster.</li>
+  </ul>
+</li>
+<li>In Android 9, use the following tags to supply version information for
+  the following partitions:
+  <ul>
+    <li><code>VENDOR_PATCH_LEVEL</code>: <code>vendor</code> partition</li>
+    <li><code>BOOT_PATCH_LEVEL</code>: <code>boot</code> partition</li>
+    <li><code>OS_PATCH_LEVEL</code> and <code>OS_VERSION</code>:
+      <code>system</code> partition. (<code>OS_VERSION</code> is removed from
+      the boot.img header.</li>
+  </ul>
+</li>
+<li>
+Keymaster implementations should treat all patch levels independently. Keys are
+usable if all version info matches the values associated with a key, and
+<code>IKeymaster::upgradeDevice()</code> rolls to a higher patch level if
+needed.</li>
+</ul>
+
+
 
 <h2 id="hal-changes">HAL Changes</h2>
 <p>

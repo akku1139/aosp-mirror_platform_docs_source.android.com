@@ -135,7 +135,8 @@ API/ABI stabilities.
 <code>libGLESv2.so</code>, <code>libGLESv3.so</code>,
 <code>libandroid_net.so</code>, <code>libc.so</code>, <code>libdl.so</code>,
 <code>liblog.so</code>, <code>libm.so</code>, <code>libnativewindow.so</code>,
-<code>libsync.so</code>, and <code>libvndksupport.so</code>,
+<code>libneuralnetworks.so</code>, <code>libsync.so</code>,
+<code>libvndksupport.so</code>, and <code>libvulkan.so</code>,
 </li>
  </ul>
 </li>
@@ -193,7 +194,6 @@ Google.</p>
 </p>
 
 <ul>
-<li><code>android.hardware.graphics.allocator@2.0.so</code></li>
 <li><code>android.hardware.graphics.common@1.0.so</code></li>
 <li><code>android.hardware.graphics.mapper@2.0.so</code></li>
 <li><code>android.hardware.renderscript@1.0.so</code> (Renderscript)</li>
@@ -211,9 +211,11 @@ Google.</p>
 </ul>
 
 <p>
-The following <em>VNDK-SP dependencies (VNDK-SP-Indirect)</em> are invisible to
+The following <em>VNDK-SP dependencies (VNDK-SP-Private)</em> are invisible to
 <em>SP-HALs</em>:
-</p><ul>
+</p>
+
+<ul>
 <li><code>libRSCpuRef.so</code> (Renderscript)</li>
 <li><code>libRSDriver.so</code> (Renderscript)</li>
 <li><code>libbacktrace.so</code></li>
@@ -221,13 +223,6 @@ The following <em>VNDK-SP dependencies (VNDK-SP-Indirect)</em> are invisible to
 <li><code>libbcinfo.so</code> (Renderscript)</li>
 <li><code>liblzma.so</code></li>
 <li><code>libunwind.so</code></li>
-</ul>
-
-<p>The following <em>private VNDK-SP dependency (VNDK-SP-Indirect-Private)</em>
-is invisible to all vendor modules:</p>
-
-<ul>
-<li><code>libcompiler_rt.so</code> (Renderscript)</li>
 </ul>
 
 <p>The following are <em>framework-only libraries with RS exceptions
@@ -276,9 +271,96 @@ branches (similar to the release branch but with some bug fixes or some
 generalizations) and released by Google.</aside>
 
 
+<h2 id="vndk-versioning">VNDK versioning</h2>
+
+<p>In Android P, VNDK shared libraries are versioned:</p>
+
+<ul>
+ <li>The <code>ro.vndk.version</code> system property is automatically added to
+  <code>/vendor/default.prop</code>.</li>
+
+ <li>VNDK shared libraries are installed to
+  <code>/system/lib[64]/vndk-${ro.vndk.version}</code>.</li>
+
+ <li>VNDK-SP shared libraries are installed to
+  <code>/system/lib[64]/vndk-sp-${ro.vndk.version}</code>.</li>
+
+ <li>The dynamic linker configuration file is installed to
+  <code>/system/etc/ld.config.${ro.vndk.version}.txt</code>.</li>
+</ul>
+
+<p>The value of <code>ro.vndk.version</code> is chosen by the algorithm
+below:</p>
+
+<ul>
+ <li>If <code>BOARD_VNDK_VERSION</code> is <em>not equal to</em>
+ <code>current</code>, use <code>BOARD_VNDK_VERSION</code>.</li>
+
+ <li>If <code>BOARD_VNDK_VERSION</code> is <em>equal to</em>
+ <code>current</code>:</li>
+
+ <ul>
+  <li>If <code>PLATFORM_VERSION_CODENAME</code> is <code>REL</code>, use
+  <code>PLATFORM_SDK_VERSION</code> (e.g. <code>28</code>).</li>
+
+  <li>Otherwise, use <code>PLATFORM_VERSION_CODENAME</code> (e.g.
+  <code>P</code>).</li>
+ </ul>
+</ul>
+
+<h3 id="upgrading-devices">Upgrading devices</h3>
+
+<p>If an Android 8.x device disabled VNDK run-time enforcement (i.e. either
+built without <code>BOARD_VNDK_VERSION</code> or built with
+<code>BOARD_VNDK_RUNTIME_DISABLE</code>), it may add
+<code>PRODUCT_USE_VNDK_OVERRIDE := false</code> to <code>BoardConfig.mk</code>
+while upgrading to Android P.</p>
+
+<p>If <code>PRODUCT_USE_VNDK_OVERRIDE</code> is <code>false</code>, the
+<code>ro.vndk.lite</code> property will be automatically added to
+<code>/vendor/default.prop</code> and its value will be <code>true</code>.
+Consequently, the dynamic linker will load the linker namespace configuration
+from <code>/system/etc/ld.config.vndk_lite.txt</code>, which isolates only
+SP-HAL and VNDK-SP.</p>
+
+<p>If an Android 7.0 (or earlier) device would like to upgrade to Android P,
+add <code>PRODUCT_TREBLE_LINKER_NAMESPACES_OVERRIDE := false</code> to
+<code>BoardConfig.mk</code>.</p>
+
+<h3 id="vendor-test-suite">Vendor Test Suite (VTS)</h3>
+
+<p>Android P Vendor Test Suite (VTS) mandates a non-empty
+<code>ro.vndk.version</code> property. Both newly-launched devices and
+upgrading devices must define <code>ro.vndk.version</code>. Some VNDK test
+cases (e.g. <code>VtsVndkFilesTest</code> and
+<code>VtsVndkDependencyTest</code>) rely on the <code>ro.vndk.version</code>
+property to load the matching eligible VNDK libraries data sets.</p>
+
+<p>If the <code>ro.product.first_api_level</code> property is greater than 27,
+the <code>ro.vndk.lite</code> property must not be defined.
+<code>VtsTreblePlatformVersionTest</code> will fail if
+<code>ro.vndk.lite</code> is defined in a newly-launched Android P device.</p>
+
+
 <h2 id="document-history">Document history</h2>
 
 <p>This section tracks changes to VNDK documentation.</p>
+
+<h3 id="changes-p">Android P changes</h3>
+
+<ul>
+ <li>Add VNDK versioning section.</li>
+
+ <li>Add VTS section.</li>
+
+ <li>Some VNDK categories have been renamed:</li>
+ <ul>
+  <li>LL-NDK-Indirect has been renamed to LL-NDK-Private.</li>
+  <li>VNDK-Indirect has been renamed to VNDK-Private.</li>
+  <li>VNDK-SP-Indirect-Private has been renamed to VNDK-SP-Private.</li>
+  <li>VNDK-SP-Indirect has been removed.</li>
+ </ul>
+</ul>
 
 <h3 id="changes-81">Android 8.1 changes</h3>
 

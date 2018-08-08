@@ -75,53 +75,105 @@ property is uniquely identified by an int32 key and has a predefined type
 (<code>value_type</code>):</p>
 
 <ul>
-<li><code>INT32</code> (and array), <code>INT64</code>, <code>BOOLEAN</code>,
-<code>FLOAT</code> (and array), string, bytes.</li>
-<li>Zoned type has zone in addition to value.</li>
+<li><code>BYTES</code></li>
+<li><code>BOOLEAN</code></li>
+<li><code>FLOAT</code></li>
+<li><code>FLOAT[]</code></li>
+<li><code>INT32</code></li>
+<li><code>INT32[]</code></li>
+<li><code>INT64</code></li>
+<li><code>INT64[]</code></li>
+<li><code>STRING</code></li>
+</ul>
+<p>A zoned property may have more than one value, based on the number of zones
+supported by the property.</p>
+
+<h2 id=area_type>Area types</h2>
+<p>The vehicle HAL defines multiple area types:</p>
+<ul>
+<li><code>GLOBAL</code>
+<br>This property is a singleton and does not have multiple areas.</li>
+<li><code>WINDOW</code>
+<br>Area based on windows, uses <code>VehicleAreaWindow</code> enum.</li>
+<li><code>MIRROR</code>
+<br>Area based on mirrors, uses <code>VehicleAreaMirror</code> enum.</li>
+<li><code>SEAT</code>
+<br>Area based on seats, uses <code>VehicleAreaSeat</code> enum.</li>
+<li><code>DOOR</code>
+<br>Area based on doors, uses <code>VehicleAreaDoor</code> enum.</li>
+<li><code>WHEEL</code>
+<br>Area based on wheels, uses <code>VehicleAreaWheel</code> enum.</li>
+</ul>
+<p>Each zoned property must use pre-defined area type. Each area type has a
+set of bit flags defined in an enum for the area type. For example, the SEAT
+area defines VehicleAreaSeat enums:</p>
+<ul>
+<li><code>ROW_1_LEFT = 0x0001</code></li>
+<li><code>ROW_1_CENTER = 0x0002</code></li>
+<li><code>ROW_1_RIGHT = 0x0004</code></li>
+<li><code>ROW_2_LEFT = 0x0010</code></li>
+<li><code>ROW_2_CENTER = 0x0020</code></li>
+<li><code>ROW_2_RIGHT = 0x0040</code></li>
+<li><code>ROW_3_LEFT = 0x0100</code></li>
+<li>...</li>
 </ul>
 
-<h2 id-=zone_type>Zone types</h2>
-<p>The vehicle HAL defines three zone types:</p>
+<h2 id=area_id>Area IDs</h2>
+<p>Zoned properties are addressed via Area IDs. Each zoned property may
+support one or more Area IDs. An Area ID is composed of one or more flags
+from its respective enum. For example, a property using
+<code>VehicleAreaSeat</code> might use the following Area IDs:</p>
 <ul>
-<li><code>vehicle_zone</code>
-<br>Zone based on rows.</li>
-<li><code>vehicle_seat</code>
-<br>Zone based on seats.</li>
-<li><code>vehicle_window</code>
-<br>Zone based on windows.</li>
+<li><code>ROW_1_LEFT | ROW_1_RIGHT</code>
+<br>The Area ID applies to both front seats.</li>
+<li><code>ROW_2_LEFT</code>
+<br>Only applies to rear left seat.</li>
+<li><code>ROW_2_RIGHT</code>
+<br>Only applies to rear right seat.</li>
 </ul>
-<p>Each zoned property should use pre-defined zone type. If necessary, you can
-use a custom zone type for each property (for details, see
-<a href=#prop_custom>Handling custom properties</a>).</p>
+
+<h2 id=status>Property Status</h2>
+<p>Every property value comes with a <code>VehiclePropertyStatus</code> value.
+This indicates the current status for the property:
+<ul>
+<li><code>AVAILABLE</code>
+<br>Property is available and the value is valid.</li>
+<li><code>UNAVAILABLE</code>
+<br>Property value is currently unavailable. This is used for transiently
+disabled features for a supported property.</li>
+<li><code>ERROR</code>
+<br>Something is wrong with this property.</li>
+</ul>
+<aside class="note"><strong>Note:</strong> If a property is not supported by the
+vehicle, it should not be included in the VHAL. It is not acceptable to set the
+property status to <code>UNAVAILABLE</code> permanently to denote an unsupported
+property.</aside>
 
 <h2 id=prop_config>Configuring a property</h2>
 <p>Use <code>vehicle_prop_config_t</code> to provide configuration information
 for each property. Information includes:</p>
 <ul>
 <li><code>access</code> (r, w, rw)</li>
-<li><code>change_mode</code> (represents how property is monitored: on change vs
+<li><code>changeMode</code> (represents how property is monitored: on change vs
 continuous)</li>
-<li><code>min_value</code> (int32, float, int64), <code>max_value</code> (int32,
-float, int64)</li>
-<li><code>min_sample_rate</code>, <code>max_sample_rate</code></li>
-<li><code>permission_model</code></li>
+<li><code>areaConfigs</code> (areaId, min, and max values)</li>
+<li><code>configArray</code> (additional configuration parameters)</li>
+<li><code>configString</code> (additional information passed as a string)</li>
+<li><code>minSampleRate</code>, <code>max_sample_rate</code></li>
 <li><code>prop</code> (Property ID, int)</li>
-<li><code>value_type</code></li>
-<li><code>zone_flags</code> (represents supported zones as bit flags)</li>
 </ul>
-<p>In addition, some properties have specific configuration flags to represent
-capability.</p>
 
 <h2 id=zone_prop>Handling zone properties</h2>
 <p>A zoned property is equivalent to a collection of multiple properties where
-each sub property is accessible by specified zone value.</p>
+each sub property is accessible by specified Area ID value.</p>
 <ul>
-<li><code>get</code> call for zoned property always includes zone in request, so
-only the current value for the requested zone should be returned.</li>
-<li><code>set</code> call for zoned property always includes zone in request, so
-only the requested zone should be changed.</li>
-<li><code>subscribe</code> call includes flags of all zones subscribed. Events
-from un-subscribed zones should not be reported.</li>
+<li><code>get</code> call for zoned property always includes the Area ID in
+the request, so only the current value for the requested Area ID is returned.
+If the property is a global, then Area ID is 0.</li>
+<li><code>set</code> call for zoned property always includes the Area ID in the
+request, so only the requested Area ID is changed.</li>
+<li><code>subscribe</code> call will generate events for all Area IDs for the
+property.</li>
 </ul>
 
 <h3 id=get>Get calls</h3>
@@ -129,16 +181,8 @@ from un-subscribed zones should not be reported.</li>
 the matching vehicle network message has not yet been received. In such cases,
 the <code>get</code> call should return <code>-EAGAIN</code>. Some properties
 (such as HVAC) have separate on/off power property. Calling <code>get</code> for
-such a property (when powered off) should return a special value
-<code>(VEHICLE_INT_OUT_OF_RANGE_OFF/VEHICLE_FLOAT_OUT_OF_RANGE_OFF)</code>
-rather than returning an error.</p>
-<p>In addition, some properties (such as HVAC temperature) can have a value to
-indicate it is in max power mode rather than in specific temperature value. In
-such cases, use special values to represent such state.</p>
-<ul>
-<li>VEHICLE_INT_OUT_OF_RANGE_MAX/MIN</li>
-<li>VEHICLE_FLOAT_OUT_OF_RANGE_MAX/MIN</li>
-</ul>
+such a property (when powered off) should return a <code>UNAVAILABLE</code>
+status rather than returning an error.</p>
 
 <p>Example: get HVAC Temperature</p>
 <img src="../images/vehicle_hvac_get.png" alt="Vehicle HAL get HVAC example">
@@ -158,10 +202,7 @@ initialization, such data may not be available yet. In such cases, the
 separate power on /off should return <code>-ESHUTDOWN</code> when the property
 is powered off and set cannot be done.</p>
 <p>Until <code>set</code> is made effective, <code>get</code> does not
-necessarily return the same value as what is set. The exception is a property
-with change mode of <code>VEHICLE_PROP_CHANGE_MODE_ON_SET.</code> This property
-notifies change only when it is set by external component outside Android (for
-example, clock properties such as <code>VEHICLE_PROPERTY_UNIX_TIME</code>).</p>
+necessarily return the same value as what is set.</p>
 
 <p>Example: set HVAC Temperature</p>
 <img src="../images/vehicle_hvac_set.png" alt="Vehicle HAL set HVAC example">
@@ -173,86 +214,152 @@ CarService, VNS = VehicleNetworkService, VHAL = Vehicle HAL)</p>
 that are restricted to system apps. Use the following guidelines when working
 with custom properties:</p>
 <ul>
-<li>Key should be in [<code>VEHICLE_PROPERTY_CUSTOM_START,
-VEHICLE_PROPERTY_CUSTOM_END</code>] range. Other ranges are reserved for future
-extension; using such ranges can cause conflicts in future Android releases.</li>
-<li>Use only defined <code>value_type</code>. BYTES type allows passing raw
-data, so this is enough in most cases. Sending big data frequently through
-custom properties can slow down the whole vehicle network access, so be careful
-when you add a big payload.</li>
-<li>Add access policy into <code>vendor_vns_policy.xml</code> (otherwise, all
-access will be rejected).</li>
-<li>Access via <code>VendorExtensionManager</code> (for Java components) or
+<li>Property ID should be generated using the following fields:
+  <ul>
+    <li><code>VehiclePropertyGroup:VENDOR</code>
+      <br>The <code>VENDOR</code> group is used only for custom properties.</li>
+    <li><code>VehicleArea</code>
+      <br>Select an appropriate Area Type.</li>
+    <li><code>VehiclePropertyType</code>
+      <br>Select the proper data type. BYTES type allows passing raw
+        data, so this is enough in most cases. Sending big data frequently
+        through custom properties can slow down the whole vehicle network
+        access, so be careful when you add a big payload.</li>
+    <li>Property ID
+      <br>Choose a four nibble ID for the custom property.</li>
+  </ul></li>
+<li>Access via <code>CarPropertyManager</code> (for Java components) or
 via Vehicle Network Service API (for native). Do not modify other car APIs as it
 can lead to compatibility issues in the future.</li>
 </ul>
 
 <h2 id=prop_hvac>Handling HVAC properties</h2>
-<p>You can use the vehicle HAL to control HVAC by setting HVAC-related
-properties. Most HVAC properties are zoned properties, but a few are non-zoned
-(global) properties. Example properties defined include:</p>
+<p>
+  You can use the vehicle HAL to control HVAC by setting HVAC-related
+  properties. Most HVAC properties are zoned properties, but a few are non-zoned
+  (global) properties. Example properties defined include:</p>
+
 <ul>
-<li><code>VEHICLE_PROPERTY_HVAC_TEMPERATURE_SET</code>
-<br>Set temperature per zone.</li>
-<li><code>VEHICLE_PROPERTY_HVAC_RECIRC_ON</code>
-<br>Control recirculation per zone).</li>
+  <li><code>VEHICLE_PROPERTY_HVAC_TEMPERATURE_SET</code>
+  <br>Set temperature per zone.</li>
+  <li><code>VEHICLE_PROPERTY_HVAC_RECIRC_ON</code>
+  <br>Control recirculation per zone).</li>
 </ul>
-<p>For full list of HVAC properties, search for
-<code>VEHICLE_PROPERTY_HVAC_*</code> in <code>vehicle.h</code>.</p>
+
+<p>
+  For a full list of HVAC properties, search for
+  <code>VEHICLE_PROPERTY_HVAC_*</code> in <code>types.hal</code>.
+</p>
+
+<p>
+  There are additional rules for mapping a zoned HVAC property to Area IDs when
+  the HVAC property uses <code>VehicleAreaSeat</code>. Every available seat in
+  the car must be part of an Area ID in the Area ID array.
+</p>
+
+<p>
+  Example 1: A car has two front seats <code>(ROW_1_LEFT, ROW_1_RIGHT)</code>
+  and three back seats <code>(ROW_2_LEFT, ROW_2_CENTER, ROW_2_RIGHT)</code>.
+  There are two temperature control units: driver side and passenger side.
+</p>
+
+<ul>
+  <li>A valid mapping set of Area IDs for <code>HVAC_TEMPERATURE SET</code> is:
+  <ul>
+    <li><code>ROW_1_LEFT | ROW_2_LEFT</code></li>
+    <li><code>ROW_1_RIGHT | ROW_2_CENTER | ROW_2_RIGHT</code></li>
+    </ul>
+  </li>
+  <li>An alternative mapping for the same hardware configuration is:
+  <ul>
+    <li><code>ROW_1_LEFT | ROW_2_LEFT | ROW_2_CENTER</code></li>
+    <li><code>ROW_1_RIGHT | ROW_2_RIGHT</code></li>
+  </ul>
+  </li>
+</ul>
+
+<p>
+  Example 2: A car has three seat rows with two seats in the front row
+  <code>(ROW_1_LEFT, ROW_1_RIGHT)</code> and three seats in the second
+  <code>(ROW_2_LEFT, ROW_2_CENTER, ROW_2_RIGHT)</code> and third rows
+  <code>(ROW_3_LEFT, ROW_3_CENTER, ROW_3_RIGHT)</code>. There are three
+  temperature control units: driver side, passenger side, and rear. A
+  reasonable way to map <code>HVAC_TEMPERATURE_SET</code> to Area IDs is a
+  three element array:
+</p>
+
+<ul>
+  <li><code>ROW_1_LEFT</code></li>
+  <li><code>ROW_1_RIGHT</code></li>
+  <li><code>ROW_2_LEFT | ROW_2_CENTER | ROW_2_RIGHT | ROW_3_LEFT | ROW_3_CENTER
+  | ROW_3_RIGHT</code></li>
+</ul>
 
 <h2 id=prop_sensor>Handling sensor properties</h2>
-<p>Vehicle HAL sensor properties represent real sensor data or policy
-information such as driving status. Some sensor information (such as driving
-status and day/night mode) is accessible by any app without restriction as the
-data is mandatory to build a safe vehicle application. Other sensor information
-(such as vehicle speed) is more sensitive and requires specific permissions that
-users can manage.</p>
-<p>Supported sensor properties include:</p>
+
+<p>
+  Vehicle HAL sensor properties represent real sensor data or policy information
+  such as driving status. Some sensor information (such as driving status and
+  day/night mode) is accessible by any app without restriction as the data is
+  mandatory to build a safe vehicle application. Other sensor information (such
+  as vehicle speed) is more sensitive and requires specific permissions that
+  users can manage.
+</p>
+
+<p>
+  Supported sensor properties include:
+</p>
+
 <ul>
-<li><code>DRIVING_STATUS</code>
-<br>Should support. Represents allowed operations in the current driving state.
-This information is used to block unsafe applications while driving.</li>
-<li><code>NIGHT_MODE</code>
-<br>Should support. Determines day/night mode of display.</li>
-<li><code>GEAR_SELECTION/CURRENT_GEAR</code>
-<br>Gear selected by driver vs. actual gear.</li>
-<li><code>VEHICLE_SPEED</code>
-<br>Vehicle speed. Protected with permission.</li>
-<li><code>ODOMETER</code>
-<br>Current odometer reading. Protected with permission.
-</li>
-<li><code>FUEL_LEVEL</code>
-<br>Current fuel level in %.</li>
-<li><code>FUEL_LEVEL_LOW</code>
-<br>Fuel level is low or not (boolean).</li>
+  <li><code>NIGHT_MODE</code>
+  <br>Should support. Determines day/night mode of display.</li>
+  <li><code>GEAR_SELECTION/CURRENT_GEAR</code>
+  <br>Gear selected by driver vs. actual gear.</li>
+  <li><code>VEHICLE_SPEED</code>
+  <br>Vehicle speed. Protected with permission.</li>
+  <li><code>ODOMETER</code>
+  <br>Current odometer reading. Protected with permission.
+  </li>
+  <li><code>FUEL_LEVEL</code>
+  <br>Current fuel level in %.</li>
+  <li><code>FUEL_LEVEL_LOW</code>
+  <br>Fuel level is low or not (boolean).</li>
 </ul>
 
 <h2 id=vms>Vehicle Mapping Service (VMS)</h2>
 
-<p>Android 8.1 introduces support for the Vehicle Mapping Service (VMS), a new
-vehicle property intended for use only in Android Automotive implementations.
-VMS can be used for in-vehicle mapping services that support common vehicle
-features such as advanced driver assistance
-(<a href="https://en.wikipedia.org/wiki/Advanced_driver-assistance_systems" class="external">ADAS</a>).
+<p>
+  The Vehicle Map Service (VMS) provides a mechanism to exchange map data
+  between clients through a pub/sub interface to support common vehicle features
+  such as advanced driver assistance
+  (<a href="https://en.wikipedia.org/wiki/Advanced_driver-assistance_systems" class="external">ADAS</a>).
+  Clients may include vehicle systems interfacing through the VMS property in
+  the Vehicle HAL or privileged Android applications. Data shared on VMS are
+  intended to be limited to map data for use by vehicle systems and supporting
+  apps.
+</p>
 
-<aside class="note"><strong>Note:</strong> For details on compatibility
-requirements for Automotive, see
-<a href="https://source.android.com/compatibility/android-cdd#2_5_automotive_requirements">Automotive
-Requirements</a>.</aside>
+<p>VMS is intended for use only in Android Automotive implementations; AOSP does
+  not contain default clients that publish or subscribe to VMS.
+</p>
 
-<p>The VMS property is a complex data type that expresses map data exchanged
-between an Android Automotive implementation and the underlying vehicle hardware
-responsible for managing onboard mapping data.</p>
+<p>
+  For the VMS property in the Vehicle HAL, the message types and data structures
+  are described in
+  <a href="https://android.googlesource.com/platform/hardware/interfaces/+/master/automotive/vehicle/2.0/types.hal" class="external">Vehicle
+  HAL 2.0</a> in the
+  <a href="https://android.googlesource.com/platform/hardware/interfaces/+/master/automotive/vehicle/2.0/types.hal#3216" class="external">VmsMessageType</a>
+  enum, which lists the types of supported VMS messages. This enum is used as
+  the first integer in the vehicle property integers array and determines how
+  the rest of the message is decoded.
+</p>
 
-<p>AOSP does not contain a default implementation of VMS, which currently
-exists only as the property and related enumeration. Message types and data
-structures are described in
-<a href="https://android.googlesource.com/platform/hardware/interfaces/+/master/automotive/vehicle/2.0/types.hal">Vehicle
-HAL 2.0</a> in the
-<a href="https://android.googlesource.com/platform/hardware/interfaces/+/master/automotive/vehicle/2.0/types.hal#3216">VmsMessageType</a>
-enum, which lists the types of supported VMS messages. This enum is used as the
-first integer in the vehicle property integers array and determines how the rest
-of the message is decoded.</p>
+<aside class="note">
+  <strong>Note:</strong> For details on compatibility requirements for
+  Automotive, see
+  <a href="/compatibility/android-cdd#2_5_automotive_requirements">Automotive
+  Requirements</a>.
+</aside>
 
   </body>
 </html>

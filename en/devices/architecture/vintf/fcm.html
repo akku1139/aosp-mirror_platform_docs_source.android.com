@@ -1,0 +1,446 @@
+<html devsite>
+  <head>
+    <title>FCM Lifecycle</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  {% include "_versions.html" %}
+  <body>
+  <!--
+      Copyright 2018 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>An Android framework release has multiple Framework Compatibility Matrices
+(FCMs)&mdash;one for each upgradable Target FCM Version&mdash;that define what
+the framework may use and Target FCM version requirements. As part of the FCM
+lifecycle, Android deprecates and removes HIDL HALs, then modifies FCM files to
+reflect the status of the <a href="#hal-version-status">HAL Version</a>.
+
+<p>To enable framework-only OTAs in their own ecosystems, partners who extend
+vendor interfaces should also deprecate and remove HIDL HALs using the same
+methods.</p>
+
+<aside class="note"><strong>Note:</strong> For more details on HIDL HALs, see
+<a href="/devices/architecture/vintf/comp-matrices">Compatibility Matrices</a>,
+<a href="/devices/architecture/vintf/match-rules">Matching Rules</a>, and
+<a href="/devices/architecture/hidl/versioning">HIDL HAL Versioning</a>.</aside>
+
+<h2 id=terminology>Terminology</h2>
+
+<table>
+<tr>
+<th>Framework Compatibility Matrix (FCM)</th>
+<td>An XML file that specifies framework requirements on conforming vendor
+implementations. The compatibility matrix is versioned, and a new version
+is frozen for each framework release. Each framework release contains
+multiple FCMs.</td>
+</tr>
+<tr>
+<th>Platform FCM Versions (S<sub>F</sub>)</th>
+<td>The set of all FCM versions in a framework release. The framework can work
+with any vendor implementation that satisfies one of these FCMs.</td>
+</tr>
+<tr>
+<th>FCM Version (F)</th>
+<td>The highest version among all FCMs in a framework release.</td>
+</tr>
+<tr>
+<th>Target FCM Version (V)</th>
+<td>The targeted FCM version (from S<sub>F</sub>), declared explicitly in the
+  device manifest, that a vendor implementation satisfies. A vendor
+  implementation must be generated against a published FCM, although it may
+declare newer HAL versions in its Device Manifest.</td>
+</tr>
+<tr>
+<th>HAL Version</th>
+<td>A HAL Version has the format <code>foo@x.y</code>, where <code>foo</code>
+is the HAL name and <code>x.y</code> is the specific version; e.g.
+<code>nfc@1.0</code>, <code>keymaster@3.0</code> (the root prefix, e.g.
+<code>android.hardware</code>, is omitted throughout this document.)</td>
+</tr>
+<tr>
+<th>Device Manifest</th>
+<td>An XML file that specifies what HAL versions the vendor image provides. The
+contents of a device manifest are constrained by the Target FCM version of
+the device but can list HALs that are strictly newer relative to the FCM
+corresponding to V.</td>
+</tr>
+</table>
+
+
+<h2 id=develop-new-fcm>Developing in a new FCM Version</h2>
+<p>Android increments the FCM Version for each framework release (such as
+Android 8, 8.1, etc). During development, the new
+<code>compatibility_matrix.current.xml</code> is created (<code>F</code>) and
+the existing <code>compatibility_matrix.f.xml</code> (where <code>f</code> &lt;
+<code>F</code>) is no longer changed.</p>
+
+<p>To start developing in a new FCM Version <code>F</code>:</p>
+
+<ol>
+<li>Copy the latest <code>compatibility_matrix.&lt;F-1&gt;.xml</code> to
+<code>compatibility_matrix.current.xml</code>.</li>
+<li>Update the <code>level</code> attribute in the file to <code>F</code>.</li>
+<li>Add corresponding build rules to install this compatibility matrix to the
+device.</li>
+</ol>
+
+<h2 id=introduce-new-hal>Introducing a new HAL</h2>
+<p>During development, when introducing a new HAL (Wi-Fi, NFC, etc.) to Android
+on the current FCM Version <code>F</code>, add the HAL to
+<code>compatibility_matrix.current.xml</code> with the following
+<code>optional</code> settings:</p>
+
+<ul>
+<li><code>optional="false"</code> if devices that ship with <code>V = F</code>
+must launch with this HAL,<br>
+<br>
+OR
+<br>
+</li>
+<li><code>optional="true"</code> if devices that ship with <code>V = F</code>
+can launch without this HAL.</li>
+</ul>
+
+<p>For example, Android 8.1 introduced <code>cas@1.0</code> as an optional HAL.
+Devices launching with Android 8.1 are not required to implement this HAL, so
+the following entry was added to <code>compatibility_matrix.current.xml</code>
+(renamed to <code><a
+href="https://android.googlesource.com/platform/hardware/interfaces/+/241e5aba9ebfe85a9599b333f89be51905148f81/compatibility_matrices/compatibility_matrix.2.xml#74" class="external">compatibility_matrix.2.xml</code></a>
+after Android 8.1 released):</p>
+
+<pre class="prettyprint">
+&lt;hal format="hidl" optional="true"&gt;
+    &lt;name&gt;android.hardware.cas&lt;/name&gt;
+    &lt;version&gt;1.0&lt;/version&gt;
+    &lt;interface&gt;
+        &lt;name&gt;IMediaCasService&lt;/name&gt;
+        &lt;instance&gt;default&lt;/instance&gt;
+    &lt;/interface&gt;
+&lt;/hal&gt;
+</pre>
+
+<h2 id=upgrade-hal-minor>Upgrading a HAL (minor)</h2>
+<p>During development, when a HAL has a minor-version upgrade from
+<code>x.z</code> to <code>x.(z+1)</code> at current FCM Version <code>F</code>,
+if that version is:</p>
+
+<ul>
+<li>Required on devices launching with <code>V = F</code>, the
+<code>compatibility_matrix.current.xml</code> must state <code>x.(z+1)</code>and
+<code>optional="false"</code>.</li>
+<li>Not required on devices launching with <code>V = F</code>, the
+<code>compatibility_matrix.current.xml</code> must copy <code>x.y-z</code> and
+optionality from <code>compatibility_matrix.&lt;F-1&gt;.xml</code> and change
+the version to <code>x.w-(z+1)</code> (where <code>w &gt;= y</code>).</li>
+</ul>
+
+<p>For example, Android 8.1 introduced <code>broadcastradio@1.1</code> as a
+minor version upgrade of 1.0 HAL. The older version,
+<code>broadcastradio@1.0</code>, is optional for devices launching with Android
+8.0 while the newer version, <code>broadcastradio@1.1</code>, is optional for
+devices launching with Android 8.1. In <code><a
+href="https://android.googlesource.com/platform/hardware/interfaces/+/241e5aba9ebfe85a9599b333f89be51905148f81/compatibility_matrices/compatibility_matrix.1.xml#58" class="external">compatibility_matrix.1.xml</code></a>:</p>
+
+<pre class="prettyprint">
+&lt;hal format="hidl" optional="true"&gt;
+    &lt;name&gt;android.hardware.broadcastradio&lt;/name&gt;
+    &lt;version&gt;1.0&lt;/version&gt;
+    &lt;interface&gt;
+        &lt;name&gt;IBroadcastRadioFactory&lt;/name&gt;
+        &lt;instance&gt;default&lt;/instance&gt;
+    &lt;/interface&gt;
+&lt;/hal&gt;
+</pre>
+
+<p>This entry was copied to <code>compatibility_matrix.current.xml</code>
+(renamed to <code><a
+href="https://android.googlesource.com/platform/hardware/interfaces/+/241e5aba9ebfe85a9599b333f89be51905148f81/compatibility_matrices/compatibility_matrix.2.xml#58">compatibility_matrix.2.xml</code></a>
+after Android 8.1 released) and modified as follows:</p>
+
+<pre class="prettyprint">
+&lt;hal format="hidl" optional="true"&gt;
+    &lt;name&gt;android.hardware.broadcastradio&lt;/name&gt;
+    &lt;version&gt;1.0-1&lt;/version&gt;
+    &lt;interface&gt;
+        &lt;name&gt;IBroadcastRadioFactory&lt;/name&gt;
+        &lt;instance&gt;default&lt;/instance&gt;
+    &lt;/interface&gt;
+&lt;/hal&gt;
+</pre>
+
+<h2 id=upgrade-hal-major>Upgrading a HAL (major)</h2>
+<p>During development, when a HAL has a major-version upgrade at current FCM
+Version <code>F</code>, the new major version <code>x.0</code> is added to
+<code>compatibility_matrix.current.xml</code> with the following
+<code>optional</code> settings:</p>
+
+<ul>
+<li><code>optional="false"</code> with only version <code>x.0</code>, if devices
+that ship with <code>V = F</code> must launch with <code>x.0</code>.</li>
+<li><code>optional="false"</code> but along with older major versions in the
+same <code>&lt;hal&gt;</code> tag, if devices that ship with <code>V = F</code>
+must launch with this HAL, but can launch with an older major version.</li>
+<li><code>optional="true"</code> if devices that ship with <code>V = F</code> do
+not have to launch the HAL.</li>
+</ul>
+
+<p>For example, Android {{ androidPVersionNumber }} introduces
+<code>health@2.0</code> as a major-version upgrade of the 1.0 HAL and deprecates
+the 1.0 HAL. The older version, <code>health@1.0</code>, is optional for devices
+launching with Android 8.0 and Android 8.1. Devices launching with Android
+{{ androidPVersionNumber }} must not provide the deprecated 1.0 HAL and must
+instead provide the new 2.0 version. In <code><a
+href="https://android.googlesource.com/platform/hardware/interfaces/+/241e5aba9ebfe85a9599b333f89be51905148f81/compatibility_matrices/compatibility_matrix.legacy.xml#150" class="external">compatibility_matrix.legacy.xml</code></a>,
+<code><a
+href="https://android.googlesource.com/platform/hardware/interfaces/+/241e5aba9ebfe85a9599b333f89be51905148f81/compatibility_matrices/compatibility_matrix.1.xml#150" class="external">compatibility_matrix.1.xml</code></a>,
+and <code><a
+href="https://android.googlesource.com/platform/hardware/interfaces/+/241e5aba9ebfe85a9599b333f89be51905148f81/compatibility_matrices/compatibility_matrix.2.xml#158" class="external">compatibility_matrix.2.xml</code></a>:</p>
+
+<pre class="prettyprint">
+&lt;hal format="hidl" optional="true"&gt;
+    &lt;name&gt;android.hardware.health&lt;/name&gt;
+    &lt;version&gt;1.0&lt;/version&gt;
+    &lt;interface&gt;
+        &lt;name&gt;IHealth&lt;/name&gt;
+        &lt;instance&gt;default&lt;/instance&gt;
+    &lt;/interface&gt;
+&lt;/hal&gt;
+</pre>
+
+<p>This entry is copied to <code>compatibility_matrix.current.xml</code>
+(renamed to <code>compatibility_matrix.3.xml</code> with the Android
+{{ androidPVersionNumber }} release) and modified as follows:</p>
+
+<pre class="prettyprint">
+&lt;hal format="hidl" optional="false"&gt;
+    &lt;name&gt;android.hardware.health&lt;/name&gt;
+    &lt;version&gt;2.0&lt;/version&gt;
+    &lt;interface&gt;
+        &lt;name&gt;IHealth&lt;/name&gt;
+        &lt;instance&gt;default&lt;/instance&gt;
+    &lt;/interface&gt;
+&lt;/hal&gt;
+</pre>
+
+<p>Restrictions:</p>
+<ul>
+<li>Because the 2.0 HAL is in <code>compatibility_matrix.3.xml</code> with
+<code>optional="false"</code>, devices that launch with Android
+{{ androidPVersionNumber }} must ship with 2.0 HAL.</li>
+<li>Because the 1.0 HAL is not in <code>compatibility_matrix.3.xml</code>,
+devices that launch with Android {{ androidPVersionNumber }} must not provide
+the 1.0 HAL (as this HAL is considered deprecated).</li>
+<li>Because the 1.0 HAL is present in legacy/1/2.xml (older FCM Versions that
+Android {{ androidPVersionNumber }} can work with) as an optional HAL, the
+Android {{ androidPVersionNumber }} framework can still work with the 1.0 HAL
+(which is not considered a removed HAL Version).</li>
+</ul>
+
+<h2 id=new-fcm-versions>New FCM Versions</h2>
+<p>The process of releasing an FCM Version is done solely by Google as part of
+an AOSP release and includes the following steps:</p>
+
+<ol>
+<li>Rename <code>compatibility_matrix.current.xml</code> to
+<code>compatibility_matrix.F.xml</code>.</li>
+<li>Ensure the file has the attribute <code>level="F"</code>.</li>
+<li>Edit corresponding <a
+href="https://android.googlesource.com/platform/hardware/interfaces/+/2d8442c76270b2c32816d1dac56bbd536b0bf790/compatibility_matrices/Android.mk" class="external">build
+rules</a> to reflect the file name change.</li>
+<li>Ensure all devices build and boot.</li>
+<li><a
+href="https://android.googlesource.com/platform/test/vts-testcase/hal/+/95e09aca7711cace6184077debc556b05335a8b1/treble/vintf/vts_treble_vintf_test.cpp#87" class="external">Update
+VTS tests</a> to ensure devices launching with the latest framework (based
+on Shipping API level) have Target FCM Version <code>V &gt;= F</code>.</li>
+<li>Publish file to AOSP.</li>
+</ol>
+
+<p>This file <strong>cannot</strong> be changed once renamed and published. For
+example, during Android {{ androidPVersionNumber }} development the following
+files are <a
+href="https://android.googlesource.com/platform/hardware/interfaces/+/241e5aba9ebfe85a9599b333f89be51905148f81/compatibility_matrices/Android.mk" class="external">built</a>
+for <code>hardware/interfaces/compatibility_matrices/</code>:</p>
+
+<ul>
+<li><code>compatibility_matrix.legacy.xml</code></li>
+<li><code>compatibility_matrix.1.xml</code></li>
+<li><code>compatibility_matrix.2.xml</code></li>
+<li><code>compatibility_matrix.current.xml</code></li>
+</ul>
+
+<p>When Android {{ androidPVersionNumber }} is released,
+<code>compatibility_matrix.current.xml</code> is renamed to
+<code>compatibility_matrix.3.xml</code> and the following files are
+built for <code>hardware/interfaces/compatibility_matrices/</code>:</p>
+
+<ul>
+<li><code>compatibility_matrix.legacy.xml</code></li>
+<li><code>compatibility_matrix.1.xml</code></li>
+<li><code>compatibility_matrix.2.xml</code></li>
+<li><code>compatibility_matrix.3.xml</code></li>
+</ul>
+
+<p>
+<a href="https://android.googlesource.com/platform/test/vts-testcase/hal/+/95e09aca7711cace6184077debc556b05335a8b1/treble/vintf/vts_treble_vintf_test.cpp#435" class="external">VTS
+tests</a> ensure that devices launching with Android {{ androidPVersionNumber }}
+have Target FCM Version &gt;= 3.</p>
+
+<h2 id=hal-version-deprecation>HAL Version deprecation</h2>
+
+<p>Deprecating a HAL Version is a developer decision (i.e. for AOSP HALs, Google
+makes the decision). It could happen when a higher HAL version (whether minor or
+major) is released. When a given HAL <code>foo@x.y</code> is deprecated at FCM
+Version <code>F</code>, it means that any device launching with Target FCM
+Version <code>V = F</code> or later must not implement <code>foo</code> at
+version <code>x.y</code> or any version older than <code>x.y</code>. A
+deprecated HAL version is still supported by the framework for upgrading
+devices.</p>
+
+<p>When FCM Version <code>F</code> is released, a HAL Version
+<code>foo@x.y</code> is considered deprecated if the specific HAL Version is not
+explicitly stated in the latest FCM for Target FCM Version <code>V = F</code>.
+For devices launching with <code>V</code>, one of the following conditions is
+true:</p>
+
+<ul>
+<li>The framework requires a higher version (major or minor);</li>
+<li>The framework doesn't require the HAL anymore.</li>
+</ul>
+
+<p>For example, in Android {{ androidPVersionNumber }}, <code>health@2.0</code>
+is introduced as a major version upgrade of 1.0 HAL. <code>health@1.0</code> is
+removed from <code>compatibility_matrix.3.xml</code> but is present in <code><a
+href="https://android.googlesource.com/platform/hardware/interfaces/+/241e5aba9ebfe85a9599b333f89be51905148f81/compatibility_matrices/compatibility_matrix.legacy.xml#150" class="external">compatibility_matrix.legacy.xml</code></a>,
+<code><a
+href="https://android.googlesource.com/platform/hardware/interfaces/+/241e5aba9ebfe85a9599b333f89be51905148f81/compatibility_matrices/compatibility_matrix.1.xml#150" class="external">compatibility_matrix.1.xml</code></a>,
+and <code><a
+href="https://android.googlesource.com/platform/hardware/interfaces/+/241e5aba9ebfe85a9599b333f89be51905148f81/compatibility_matrices/compatibility_matrix.2.xml#158" class="external">compatibility_matrix.2.xml</code></a>.
+Hence, <code>health@1.0</code> is considered deprecated.</p>
+
+<h2 id=removal-of-support>Removal of support for Target FCM Versions</h2>
+<p>When active devices of a certain Target FCM Version <code>V</code> drop below
+a certain threshold, the Target FCM Version is removed from the set
+S<sub>F</sub> of the next framework release. This is done by removing
+<code>compatibility_matrix.V.xml</code> from the build rules (so that it is no
+longer installed on the system image), and by deleting any code that implemented
+or depended on the removed functionality. Devices with a target FCM Version
+outside of S<sub>F</sub> for a given framework release cannot upgrade to that
+release.</p>
+
+<h2 id=hal-version-status>HAL Version status</h2>
+<p>The following sections describe (in chronological order) the possible states
+of a HAL Version.</p>
+
+<h3 id=hal-unreleased>Unreleased</h3>
+<p>If a HAL Version is not in any of the public and frozen compatibility
+matrices, it is considered unreleased and possibly in development. This includes
+HAL Versions that are only in <code>compatibility_matrix.current.xml</code>.
+Examples:</p>
+
+<ul>
+<li>During the development of Android {{ androidPVersionNumber }} (before
+<code>compatibiility_matrix.current.xml</code> is renamed to
+<code>compatibility_matrix.3.xml</code>), the <code>health@2.0</code> HAL was
+considered an unreleased HAL.</li>
+<li>The <code>teleportation@1.0</code> HAL is not in any released compatibility
+matrices, and is also considered an unreleased HAL.</li>
+</ul>
+
+<h3 id=hal-released-and-current>Released and Current</h3>
+<p>If a HAL Version is in any public and frozen compatibility matrix, it is
+released. For example, after FCM Version 3 is frozen (when
+<code>compatibiility_matrix.current.xml</code> is renamed to
+<code>compatibility_matrix.3.xml</code>) and published to AOSP, the
+<code>health@2.0</code> HAL is considered a released and current HAL Version.
+</p>
+
+<p>If a HAL Version is in a public and frozen compatibility matrix that has
+the highest FCM Version (excluding
+<code>compatibility_matrix.current.xml</code>), the HAL version is current (i.e.
+not deprecated). For example, existing HAL Versions (such as
+<code>nfc@1.0</code> introduced in <code><a
+href="https://android.googlesource.com/platform/hardware/interfaces/+/241e5aba9ebfe85a9599b333f89be51905148f81/compatibility_matrices/compatibility_matrix.legacy.xml#198" class="external">compatibility_matrix.legacy.xml</code></a>)
+that continue to exist in <code>compatibility_matrix.3.xml</code> are also
+considered as released and current HAL Versions.</p>
+
+<h3 id=hal-released-but-deprecated>Released but Deprecated</h3>
+<p>A HAL Version is deprecated if and only if:</p>
+
+<ul>
+<li>It is released;</li>
+<li>It is not in the public and frozen compatibility matrix that has the highest
+FCM Version;</li>
+<li>It is in a public and frozen compatibility matrix that the framework still
+supports.</li>
+</ul>
+
+<p>Examples:</p>
+
+<ul>
+<li>The <code>health@1.0</code> HAL is in in <code><a
+href="https://android.googlesource.com/platform/hardware/interfaces/+/241e5aba9ebfe85a9599b333f89be51905148f81/compatibility_matrices/compatibility_matrix.legacy.xml#150" class="external">compatibility_matrix.legacy.xml</code></a>,
+<code><a
+href="https://android.googlesource.com/platform/hardware/interfaces/+/241e5aba9ebfe85a9599b333f89be51905148f81/compatibility_matrices/compatibility_matrix.1.xml#150" class="external">compatibility_matrix.1.xml</code></a>,
+and <code><a
+href="https://android.googlesource.com/platform/hardware/interfaces/+/241e5aba9ebfe85a9599b333f89be51905148f81/compatibility_matrices/compatibility_matrix.2.xml#158" class="external">compatibility_matrix.2.xml</code></a>,
+but not in <code>compatibility_matrix.3.xml</code>. Hence it is considered
+deprecated in Android {{ androidPVersionNumber }}.</li>
+<li>The power HAL has a minor version upgrade in Android
+{{ androidPVersionNumber }}, but <code>power@1.0</code> is still in
+<code>compatibility_matrix.3.xml</code>.
+<ul>
+<li><code>power@1.0</code> is in <code><a
+href="https://android.googlesource.com/platform/hardware/interfaces/+/241e5aba9ebfe85a9599b333f89be51905148f81/compatibility_matrices/compatibility_matrix.legacy.xml#206" class="external">compatibility_matrix.legacy.xml</code></a>,
+<code><a
+href="https://android.googlesource.com/platform/hardware/interfaces/+/241e5aba9ebfe85a9599b333f89be51905148f81/compatibility_matrices/compatibility_matrix.1.xml#206" class="external">compatibility_matrix.1.xml</code></a>,
+and <code><a
+href="https://android.googlesource.com/platform/hardware/interfaces/+/241e5aba9ebfe85a9599b333f89be51905148f81/compatibility_matrices/compatibility_matrix.2.xml#222" class="external">compatibility_matrix.2.xml</code></a>.</li>
+<li><code>compatibility_matrix.3.xml</code> has <code>power@1.0-1</code>.</li>
+</ul>
+</li>
+</ul>
+
+<p>Hence <code>power@1.0</code> is current, but <strong>NOT</strong> deprecated,
+in Android {{ androidPVersionNumber }}.</p>
+
+<h3 id=hal-removed>Removed</h3>
+<p>A HAL Version is removed if and only if:</p>
+
+<ul>
+<li>It was previously released;</li>
+<li>It is not in any public and frozen compatibility matrix that the framework
+supports. </li>
+</ul>
+
+<p>Compatibility matrices that are public, frozen, but not supported by the
+framework are kept in the code base to define the removed HAL Versions set so
+that VTS tests can be written to ensure removed HALs are not on new devices.
+</p>
+
+<h2>Legacy FCMs</h2>
+<p>Target FCM Version legacy is a special value for all non-Treble devices. The
+legacy FCM, <code>compatibility_matrix.legacy.xml</code>, lists the requirements
+of the framework on legacy devices (i.e. devices launched prior to Android 8.0).
+</p>
+
+<p>If this file exists for an FCM with version <code>F</code>, any non-Treble
+device can be upgraded to <code>F</code> provided its device manifest is
+compatible with this file. Its removal follows the same procedure as FCMs for
+other Target FCM Versions (removed after the number of active pre-8.0 devices
+drops below a certain threshold).</p>
+
+</body>
+</html>

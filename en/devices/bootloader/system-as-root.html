@@ -1,0 +1,399 @@
+<html devsite>
+<head>
+  <title>System-as-root</title>
+  <meta name="project_path" value="/_project.yaml">
+  <meta name="book_path" value="/_book.yaml">
+</head>
+{% include "_versions.html" %}
+<body>
+  <!--
+      Copyright 2018 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+  <p>All new devices launching with Android {{ androidPVersionNumber }} must use system-as-root
+  (<code>BOARD_BUILD_SYSTEM_ROOT_IMAGE</code> must be <code>true</code>), which
+  merges <code>ramdisk.img</code> into <code>system.img</code>, which in turn
+  is mounted as rootfs. For devices upgrading to Android {{ androidPVersionNumber }}, system-as-root is
+  not mandatory. This document describes system-as-root, lists kernel
+  requirements for dm-verity support (including dependent kernel patches), and
+  provides setup examples.</p>
+
+
+  <h2 id="about-system-only-otas">About system-only OTAs</h2>
+
+
+  <p>The current Android ecosystem supports <a href=
+  "/devices/tech/ota/ab/ab_faqs#how-did-ab-affect-the-2016-pixel-partition-sizes">
+  two types of partition layout</a>:</p>
+
+
+  <ul>
+    <li>In an A/B partitioning scheme, the <code>system</code> partition is
+    mounted as rootfs.</li>
+
+
+    <li>In a non-A/B partitioning scheme, the <code>ramdisk.img</code> in the
+    <code>/boot</code> partition is loaded into memory (which in turn is
+    mounted as rootfs) while the <code>system</code> partition is mounted at
+    <code>/system</code>.</li>
+  </ul>
+
+
+  <p>System-only OTAs, in which a <code>system.img</code> can be updated across
+  major Android releases without changing other partitions, are supported by
+  the architectural changes made in Android 8.0 as part of
+  <a href="/devices/architecture/#hidl">Project Treble.</a>
+  However, for non-A/B devices, as <code>ramdisk.img</code> is in
+  <code>/boot</code> partition, it cannot be updated via a system-only OTA
+  using the Android 8.x architecture. As a result, an old
+    <code>ramdisk.img</code> might not work with a new <code>system.img</code>
+  for the following reasons:</p>
+
+
+  <ul>
+    <li>The older <code>/init</code> in <code>ramdisk.img</code> might not be
+    able to parse the *.rc files on <code>/system</code>.</li>
+
+
+    <li>The ramdisk contains <code>/init.rc</code>, which also may be out of
+    date compared to what is required for the new <code>/system</code>.</li>
+  </ul>
+
+
+  <p>To ensure system-only OTAs work as expected, system-as-root is
+  <strong>mandatory</strong> in Android {{ androidPVersionNumber }}. Non-A/B devices must switch from
+  ramdisk partition layout to system-as-root partition layout; A/B devices do
+  not need to change as they already must use system-as-root.</p>
+
+
+  <h2 id="about-ab-nonab-devices">About A/B and non-A/B devices</h2>
+
+
+  <p>A/B devices and non-A/B devices have the following partition details:</p>
+
+
+  <table>
+    <tr>
+      <th>A/B Devices</th>
+
+      <th>Non-A/B Devices</th>
+    </tr>
+    <tr>
+      <td>
+        Each partition (except userdata) has two copies (slots):
+
+        <ul>
+          <li>/boot_a</li>
+
+
+          <li>/boot_b</li>
+
+
+          <li>/system_a</li>
+
+
+          <li>/system_b</li>
+
+
+          <li>/vendor_a</li>
+
+
+          <li>/vendor_b</li>
+
+
+          <li>...</li>
+        </ul>
+      </td>
+
+      <td>
+        Each partition has one copy, no other backup partitions.
+
+        <ul>
+          <li>/boot</li>
+
+
+          <li>/system</li>
+
+
+          <li>/vendor</li>
+
+
+          <li>...</li>
+        </ul>
+      </td>
+    </tr>
+  </table>
+
+
+  <p>For details on A/B and non-A/B devices, refer to <a href=
+  "/devices/tech/ota/ab_updates">A/B (Seamless)
+  System Updates.</a></p>
+
+
+  <h2 id="about-system-as-root">About system-as-root</h2>
+
+
+  <p>In Android {{ androidPVersionNumber }}, non-A/B devices should adopt system-as-root so they can be
+  updated via a system-only OTA.</p>
+
+
+<aside class="note"><strong>Note</strong>: For devices using an A/B partitioning scheme,
+      no changes are required.</aside>
+
+
+  <p>Unlike A/B devices that re-purpose <code>/boot</code> as the <a href=
+  "/devices/tech/ota/ab_implement#recovery">recovery</a>
+  partition, <strong>non-A/B devices must keep the <code>/recovery</code>
+  partition separate as they do not have the fallback slot partition</strong>
+  (e.g., from <code>boot_a</code> → <code>boot_b</code>). If
+  <code>/recovery</code> is removed on non-A/B device and made similar to the
+  A/B scheme, recovery mode could break during a failed update to
+  <code>/boot</code> partition. For this reason, the <code>/recovery</code>
+  partition <strong>must</strong> be a separate partition than
+  <code>/boot</code> for non-A/B devices, which implies the recovery image will
+  continue to be updated in a deferred manner (i.e. the same as in <a href=
+  "/devices/tech/ota/nonab/#life-ota-update">pre-{{ androidPVersionNumber }}</a>
+  devices).</p>
+
+
+  <p>Partition layout differences for non-A/B devices before and after Android
+  {{ androidPVersionNumber }}:</p>
+
+
+  <table>
+    <tr>
+      <th>Component
+      </th>
+
+      <th>Image
+      </th>
+
+      <th>ramdisk (before {{ androidPVersionNumber }})
+      </th>
+
+      <th>system-as-root (after {{ androidPVersionNumber }})
+      </th>
+    </tr>
+
+
+    <tr>
+      <td rowspan="3"><strong>Image Content</strong>
+      </td>
+
+      <td>boot.img</td>
+
+      <td>
+        Contains a kernel and a ramdisk.img:
+
+        <pre class="prettyprint">ramdisk.img
+  -/
+    - init.rc
+    - init
+    - etc -&gt; /system/etc
+    - system/ (mount point)
+    - vendor/ (mount point)
+    - odm/ (mount point)
+    ...</pre>
+      </td>
+
+      <td>Contains a normal boot kernel only.</td>
+    </tr>
+
+
+    <tr>
+      <td>recovery.img</td>
+
+      <td colspan="2">Contains a recovery kernel and a
+      recovery-ramdisk.img.</td>
+    </tr>
+
+
+    <tr>
+      <td>system.img</td>
+
+      <td>
+        Contains the following:
+
+        <pre class="prettyprint">system.img
+  -/
+    - bin/
+    - etc
+    - vendor -&gt; /vendor
+    - ...</pre>
+      </td>
+
+      <td>
+        Contains the merged content of original system.img and ramdisk.img:
+
+        <pre class="prettyprint">system.img
+  -/
+    - init.rc
+    - init
+    - etc -&gt; /system/etc
+    - system/
+      - bin/
+      - etc/
+      - vendor -&gt; /vendor
+      - ...
+    - vendor/ (mount point)
+    - odm/ (mount point)
+    ...</pre>
+      </td>
+    </tr>
+
+
+    <tr>
+      <td><strong>Partition Layout</strong>
+      </td>
+
+      <td>N/A</td>
+
+      <td>
+        <ol>
+          <li>/boot</li>
+
+
+          <li>/system</li>
+
+
+          <li>/recovery</li>
+
+
+          <li>/vendor, … etc</li>
+        </ol>
+      </td>
+
+      <td>
+        <ol>
+          <li>/boot</li>
+
+
+          <li>/system</li>
+
+
+          <li>/recovery</li>
+
+
+          <li>/vendor, … etc</li>
+        </ol>
+      </td>
+    </tr>
+  </table>
+
+
+  <h2 id="setting-up-dm-verity">Setting up dm-verity</h2>
+
+
+  <p>In system-as-root, the kernel must mount <code>system.img</code> under
+  <strong><code>/</code></strong> (mount point) with <a href=
+  "https://www.kernel.org/doc/Documentation/device-mapper/verity.txt"class="external">dm-verity</a>.
+  AOSP supports the following dm-verity implementations for
+  <code>system.img</code>:</p>
+
+
+  <ol>
+    <li>For <a href="/security/verifiedboot/">vboot
+    1.0</a>, the kernel must parse android-specific <a href=
+    "/security/verifiedboot/dm-verity#metadata">metadata</a>
+    on <code>/system</code>, then convert to <a href=
+    "https://www.kernel.org/doc/Documentation/device-mapper/verity.txt"class="external">dm-verity
+    params</a> to set up dm-verity. Requires these <a href=
+    "/devices/tech/ota/ab_implement#kernel">kernel-patches</a>.</li>
+
+
+    <li>For vboot 2.0 (<a href=
+    "https://android.googlesource.com/platform/external/avb/"class="external">AVB</a>), the
+    bootloader must integrate <a href=
+    "https://android.googlesource.com/platform/external/avb/+/master/libavb/"class="external">
+      external/avb/libavb</a>, which then parses the <a href=
+      "https://android.googlesource.com/platform/external/avb/+/master/libavb/avb_hashtree_descriptor.h"class="external">
+      hashtree descriptor</a> for <code>/system</code>, converts it to <a href=
+      "https://www.kernel.org/doc/Documentation/device-mapper/verity.txt"class="external">dm-verity
+      params</a>, and finally passes the params to the kernel via kernel
+      command line. (Hashtree descriptors of <code>/system</code> might be on
+      <code>/vbmeta</code> or on <code>/system</code> itself.)<br>
+      <br>
+      Requires the following kernel-patches:
+
+      <ul>
+        <li><a href=
+        "https://android-review.googlesource.com/#/c/kernel/common/+/158491/"class="external">https://android-review.googlesource.com/#/c/kernel/common/+/158491/</a>
+        </li>
+
+
+        <li><a href="https://android-review.googlesource.com/q/hashtag:avb-kernel-patch-4.4"class="external">kernel 4.4 patches</a>,
+          <a href="https://android-review.googlesource.com/q/hashtag:avb-kernel-patch-4.9"class="external">kernel 4.9 patches</a>, etc.
+<aside class="note"><strong>Note</strong>: The above AVB-specific kernel patch files are also available on
+  <a href="https://android.googlesource.com/platform/external/avb/+/master/contrib/linux/"class="external">external/avb/contrib/linux/</a>
+  {4.4,4.9,etc.}/*.
+</aside>
+        </li>
+      </ul>
+    </li>
+  </ol>
+
+
+  <p>Examples from real devices showing dm-verity related settings for
+  system-as-root in kernel command line:</p>
+
+
+  <p><strong><em>vboot 1.0</em></strong>
+  </p>
+
+  <pre class="prettyprint">ro root=/dev/dm-0 rootwait skip_initramfs init=/init
+dm="system none ro,0 1 android-verity /dev/sda34"
+veritykeyid=id:7e4333f9bba00adfe0ede979e28ed1920492b40f</pre>
+
+  <p><strong><em>vboot 2.0 (AVB)</em></strong>
+  </p>
+
+  <pre class="prettyprint">
+ro root=/dev/dm-0 rootwait  skip_initramfs init=/init
+
+dm="1 vroot none ro 1,0 5159992 verity 1
+PARTUUID=00000016-0000-0000-0000-000000000000
+PARTUUID=00000016-0000-0000-0000-000000000000 4096 4096 644999 644999
+sha1 d80b4a8be3b58a8ab86fad1b498640892d4843a2
+8d08feed2f55c418fb63447fec0d32b1b107e42c 10 restart_on_corruption
+ignore_zero_blocks use_fec_from_device
+PARTUUID=00000016-0000-0000-0000-000000000000 fec_roots 2 fec_blocks
+650080 fec_start 650080"
+  </pre>
+
+  <h2 id="device-specific-folders">Device-specific root folders</h2>
+
+
+<p>With system-as-root, after the <a href="/setup/build/gsi">Generic System Image (GSI)</a>
+  is flashed on the device (and before running <a href="/compatibility/vts/">Vendor Test Suite</a>
+  tests), any device-specific root folders added via
+  <code>BOARD_ROOT_EXTRA_FOLDERS</code> will be gone because the entire root
+  directory content has been replaced by the system-as-root GSI. The removal of
+  these folders might cause the device to become unbootable if a dependency on
+  the device-specific root folders exists (e.g., they are used as mount
+  points).</p>
+
+
+  <p>To avoid this issue, do not use <code>BOARD_ROOT_EXTRA_FOLDERS</code> to
+  add device-specific root folders (it will likely be deprecated in the
+  future). If you need to specify device-specific mount points, use
+  <code>/mnt/vendor/&lt;mount point&gt;</code> (added in these <a href=
+  "https://android-review.googlesource.com/q/topic:vmount"class="external">changelists</a>).
+  These vendor-specific mount points can be directly specified in both the
+  <code>fstab</code> device tree (for first-stage mount) and the
+  <code>/vendor/etc/fstab.{ro.hardware}</code> file without additional setup
+  (as <code>fs_mgr</code> will create them under <code>/mnt/vendor/*</code>
+  automatically).</p>
+</body>
+</html>

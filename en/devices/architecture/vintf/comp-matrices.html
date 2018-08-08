@@ -26,19 +26,20 @@ the <a href="#compatibility-matrix-schema">compatibility matrix schema</a>. For
 match rules, see <a href="/devices/architecture/vintf/match-rules.html">Matching
 Rules</a>.</p>
 
-<h2 id="framework-compatibility-matrix">Framework compatibility matrix</h2>
+<h2 id="framework-compatibility-matrix">Framework compatibility matrix
+(FCM)</h2>
 <p>The framework compatibility matrix describes the requirements of the
 framework on the device it runs on. The matrix file is associated with the
 Android framework image (on <code>system.img</code>). It is expected the
-requirements of the framework's compatibility matrix will be satisfied by the
-device manifest (requirements enforced at launch and OTA time).</p>
+requirements of the FCM will be satisfied by the device manifest (requirements
+enforced at launch and OTA time).</p>
 
-<p>Example framework compatibility matrix file:</p>
+<p>Example FCM file:</p>
 
 <pre class="prettyprint">
 &lt;?xml version="1.0" encoding="UTF-8"?>
 &lt;!-- Comments, Legal notices, etc. here -->
-&lt;compatibility-matrix version="1.0" type="framework">
+&lt;compatibility-matrix version="1.0" type="framework" level="3">
     &lt;hal>
         &lt;name>android.hardware.camera&lt;/name>
         &lt;version>1.0&lt;/version>
@@ -46,6 +47,7 @@ device manifest (requirements enforced at launch and OTA time).</p>
         &lt;interface>
             &lt;name>ICameraProvider&lt;/name>
             &lt;instance>default&lt;/instance>
+            &lt;regex-instance>[a-z_]+/[0-9]+&lt;/regex-instance>
         &lt;/interface>
     &lt;/hal>
     &lt;hal>
@@ -70,6 +72,16 @@ device manifest (requirements enforced at launch and OTA time).</p>
         &lt;version>1.1&lt;/version>
     &lt;/hal>
     &lt;kernel version="3.18.51">
+        &lt;!-- common configs -->
+    &lt;/kernel>
+    &lt;kernel version="3.18.51">
+        &lt;!-- arm specific configs -->
+        &lt;condition>
+            &lt;config>
+                &lt;key>CONFIG_ARM&lt;/key>
+                &lt;value type="tristate">y&lt;/value>
+            &lt;/config>
+        &lt;condition>
         &lt;config>
             &lt;key>CONFIG_A&lt;/key>
             &lt;value type="string">&lt;/value>
@@ -80,6 +92,7 @@ device manifest (requirements enforced at launch and OTA time).</p>
         &lt;/config>
     &lt;/kernel>
     &lt;kernel version="4.1.22">
+        &lt;!-- common configs -->
         &lt;config>
             &lt;key>CONFIG_A&lt;/key>
             &lt;value type="string">foo&lt;/value>
@@ -105,11 +118,14 @@ device manifest (requirements enforced at launch and OTA time).</p>
 &lt;/compatibility-matrix>
 </pre>
 
-<h2 id="device-compatibility-matrix">Device compatibility matrix</h2>
+<p>For more details, see <a href="/devices/architecture/vintf/fcm">FCM
+Lifecycle</a>.</p>
+
+<h2 id="device-compatibility-matrix">Device compatibility matrix (DCM)</h2>
 <p>The device compatibility matrix describes a set of requirements the device
 expects from the framework (requirements enforced at launch and OTA time).
 </p>
-<p>Example device compatibility matrix file:</p>
+<p>Example DCM file:</p>
 
 <pre class="prettyprint">
 &lt;?xml version="1.0" encoding="UTF-8"?>
@@ -147,20 +163,28 @@ expects from the framework (requirements enforced at launch and OTA time).
             &lt;instance>default&lt;/instance>
         &lt;/interface>
     &lt;/hal>
-    &lt;xmlfile format="dtd" optional="false">
-        &lt;name>sample_xml&lt;/name>
-        &lt;version>1.0&lt;/version>
-    &lt;/xmlfile>
+    &lt;vendor-ndk>
+        &lt;version>27&lt;/version>
+    &lt;/vendor-ndk>
+    &lt;system-sdk>
+        &lt;version>27&lt;/version>
+    &lt;/system-sdk>
 &lt;/compatibility-matrix>
 </pre>
 
 <h2 id="compatibility-matrix-schema">Compatibility matrix schema</h2>
+<p>This section describes the meaning of these XML tags. Some "required" tags
+can be missing from the source file in Android source tree and written by
+<code><a href="/devices/architecture/vintf/resources#assemble_vintf">assemble_vintf</a></code>
+at build time. "Required" tags must be present in the corresponding files on the
+device.</p>
+
 <dl>
 <dt><code>?xml</code></dt>
 <dd>Optional. It only provides information to the XML parser.</dd>
 <dt><code>compatibility-matrix.version</code></dt>
-<dd>Required. Version of this compatibility matrix. Describes the elements
-expected in the manifest. Unrelated to XML version.</dd>
+<dd>Required. Meta-version of this compatibility matrix. Describes the elements
+expected in the compatibility matrix. Unrelated to XML version.</dd>
 <dt><code>compatibility-matrix.type</code></dt>
 <dd>Required. Type of this compatibility matrix:
  <ul>
@@ -168,6 +192,11 @@ expected in the manifest. Unrelated to XML version.</dd>
  <li><code>"framework"</code>: Framework compatibility matrix.</li>
  </ul>
 </dd>
+<dt><code>manifest.level</code></dt>
+<dd>Required for framework compatibility matrix. Specifies the Framework
+Compatibility Matrix Version (FCM Version) of this file. Should not be
+declared in device-specific framework compatibility matrix (i.e.
+<code>DEVICE_FRAMEWORK_COMPATIBILITY_MATRIX_FILE</code>).</dd>
 <dt><code>compatibility-matrix.hal</code></dt>
 <dd>Optional and can repeat. Lists a single HAL (HIDL or native) that is
 required by owner of the compatibility matrix (framework or device) to be
@@ -184,7 +213,7 @@ there can be several HAL entries with the same name (implies "and" condition).
 <dt><code>compatibility-matrix.hal.optional</code></dt>
 <dd>Attribute is optional and defaults to false. States whether this HAL is
 optional to the owner of the compatibility matrix (framework or device). If a
-<code>&ltp;hal&gt;</code> entry is marked as optional, it means the owner can
+<code>&lt;hal&gt;</code> entry is marked as optional, it means the owner can
 work with this HAL, if present, but does not require it to be present.</dd>
 <dt><code>compatibility-matrix.hal.name</code></dt>
 <dd>Required. Full package name of this HAL. Examples:
@@ -204,11 +233,28 @@ device) expects.</dd>
 <dd>Required. Name of the interface.</dd>
 <dt><code>compatibility-matrix.hal.interface.instance</code></dt>
 <dd>Optional, can repeat. A list of required instances of this interface.</dd>
+<dt><code>compatibility-matrix.hal.interface.regex-instance</code></dt>
+<dd>Optional, can repeat. A list of required instance name patterns on this
+interface. Use
+<a href="http://man7.org/linux/man-pages/man7/regex.7.html" class="external">Extended
+Regular Expression</a> format.</dd>
+<dt><code>compatibility-matrix.kernel</code></dt>
+<dd>Optional, can repeat. Specify a list of kernel configs that the framework
+requires on each kernel version.<br>
+Multiple <code>&lt;kernel></code> with the same <code>&lt;version></code> can
+exist to imply "and" relationship. Each <code>&lt;kernel></code> is a "fragment"
+of the requirements that are enabled only when <code>&lt;conditions></code> are
+met.</dd>
 <dt><code>compatibility-matrix.kernel.version</code></dt>
 <dd>Required. Kernel version. Format is
-<code>{version}.{major-revision}.{minor-revision}</code>. Version and major
-revision must match exactly, minor-revision defines the minimum LTS version of
-the kernel the framework expects.</dd>
+<code><var>VERSION</var>.<var>MAJOR_REVISION</var>.<var>MINOR_REVISION</var></code>.
+Version and major revision must match exactly. Minor revision defines the
+minimum LTS version of the kernel the framework expects.</dd>
+<dt><code>compatibility-matrix.kernel.condition</code></dt>
+<dd>Optional. Must not exist for the first <code>&lt;kernel></code> of each
+version. Specifies a list of conditions. Only when the conditions are met are
+the requirements stated in this <code>&lt;kernel></code> fragment is enabled.
+</dd>
 <dt><code>compatibility-matrix.kernel.config</code></dt>
 <dd>Optional, can repeat. Lists <code>CONFIG</code> items that must be
 matched for this kernel version. Each <code>CONFIG</code> item is a key-value
@@ -257,7 +303,22 @@ with.</dd>
 <dd>Optional; used only by the framework compatibility matrix. Declares the
 <a href="/devices/architecture/vintf/match-rules.html#avb-version">AVB
 version</a> used to sign <code>system.img</code>.</dd>
+<dt><code>compatibility-matrix.vendor-ndk</code></dt>
+<dd>Optional; used only by the device compatibility matrix. Declares the
+requirement of the VNDK vendor snapshot. If missing, no VNDK requirement is made
+on the system image.</dd>
+<dt><code>compatibility-matrix.vendor-ndk.version</code></dt>
+<dd>Required. A positive integer that declares a VNDK version required by the
+vendor image.</dd>
+<dt><code>compatibility-matrix.vendor-ndk.library</code></dt>
+<dd>Optional, can repeat. Declares a set of VNDK libraries required by the
+vendor image. Same semantics as <code>manifest.vendor-ndk.library</code>.</dd>
+<dt><code>compatibility-matrix.system-sdk.version</code></dt>
+<dd>Optional, can repeat; used only by the device compatibility matrix. Declares
+the requirement by vendor apps on System SDK versions. If missing, no System SDK
+requirement is made on the system image.</dd>
 </dl>
 
   </body>
 </html>
+

@@ -1,0 +1,169 @@
+<html devsite>
+<head>
+  <title>Boot Image Header Versioning</title>
+  <meta name="project_path" value="/_project.yaml">
+  <meta name="book_path" value="/_book.yaml">
+</head>
+{% include "_versions.html" %}
+<body>
+  <!--
+      Copyright 2018 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+
+  <h2>Boot Image Header Versioning</h2>
+
+
+  <p>Starting in Android {{ androidPVersionNumber }}, the boot image header contains
+  a field to indicate the header version. The bootloader must check this header
+  version field and parse the header accordingly. Versioning the boot image header
+  allows future modifications to the header while maintaining backward compatibility.</p>
+
+
+  <p>All devices launching with Android {{ androidPVersionNumber }} must use a boot header
+  version of 1.</p>
+
+
+  <h2 id="boot-image-header-changes">Boot image header changes</h2>
+
+
+  <p>In the legacy boot image header (shown below), the <code>unused</code>
+  field will be converted to a header version field for devices launching with
+  Android {{ androidPVersionNumber }}.</p>
+
+  <pre class="prettyprint">struct boot_img_hdr
+{
+    uint8_t magic[BOOT_MAGIC_SIZE];
+    uint32_t kernel_size;  /* size in bytes */
+    uint32_t kernel_addr;  /* physical load addr */
+
+    uint32_t ramdisk_size; /* size in bytes */
+    uint32_t ramdisk_addr; /* physical load addr */
+
+    uint32_t second_size;  /* size in bytes */
+    uint32_t second_addr;  /* physical load addr */
+
+    uint32_t tags_addr;    /* physical addr for kernel tags */
+    uint32_t page_size;    /* flash page size we assume */
+    uint32_t unused;
+    uint32_t os_version;
+    uint8_t name[BOOT_NAME_SIZE]; /* asciiz product name */
+    uint8_t cmdline[BOOT_ARGS_SIZE];
+    uint32_t id[8]; /* timestamp / checksum / sha1 / etc */
+    uint8_t extra_cmdline[BOOT_EXTRA_ARGS_SIZE];
+};</pre>
+
+  <p>Devices launched before Android {{ androidPVersionNumber }} using the legacy boot
+  image header are considered as using a boot image header version of 0. All devices
+  launching with Android {{ androidPVersionNumber }} must use the following structure
+  for the boot image header with the header version set to 1:</p>
+
+  <pre class="prettyprint">struct boot_img_hdr
+{
+    uint8_t magic[BOOT_MAGIC_SIZE];
+    uint32_t kernel_size;  /* size in bytes */
+    uint32_t kernel_addr;  /* physical load addr */
+
+    uint32_t ramdisk_size; /* size in bytes */
+    uint32_t ramdisk_addr; /* physical load addr */
+
+    uint32_t second_size;  /* size in bytes */
+    uint32_t second_addr;  /* physical load addr */
+
+    uint32_t tags_addr;    /* physical addr for kernel tags */
+    uint32_t page_size;    /* flash page size we assume */
+    uint32_t header_version;
+    uint32_t os_version;
+    uint8_t name[BOOT_NAME_SIZE]; /* asciiz product name */
+    uint8_t cmdline[BOOT_ARGS_SIZE];
+    uint32_t id[8]; /* timestamp / checksum / sha1 / etc */
+    uint8_t extra_cmdline[BOOT_EXTRA_ARGS_SIZE];
+    uint32_t recovery_dtbo_size;   /* size of recovery dtbo image */
+    uint64_t recovery_dtbo_offset; /* offset in boot image */
+    uint32_t header_size;   /* size of boot image header in bytes */
+};</pre>
+
+  <p>The <code>header_size</code> field contains the size of the boot image
+  header. If the boot image header version is set to 1, the id field contains
+  the SHA1 digest for the <code>recovery_dtbo</code> section of the boot image
+  in addition to the kernel, ramdisk. and second sections. For details on the
+  <code>recovery_dtbo_size</code> and <code>recovery_dtbo_offset</code> fields,
+  refer to <em><a href="/devices/bootloader/recovery-image">Including
+  DTBO in Recovery for Non-A/B Devices</a></em>.</p>
+
+
+  <h2 id="implementation">Implementation</h2>
+
+
+  <p>The <code>mkbootimg</code> tool that creates boot images adds the
+  following arguments to support the new boot image header:</p>
+
+
+  <table>
+    <tr>
+      <td><strong>Argument</strong>
+      </td>
+
+      <td><strong>Description</strong>
+      </td>
+    </tr>
+
+
+    <tr>
+      <td><code>header_version</code>
+      </td>
+
+      <td>Sets the boot image header version.</td>
+    </tr>
+
+
+    <tr>
+      <td><code>recovery_dtbo</code>
+      </td>
+
+      <td>Path to the recovery DTBO image to be included in the recovery
+      image.</td>
+    </tr>
+  </table>
+
+
+  <p>The device <code>BoardConfig.mk</code> uses the config
+  <code>BOARD_MKBOOTIMG_ARGS</code> to add <code>header version</code> to the
+  other board-specific arguments of <code>mkbootimg</code>. For example:</p>
+
+  <pre class="prettyprint">
+  BOARD_MKBOOTIMG_ARGS := --ramdisk_offset $(BOARD_RAMDISK_OFFSET) --tags_offset $(BOARD_KERNEL_TAGS_OFFSET) --header_version $(BOARD_BOOTIMG_HEADER_VERSION)</pre>
+
+  <p>The Android build system uses the BoardConfig variable
+  <code>BOARD_PREBUILT_DTBOIMAGE</code> to set the argument
+  <code>recovery_dtbo</code> of <code>mkbootimg</code> tool during the creation
+  of recovery image.</p>
+
+
+  <p>For details on the Android Open Source Project (AOSP) changes, review the
+  <a href=
+  "https://android-review.googlesource.com/q/topic:%22recovery_dtbo%22+(status:open%20OR%20status:merged)">
+  associated changelists for boot image header versioning</a>.</p>
+
+
+  <h2 id="validation">Validation</h2>
+
+
+  <p>For all devices launching with Android {{ androidPVersionNumber }}, the <a href=
+  "/compatibility/vts/">Vendor Test Suite (VTS)</a>
+  checks the format of the boot/recovery image to ensure the boot image header
+  uses version 1.</p>
+</body>
+</html>

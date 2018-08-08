@@ -22,7 +22,7 @@
   -->
 
 <p>The following resources provide details on code locations, tools, testing,
-licensing, and caveats.</p>
+and licensing.</p>
 
 <h2 id=query-api-code>Queryable code location</h2>
 <p>The code for the queryable vendor interface object goes to
@@ -51,9 +51,8 @@ adb shell su 0 /system/bin/lshal --init-vintf
 <li>If a package is both registered to <code>hwservicemanager</code> and found
 as a passthrough HAL, <code>&lt;transport&gt;</code> is set to
 <code>hwbinder</code>.</li>
-<li>A dummy <code>&lt;sepolicy&gt;<version>0.0</version>&lt;/sepolicy&gt;</code>
-element exists at the end of the manifest. It is suggested that the element is
-deleted and injected via <code>assemble_vintf</code> as explained below.</li>
+<li>No SELinux version is written into the manifest. It is suggested that the
+element is injected via <code>assemble_vintf</code> as explained below.</li>
 <li>The generated HAL manifest file may be inaccurate. Human attention is
 required to fix inconsistencies between the device manifest and what
 <code>vendor.img</code> actually provides.</li>
@@ -74,32 +73,21 @@ compatibility matrix that is compatible with the manifest file.</li>
 matrix</strong> from a framework manifest file</h4>
 
 <pre class="devsite-terminal">
-assemble_vintf -m \
+assemble_vintf -m --hals-only \
     -i system/libhidl/manifest.xml \
     -o device/manufacturer/device_name/compatibility_matrix.xml
 </pre>
-<p>Note the following:</p>
-<ul>
-<li>Even though <code>&lt;vndk&gt;</code> entries are in the output
-compatibility matrix, they should be deleted and injected at build time.</li>
-<li>All HALs are set to <code>optional="true"</code>.</li>
-</ul>
+<p>Note that all HALs are set to <code>optional="true"</code>.</p>
 
 <h4><strong>Example:</strong> Generate a skeleton framework compatibility
 matrix from a device manifest file</h4>
 
 <pre class="devsite-terminal">
-BOARD_SEPOLICY_VERS=10000.0 assemble_vintf -m \
-    -i device/foo/bar/manifest.xml
+assemble_vintf -m --hals-only \
+    -i device/foo/bar/manifest.xml \
     -o path/to/place/output/compatibility_matrix.xml
 </pre>
-<p>Note the following:</p>
-<ul>
-<li>Even though <code>&lt;sepolicy&gt;</code> and <code>&lt;avb&gt;</code> are
-in the output compatibility matrix, they should be deleted and injected at
-build time.</li>
-<li>All HALs are set to <code>optional="true"</code>.</li>
-</ul>
+<p>Note that all HALs are set to <code>optional="true"</code>.</p>
 
 <h4><strong>Example:</strong> Generate XML files from variables</h4>
 
@@ -113,37 +101,53 @@ DEVICE_MATRIX_FILE := \
     device/manufacturer/device_name/compatibility_matrix.xml
 </pre>
 
-<p>Then the following commands (modified to omit implementation details) are
-executed to generate all XML files:</p>
+<p>Then the following commands are executed (in the build system, modified to omit implementation
+details)  to generate all XML files:</p>
 
 <pre class="prettyprint">
 # device manifest; only when DEVICE_MANIFEST_FILE is set
 BOARD_SEPOLICY_VERS=10000.0 assemble_vintf \
-    -i device/manufacturer/device_name/manifest.xml \
-    -o $(TARGET_OUT_VENDOR)/manifest.xml
+    $(addprefix,-i ,$(DEVICE_MANIFEST_FILE)) \
+    -o $(TARGET_OUT_VENDOR)/etc/vintf/manifest.xml
 
 # device compatibility matrix; only when DEVICE_MATRIX_FILE is set
 assemble_vintf \
-    -i device/manufacturer/device_name/compatibility_matrix.xml \
-    -o $(TARGET_OUT_VENDOR)/compatibility_matrix.xml
+    -i $(DEVICE_MATRIX_FILE) \
+    -o $(TARGET_OUT_VENDOR)/etc/vintf/compatibility_matrix.xml
 
 # framework manifest
 assemble_vintf
-    -i system/libhidl/manifest.xml \
+    $(addprefix,-i ,system/libhidl/manifest.xml $(DEVICE_FRAMEWORK_MANIFEST_FILE)) \
     -o $(TARGET_OUT)/manifest.xml \
-    -c $(TARGET_OUT_VENDOR)/compatibility_matrix.xml
+    -c $(TARGET_OUT_VENDOR)/etc/vintf/compatibility_matrix.xml
 
-# framework compatibility matrix
+# common framework compatibility matrix for each FCM version
 BOARD_SEPOLICY_VERS=$(BOARD_SEPOLICY_VERS) \
 POLICYVERS=$(POLICYVERS) \
 BOARD_AVB_VBMETA_VERSION=$(BOARD_AVB_VBMETA_VERSION)
 assemble_vintf \
-    -i hardware/interfaces/compatibility_matrix.xml \
-    -o $(TARGET_OUT)/compatibility_matrix.xml \
-    -c $(TARGET_OUT_VENDOR)/manifest.xml \
+    $(addprefix,-i ,\
+        hardware/interfaces/compatibility_matrices/compatibility_matrix.empty.xml \
+        $(DEVICE_FRAMEWORK_COMPATIBILITY_MATRIX_FILE)) \
+    -o $(TARGET_OUT)/etc/vintf/compatibility_matrix.empty.xml
+
+# framework compatibility matrices at each FCM version
+assemble_vintf
+    -i hardware/interfaces/compatibility_matrices/compatibility_matrix.{level}.xml \
+    -o $(TARGET_OUT)/etc/vintf/compatibility_matrix.{level}.xml \
+    --kernel=...
+
+# Final framework compatibility matrix to check with device manifest.
+# Each input matrix should have a unique "level" attribute.
+PRODUCT_ENFORCE_VINTF_MANIFEST=$(PRODUCT_ENFORCE_VINTF_MANIFEST) \
+assemble_vintf
+    -i $(TARGET_OUT)/etc/vintf/compatibility_matrix.*.xml
+    -o /tmp/compatibility_matrix.xml
+    -c $(TARGET_OUT_VENDOR)/manifest.xml
 </pre>
 
-<h4><strong>Example:</strong> Generate device manifest from fragments</h4>
+<h4 id=manifest-fragments><strong>Example:</strong>
+Generate device manifest from fragments</h4>
 
 <p>Multiple device manifest fragments can be bundled at build time. For example:</p>
 
@@ -209,22 +213,6 @@ version. Public domain license.</li>
 <li><code>libvintf</code> project uses Apache 2.0 license (with appropriate
 MODULE_LICENSE_APACHE2 and NOTICE files).</li>
 </ul>
-
-<h2 id="caveats">Caveats</h2>
-<p>It is also possible to determine the HALs at runtime by querying
-<code>hwservicemanager</code> (as <code>lshal</code> does). However:</p>
-<ul>
-<li><code>hwservicemanager</code> does not list passthrough services.</li>
-<li>If a service has just crashed and is restarting, it may be missing from the
-query result.</li>
-<li>It doesn't work for hot pluggable services.</li>
-<li><code>hwservicemanager</code> is not available in recovery mode (see
-below).</li>
-</ul>
-
-<p>In recovery mode, the API to retrieve the vendor interface object must still
-be available to allow the device to check the vendor interface against the
-compatibility matrix again.</p>
 
   </body>
 </html>

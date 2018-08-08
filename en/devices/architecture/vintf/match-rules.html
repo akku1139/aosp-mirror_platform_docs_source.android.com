@@ -29,15 +29,34 @@ device manifest, as well as between the framework manifest and the device
 compatibility matrix. The following sections detail matching rules used by
 various components.</p>
 
+<h2 id="fcm-version">Framework compatibility matrix version matches</h2>
+<p>To match a device manifest with a framework compatibility matrix,
+the Shipping FCM version specified by <code>manifest.target-level</code>
+must exactly equal to the FCM version specified by
+<code>compatibility-matrix.level</code>. Otherwise there is no match.</p>
+
+<p>If the framework compatibility matrix is requested with
+<code>libvintf</code>, this match is always successful because
+<code>libvintf</code> opens the device manifest, retrieves the Shipping FCM
+Version, and returns the framework compatibility matrix at that Shipping FCM
+Version (plus some optional HALs from compatibility matrices at higher FCM
+Versions).</p>
+
 <h2 id="hals">HAL matches</h2>
 <p>The HAL-match rule identifies the versions of <code>hal</code> elements in a
 manifest file that are considered supported by the owner of the corresponding
 compatibility matrix.</p>
 <ul>
-<li>Multiple <code>version</code> elements are concatenated with
-<strong>OR</strong> (see camera example below).</li>
-<li>Multiple <code>&lt;hal&gt;</code> elements with the same name are
-concatenated with <strong>AND</strong>.</li>
+<li>Multiple <code>&lt;hal&gt;</code> elements have <strong>AND</strong>
+relationship.</li>
+<li>Multiple <code>&lt;version&gt;</code> elements within the same
+<code>&lt;hal&gt;</code> have
+<strong>OR</strong> relationship. If two or more are specified, only
+one of the version needs to be implemented (see DRM example below).</li>
+<li>Multiple <code>&lt;instance&gt;</code> and
+<code>&lt;regex-instance&gt;</code> elements within the same
+<code>&lt;hal&gt;</code> have
+<strong>AND</strong> relationship (see DRM example below).</li>
 </ul>
 
 <h4><strong>Example</strong>: Successful HAL match for Camera module</h4>
@@ -92,28 +111,32 @@ for DRM HAL:</p>
     &lt;interface>
         &lt;name>ICryptoFactory&lt;/name>
         &lt;instance>default&lt;/instance>
+        &lt;regex-instance>[a-z]+/[0-9]+&lt;/regex-instance>
     &lt;/interface>
 &lt;/hal>
 </pre>
 
-<p>A vendor must implement ONE of the following HALs:</p>
+<p>A vendor must implement ONE of the following instances:</p>
 
 <pre>
-android.hardware.drm@1.x::IDrmFactory/default          //where x >= 0
-android.hardware.drm@1.x::IDrmFactory/specific         //where x >= 0
+android.hardware.drm@1.x::IDrmFactory/default          // where x >= 0
+android.hardware.drm@1.x::IDrmFactory/specific         // where x >= 0
 </pre>
 
 OR
 
 <pre>
-android.hardware.drm@3.y::IDrmFactory/default          //where y >= 1
-android.hardware.drm@3.y::IDrmFactory/specific         //where y >= 1
+android.hardware.drm@3.y::IDrmFactory/default          // where y >= 1
+android.hardware.drm@3.y::IDrmFactory/specific         // where y >= 1
 </pre>
 
-<p>... AND must also implement this HAL:</p>
+<p>... AND must also implement all of these instances:</p>
 
 <pre>
-android.hardware.drm@2.z::ICryptoFactory/default       //where z >= 0
+android.hardware.drm@2.z::ICryptoFactory/default       // where z >= 0
+android.hardware.drm@2.z::ICryptoFactory/${INSTANCE}
+            // where z >= 0 and ${INSTANCE} matches [a-z]+/[0-9]+
+            // e.g. legacy/0
 </pre>
 
 <h2 id="kernel">Kernel matches</h2>
@@ -257,7 +280,7 @@ rules are similar to HAL versions; it is a match if the sepolicy version is
 higher or equal to the minimum version for the range. The maximum version is
 purely informational.</li>
 <li><code>&lt;kernel-sepolicy-version&gt;</code> i.e. policydb version. Must
-exactly match the <code>security_policyvers()</code> reported by the device.
+be less than the <code>security_policyvers()</code> reported by the device.
 </li>
 </ul>
 
@@ -266,17 +289,22 @@ exactly match the <code>security_policyvers()</code> reported by the device.
 </p>
 
 <pre class="prettyprint">
-    &lt;sepolicy>
-        &lt;kernel-sepolicy-version>30&lt;/kernel-sepolicy-version>
-        &lt;sepolicy-version>25.0&lt;/sepolicy-version>
-        &lt;sepolicy-version>26.0-3&lt;/sepolicy-version>
-    &lt;/sepolicy>
+&lt;sepolicy>
+    &lt;kernel-sepolicy-version>30&lt;/kernel-sepolicy-version>
+    &lt;sepolicy-version>25.0&lt;/sepolicy-version>
+    &lt;sepolicy-version>26.0-3&lt;/sepolicy-version>
+&lt;/sepolicy>
 </pre>
 
 <p>On the device:</p>
 <ul>
-<li>The value returned by <code>security_policyvers()</code> must exactly equal
-30. Otherwise it is not a match.</li>
+<li>The value returned by <code>security_policyvers()</code> must be greater
+than or equal to 30. Otherwise it is not a match. For example:
+<ul>
+<li>If a device returns 29, it is not a match.</li>
+<li>If a device returns 31, it is a match.</li>
+</ul>
+</li>
 <li>SE Policy version must be one of 25.0-∞ or 26.0-∞. Otherwise it is not a
 match. (The "<code>-3</code>" after "<code>26.0</code>" is purely
 informational.)</li>
@@ -361,6 +389,127 @@ ro.boot.vbmeta.avb_version       == 2.3 <font style="font-family: Roboto, Arial,
 ro.boot.avb_version              == 2.3 &amp;&amp;
 ro.boot.vbmeta.avb_version       == 2.1 <font style="font-family: Roboto, Arial, Helvetica, sans-serif; background-color: green; color: white">&nbsp;match&nbsp;</font>
 </pre>
+
+<h2 id="vndk">VNDK version matches</h2>
+<p>The device compatibility matrix declares the required VNDK version in
+<code>compatibility-matrix.vendor-ndk.version</code>. If the device
+compatibility matrix does not have a <code>&lt;vendor-ndk></code> tag, no
+requirements are imposed, and hence it is always considered a match.</p>
+<p>If the device compatibility matrix does have a <code>&lt;vendor-ndk></code>
+tag, an <code>&lt;vendor-ndk></code> entry with a matching
+<code>&lt;version></code> is looked up from the set of VNDK vendor snapshots
+provided by the framework in the framework manifest. If such an entry does not
+exist, there is no match.</p>
+<p>If such entry does exist, the set of libraries enumerated in the device
+compatibility matrix must be a subset of the set of libraries stated in the
+framework manifest; otherwise, the entry is not considered a match.</p>
+<ul>
+  <li>As a special case, if no libraries are enumerated in the device
+  compatibility matrix, the entry is always considered a match, because empty
+  set is a subset of any set.</li>
+</ul>
+
+<h4><strong>Example:</strong> Successful VNDK version match</h4>
+<p>If the device compatibility matrix states the following requirement on VNDK:
+</p>
+
+<pre class="prettyprint">
+&lt;!-- Example Device Compatibility Matrix -->
+&lt;vendor-ndk>
+    &lt;version>27&lt;/version>
+    &lt;library>libjpeg.so&lt;/library>
+    &lt;library>libbase.so&lt;/library>
+&lt;/vendor-ndk>
+</pre>
+
+<p>In the framework manifest, only the entry with version 27 is considered.</p>
+
+<pre class="prettyprint">
+&lt;!-- Framework Manifest Example A -->
+&lt;vendor-ndk>
+    &lt;version>27&lt;/version>
+    &lt;library>libjpeg.so&lt;/library>
+    &lt;library>libbase.so&lt;/library>
+    &lt;library>libfoo.so&lt;/library>
+&lt;/vendor-ndk>
+</pre>
+
+<p>Example A is a match, because VNDK version 27 is in the framework manifest,
+and <code>{libjpeg.so, libbase.so, libfoo.so} ⊇ {libjpeg.so, libbase.so}</code>.
+</p>
+
+<pre class="prettyprint">
+&lt;!-- Framework Manifest Example B -->
+&lt;vendor-ndk>
+    &lt;version>26&lt;/version>
+    &lt;library>libjpeg.so&lt;/library>
+    &lt;library>libbase.so&lt;/library>
+&lt;/vendor-ndk>
+&lt;vendor-ndk>
+    &lt;version>27&lt;/version>
+    &lt;library>libbase.so&lt;/library>
+&lt;/vendor-ndk>
+</pre>
+
+<p>Example B is not a match. Even though VNDK version 27 is in the framework
+manifest, <code>libjpeg.so</code> is not supported by the framework in that
+snapshot. VNDK version 26 is ignored.</p>
+
+<h2 id="vsdk">System SDK version matches</h2>
+<p>The device compatibility matrix declares a set of required System SDK
+version in <code>compatibility-matrix.system-sdk.version</code>. There is a
+match only if the set is a subset of provided System SDK versions as declared
+in <code>manifest.system-sdk.version</code> in the framework manifest.</p>
+<ul>
+  <li>As a special case, if no System SDK versions are enumerated in the device
+  compatibility matrix, it is always considered a match, because empty
+  set is a subset of any set.</li>
+</ul>
+
+<h4><strong>Example:</strong> Successful System SDK version match</h4>
+<p>If the device compatibility matrix states the following requirement on System
+SDK:
+</p>
+
+<pre class="prettyprint">
+&lt;!-- Example Device Compatibility Matrix -->
+&lt;system-sdk>
+    &lt;version>26&lt;/version>
+    &lt;version>27&lt;/version>
+&lt;/system-sdk>
+</pre>
+
+<p>Then, the framework must provide System SDK version 26 and 27 to match.</p>
+
+<pre class="prettyprint">
+&lt;!-- Framework Manifest Example A -->
+&lt;system-sdk>
+    &lt;version>26&lt;/version>
+    &lt;version>27&lt;/version>
+&lt;/system-sdk>
+</pre>
+
+<p>Example A is a match.</p>
+
+<pre class="prettyprint">
+&lt;!-- Framework Manifest Example B -->
+&lt;system-sdk>
+    &lt;version>26&lt;/version>
+    &lt;version>27&lt;/version>
+    &lt;version>28&lt;/version>
+&lt;/system-sdk>
+</pre>
+
+<p>Example B is a match.</p>
+
+<pre class="prettyprint">
+&lt;!-- Framework Manifest Example C -->
+&lt;system-sdk>
+    &lt;version>26&lt;/version>
+&lt;/system-sdk>
+</pre>
+
+<p>Example C is not a match, because System SDK version 27 is not provided.</p>
 
   </body>
 </html>

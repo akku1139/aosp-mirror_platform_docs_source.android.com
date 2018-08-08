@@ -1,0 +1,456 @@
+<html devsite>
+  <head>
+    <title>Generating VNDK Snapshots</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  {% include "_versions.html" %}
+  <body>
+  <!--
+      Copyright 2018 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>
+  A VNDK snapshot is a set of VNDK-core and VNDK-SP libs for an Android release.
+  You can upgrade only the system partition if the system.img includes the
+  corresponding VNDK snapshot needed by the vendor.img.
+</p>
+
+<aside class="note"><strong>Note:</strong> This page provides design details for
+  building and updating a VNDK snapshot. For details on the background,
+  definition, and use cases of VNDK snapshots, refer to
+  <a href="/devices/architecture/vndk/snapshot-design">VNDK Snapshot Design</a>.
+</aside>
+
+<p>
+  Official VNDK snapshots are built automatically on the Android build server
+  and checked into <code>/prebuilts/vndk</code> of the Android source tree. For
+  development purposes, you can build VNDK snapshots locally. VNDK snapshots are
+  supported for arm, arm64, x86, and x86_64 TARGET_ARCH flavors.
+</p>
+
+<h2 id="snapshot-build-artifacts">Snapshot build artifacts</h2>
+
+<p>
+  The Android build server generates build artifacts for VNDK snapshots using
+  the following build parameters and build commands.
+</p>
+
+<h3 id="build-parameters">Build parameters</h3>
+
+<p>
+  The build target name is <code>vndk</code> and the build target configuration
+  is as follows:
+</p>
+
+<ul>
+  <li>TARGET_PRODUCT=aosp_{TARGET_ARCH}_ab</li>
+  <li>TARGET_BUILD_VARIANT=user</li>
+  <li>TARGET_ARCH. Same as Generic System Image (GSI) target archs (arm, arm64,
+  x86, x86_64).</li>
+  <li>TARGET_ARCH_VARIANT. For snapshot v27 (Android 8.1), includes popular
+  configurations (listed below); future releases may include other arch/cpu
+  variants.</li>
+</ul>
+
+<table>
+<thead>
+<tr>
+<th>TARGET_PRODUCT</th>
+<th>TARGET_ARCH</th>
+<th>TARGET_ARCH_VARIANT</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>aosp_arm_ab</td>
+<td>arm</td>
+<td>armv7-a-neon</td>
+</tr>
+<tr>
+<td>aosp_arm64_ab</td>
+<td>arm64</td>
+<td>armv8-a</td>
+</tr>
+<tr>
+<td>aosp_x86_ab</td>
+<td>x86</td>
+<td>x86</td>
+</tr>
+<tr>
+<td>aosp_x86_64_ab</td>
+<td>x86_64</td>
+<td>x86_64</td>
+</tr>
+</tbody>
+</table>
+
+<h3 id="build-commands">Build commands</h3>
+
+<p>
+  For official snapshots, Android {{ androidPVersionNumber }} includes a new
+  dummy target (<code>vndk</code>) in
+  <a href="https://android.googlesource.com/platform/build/+/master/core/tasks/vndk.mk">vndk.mk</a>
+  that builds and outputs a VNDK snapshot to <code>$DIST_DIR</code>. The
+  snapshot zip file uses the format <code>android-vndk-{TARGET_ARCH}.zip</code>.
+  For example:
+</p>
+
+<pre class="prettyprint">
+$ lunch aosp_&lt;ARCH&gt;_ab-user
+$ make -j vndk dist [BOARD_VNDK_VERSION=current]
+</pre>
+
+<p>
+  The Android build server uses the
+  <a href="https://android.googlesource.com/platform/development/+/master/vndk/snapshot/build.sh">build.sh</a>
+  script to build all supported arch flavors with the following command:
+</p>
+
+<pre class="prettyprint">
+$ DIST_DIR=%dist_dir% development/vndk/snapshot/build.sh
+</pre>
+
+<p>
+  VNDK snapshots for an Android Version are generated from the
+  <code>&lt;Android Version&gt;-release</code> branch.
+</p>
+
+<h3 id="build-locally">Building locally</h3>
+
+<p>
+  During development, you can build VNDK snapshots from a local source tree with
+  the following commands:
+</p>
+
+<ul>
+  <li>To build all supported archs at once, execute the build script
+  (<code>build.sh</code>):
+<pre class="prettyprint">
+$ cd $ANDROID_BUILD_TOP
+$ development/vndk/snapshot/build.sh
+</pre>
+  </li>
+  <li>To build one specific TARGET_ARCH:
+
+<pre class="prettyprint">
+$ lunch aosp_&lt;ARCH&gt;_ab-user
+$ m -j vndk dist
+</pre>
+  </li>
+</ul>
+
+<p>
+  The corresponding <code>android-vndk-&lt;ARCH&gt;.zip</code> file is created
+  under <code>$DIST_DIR</code>.
+</p>
+
+<h2 id="snapshot-files">Snapshot files</h2>
+
+<p>
+  A VNDK snapshot includes the following files:
+</p>
+
+<ul>
+  <li>Vendor variant of VNDK-core and VNDK-SP shared libraries.
+    <ul>
+    <li>LL-NDK shared libs are not needed as they are backward compatible.</li>
+    <li>For 64bit targets, both TARGET_ARCH and TARGET_2ND_ARCH libraries are
+    built and included.</li>
+    </ul>
+  </li>
+  <li>List of VNDK-core, VNDK-SP, LL-NDK, and VNDK-private libraries is at
+  <code>[vndkcore|vndksp|llndk|vndkprivate].libraries.txt</code>.</li>
+  <li>Linker config file is <code>ld.config.txt</code>.</li>
+  <li>License files. </li>
+  <li><code>module_paths.txt</code>. Records the module paths for all VNDK
+  libraries, which is needed for checking that GPL projects have sources
+  released in a given Android source tree.</li>
+</ul>
+
+<p>
+  For a given VNDK snapshot zip file,
+  <code>android-vndk-{TARGET_ARCH}.zip</code>, the VNDK prebuilt libraries are
+  grouped in separate directories named
+  <code>arch-{TARGET_ARCH}-{TARGET_ARCH_VARIANT}</code> according to ABI
+  bitness. For example, for <code>android-vndk-arm64.zip</code>, the 64-bit libs
+  are placed under <code>arch-arm64-armv8-a</code> and the 32-bit libs are
+  placed under <code>arch-arm-armv8-a</code>.
+</p>
+
+<h3 id="example-snapshot-dir-structure">Example: VNDK snapshot directory
+structure</h3>
+
+<p>
+  The example below shows the directory structure for an arm64
+  (<code>TARGET_ARCH=arm64</code>) VNDK snapshot zip file
+  (<code>android-vndk-arm64.zip</code>).
+</p>
+
+<img src="/devices/architecture/images/vndk_snapshot_directory.png">
+<figcaption><strong>Figure 1. </strong>VNDK snapshot directory structure
+(example)</figcaption>
+
+<h2 id='upload-vndk-snapshots'>Uploading VNDK snapshots</h2>
+
+<p>
+  VNDK snapshots are checked in the source tree under
+  <code>/prebuilts/vndk/v&lt;VER&gt;</code>, where <code>&lt;VER&gt;</code> is
+  equal to the version of the VNDK snapshot (which follows the SDK version of
+  the corresponding Android release). For example, the O MR1 VNDK snapshot has
+  version 27.
+</p>
+
+<h3 id="using-update-py">Using the update.py script</h3>
+
+<p>
+  The <code>update.py</code> script
+  (<code>/development/vndk/snapshot/update.py)</code> automates the process of
+  adding a pre-built VNDK snapshot to the source tree. This script performs the
+  following tasks:
+</p>
+
+<ol>
+  <li>In <code>/prebuilts/vndk/v&lt;VER&gt;</code>, uses <code>repo start</code>
+  to create new git branch.</li>
+  <li>Fetches and unzips VNDK snapshot build artifacts.</li>
+  <li>Runs <code>gen_buildfiles.py</code> to auto generate the build files
+  (<code>Android.mk</code>, <code>Android.bp</code>).</li>
+  <li>Runs <code>check_gpl_license.py</code> to verify the prebuilt libraries
+  licensed under the General Public License (GPL) have sources released in
+  current source tree.</li>
+  <li>Uses <code>git commit</code> to commit new changes.</li>
+</ol>
+
+<h3 id="using-local-snapshots">Using locally-built VNDK snapshots</h3>
+
+<p>
+  During development, you can use locally-built VNDK snapshots for testing. When
+  the <code>--local</code> option is specified, <code>update.py</code> fetches
+  VNDK snapshot build artifacts from local <code>$DIST_DIR</code> instead of the
+  Android build server. Usage:
+</p>
+
+<pre class="prettyprint">
+$ python update.py &lt;VER&gt; --local
+</pre>
+
+<p>
+  For example, to update the O MR1 VNDK snapshot with local build artifacts,
+  run:
+</p>
+
+<pre class="prettyprint">
+$ python update.py 27 --local
+</pre>
+
+<p>
+  Because local mode is designed for testing only, the script skips the GPL
+  license checking and git commit steps.
+</p>
+
+<h3 id="dir-structure-prebuilts">Directory structure for prebuilts/vndk</h3>
+
+<img src="/devices/architecture/images/vndk_snapshot_prebuilt.png">
+<figcaption><strong>Figure 2. </strong>Prebuilts/vndk directory
+structure</figcaption>
+
+<h2 id="install-vndk-snapshot">Installing VNDK snapshots</h2>
+
+<p>
+  The system image installs VNDK snapshot libraries at build time using the
+  information in <code>BOARD_VNDK_VERSION</code>,
+  <code>PRODUCT_EXTRA_VNDK_VERSIONS</code>, and <code>ro.vndk.version</code>.
+  You can control which VNDK snapshots get installed from
+  <code>/prebuilts/vndk/v&lt;VER&gt;</code> using one of the following options:
+</p>
+
+<ul>
+  <li><strong>Option 1:</strong> <code>BOARD_VNDK_VERSION</code>. Use the
+  snapshot modules for building the current vendor modules and install only the
+  snapshot modules that are required for the vendor modules.</li>
+  <li><strong>Option 2:</strong> <code>PRODUCT_EXTRA_VNDK_VERSIONS</code>.
+  Install the VNDK snapshot modules regardless of the current vendor modules.
+  This installs the prebuilt VNDK snapshots listed in
+  <code>PRODUCT_EXTRA_VNDK_VERSIONS</code> without linking them to any other
+  modules at build time.</li>
+</ul>
+
+<h3 id="set-board-vndk">Setting BOARD_VNDK_VERSION</h3>
+
+<p>
+  <code>BOARD_VNDK_VERSION</code> shows the VNDK version that current vendor
+  modules are required to build. If <code>BOARD_VNDK_VERSION</code> has an
+  available VNDK snapshot version in <code>/prebuilts/vndk</code> directory, the
+  VNDK snapshot indicated in <code>BOARD_VNDK_VERSION</code> is installed. If
+  the VNDK snapshot is not available in the directory, a build error occurs.
+</p>
+
+<p>
+  Defining <code>BOARD_VNDK_VERSION</code> also enables the VNDK modules to be
+  installed. Vendor modules link with the VNDK snapshot version defined in
+  <code>BOARD_VNDK_VERSION</code> at build time (this does not build current
+  VNDK modules in the system source). When downloading the full source tree from
+  a repository, both system and vendor sources are based on the same Android
+  release.
+</p>
+
+<aside class="note"><strong>Note:</strong> Vendor modules use the current VNDK
+  version of the system source tree, so you must set
+  <code>BOARD_VNDK_VERSION</code> to <code>current</code>.
+</aside>
+
+<h3 id="set-product-extra">Setting PRODUCT_EXTRA_VNDK_VERSIONS</h3>
+
+<p>
+  <code>PRODUCT_EXTRA_VNDK_VERSIONS</code> lists the extra VNDK versions to be
+  installed. Normally it is enough to have one VNDK snapshot for the current
+  vendor partition. However, in some cases you might need to include multiple
+  snapshots in one system image. For example, Generic System Image (GSI) has
+  multiple snapshots to support multiple vendor versions with one system image.
+  By setting <code>PRODUCT_EXTRA_VNDK_VERSIONS</code>, you can install the VNDK
+  snapshot modules in addition to the VNDK version in
+  <code>BOARD_VNDK_VERSION</code>.
+</p>
+
+<p>
+  If <code>PRODUCT_EXTRA_VNDK_VERSIONS</code> has a specific list of versions,
+  the build system looks for pre-built snapshots of the version list in the
+  <code>prebuilts/vndk</code> directory. If the build system locates all listed
+  snapshots, it installs those snapshot files to each
+  <code>out/target/product/&lt;board&gt;/system/lib[64]/vndk[-sp]-${VER}</code>.
+  Missing versions generate a build error.
+</p>
+
+<p>
+  The VNDK modules will not link with the vendor modules at build time but may
+  be used at runtime if the vendor modules in vendor partition require one of
+  the installed VNDK versions. <code>PRODUCT_EXTRA_VNDK_VERSIONS</code> is valid
+  only if <code>BOARD_VNDK_VERSION</code> is defined. For example, to install
+  the O MR1 VNDK snapshot to system.img:
+</p>
+
+<pre class="prettyprint">
+$ m -j PRODUCT_EXTRA_VNDK_VERSIONS=27
+</pre>
+
+<h3 id="platform-vndk">PLATFORM_VNDK_VERSION</h3>
+
+<p>
+  <code>PLATFORM_VNDK_VERSION</code> defines the VNDK version for current VNDK
+  modules in the system source. The value is set automatically:
+</p>
+
+<ul>
+  <li>Prior to release, the <code>PLATFORM_VNDK_VERSION</code> is set as
+  <code>PLATFORM_VERSION_CODENAME</code>.</li>
+  <li>At release, <code>PLATFORM_SDK_VERSION</code> is copied to
+  <code>PLATFORM_VNDK_VERSION</code>.</li>
+</ul>
+
+<p>
+  After the Android version is released, the current VNDK libraries are
+  installed to <code>/system/lib[64]/vndk-$SDK_VER</code> and
+  <code>/system/lib[64]/vndk-sp-$SDK_VER</code>, where <code>$SDK_VER</code> is
+  the version stored in <code>PLATFORM_VNDK_VERSION</code>.
+</p>
+
+<h3 id="namespace-config">Namespace configuration</h3>
+
+<p>
+  The vendor modules search the required shared libraries using the namespace
+  configuration in <code>/etc/ld.config.${VER}.txt</code> (where
+  <code>${VER}</code> is obtained from the <code>ro.vndk.version</code>
+  property). The namespace configuration has a versioned VNDK directory that
+  uses the following syntax:
+</p>
+
+<ul>
+  <li><code>/system/${LIB}/vndk-%VNDK_VER%</code></li>
+  <li><code>/system/${LIB}/vndk-sp-%VNDK_VER%</code></li>
+</ul>
+
+<p>
+  <code>%VNDK_VER%</code> is replaced with <code>PLATFORM_VNDK_VERSION</code>
+  at build time, enabling a system image to provide multiple snapshots for each
+  VNDK version.
+</p>
+
+<p>
+  When <code>BOARD_VNDK_VERSION</code> is set to <code>current</code>, the
+  <code>PLATFORM_VNDK_VERSION</code> is stored in <code>ro.vndk.version</code>,
+  otherwise <code>BOARD_VNDK_VERSION </code>is stored in
+  <code>ro.vndk.version</code>. <code>PLATFORM_VNDK_VERSION</code> is set to the
+  SDK version when Android releases; prior to release, the alphanumeric Android
+  code name is used for <code>PLATFORM_VNDK_VERSION</code>.
+</p>
+
+<h3 id="summary-vndk-version-settings">Summary of VNDK version settings</h3>
+
+<p>
+  The table below summarizes the VNDK version settings.
+</p>
+
+<table>
+<thead>
+<tr>
+<th width="15%">Vendor<br>Build</th>
+<th>Board<br>Version</th>
+<th>SDK<br>Release</th>
+<th>Platform<br>Version</th>
+<th>Version<br>Property</th>
+<th>Install Directory</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td rowspan=2>Current VNDK modules</td>
+<td rowspan=2><code>current</code></td>
+<td>Before</td>
+<td>&lt;CODE_NAME&gt;</td>
+<td>&lt;CODE_NAME&gt;</td>
+<td>/system/lib[64]/vndk[-sp]-&lt;CODE_NAME&gt;</td>
+</tr>
+<tr>
+<td>After</td>
+<td>&lt;SDK_ver&gt;</td>
+<td>&lt;SDK_ver&gt;</td>
+<td>/system/lib[64]/vndk[-sp]-&lt;SDK_ver&gt;</td>
+</tr>
+<tr>
+<td>Prebuilt snapshot modules</td>
+<td>&lt;VNDK_ver&gt;<br>for snapshot</td>
+<td>Before or After</td>
+<td>&lt;CODE_NAME&gt;<br>or &lt;SDK_ver&gt;</td>
+<td>&lt;VNDK_ver&gt;</td>
+<td>/system/lib[64]/vndk[-sp]-&lt;VNDK_ver&gt;</td>
+</tr>
+</tbody>
+</table>
+
+<ul>
+  <li><strong>Board Version</strong> (<code>BOARD_VNDK_VERSION</code>). VNDK
+  version that vendor modules require to build. Set to <code>current</code> if
+  vendor modules can link with current system modules.</li>
+  <li><strong>Platform Version</strong> (<code>PLATFORM_VNDK_VERSION</code>).
+  VNDK version that current system modules are building. Built only when
+  <code>BOARD_VNDK_VERSION</code> equals current.</li>
+  <li><strong>Version Property</strong> (<code>ro.vndk.version</code>). Property
+  that specifies the VNDK version the binaries and libs in vendor.img require to
+  run. Stored in the vendor.img at<code> /vendor/default.prop</code>.</li>
+</ul>
+
+</body>
+</html>

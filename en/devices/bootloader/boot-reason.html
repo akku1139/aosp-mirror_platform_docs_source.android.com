@@ -1,0 +1,319 @@
+<html devsite>
+  <head>
+    <title>Canonical Boot Reason</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  {% include "_versions.html" %}
+  <!--
+      Copyright 2018 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>
+  Android {{ androidPVersionNumber }} includes the following changes to the
+  bootloader boot reason specification.
+</p>
+
+<h2 id="about-boot-reasons">About boot reasons</h2>
+
+<p>
+  A bootloader uses uniquely-available hardware and memory resources to
+  determine why a device rebooted, then communicates that determination by
+  adding <code>androidboot.bootreason=&lt;reason&gt;</code> to the Android
+  kernel command line for its launch. <code>init</code> then translates this
+  command line to propagate to the Android property
+  <code>bootloader_boot_reason_prop</code> (<code>ro.boot.bootreason</code>).
+</p>
+
+<h2 id="about-boot-reason-specifications">About boot reason specifications</h2>
+
+<p>
+  Previous releases of Android specified a boot reason format that used no
+  spaces, was all lowercase, included few requirements (such as for reporting
+  <code>kernel_panic</code>, <code>watchdog</code>,
+  <code>cold</code>/<code>warm</code>/<code>hard</code>), and which made
+  allowances for other unique reasons. This loose specification resulted in the
+  proliferation of hundreds of custom (and sometimes meaningless) boot reason
+  strings, which in turn led to an unmanageable situation. As of the current
+  Android release, the sheer momentum of near unparseable or meaningless content
+  filed by the bootloader has created compliance issues for
+  <code>bootloader_boot_reason_prop</code>.
+</p>
+
+<p>
+  With the Android {{ androidPVersionNumber }} release, the Android team
+  recognizes that the legacy <code>bootloader_boot_reason_prop</code> has
+  substantial momentum and cannot be re-written at runtime. Any improvements to
+  the boot reason specification must therefore come from interactions with
+  bootloader developers and tweaks to the existing system. To that end the
+  Android team is:
+</p>
+
+<ul>
+  <li>Engaging with bootloader developers to encourage them to:
+  <ul>
+    <li>Provide canonical, parseable, and recognizable reasons to
+    <code>bootloader_boot_reason_prop</code>.</li>
+    <li>Participate in the <code>system/core/bootstat/bootstat.cpp</code>
+    <code>kBootReasonMap</code> list.</li>
+    </ul>
+  </li>
+  <li>Adding a controlled and runtime-rewritable source of the
+  <code>system_boot_reason_prop</code> (<code>sys.boot.reason</code>). A
+  limited set of system applications (such as <code>bootstat</code> and
+  <code>init</code>) can rewrite this property, but all applications can be
+  granted sepolicy rights to read it.</li>
+  <li>Informing users of the boot reason to wait until after userdata is mounted
+  before trusting the content in the system boot reason property
+  <code>system_boot_reason_prop</code>.</li>
+</ul>
+
+<p>
+  Why so late? While <code>bootloader_boot_reason_prop</code> is available early
+  on in boot, it is blocked by the Android security policy on an as-need basis
+  because it represents inaccurate, unparseable, and noncanonical information.
+  In most situations, only developers with deep knowledge of the boot system
+  should need to access this information. A refined, parseable, and canonical
+  API for boot reason via <code>system_boot_reason_prop</code> can be reliably
+  and accurately picked up only <strong>after</strong> userdata has mounted.
+  Specifically:
+</p>
+
+  <ul>
+    <li><strong>Before</strong> userdata has mounted,
+    <code>system_boot_reason_prop</code> will contain the value from
+    <code>bootloader_boot_reasoon_prop</code>.</li>
+    <li><strong>After</strong> userdata has mounted,
+    <code>system_boot_reason_prop</code> may be updated to be compliant or to
+    report more accurate information.</li>
+  </ul>
+
+<p>
+  For this reason, Android {{ androidPVersionNumber }} extends the period of
+  time before the boot reason can be officially acquired, changing it from being
+  immediately accurate in boot (with <code>bootloader_boot_reason_prop</code>)
+  to being available only after userdata has mounted (with
+  <code>system_boot_reason_prop</code>).
+</p>
+
+<p>
+  Bootstat logic depends on a more informative and compliant
+  <code>bootloader_boot_reason_prop</code>. When that property uses a
+  predictable format, it improves the accuracy of all controlled reboot and
+  shutdown scenarios, which in turn refines and expands the accuracy and meaning
+  of <code>system_boot_reason_prop</code>.
+</p>
+
+<h2 id="canonical-boot-reason-format">Canonical boot reason format</h2>
+
+<p>
+  The canonical boot reason format for <code>bootloader_boot_reason_prop</code>
+  in Android {{ androidPVersionNumber }} uses the following syntax:
+</p>
+
+<pre class="prettyprint">&lt;reason>,&lt;subreason>,&lt;detail>…</pre>
+
+<p>
+  Formatting rules:
+</p>
+
+<ul>
+  <li>Lower case</li>
+  <li>No blanks (use underline)</li>
+  <li>All printable characters</li>
+  <li>Comma-separated <code>reason</code>, <code>subreason</code>, and one or
+    more <code>detail</code>(s).
+  <ul>
+    <li>A required <code>reason</code> that represents the highest priority
+    reason why the device had to reboot or shutdown.</li>
+    <li>An optional <code>subreason</code> that represents a short summary of
+    why the device had to reboot or shutdown (or who rebooted or shutdown the
+    device).</li>
+    <li>One or more optional <code>detail</code> values. A <code>detail</code>
+    may point to a subsystem to aid in determining which specific system
+    resulted in the <code>subreason</code>. You can specify multiple
+    <code>detail</code> values, which should generally follow a hierarchy of
+    importance. However, it is also acceptable to report multiple
+    <code>detail</code> values of equal importance.</li>
+  </ul>
+  </li>
+</ul>
+
+<p>
+  An empty value for <code>bootloader_boot_reason_prop</code> is considered
+  illegal (as this allows other agents to inject a boot reason after the fact).
+</p>
+
+<h3 id="reason-requirements">Reason requirements</h3>
+
+<p>
+  The value given for <code>reason</code> (first span, prior to termination or
+  comma) must be of the following set divided into kernel, strong, and blunt
+  reasons:
+</p>
+
+<ul>
+  <li>kernel set:
+  <ul>
+    <li>"<code>watchdog"</code></li>
+    <li><code>"kernel_panic"</code></li>
+  </ul>
+  </li>
+  <li>strong set:
+  <ul>
+    <li><code>"recovery"</code></li>
+    <li><code>"bootloader"</code></li>
+  </ul>
+  </li>
+  <li>blunt set:
+  <ul>
+    <li><code>"cold"</code>. Generally indicates a full reset of all devices,
+    including memory.</li>
+    <li><code>"hard"</code>. Generally indicates the hardware has its state
+    reset and <code>ramoops</code> should retain persistent content.</li>
+    <li><code>"warm"</code>. Generally indicates the memory and the devices
+    retain some state, and the <code>ramoops</code> (see <code>pstore</code>
+    driver in kernel) backing store contains persistent content.</li>
+    <li><code>"shutdown"</code></li>
+    <li><code>"reboot"</code>. Generally means the <code>ramoops</code> state is
+    unknown and the hardware state is unknown. This value is a catchall as the
+    <code>cold</code>, <code>hard</code>, and <code>warm</code> values provide
+    clues as to the depth of the reset for the device.</li>
+  </ul>
+  </li>
+</ul>
+
+<p>
+  Bootloaders must provide a kernel set or a blunt set <code>reason</code>, and
+  are strongly encouraged to provide a <code>subreason</code> if it can be
+  determined. For example, a power key long press that may or may not have
+  <code>ramoops</code> backup would have the boot reason
+  <code>"reboot,longkey"</code>.
+</p>
+
+<p>
+  No first-span <code>reason</code> can be part of any <code>subreason</code> or
+  <code>detail</code>. However, because kernel set reasons cannot be produced by
+  user space, <code>"watchdog"</code> may be reused after a blunt set reason,
+  along with a detail of the source (e.g.
+  <code>"reboot,watchdog,service_manager_unresponsive"</code>, or
+  <code>"reboot,software,watchdog"</code>).
+</p>
+
+<p>
+  Boot reasons should not require expert internal knowledge to decipher and/or
+  should be human readable with an intuitive report. Examples:
+  <code>"shutdown,vbxd"</code> (bad), <code>"shutdown,uv"</code> (better),
+  <code>"shutdown,undervoltage"</code> (preferred).
+</p>
+
+<h3 id="reason-subreason-combinations">Reason-Subreason combinations</h3>
+
+<p>
+  Android reserves a set of <code>reason</code>-<code>subreason</code>
+  combinations that should not be overloaded in normal usage but can be used on
+  a case-by-case basis if the combination accurately reflects the associated
+  condition. Examples of reserved combinations include:
+</p>
+
+<ul>
+  <li><code>"reboot,userrequested"</code></li>
+  <li><code>"shutdown,userrequested"</code></li>
+  <li><code>"Shutdown,thermal"</code> (from <code>thermald</code>)</li>
+  <li><code>"shutdown,battery"</code></li>
+  <li><code>"Shutdown,battery,thermal"</code> (from
+  <code>BatteryStatsService</code>)</li>
+  <li><code>"reboot,adb"</code></li>
+  <li><code>"reboot,shell"</code></li>
+  <li><code>"reboot,bootloader"</code></li>
+  <li><code>"reboot,recovery"</code></li>
+</ul>
+
+<p>
+  For more details, refer to <code>kBootReasonMap</code> in
+  <code>system/core/bootstat/bootstat.cpp</code> and the associated git
+  changelog history in the Android source repository.
+</p>
+
+<h2 id="reporting-boot-reasons">Reporting boot reasons</h2>
+
+<p>
+  All boot reasons, either from the bootloader or recorded in the canonical boot
+  reason, must be recorded in the <code>kBootReasonMap</code> section of
+  <code>system/core/bootstat/bootstat.cpp</code>. The
+  <code>kBootReasonMap</code> list is a mix of compliant and legacy
+  non-compliant reasons. Bootloader developers should register only new
+  compliant reasons here (and should not register non-compliant reasons unless
+  the product has already shipped and cannot be changed).
+</p>
+
+<aside class="note">
+  <strong>Note:</strong> While <code>system/core/bootstat/bootstat.cpp</code>
+  contains a <code>kBootReasonMap</code> section that lists a considerable
+  number of legacy reasons, the presence of these reasons does not mean the
+  <code>reason</code> string is approved for use. A subset of the list
+  represents compliant reasons; we expect this subset to grow as bootloader
+  authors register and explain additional compliant reasons.
+</aside>
+
+<p>
+  We strongly recommend using existing, compliant entries in
+  <code>system/core/bootstat/bootstat.cpp</code> and exercising restraint before
+  using a non-compliant string. As a guideline, it is:
+</p>
+
+<ul>
+  <li><strong>OK</strong> to report <code>"kernel_panic"</code> from the
+  bootloader, as <code>bootstat</code> may be able to inspect
+  <code>ramoops</code> for <code>kernel_panic signatures</code> to refine the
+  subreasons into the canonical <code>system_boot_reason_prop</code>.</li>
+  <li><strong>Not OK</strong> to report a non-compliant string in
+  <code>kBootReasonMap</code> (such as <code>"panic")</code> from the
+  bootloader, as this will ultimately break the ability to refine the
+  <code>reason</code>.</li>
+</ul>
+
+<p>
+  For example, if <code>kBootReasonMap</code> contains <code>"wdog_bark"</code>,
+  a bootloader developer should:
+</p>
+
+<ul>
+  <li>Change to <code>"watchdog,bark"</code> and add to the list in
+  <code>kBootReasonMap</code>.</li>
+  <li>Consider what <code>"bark"</code> means for those unfamiliar with the
+  technology and determine if a more meaningful <code>subreason</code> is
+  available.</li>
+</ul>
+
+<h2 id="verifying-boot-reason-compliance">Verifying boot reason compliance</h2>
+
+<p>
+  At this time, Android does not provide an active CTS test that can accurately
+  trigger or inspect all possible boot reasons a bootloader could provide;
+  partners can still attempt to run a passive test to determine compatibility.
+</p>
+
+<p>
+  As a result, bootloader compliance requires bootloader developers to
+  voluntarily adhere to the spirit of the rules and guidelines described above.
+  We urge such developers to contribute to AOSP (specifically to
+  <code>system/core/bootstat/bootstat.cpp</code>) and use this opportunity as a
+  forum for discussions about boot reason issues.
+</p>
+
+</body>
+</html>

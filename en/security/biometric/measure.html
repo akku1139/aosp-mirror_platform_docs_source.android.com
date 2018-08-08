@@ -1,0 +1,286 @@
+<html devsite>
+  <head>
+    <title>Measuring Biometric Unlock Security</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+
+
+<p>
+Today, biometric-based unlock modalities are evaluated almost solely on the
+basis of <em>False Accept Rate (FAR)</em>, a metric that defines how often a
+model mistakenly accepts a randomly chosen incorrect input. While this is a
+useful measure, it does not provide sufficient information to evaluate how well
+the model stands up to targeted attacks.
+</p>
+
+<h2 id="metrics">Metrics</h2>
+
+<p>
+Android 8.1 introduces two new metrics associated with biometric unlocks that
+are intended to help device manufacturers evaluate their security more
+accurately:
+</p>
+
+<ul>
+<li><em>Imposter Accept Rate (IAR)</em>: The chance that a biometric model
+accepts input that is meant to mimic a known good sample. For example, in the
+<a href="https://support.google.com/nexus/answer/6093922" class="external">Smart
+Lock</a> trusted voice (voice unlock) mechanism, this would measure how often
+someone trying to mimic a user's voice (using similar tone, accent, etc) can
+unlock their device. We call such attacks <em>Imposter Attacks</em>.</li>
+<li><em>Spoof Accept Rate (SAR)<strong>:</strong></em> The chance that a
+biometric model accepts a previously recorded, known good sample. For example,
+with voice unlock this would measure the chances of unlocking a user's phone
+using a recorded sample of them saying: "Ok, Google"  We call such attacks
+<em>Spoof Attacks<strong>.</strong></em></li>
+</ul>
+
+<p>
+Of these, IAR measurements are not universally useful for all biometric
+modalities. Consider fingerprint for example. An attacker could create a mold of
+a user's fingerprint and attempt to use that to bypass the fingerprint sensor,
+which would count as a spoof attack. However, there isn't a way to mimic a
+fingerprint that would be accepted as the user's - and so there's not a clear
+notion of an imposter attack against fingerprint sensors.
+</p>
+
+<p>
+SAR, however, works for every biometric modality.
+</p>
+
+<h3 id="example-attacks">Example attacks</h3>
+
+<p>
+The table below lists examples of imposter and spoof attacks for four
+modalities.
+</p>
+
+<table>
+  <tr>
+   <th>Modality</th>
+   <th>Imposter Attack</th>
+   <th>Spoof Attack</th>
+  </tr>
+  <tr>
+   <td>Fingerprint
+   </td>
+   <td>N/A
+   </td>
+   <td>Fingerprint + Fingerprint mold
+   </td>
+  </tr>
+  <tr>
+   <td>Face
+   </td>
+   <td>Trying to look like the user
+   </td>
+   <td>High-res photo, Latex (or other high quality) face masks
+   </td>
+  </tr>
+  <tr>
+   <td>Voice
+   </td>
+   <td>Trying to sound like the user
+   </td>
+   <td>Recording
+   </td>
+  </tr>
+  <tr>
+   <td>Iris
+   </td>
+   <td>N/A
+   </td>
+   <td>High-res photo + contact lens
+   </td>
+  </tr>
+</table>
+
+<p>
+<strong>Table 1. Example attacks</strong>
+</p>
+
+<p>
+See <a href="#test-methods">Test methodology</a> for advice and more details on
+methodologies to measure SAR and IAR for different biometrics.
+</p>
+
+<h3 id="strong-weak-unlocks">Strong vs. weak unlocks</h3>
+
+<p>
+The bar for an unlock to be considered strong is a combination of the three
+accept rates - FAR, IAR, and SAR. In cases where an imposter attack does not
+exist, we consider only the FAR and SAR.
+</p>
+
+<p>
+See the <a href="/compatibility/android-cdd">Android Compatibility Definition
+Document</a> (CDD) for the measures to be taken for weak unlock modalities.
+</p>
+
+<h2 id="test-methods">Test methodology</h2>
+
+<p>
+Here we explain considerations and offer advice regarding test setups to measure
+spoof (SAR) and imposter acceptance rates (IAR) for biometric unlock modalities.
+See <a href="#metrics">Metrics</a> for more information on what these metrics mean
+and why they're useful.
+</p>
+
+<h3 id="common-considerations">Common considerations</h3>
+
+<p>
+While each modality requires a different test setup, there are a few common
+aspects that apply to all of them.
+</p>
+
+<h4 id="test-hw">Test the actual hardware</h4>
+
+<p>
+Collected SAR/IAR metrics can be inaccurate when biometric models are tested
+under idealized conditions and on different hardware than it would actually
+appear on in a mobile device. For example, voice unlock models that are
+calibrated in an anechoic chamber using a multi-microphone setup behave very
+differently when used on a single microphone device in a noisy environment. In
+order to capture accurate metrics, tests should be carried out on an actual
+device with the hardware installed, and failing that with the hardware as it
+would appear on the device.
+</p>
+
+<h4 id="known-attacks">Use known attacks</h4>
+
+<p>
+Most biometric modalities in use today have been successfully spoofed, and
+public documentation of the attack methodology exists. Below we provide a brief
+high-level overview of test setups for modalities with known attacks. We
+recommend using the setup outlined here wherever possible.
+</p>
+
+<h4 id="anticipate-attacks">Anticipate new attacks</h4>
+
+<p>
+For modalities where significant new improvements have been made, the test setup
+document may not contain a suitable setup, and no known public attack may exist.
+Existing modalities may also need their test setup tuned in the wake of a newly
+discovered attack. In both cases you will need to come up with a reasonable test
+setup. Please use the <a
+href="https://issuetracker.google.com/issues/new?component=191476"
+class="external">Site Feedback</a> link at the bottom of this page to let us
+know if you have set up a reasonable mechanism that can be added.
+</p>
+
+<h3 id="setups-for-different-modalities">Setups for different modalities</h3>
+
+<h4 id="fingerprint">Fingerprint</h4>
+
+<table>
+  <tr>
+   <td><strong>IAR</strong>
+   </td>
+   <td>Not needed.
+   </td>
+  </tr>
+  <tr>
+   <td><strong>SAR</strong>
+   </td>
+   <td>
+   <ul>
+<li>Create fake fingerprints using a mold of the target fingerprint.</li>
+<li>Measurement accuracy is sensitive to the quality of the fingerprint mold.
+Dental silicon is a good choice.</li>
+<li>The test setup should measure how often a fake fingerprint created with the
+mold is able to unlock the device.</li>
+   </ul>
+   </td>
+  </tr>
+</table>
+
+<h4 id="face-and-iris">Face and Iris</h4>
+
+<table>
+  <tr>
+   <td><strong>IAR</strong>
+   </td>
+   <td>Lower bound will be captured by SAR so separately measuring this is not
+needed.
+   </td>
+  </tr>
+  <tr>
+   <td><strong>SAR</strong>
+   </td>
+   <td>
+   <ul>
+<li>Test with photos of the target's face. For iris, the face will need to be
+zoomed in to mimic the distance a user would normally use the feature.</li>
+<li>Photos should be high resolution, otherwise results are misleading.</li>
+<li>Photos should not be presented in a way that reveals they are images. For
+example:
+ <ul>
+ <li>image borders should not be included</li>
+ <li>if the photo is on a phone, the phone screen/bezels should not be visible</li>
+ <li>if someone is holding the photo, their hands should not be seen</li>
+ </ul>
+ </li>
+<li>For straight angles, the photo should fill the sensor so nothing else
+outside can be seen.</li>
+<li>Face and iris models are typically more permissive when the sample
+(face/iris/photo) is at an acute angle w.r.t to the camera (to mimic the use
+case of a user holding the phone straight in front of them and pointing up at
+their face). Testing at this angle will help determine if your model is
+susceptible to spoofing.</li>
+<li>The test setup should measure how often an image of the face or iris is able
+to unlock the device.</li>
+</ul>
+</li>
+</ul>
+ </td>
+ </tr>
+</table>
+
+<h4 id="voice">Voice</h4>
+
+<table>
+  <tr>
+   <td><strong>IAR</strong>
+   </td>
+   <td>
+   <ul>
+<li>Test using a setup where participants hear a positive sample and then try to
+mimic it.</li>
+<li>Test the model with participants across genders and with different accents
+to ensure coverage of edge cases where some intonations/accents have a higher
+FAR.</li>
+</ul>
+ </td>
+ </tr>
+ <tr>
+  <td><strong>SAR</strong>
+  </td>
+  <td>
+  <ul>
+<li>Test with recordings of the target's voice.</li>
+<li>The recording needs to be of a reasonably high quality, or the results will
+be misleading.</li>
+</ul>
+ </td>
+ </tr>
+</table>
+</body>
+</html>
