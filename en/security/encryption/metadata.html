@@ -1,0 +1,312 @@
+<html devsite>
+  <head>
+    <title>Metadata Encryption</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2018 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>
+Android 7.0 and later supports
+<a href="/security/encryption/file-based">file-based encryption</a> (FBE). FBE
+allows different files to be encrypted with different keys that can be unlocked
+independently. These keys are used to encrypt both file contents and file names.
+When FBE is used, other information, such as directory layouts, file sizes,
+permissions, and creation/modification times, is not encrypted. Collectively,
+this is known as filesystem metadata.
+</p>
+<p>
+Android 9 introduces support for metadata encryption where hardware support is
+present. With metadata encryption, a single key present at boot time encrypts
+whatever content is not encrypted by FBE. This key is protected by Keymaster,
+which in turn is protected by verified boot.
+</p>
+<h2 id="implementation">Implementation</h2>
+<p>
+You can set up metadata encryption on new devices running Android 9 by setting
+up the metadata filesystem, changing the init sequence, and turning on metadata
+encryption in the device's fstab file.
+</p>
+<h3 id="hardware-requirements">Hardware requirements</h3>
+<p>
+Metadata encryption can only be set up when the data partition is first
+formatted. As a result, this feature is only for new devices; this is not
+something an OTA should change.
+</p>
+<p>
+To support metadata encryption currently, your hardware needs to support an <a
+href="https://blog.google/topics/connected-workspaces/pixel-security-better-faster-stronger/">inline
+crypto engine</a> to use for file-based encryption. This is indicated by a
+<code>fileencryption=ice</code> directive for the userdata partition in
+<code>fstab.hardware</code>.
+</p>
+<p>
+Additionally, the <code>dm-default-key</code> module must be present and enabled
+in the kernel.
+</p>
+<h3 id="set-up-metadata-filesystem">Set up metadata filesystem</h3>
+<p>
+Because nothing in the userdata partition can be read until the metadata
+encryption key is present, the partition table must set aside a separate
+partition called the "metadata partition" for storing the keymaster blobs that
+protect this key. The metadata partition should be 16MB.
+</p>
+<p>
+<code>fstab.hardware</code> must include an entry for the metadata filesystem
+that lives on that partition mounting it at <code>/metadata</code>, including
+the <code>formattable</code> flag to ensure it is formatted at boot time. The
+f2fs filesystem does not work on smaller partitions; we recommend using ext4
+instead. For example:
+</p>
+
+<pre
+class="prettyprint">/dev/block/bootdevice/by-name/metadata              /metadata          ext4        noatime,nosuid,nodev,discard                          wait,check,formattable</pre>
+<p>
+To ensure the <code>/metadata</code> mount point exists, add the following line
+to <code>BoardConfig-common.mk</code>:
+</p>
+
+<pre
+class="prettyprint">BOARD_USES_METADATA_PARTITION := true</pre>
+
+<h3 id="changes-to-the-init-sequence">Changes to the init sequence</h3>
+<p>
+When metadata encryption is used, <code>vold</code> must be running before
+<code>/data</code> is mounted. To ensure that it is started early enough, add
+the following stanza to <code>init.hardware.rc</code>:
+</p>
+
+
+<pre
+class="prettyprint"># We need vold early for metadata encryption
+on early-fs
+    start vold</pre>
+<p>
+Keymaster must be running and ready before init attempts to mount
+<code>/data</code>.
+</p>
+<p>
+ <code>init.hardware.rc</code> should already contain a <code>mount_all</code>
+instruction which mounts <code>/data</code> itself in the <code>on
+late-fs</code> stanza. Before this line, add the directive to exec the
+<code>wait_for_keymaster</code> service:
+</p>
+
+
+<pre
+class="prettyprint">on late-fs
+   … 
+    # Wait for keymaster
+    exec_start wait_for_keymaster
+
+    # Mount RW partitions which need run fsck
+    mount_all /vendor/etc/fstab.${ro.boot.hardware.platform} --late</pre>
+
+<h3 id="switching-on-metadata-encryption">Switching on metadata encryption</h3>
+<p>
+Finally add <code>keydirectory=/metadata/vold/metadata_encryption</code> to the
+<code>fstab.hardware</code> entry for userdata:
+</p>
+
+
+<pre
+class="prettyprint">/dev/block/bootdevice/by-name/userdata              /data              f2fs        noatime,nosuid,nodev,discard latemount,wait,check,fileencryption=ice,keydirectory=/metadata/vold/metadata_encryption,quota,formattable</pre>
+
+<h2 id="validation">Validation</h2>
+<p>While implementing metadata encryption, be mindful of these common issues
+and test your implementation.
+</p>
+
+<h3 id="common-issues">Common issues</h3>
+<p>
+During the call to <code>mount_all</code>, which mounts the metadata-encrypted
+<code>/data</code> partition, <code>init</code> executes the vdc tool. The vdc
+tool connects to <code>vold</code> over <code>binder</code> to set up the
+metadata-encrypted device and mount the partition. For the duration of this
+call, <code>init</code> is blocked, and attempts to either read or set
+<code>init</code> properties will block until <code>mount_all</code> finishes.
+If, at this stage, any part of <code>vold</code>'s work is directly or
+indirectly blocked on reading or setting a property, deadlock will result. It is
+important to ensure that <code>vold</code> can complete the work of reading the
+keys, interacting with Keymaster, and mounting the data directory without
+interacting further with <code>init</code>.
+</p>
+<p>
+If Keymaster is not fully started when <code>mount_all</code> runs, it will not
+respond to <code>vold</code> until it has read certain properties from
+<code>init</code>, resulting in exactly the deadlock described. Placing
+<code>exec_start wait_for_keymaster</code> above the relevant
+<code>mount_all</code> invocation as set out ensures that Keymaster is fully
+running in advance and so avoids this deadlock.
+</p>
+
+<h3 id="metadata-encryption-test">Metadata encryption test</h3>
+<p>
+We're upstreaming these tests, but in the meantime, add a few lines to
+<code>Android.bp</code> and add <code>check_encryption.cpp</code> to <code><a
+href="https://android.googlesource.com/platform/system/vold/+/master">platform/system/vold</a></code>
+to test your implementation.</p>
+
+<h4 id="changes-to-android-bp">Changes to <code>Android.bp</code></h4>
+<p>
+Changes to <code>Android.bp</code> called out below.
+</p>
+
+
+<pre class="prettyprint">...
+}
+
+cc_binary {
+    name: "vold",
+    defaults: [
+        "vold_default_flags",
+        "vold_default_libs",
+    ],
+
+    srcs: ["main.cpp"],
+    static_libs: ["libvold"],
+    product_variables: {
+        arc: {
+            static_libs: [
+                "arc_services_aidl",
+                "libarcobbvolume",
+            ],
+        },
+    },
+    init_rc: [
+        "vold.rc",
+        "wait_for_keymaster.rc",
+    ],
+
+    required: [
+        <strong>"check_encryption",</strong>
+        "mke2fs",
+        "vold_prepare_subdirs",
+        "wait_for_keymaster",
+    ],
+}
+...
+<strong>
+}
+
+cc_binary {
+    name: "check_encryption",
+    defaults: ["vold_default_flags"],
+    srcs: [
+        "FileDeviceUtils.cpp",
+        "check_encryption.cpp",
+    ],
+    shared_libs: [
+        "libbase",
+    ],
+}</strong></pre>
+
+<h4 id="add-check_encryption-cpp">Add check_encryption.cpp</h4>
+
+<p>Add <code>check_encryption.cpp</code> to <code><a
+href="https://android.googlesource.com/platform/system/vold/+/master">platform/system/vold</a></code>.</p>
+
+<pre class="prettyprint">/*
+ * Copyright (C) 2017 The Android Open Source Project
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+#include "FileDeviceUtils.h"
+
+#include &lt;cmath&gt;
+#include &lt;string&gt;
+
+#include &lt;assert.h&gt;
+#include &lt;stdio.h&gt;
+
+#include &lt;android-base/file.h&gt;
+#include &lt;android-base/logging.h&gt;
+#include &lt;android-base/unique_fd.h&gt;
+using android::base::unique_fd;
+using android::base::ReadFileToString;
+using android::base::WriteStringToFile;
+
+namespace android {
+namespace vold {
+const size_t sectorsize = 1 &lt;&lt; 12;
+const int sectorcount = 1024;
+static double randomness_score(const std::string&amp; checkme) {
+    unsigned int freq[256] = {0};
+    unsigned int sum = 256;
+    double loglaplace = 0;
+    for (auto b : checkme) {
+        loglaplace -= 8 + log2(static_cast&lt;double&gt;(++freq[static_cast&lt;uint8_t&gt;(b)]) / (sum++));
+    }
+    return loglaplace;
+    LOG(INFO) &lt;&lt; "Score: " &lt;&lt; loglaplace;  // if negative, not random
+    return loglaplace &lt; 0;
+}
+static bool run_test(const std::string&amp; device) {
+    unique_fd device_fd(open(device.c_str(), O_RDONLY | O_CLOEXEC));
+    if (device_fd.get() == -1) {
+        PLOG(ERROR) &lt;&lt; "Failed to open " &lt;&lt; device;
+        return false;
+    }
+    int randompassed = 0;
+    auto buf = std::string(sectorsize, '\0');
+    for (int i = 0; i &lt; sectorcount; i++) {
+        auto l = read(device_fd.get(), &amp;buf[0], buf.size());
+        if (l &lt; 1) {
+            PLOG(ERROR) &lt;&lt; "Failed read on sector " &lt;&lt; i;
+            return false;
+        }
+        if (((size_t)l) != buf.size()) {
+            LOG(ERROR) &lt;&lt; "Short read on sector " &lt;&lt; i;
+            return false;
+        }
+        auto score = randomness_score(buf);
+        if (score &gt;= 0) {
+            randompassed++;
+            LOG(INFO) &lt;&lt; "Passed randomness check on sector " &lt;&lt; i &lt;&lt; " with score " &lt;&lt; score;
+        } else {
+            LOG(ERROR) &lt;&lt; "Failed randomness check on sector " &lt;&lt; i &lt;&lt; " with score " &lt;&lt; score;
+        }
+    }
+    LOG(INFO) &lt;&lt; "Passed randomness check on " &lt;&lt; randompassed &lt;&lt; "/" &lt;&lt; sectorcount &lt;&lt; " sectors";
+    return randompassed == sectorcount;
+}
+}  // namespace vold
+}  // namespace android
+int main(int argc, const char* const argv[]) {
+    setenv("ANDROID_LOG_TAGS", "*:v", 1);
+    android::base::InitLogging(const_cast&lt;char**&gt;(argv), android::base::StderrLogger);
+    if (argc != 2) {
+        LOG(ERROR) &lt;&lt; "Usage: " &lt;&lt; argv[0] &lt;&lt; " &lt;device&gt;";
+        LOG(ERROR) &lt;&lt; "example: " &lt;&lt; argv[0] &lt;&lt; " /dev/block/bootdevice/by-name/userdata";
+        return -1;
+    }
+    android::vold::run_test(std::string(argv[1]));
+    return 0;
+}</pre>
+  </body>
+</html>

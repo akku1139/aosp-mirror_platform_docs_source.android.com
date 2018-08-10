@@ -27,16 +27,20 @@
 <p>Android has always supported external storage accessories (such as SD cards), but
 these accessories were historically limited to simple file storage, due to
 their expected impermanence and the minimal data protection offered to
-<a href="/devices/storage/traditional.html">traditional external storage</a>.
+<a href="/devices/storage/traditional">traditional external storage</a>.
 Android 6.0 introduced the ability to
-<a href="http://developer.android.com/about/versions/marshmallow/android-6.0.html#adoptable-storage">adopt</a>
-external storage media to act like internal storage.</p>
+<a href="http://developer.android.com/about/versions/marshmallow/android-6.0.html#adoptable-storage"
+  class="external">adopt</a> external storage media to act like internal
+storage.</p>
 
-<p class="warning"><strong>Warning:</strong> <a
-href="/security/encryption/file-based.html">File-based encryption</a> cannot
-currently be used together with adoptable storage. On devices using file-based
-encryption, new storage media (such as an SD card) must be used as <a
-href="/devices/storage/traditional.html">traditional storage</a>.</p>
+<aside class="caution">
+  <p><strong>Caution</strong>: On devices running Android 7.0-8.1,
+  <a href="/security/encryption/file-based">file-based encryption</a>
+  (FBE) can't be used together with adoptable storage. On devices
+  using FBE, new storage media (such as an SD card) must be used as
+  <a href="/devices/storage/traditional">traditional storage</a>.</p>
+  <p>Devices running Android 9 and higher can use adoptable storage and FBE.</p>
+</aside>
 
 <p>When external storage media is adopted, it’s formatted and encrypted to only
 work with a single Android device at a time. Because the media is strongly tied
@@ -47,11 +51,13 @@ private data for all users.</p>
 location, Android asks them how they want to use the media. They can choose to
 adopt the media, which formats and encrypts it, or they can continue using it
 as-is for simple file storage. If they choose to adopt, the platform offers to
-migrate the primary shared storage contents (typically mounted at <code>/sdcard</code>)
-to the newly adopted media, freeing up valuable space on internal storage.
-Unlike traditional storage, which is limited to 2TB due to its use of
-<a href="https://en.wikipedia.org/wiki/Master_boot_record">MBR</a>, adoptable
-storage uses <a href="https://en.wikipedia.org/wiki/GUID_Partition_Table">GPT</a>
+migrate the primary shared storage contents (typically mounted at
+<code>/sdcard</code>) to the newly adopted media, freeing up valuable space on
+internal storage. Unlike traditional storage, which is limited to 2TB due to its
+use of
+<a href="https://en.wikipedia.org/wiki/Master_boot_record" class="external">MBR</a>,
+adoptable storage uses
+<a href="https://en.wikipedia.org/wiki/GUID_Partition_Table" class="external">GPT</a>
 and therefore has file storage limit of ~9ZB.</p>
 
 <p>Apps can be placed on adopted storage media only when the developer has
@@ -62,7 +68,7 @@ between storage devices in the <em>Settings</em> app. Apps moved to adopted
 media are remembered while the media is ejected,
 and return when the media is reinserted.</p>
 
-<h2 id=security>Security</h2>
+<h2 id="security">Security</h2>
 
 
 <p>The platform randomly generates an encryption key for each adopted device,
@@ -70,8 +76,9 @@ and that key is stored on the internal storage of the Android device. This
 effectively makes the adopted media as secure as internal storage. Keys are
 associated with adopted devices based on the adopted partition GUID. The
 adopted device is encrypted using <code>dm-crypt</code> configured with the
-<code>aes-cbc-essiv:sha256</code> algorithm and a 128-bit key size.</p>
-
+<code>aes-cbc-essiv:sha256</code> algorithm
+and a 128-bit key size.
+</p>
 <p>The on-disk layout of the adopted device closely mirrors the internal data
 partition, including SELinux labels, etc. When multi-user is supported on the
 Android device, the adopted storage device also supports multi-user with the
@@ -79,9 +86,27 @@ same level of isolation as internal storage.</p>
 
 <p>Because the contents of an adopted storage device are strongly tied to the
 Android device that adopted it, the encryption keys should not be extractable
-from the parent device, and therefore the storage device can't be mounted elsewhere.</p>
+from the parent device, and therefore the storage device can't be mounted
+elsewhere.</p>
 
-<h2 id=performance_and_stability>Performance and stability</h2>
+<p>
+The default encryption algorithm for contents mode is <code>aes-256-xts</code>
+and for filenames is <code>aes-256-heh</code>. You can change these by changing
+the values of the properties <code>ro.crypto.volume.contents_mode</code> and
+<code>ro.crypto.volume.filenames_mode</code> respectively, by setting
+<code>PRODUCT_PROPERTY_OVERRIDES</code> in <code>device.mk</code>.
+</p>
+<p>
+If your kernel does not support HEH filename encryption, you can use CTS mode
+instead by adding the following to device.mk:
+</p>
+
+
+<pre
+class="prettyprint">PRODUCT_PROPERTY_OVERRIDES += \
+ro.crypto.volume.filenames_mode=aes-256-cts</pre>
+
+<h2 id="performance_and_stability">Performance and stability</h2>
 
 
 <p>Only external storage media in stable locations, such as a slot inside a
@@ -100,15 +125,63 @@ warn users beyond a single threshold, but device manufacturers may adapt this
 further, such as rejecting adoption completely if the card is extremely slow.</p>
 
 <p>Adopted devices must be formatted with a filesystem that supports POSIX
-permissions and extended attributes, such as <code>ext4</code> or <code>f2fs</code>.
-For optimal performance, the <code>f2fs</code> filesystem is recommended for
-flash-based storage devices.</p>
+permissions and extended attributes, such as <code>ext4</code> or
+<code>f2fs</code>. For optimal performance, the <code>f2fs</code> filesystem is
+recommended for flash-based storage devices.</p>
 
-<p>When performing periodic idle maintenance, the platform issues <code>FI_TRIM</code>
-to adopted media just like it does for internal storage. The current SD card
-specification does not support the <code>DISCARD</code> command; but the kernel
-instead falls back to the <code>ERASE</code> command, which SD card firmware
-may choose to use for optimization purposes.</p>
+<p>When performing periodic idle maintenance, the platform issues
+<code>FI_TRIM</code> to adopted media just like it does for internal storage.
+The current SD card specification does not support the <code>DISCARD</code>
+command; but the kernel instead falls back to the <code>ERASE</code> command,
+which SD card firmware may choose to use for optimization purposes.</p>
+
+<h3 id="fixing-double-encryption">Fixing double encryption</h3>
+
+<p>In Android 8.x and lower, adoptable storage didn't work with FBE. All
+existing devices that have adoptable storage used
+<a href="/security/encryption/full-disk">full-disk encryption</a> (FDE).
+In Android 9, adoptable storage works with FBE and is encrypted using
+<a href="/security/encryption/metadata">metadata encryption</a>. However, by
+default, file contents are double-encrypted because adoptable storage has an
+FDE and FBE layer. By default, both layers encrypt file contents, which can
+slow device performance. To fix the problem of double encryption and speed up
+device performance:
+</p>
+<ol>
+  <li>Add <a href="https://android-review.googlesource.com/q/REQ_NOENCRYPT"
+             class="external">these patches</a> to your kernel.</li>
+  <li>To communicate this change with <code>vold</code>, add the following to
+    <code>device.mk</code>:
+    <pre class="prettyprint">PRODUCT_PROPERTY_OVERRIDES += ro.crypto.allow_encrypt_override=true</pre></li>
+</ol>
+<p>
+If you set this, but the kernel patches aren't present, adoptable storage won't
+work, and the <code>vold</code> logs will contain an error that it was unable
+to create the dm device.
+</p>
+<aside class="caution">
+  <strong>Caution:</strong> Don't change this flag with an OTA update because
+  it changes the on-disk format of adoptable storage.
+</aside>
+
+<h2 id="testing">Testing</h2>
+<p>
+To test that adoptable storage is working, run this CTS test:
+</p>
+
+
+<pre
+class="devsite-terminal devsite-click-to-copy">cts-tradefed run commandAndExit cts-dev \
+    -m CtsAppSecurityHostTestCases \
+    -t android.appsecurity.cts.AdoptableHostTest</pre>
+<p>
+To verify behavior of USB drives and SD cards when a device doesn't have a
+built-in slot or when the USB connector is being used for an active adb
+connection, use:
+</p>
+<pre class="prettyprint">
+adb shell sm set-virtual-disk true
+</pre>
 
   </body>
 </html>

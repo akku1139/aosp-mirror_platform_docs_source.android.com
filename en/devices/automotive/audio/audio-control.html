@@ -1,0 +1,504 @@
+<html devsite>
+  <head>
+    <title>Implementing the AudioControl HAL</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  {% include "_versions.html" %}
+  <body>
+  <!--
+      Copyright 2018 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+
+<p>
+  Android {{ androidPVersionNumber }} deprecates the <code>AUDIO_*</code>
+  properties in previous iterations of the Vehicle HAL and replaces them with a
+  dedicated Audio Control HAL that includes explicit function calls and typed
+  parameter lists.
+</p>
+
+<p>
+  This new HAL exposes <code>IAudioControl</code> as the primary interface
+  object that provides entry points to interact with the vehicle's audio engine
+  for configuration and volume control. The system can contain exactly one
+  instance of this object, which is created by <code>CarAudioService</code> when
+  it starts up. This object is an automotive extension of the traditional
+  Android Audio HAL; in most implementations, the same process that publishes
+  the Audio HAL interfaces should also publish the
+  <code>IAudioControl interfaces</code>.
+</p>
+
+<h2 id="supported-interfaces">Supported interfaces</h2>
+
+<p>
+  The <code>AudioControl</code> HAL supports the following interfaces:
+</p>
+
+<ul>
+  <li><code><strong>getBusforContext</strong></code>. Called at startup once
+  per context to get the mapping from <code>ContextNumber</code> to
+  <code>busAddress</code>. Example usage:
+
+<pre class="prettyprint">
+getBusForContext(ContextNumber contextNumber)
+    generates (uint32_t busNumber);
+</pre>
+
+Enables the vehicle to tell the framework where to route the physical
+output stream for each context. For every context, a valid bus number (0 - num
+busses-1) must be returned.  If an unrecognized <code>contextNumber</code> is
+encountered, -1 shall be returned. Any context for which an invalid
+<code>busNumber</code> is returned will be routed to bus 0.
+<br><br>
+Any concurrent sounds associated with the same <code>busNumber</code> via this
+mechanism will be mixed by the Android <code>AudioFlinger</code> before being
+delivered as a single stream to the Audio HAL. This supersedes the Vehicle HAL
+properties <code>AUDIO_HW_VARIANT</code> and <code>AUDIO_ROUTING_POLICY</code>.
+  </li>
+
+  <li><code><strong>setBalanceTowardRight</strong></code>. Control the
+  right/left balance setting of vehicle speakers. Example usage:
+
+<pre class="prettyprint">
+setBalanceTowardRight(float value);
+</pre>
+
+Shifts the speaker volume toward the right (+) or left (-) side of the
+car. 0.0 is centered, +1.0 is fully right, -1.0 is fully left, and a value
+outside the range -1 to 1 is an error.
+  </li>
+
+  <li><code><strong>setFadeTowardFront</strong></code>. Control the fore/aft
+  fade setting of vehicle speakers. Example usage:
+
+<pre class="prettyprint">
+setFadeTowardFront(float value);
+</pre>
+
+Shifts the speaker volume toward the front (+) or back (-) of the car.
+0.0 is centered, +1.0 is fully forward, -1.0 is fully rearward, and a value
+outside the range -1 to 1 is an error.
+  </li>
+</ul>
+
+<h2 id="configure-volume">Configuring volume</h2>
+
+<p>
+  Android automotive implementations should control volume using a hardware
+  amplifier instead of a software mixer. To avoid side effects, in
+  <code>device/generic/car/emulator/audio/overlay/frameworks/base/core/res/res/values/config.xml</code>,
+  set the <code>config_useFixedVolume</code> flag to <code>true</code> (overlay
+  as necessary):
+</p>
+
+<pre class="prettyprint">
+&lt;resources&gt;
+    &lt;!-- Car uses hardware amplifier for volume. --&gt;
+    &lt;bool name="config_useFixedVolume"&gt;true&lt;/bool&gt;
+&lt;/resources&gt;
+</pre>
+
+<p>
+  When the <code>config_useFixedVolume</code> flag is not set (or set to
+  <code>false</code>), applications can call
+  <code>AudioManager.setStreamVolume()</code> and change the volume by stream
+  type in the software mixer. This may be undesirable because of the potential
+  effect on other applications and the fact that volume attenuation in the
+  software mixer results in fewer significant bits available in the signal when
+  received at the hardware amplifier.
+</p>
+
+<h2 id="configure-volume-groups">Configuring volume groups</h2>
+
+<p>
+  <code>CarAudioService</code> uses volume groups defined in
+  <code>packages/services/Car/service/res/xml/car_volume_group.xml</code>. You
+  can override this file to redefine volume groups as necessary. Groups are
+  identified at runtime by their order of definition in the XML file. IDs range
+  from 0 to N-1, where N is the number of volume groups. Example:
+</p>
+
+<pre class="prettyprint">
+&lt;volumeGroups xmlns:car="http://schemas.android.com/apk/res-auto"&gt;
+    &lt;group&gt;
+        &lt;context car:context="music"/&gt;
+        &lt;context car:context="call_ring"/&gt;
+        &lt;context car:context="notification"/&gt;
+        &lt;context car:context="system_sound"/&gt;
+    &lt;/group&gt;
+    &lt;group&gt;
+        &lt;context car:context="navigation"/&gt;
+        &lt;context car:context="voice_command"/&gt;
+    &lt;/group&gt;
+    &lt;group&gt;
+        &lt;context car:context="call"/&gt;
+    &lt;/group&gt;
+    &lt;group&gt;
+        &lt;context car:context="alarm"/&gt;
+    &lt;/group&gt;
+&lt;/volumeGroups&gt;
+</pre>
+
+<p>
+  The attributes used in this configuration are defined in
+  <code>packages/services/Car/service/res/values/attrs.xml</code>.
+</p>
+
+<h2 id="handle-volumn-key-events">Handling volume key events</h2>
+
+<p>
+  Android defines several keycodes for volume control, including
+  <code>KEYCODE_VOLUME_UP</code>, <code>KEYCODE_VOLUME_DOWN</code>, and
+  <code>KEYCODE_VOLUME_MUTE</code>. By default, Android routes the volume key
+  events to applications. Automotive implementations should force these key
+  events to <code>CarAudioService</code>, which can then call
+  <code>setGroupVolume</code> or <code>setMasterMute</code> as appropriate.
+</p>
+
+<p>
+  To force this behavior, in
+  <code>device/generic/car/emulator/car/overlay/frameworks/base/core/res/res/values/config.xml</code>,
+  set the <code>config_handleVolumeKeysInWindowManager</code> flag to
+  <code>true</code>:
+</p>
+
+<pre class="prettyprint">
+&lt;resources&gt;
+    &lt;bool name="config_handleVolumeKeysInWindowManager"&gt;true&lt;/bool&gt;
+&lt;/resources&gt;
+</pre>
+
+<h2 id="caraudiomanager-api">CarAudioManager API</h2>
+
+<p>
+  The <code>CarAudioManager</code> uses <code>CarAudioService</code> to
+  configure and control vehicle audio systems. The manager is invisible to most
+  apps in the system, but vehicle-specific components, such as a volume
+  controller, can use the <code>CarAudioManager</code> API to interact with the
+  system.
+</p>
+
+<p>
+  The following sections describe Android {{ androidPVersionNumber }} changes to
+  the <code>CarAudioManager API</code>.
+</p>
+
+<h3 id="deprecated-apis">Deprecated APIs</h3>
+
+<p>
+  Android {{ androidPVersionNumber }} handles device enumeration through the
+  existing <code>AudioManager</code> <code>getDeviceList</code> API, so the
+  following vehicle-specific functions have been deprecated and removed:
+</p>
+
+<ul>
+  <li><code>String[] getSupportedExternalSourceTypes()</code></li>
+  <li><code>String[] getSupportedRadioTypes()</code></li>
+</ul>
+
+<p>
+  Android {{ androidPVersionNumber }} handles volume using
+  <code>AudioAttributes.AttributeUsage</code> or volume group-based entry
+  points, so the following APIs that rely on <code>streamType</code> have been
+  removed:
+</p>
+
+<ul>
+  <li><code>void setStreamVolume(int streamType, int index, int flags)</code>
+  </li>
+  <li><code>int getStreamMaxVolume(int streamType)</code></li>
+  <li><code>int getStreamMinVolume(int streamType)</code></li>
+  <li><code>void setVolumeController(IVolumeController controller)</code></li>
+</ul>
+
+<h3 id="new-apis">New APIs</h3>
+
+<p>
+  Android {{ androidPVersionNumber }} adds the following new APIs for
+  controlling amplifier hardware (explicitly based on volume groups):
+</p>
+
+<ul>
+  <li><code>int getVolumeGroupIdForUsage(@AudioAttributes.AttributeUsage int
+  usage)</code></li>
+  <li><code>int getVolumeGroupCount()</code></li>
+  <li><code>int getGroupVolume(int groupId)</code></li>
+  <li><code>int getGroupMaxVolume(int groupId)</code></li>
+  <li><code>int getGroupMinVolume(int groupId)</code></li>
+</ul>
+
+<p>
+  In addition, Android {{ androidPVersionNumber }} provides the following new
+  system APIs for use by System GUI:
+</p>
+
+<ul>
+  <li><code>void setGroupVolume(int groupId, int index, int flags)</code></li>
+  <li><code>void registerVolumeChangeObserver(@NonNull ContentObserver
+  observer)</code></li>
+  <li><code>void unregisterVolumeChangeObserver(@NonNull ContentObserver
+  observer)</code></li>
+  <li><code>void registerVolumeCallback(@NonNull IBinder binder)</code></li>
+  <li><code>void unregisterVolumeCallback(@NonNull IBinder binder)</code></li>
+  <li><code>void setFadeToFront(float value)</code></li>
+  <li><code>Void setBalanceToRight(float value)</code></li>
+</ul>
+
+<p>
+  Finally, Android {{ androidPVersionNumber }} adds new APIs for external
+  source management. These are intended primarily to support audio routing from
+  external sources to the output buses based on media type. They can also
+  potentially enable third-party application access to external devices.
+</p>
+
+<ul>
+  <li><code>String[] getExternalSources()</code>. Returns an array of
+  addresses identifying the available audio ports in the system of type
+  <code>AUX_LINE</code>, <code>FM_TUNER</code>, <code>TV_TUNER</code>, and
+  <code>BUS_INPUT</code>.</li>
+  <li><code>CarPatchHandle createAudioPatch(String sourceAddress, int
+  carUsage)</code>. Routes the source addresses to the output <code>BUS</code>
+  associated with the provided <code>carUsage</code>.</li>
+  <li><code>int releaseAudioPatch(CarPatchHandle patch)</code>. Removes the
+  provided patch. If the creator of the <code>CarPatchHandle</code> dies
+  unexpectedly, this is handled automatically by
+  <code>AudioPolicyService::removeNotificationClient()</code>.</li>
+</ul>
+
+<h2 id="create-audio-patches">Creating audio patches</h2>
+
+<p>
+  You can create an audio patch between two audio ports, either a mix port or a
+  device port. Typically, an audio patch from mix port to device port is for
+  playback while the reverse direction is for capture.</p>
+
+<p>
+  For example, an audio patch that routes audio samples from <code>FM_TUNER</code>
+  source directly to media sink bypasses the software mixer. You must then use a
+  hardware mixer to mix the audio samples from Android and <code>FM_TUNER</code>
+  for the sink. When creating an audio patch directly from <code>FM_TUNER</code>
+  source to the media sink:
+</p>
+
+<ul>
+  <li>Volume control applies to the media sink and should affect both the
+  Android and <code>FM_TUNER</code> audio.</li>
+  <li>Users should be able to switch between Android and <code>FM_TUNER</code>
+  audio via a simple app switch (no explicit media source choice should be
+  necessary).</li>
+</ul>
+
+<p>
+  Automotive implementations might also need to create an audio patch between
+  two device ports. To do so, you must first declare the device ports and
+  possible routes in <code>audio_policy_configuration.xml</code> and associate
+  mixports with these device ports.
+</p>
+
+<h3 id="example-config">Example configuration</h3>
+
+<p>
+  See also
+  <code>device/generic/car/emulator/audio/audio_policy_configuration.xml</code>.
+</p>
+
+<pre class="prettyprint">
+&lt;audioPolicyConfiguration&gt;
+    &lt;modules&gt;
+        &lt;module name="primary" halVersion="3.0"&gt;
+            &lt;attachedDevices&gt;
+                &lt;item&gt;bus0_media_out&lt;/item&gt;
+                &lt;item&gt;bus1_audio_patch_test_in&lt;/item&gt;
+            &lt;/attachedDevices&gt;
+            &lt;mixPorts&gt;
+                &lt;mixPort name="mixport_bus0_media_out" role="source"
+                        flags="AUDIO_OUTPUT_FLAG_PRIMARY"&gt;
+                    &lt;profile name="" format="AUDIO_FORMAT_PCM_16_BIT"
+                            samplingRates="48000"
+                            channelMasks="AUDIO_CHANNEL_OUT_STEREO"/&gt;
+                &lt;/mixPort&gt;
+                &lt;mixPort name="mixport_audio_patch_in" role="sink"&gt;
+                    &lt;profile name="" format="AUDIO_FORMAT_PCM_16_BIT"
+                           samplingRates="48000"
+                           channelMasks="AUDIO_CHANNEL_IN_STEREO"/&gt;
+                &lt;/mixPort&gt;
+            &lt;/mixPorts&gt;
+            &lt;devicePorts&gt;
+                &lt;devicePort tagName="bus0_media_out" role="sink" type="AUDIO_DEVICE_OUT_BUS"
+                        address="bus0_media_out"&gt;
+                    &lt;profile balance="" format="AUDIO_FORMAT_PCM_16_BIT"
+                            samplingRates="48000" channelMasks="AUDIO_CHANNEL_OUT_STEREO"/&gt;
+                    &lt;gains&gt;
+                        &lt;gain name="" mode="AUDIO_GAIN_MODE_JOINT"
+                                minValueMB="-8400" maxValueMB="4000" defaultValueMB="0" stepValueMB="100"/&gt;
+                    &lt;/gains&gt;
+                &lt;/devicePort&gt;
+                &lt;devicePort tagName="bus1_audio_patch_test_in" type="AUDIO_DEVICE_IN_BUS" role="source"
+                        address="bus1_audio_patch_test_in"&gt;
+                    &lt;profile name="" format="AUDIO_FORMAT_PCM_16_BIT"
+                            samplingRates="48000" channelMasks="AUDIO_CHANNEL_IN_STEREO"/&gt;
+                    &lt;gains&gt;
+                        &lt;gain name="" mode="AUDIO_GAIN_MODE_JOINT"
+                                minValueMB="-8400" maxValueMB="4000" defaultValueMB="0" stepValueMB="100"/&gt;
+                    &lt;/gains&gt;
+                &lt;/devicePort&gt;
+            &lt;/devicePorts&gt;
+            &lt;routes&gt;
+                &lt;route type="mix" sink="bus0_media_out" sources="mixport_bus0_media_out,bus1_audio_patch_test_in"/&gt;
+                &lt;route type="mix" sink="mixport_audio_patch_in" sources="bus1_audio_patch_test_in"/&gt;
+            &lt;/routes&gt;
+        &lt;/module&gt;
+    &lt;/modules&gt;
+&lt;/audioPolicyConfiguration&gt;
+</pre>
+
+<h3 id=audio-driver-api>Audio driver API</h3>
+
+<p>
+  You can use <code>getExternalSources()</code> to retrieve a list of available
+  sources (identified by address), then create audio patches between these
+  sources and the sink ports by audio usages. The corresponding entry points on
+  the Audio HAL appear in <code>IDevice.hal</code>:
+</p>
+
+<pre class="prettyprint">
+Interface IDevice {
+...
+/**
+* Creates an audio patch between several source and sink ports.  The handle
+* is allocated by the HAL and must be unique for this audio HAL module.
+*
+* @param sources patch sources.
+* @param sinks patch sinks.
+* @return retval operation completion status.
+* @return patch created patch handle.
+*/
+createAudioPatch(vec&lt;AudioPortConfig&gt; sources, vec&lt;AudioPortConfig&gt; sinks)
+       generates (Result retval, AudioPatchHandle patch);
+
+/**
+* Release an audio patch.
+*
+* @param patch patch handle.
+* @return retval operation completion status.
+*/
+releaseAudioPatch(AudioPatchHandle patch) generates (Result retval);
+...
+}
+</pre>
+
+<aside class="note"><strong>Note:</strong> These API hooks have been available
+since AUDIO_DEVICE_API_VERSION_3_0. For more details, refer to
+<code>device/generic/car/emulator/audio/driver/audio_hw.c</code>.</aside>
+
+<h2 id="configure-volume-settings-ui">Configuring the volume settings UI</h2>
+
+<p>
+  Android {{ androidPVersionNumber }} decouples the volume settings UI from
+  volume group configuration (which can be overlaid as described in Configuring
+  volume groups). This separation ensures that no changes are required if the
+  volume groups configuration changes in the future.
+</p>
+
+<p>
+  In car settings UI, the
+  <code>packages/apps/Car/Settings/res/xml/car_volume_items.xml</code> file
+  contains UI elements (title and icon resources) associated with each defined
+  <code>AudioAttributes.USAGE</code>. This file provides for a reasonable
+  rendering of the defined VolumeGroups by using resources associated with the
+  first recognized usage contained in each VolumeGroup.
+</p>
+
+<p>
+  For example, the following example defines a VolumeGroup as including both
+  <code>voice_communication</code> and
+  <code>voice_communication_signalling</code>. The default implementation of the
+  car settings UI renders the VolumeGroup using the resources associated with
+  <code>voice_communication</code> as that is the first match in the file.
+</p>
+
+<pre class="prettyprint">
+&lt;carVolumeItems xmlns:car="http://schemas.android.com/apk/res-auto"&gt;
+    &lt;item car:usage="voice_communication"
+          car:title="@*android:string/volume_call"
+          car:icon="@*android:drawable/ic_audio_ring_notif"/&gt;
+    &lt;item car:usage="voice_communication_signalling"
+          car:title="@*android:string/volume_call"
+          car:icon="@*android:drawable/ic_audio_ring_notif"/&gt;
+    &lt;item car:usage="media"
+          car:title="@*android:string/volume_music"
+          car:icon="@*android:drawable/ic_audio_media"/&gt;
+    &lt;item car:usage="game"
+          car:title="@*android:string/volume_music"
+          car:icon="@*android:drawable/ic_audio_media"/&gt;
+    &lt;item car:usage="alarm"
+          car:title="@*android:string/volume_alarm"
+          car:icon="@*android:drawable/ic_audio_alarm"/&gt;
+    &lt;item car:usage="assistance_navigation_guidance"
+          car:title="@string/navi_volume_title"
+          car:icon="@drawable/ic_audio_navi"/&gt;
+    &lt;item car:usage="notification_ringtone"
+          car:title="@*android:string/volume_ringtone"
+          car:icon="@*android:drawable/ic_audio_ring_notif"/&gt;
+    &lt;item car:usage="assistant"
+          car:title="@*android:string/volume_unknown"
+          car:icon="@*android:drawable/ic_audio_vol"/&gt;
+    &lt;item car:usage="notification"
+          car:title="@*android:string/volume_notification"
+          car:icon="@*android:drawable/ic_audio_ring_notif"/&gt;
+    &lt;item car:usage="notification_communication_request"
+          car:title="@*android:string/volume_notification"
+          car:icon="@*android:drawable/ic_audio_ring_notif"/&gt;
+    &lt;item car:usage="notification_communication_instant"
+          car:title="@*android:string/volume_notification"
+          car:icon="@*android:drawable/ic_audio_ring_notif"/&gt;
+    &lt;item car:usage="notification_communication_delayed"
+          car:title="@*android:string/volume_notification"
+          car:icon="@*android:drawable/ic_audio_ring_notif"/&gt;
+    &lt;item car:usage="notification_event"
+          car:title="@*android:string/volume_notification"
+          car:icon="@*android:drawable/ic_audio_ring_notif"/&gt;
+    &lt;item car:usage="assistance_accessibility"
+          car:title="@*android:string/volume_notification"
+          car:icon="@*android:drawable/ic_audio_ring_notif"/&gt;
+    &lt;item car:usage="assistance_sonification"
+          car:title="@*android:string/volume_unknown"
+          car:icon="@*android:drawable/ic_audio_vol"/&gt;
+    &lt;item car:usage="unknown"
+          car:title="@*android:string/volume_unknown"
+          car:icon="@*android:drawable/ic_audio_vol"/&gt;
+&lt;/carVolumeItems&gt;
+</pre>
+
+<p>
+  The attributes and values used in the above configuration are declared in
+  <code>packages/apps/Car/Settings/res/values/attrs.xml</code>. The volume
+  settings UI uses the following <code>VolumeGroup</code>-based
+  <code>CarAudioManager</code> APIs:
+</p>
+
+<ul>
+  <li><code>getVolumeGroupCount()</code> to know how many controls should be
+  drawn.</li>
+  <li><code>getGroupMinVolume()</code> and <code>getGroupMaxVolume()</code> to
+  get lower and upper bounds.</li>
+  <li><code>getGroupVolume()</code> to get the current volume.</li>
+  <li><code>registerVolumeChangeObserver()</code> to get notified on volume
+  changes.</li>
+</ul>
+
+</body>
+</html>

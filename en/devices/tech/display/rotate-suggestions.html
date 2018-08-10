@@ -1,0 +1,225 @@
+<html devsite>
+  <head>
+    <title>Rotate Suggestions</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  {% include "_versions.html" %}
+  <body>
+  <!--
+      Copyright 2018 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          //www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+<p>
+In Android 8.0, users could toggle between auto-rotate and portrait rotation
+modes using a Quicksettings tile or Display settings. In Android P, we updated
+portrait rotation mode to eliminate unintentional rotations by pinning the
+current screen rotation even if the device position changes. Users can trigger
+rotation manually when needed by pressing a new button in the navigation bar.
+We renamed the portrait mode to rotation lock and it activates when auto-rotate
+is off. There are no changes to auto-rotate mode.
+</p>
+<p>
+When the device is in rotation lock mode, users can lock their screen to any
+rotation supported by the top, visible Activity (given current system
+constraints). If the top Activity can be rendered in multiple rotations in
+auto-rotate mode, the same options should be available in rotation locked mode,
+with some exceptions based on the Activity's <code>screenOrientation</code>
+setting.
+</p>
+<p>
+Rotation lock mode works by showing a button in the navbar on device rotation
+changes. To accomplish this, the device's orientation sensor must remain active
+even when auto-rotate is off. Tapping this button effectively sets user rotation
+preference (<code>Settings.System.USER_ROTATION</code>). WindowManager uses this
+preference, along with other details about the top Activity and system status,
+to change the system's rotation. WindowManager continues to use user rotation
+preference when deciding what rotation to render the system in when moving to
+another Activity.
+</p>
+
+<figure>
+  <img src="images/rotate-btn-quickstep.gif"
+       alt="This gif shows a phone in landscape orientation with the screen in
+       portrait orientation. An icon appears to ask the user if they want to
+       change their screen orientation to landscape.">
+  <figcaption><strong>Figure 1</strong>. Rotate suggestion button with "Swipe
+              up on Home button" gesture enabled</figcaption>
+</figure>
+
+
+<p>
+User rotation preference should be maintained when moving between Activities.
+However, because most phone users only want to be in landscape for a short,
+temporary period of time, we added natural orientation bias. User rotation
+preference is <em>reset</em> to the device's natural orientation whenever the
+system rotation changes to the device's natural orientation. For most phones,
+the device's natural orientation is portrait (0º). Resetting user rotation
+preference often happens when using a portrait-only app, locking the phone or
+returning to launcher workspace.
+</p>
+<p>
+Rotation interactions for users haven't changed much in the last decade. Users
+may find this feature hard to discover given their prior history with rotation
+and button positioning in the navigation bar. For this reason, we've added an
+introduction mode to the rotate button that highlights it when it appears. Intro
+mode behavior only happens for the first few button interactions after which
+introduction mode is disabled.
+</p>
+<h2 id="source">Source</h2>
+<p>
+Support for rotation suggestions has been added to Android P. Most changes are
+contained within the following files.
+</p>
+<ul>
+ <li><code>services/.../server/policy/PhoneWindowManager.java</code>:
+  <ul>
+   <li>Hooks consuming the output of <code>WindowOrientationListener</code>
+       (<code>MyOrientationListener</code>, responsible for monitoring
+       sensors to determine if the device has been rotated)</li>
+   <li>Keeps the <code>WindowOrientationListener</code> active even when
+       auto-rotate is disabled (see <code>needSensorRunningLp()</code>)</li>
+   <li>Computes the system rotation given user rotation preference, top
+       Activity <code>screenOrientation</code> settings and system status
+      (see <code>rotationForOrientationLw()</code>)</li>
+   <li>Determine if the top Activity can rotate to a given rotation (see
+       <code>isRotationChoicePossible()</code>)</li>
+  </ul>
+ </li>
+ <li><code>SystemUI/.../statusbar/phone/NavigationBarFragment</code>:
+  <ul>
+   <li>Determines if the navbar button should be shown on rotation
+       suggestion callbacks from <code>PhoneWindowManager</code>
+       (see <code>onRotationProposal()</code>)</li>
+   <li>Handles when to hide the rotate navbar button (see calls to
+       <code>setRotateSuggestionButtonState(false)</code>)</li>
+   <li>Handles button timeouts, including the special case when the
+       navbar is hidden (commonly in full screen)</li>
+   <li>Resets user preference on return to the device's natural
+       orientation (<code>mRotationWatcher</code>)</li>
+   <li>Picks the appropriate style for the navbar button animation,
+       applied in <code>NavigationBarView</code>
+       (see <code>onRotationProposal()</code>)</li>
+   <li>Adds introduction mode logic, including specialized animation
+       (see references to
+       <code>Settings.Secure.NUM_ROTATION_SUGGESTIONS_ACCEPTED</code>)</li>
+   <li>Implements the disable2 rotation flag (see <code>disable()</code>)</li>
+  </ul>
+ </li>
+ <li><code>SystemUI/.../statusbar/phone/NavigationBarView.java</code>:
+  <ul>
+   <li>Styles button icon animation to match pending rotation (see
+       <code>updateRotateSuggestionButtonStyle()</code>)</li>
+   <li>Handles button visibility changes (see
+       <code>setRotateButtonVisibility()</code>), including logic to hide
+       the rotate button if certain Accessibility services are active
+       (accounting for the right-most navbar button stack ranking)</li>
+  </ul>
+ </li>
+ <li><code>SystemUI/res/layout/menu_ime.xml</code>:
+  <ul>
+   <li>Includes a new <code>KeyButtonView</code> for the rotate button,
+       stacked above the menu and IME/keyboard chooser but below the
+       Accessibility button</li>
+  </ul>
+ </li>
+ <li><code>SystemUI/res/drawable/ic_sysbar_rotate_button.xml</code>:
+  <ul>
+   <li>Complex <code>AnimatedVectorDrawable</code> used to animate the
+       rotate navbar button</li>
+   <li>Styling (in <code>SystemUI/res/values/styles.xml</code>) is used to
+       set the start and end angles of rotation so the same drawable can be
+       used to animate various starting and ending rotations</li>
+   <li>Icon tinting is set via <code>TintedKeyButtonDrawable</code></li>
+  </ul>
+ </li>
+</ul>
+
+
+<h2 id="implementation">Implementation</h2>
+<p>
+Android P includes all necessary changes to get rotation suggestions working for
+devices that use software navigation keys (back, home, etc).
+</p>
+<p>
+Device manufacturers who create devices with hardware navigation keys that wish
+to implement this feature will need to design and implement their own System UI
+affordance or disable the feature. It is recommended that any introduced surface
+be easy to use when the device is held at 90º or 180º to the current system
+rotation and is rapidly accessible. For these reasons, the use of notifications
+(as is done for the IME/keyboard picker) is not recommended.
+</p>
+<p>
+The hardware requirements to use this feature are the same as the requirements
+to use auto-rotate.
+</p>
+<p>
+It is necessary for implementation consistency that user rotation preference
+(<code>Settings.System.USER_ROTATION</code>) is reset to the device's natural
+rotation when the system changes to the device's natural rotation for any reason
+when auto-rotate is off. The provided implementation does this (see
+<code>NavigationBarFragment.mRotationWatcher</code>).
+</p>
+<p>
+There is a new flag in <code>StatusBarManager.disable2</code> to temporarily
+prevent rotation suggestions from appearing. See
+<code>StatusBarManager.DISABLE2_ROTATE_SUGGESTIONS</code>. This flag must be
+respected in all implementations as it's used by critical system apps, including
+Setup Wizard. The provided implementation supports this (see
+<code>NavigationBarFragment.disable()</code>).
+</p>
+<p>
+We strongly recommend enabling the feature and following the AOSP
+implementation, if possible. We aim to keep the rotation experience similar
+between devices, mirroring the uniformity in experience on most phones today
+between auto-rotate and portrait lock.
+</p>
+
+<h2 id="customization">Customization</h2>
+<p>
+As rotation suggestions appear only in rotation locked mode (auto-rotate off),
+it is possible to choose if the feature is default on for new installs by
+choosing to have auto-rotate off by default. See
+<code>def_accelerometer_rotation</code> in
+<code>SettingsProvider/res/values/defaults.xml</code> to make default changes.
+</p>
+<p>
+Users can easily change if auto-rotate is active or not (regardless of default)
+via the rotate tile in Quicksettings or Display settings.
+</p>
+
+<h2 id="validation">Validation</h2>
+<p>
+For testing, the feature can be turned off and on by altering a gating
+<code>Settings.Secure</code> value. This  accomplished easiest by running the
+following command from a privileged adb instance:
+</p>
+
+
+<pre
+class="prettyprint">adb shell settings put secure show_rotation_suggestions &lt;x&gt;
+</pre>
+<p>
+Set x to <code>0</code> for off and <code>1</code> for on.
+
+<p>
+For testing, introduction mode can be reset by altering the associated
+<code>Settings.Secure</code> value. This  accomplished easiest by running the
+following command from a privileged adb instance:
+</p>
+
+
+<pre class="prettyprint">adb shell settings put secure num_rotation_suggestions_accepted 0</pre>
+</body>
+</html>

@@ -1,0 +1,160 @@
+<html devsite>
+  <head>
+    <title>Device Manifest Development</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  {% include "_versions.html" %}
+  <body>
+  <!--
+      Copyright 2018 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>When developing and releasing new devices, vendors can define and declare the
+Target FCM Version in the device manifest (DM). When upgrading the vendor image
+for old devices, vendors can choose to implement new HAL versions and increment
+the Target FCM Version.</p>
+
+<aside class="note"><strong>Note:</strong> For details on terms used in this
+page, see <a href="/devices/architecture/vintf/fcm#terminology">Terminology</a>.
+</aside>
+
+<h2 id=develop-new-devices>Developing new devices</h2>
+<p>When defining the device Target FCM Version for new devices:</p>
+
+<ol>
+<li>Leave <code>DEVICE_MANIFEST_FILE</code> and
+<code>PRODUCT_ENFORCE_VINTF_MANIFEST</code> undefined.</li>
+<li>Implement HALs for the Target FCM Version.</li>
+<li>Write the correct device manifest file.</li>
+<li>Write the Target FCM Version to device manifest file.</li>
+<li>Set <code>DEVICE_MANIFEST_FILE</code>.</li>
+<li>Set <code>PRODUCT_ENFORCE_VINTF_MANIFEST</code> to <code>true</code>.</li>
+</ol>
+
+<h2 id=release-new-devices>Releasing new devices</h2>
+<p>When a new device is released, its initial Target FCM Version needs to be
+determined and declared in the device manifest as the
+"<code>target-level</code>" attribute in the top-level
+<code>&lt;manifest&gt;</code> element.</p>
+
+<p>For example, devices launching with Android {{ androidPVersionNumber }} must
+have Target FCM Version equal to 3 (the higher version available at this time).
+To declare this in the device manifest:</p>
+
+<pre class="prettyprint">
+&lt;manifest version="1.0" type="device" target-level="3"&gt;
+    &lt;!-- ... --&gt;
+&lt;/manifest&gt;
+</pre>
+
+<h2 id=upgrade-vendor-image>Upgrading vendor image</h2>
+<p>When upgrading the vendor image for an old device, vendors can choose to
+implement new HAL versions and increment the Target FCM Version.</p>
+
+<h3 id=upgrade-hals>Upgrading HALs</h3>
+<p>During a vendor image upgrade, vendors can implement new HAL versions
+provided that HAL name, interface name, and instance name are the same. For
+example:</p>
+
+<ul>
+<li>Google Pixel 2 and Pixel 2 XL devices released with Target FCM Version
+2, which implemented the required audio 2.0 HAL
+<code>android.hardware.audio@2.0::IDeviceFactory/default</code>.</li>
+<li>For the audio 4.0 HAL that released with Android
+{{ androidPVersionNumber }}, Google Pixel 2 and Pixel 2 XL devices can use a
+full OTA to upgrade to the 4.0 HAL, which implements
+<code>android.hardware.audio@4.0::IDeviceFactory/default</code>.</li>
+<li>Even though the <code>compatibility_matrix.2.xml</code> specifies audio 2.0
+only, the requirement on a vendor image with Target FCM Version 2 has been
+loosened because the Android {{ androidPVersionNumber }} framework (FCM Version
+3) considers audio 4.0 a replacement of audio 2.0 HAL in terms of functionality.
+</li>
+</ul>
+
+<p>To summarize, given that <code>compatibility_matrix.2.xml</code> requires
+audio 2.0 and <code>compatibility_matrix.3.xml</code> requires audio 4.0, the
+requirements are as follows:</p>
+
+<table>
+<thead>
+<tr>
+<th>FCM Version (System)</th>
+<th>Target FCM Version (Vendor)</th>
+<th>Requirements</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>2 (8.1)</td>
+<td>2 (8.1)</td>
+<td>Audio 2.0</td>
+</tr>
+<tr>
+<td>3 ({{ androidPVersionNumber }})</td>
+<td>2 (8.1)</td>
+<td>Audio 2.0 or 4.0</td>
+</tr>
+<tr>
+<td>3 ({{ androidPVersionNumber }})</td>
+<td>3 ({{ androidPVersionNumber }})</td>
+<td>Audio 4.0</td>
+</tr>
+</tbody>
+</table>
+
+<h3 id=upgrade=target-fcm>Upgrading Target FCM Version</h3>
+
+<p>During a vendor image upgrade, vendors can also increment the Target FCM
+Version to specify the targeted FCM Version the upgraded vendor image can work
+with. To bump the Target FCM Version of a device, vendors need to:</p>
+
+<ol>
+<li>Implement all new required HAL Versions for the Target FCM Version.</li>
+<li>Modify HAL Versions in the device manifest file.</li>
+<li>Modify the Target FCM Version in the device manifest file.</li>
+<li>Remove deprecated HAL versions.</li>
+<li>For devices launched with {{ androidPVersionNumber }} or older, cherry-pick
+these CLs before generating OTA update packages:
+  <ul>
+    <li><a href="https://android-review.googlesource.com/722283">CL 722283</a></li>
+    <li><a href="https://android-review.googlesource.com/722284">CL 722284</a></li>
+    <li><a href="https://android-review.googlesource.com/722345">CL 722345</a></li>
+  </ul>
+</li>
+</ol>
+
+<p>For example, Google Pixel and Pixel XL devices launched with Android 7.0
+so their Target FCM Version must be at least legacy. However, the <a
+href="https://android.googlesource.com/device/google/marlin/+/0a276ad8b98fde395ed99a4b303434800c07049e/manifest.xml#1" class="external">device
+manifest</a> declares the Target FCM Version 2 because the vendor image has
+been updated to conform with <code>compatibility_matrix.2.xml</code>:</p>
+
+<pre class="prettyprint">
+&lt;manifest version="1.0" type="device" target-level="2"&gt;
+</pre>
+
+<p>If vendors do not implement all required new HAL versions or do not remove
+deprecated HAL versions, the Target FCM Version cannot be upgraded.</p>
+
+<p>For example, Google Pixel 2 and Pixel 2 XL devices have Target FCM Version 2.
+While they do implement some HALs required by
+<code>compatibility_matrix.3.xml</code> (such as audio 4.0, health 2.0, etc.),
+they do not remove <code>android.hardware.radio.deprecated@1.0</code>, which is
+deprecated at FCM Version 3 (Android {{ androidPVersionNumber }}). Hence, these
+devices cannot upgrade the Target FCM Version to 3.</p>
+
+</body>
+</html>

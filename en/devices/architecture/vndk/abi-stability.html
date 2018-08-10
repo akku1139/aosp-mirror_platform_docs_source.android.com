@@ -1,0 +1,937 @@
+<html devsite>
+  <head>
+    <title>ABI Stability</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  {% include "_versions.html" %}
+  <!--
+      Copyright 2018 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>
+  Application Binary Interface (ABI) stability is a prerequisite of
+  framework-only updates because vendor modules may depend on the Vendor Native
+  Development Kit (VNDK) shared libraries that reside in the system partition.
+  Newly-built VNDK shared libraries must be ABI-compatible to previously
+  released VNDK shared libraries so vendor modules can work with those libraries
+  without recompilation and without runtime errors.
+</p>
+
+<p>
+  To help ensure ABI compatibility, Android {{ androidPVersionNumber }} includes
+  a header ABI checker, as described in the following sections.
+
+
+<h2 id="about-vndk-abi-compliance">About VNDK and ABI compliance</h2>
+
+<p>
+  The VNDK is a restrictive set of libraries that vendor modules may link to and
+  which enable framework-only updates. <em>ABI compliance</em> refers to the
+  ability of a newer version of a shared library to work as expected with a
+  module that is dynamically linked to it (i.e. works as an older version of the
+  library would).
+</p>
+
+<h3 id="about-exported-symbols">About exported symbols</h3>
+
+<p>
+  An <em>exported symbol</em> (also known as a <em>global symbol</em>) refers to
+  a symbol that satisfies all of the following:
+</p>
+
+<ul>
+  <li>Exported by the <em>public headers</em> of a shared library.</li>
+  <li>Appears in the <code>.dynsym</code> table of the <code>.so</code> file
+  corresponding to the shared library.</li>
+  <li>Has WEAK or GLOBAL binding.</li>
+  <li>Visibility is DEFAULT or PROTECTED.</li>
+  <li>Section index is not UNDEFINED.</li>
+  <li>Type is either FUNC or OBJECT.</li>
+</ul>
+
+<p>
+  The <em>public headers</em> of a shared library are defined as the headers
+  available to other libraries/binaries through the
+  <code>export_include_dirs</code>, <code>export_header_lib_headers</code>,
+  <code>export_static_lib_headers</code>,
+  <code>export_shared_lib_headers</code>, and
+  <code>export_generated_headers</code> attributes in <code>Android.bp</code>
+  definitions of the module corresponding to the shared library.
+</p>
+
+<h3 id="about-reachable-types">About reachable types</h3>
+
+<p>
+  A <em>reachable type</em> is any C/C++ built-in or user-defined type that is
+  reachable directly or indirectly through an exported symbol AND exported
+  through public headers. For example, <code>libfoo.so</code> has function
+  <code>Foo</code>, which is an exported symbol found in the
+  <code>.dynsym</code> table. The <code>libfoo.so</code> library includes the
+  following:
+</p>
+
+<table>
+  <tr>
+   <th>foo_exported.h</th>
+   <th>foo.private.h</th>
+  </tr>
+  <tr>
+   <td>
+<pre class="prettyprint">
+typedef struct foo_private foo_private_t;
+
+typedef struct foo {
+  int m1;
+  int *m2;
+  foo_private_t *mPfoo;
+} foo_t;
+
+typedef struct bar {
+  foo_t mfoo;
+} bar_t;
+
+bool Foo(int id, bar_t *bar_ptr);
+</pre>
+</td>
+
+<td>
+<pre class="prettyprint">
+typedef struct foo_private {
+  int m1;
+  float mbar;
+} foo_private_t;
+</pre>
+   </td>
+  </tr>
+</table>
+
+<table>
+  <tr>
+   <th>Android.bp</th>
+  </tr>
+  <tr>
+   <td>
+<pre class="prettyprint">
+cc_library {
+  name : libfoo,
+  vendor_available: true,
+  vndk {
+    enabled : true,
+  }
+  srcs : ["src/*.cpp"],
+  export_include_dirs : [
+    "include"
+  ],
+}
+</pre>
+   </td>
+  </tr>
+</table>
+
+<table>
+  <tr>
+   <th colspan="8">.dynsym table</th>
+  </tr>
+  <tr>
+   <td><code>Num</code>
+   </td>
+   <td><code>Value</code>
+   </td>
+   <td><code>Size</code>
+   </td>
+   <td><code>Type</code>
+   </td>
+   <td><code>Bind</code>
+   </td>
+   <td><code>Vis</code>
+   </td>
+   <td><code>Ndx</code>
+   </td>
+   <td><code>Name</code>
+   </td>
+  </tr>
+  <tr>
+   <td><code>1</code>
+   </td>
+   <td><code>0</code>
+   </td>
+   <td><code>0</code>
+   </td>
+   <td><code>FUNC</code>
+   </td>
+   <td><code>GLOB</code>
+   </td>
+   <td><code>DEF</code>
+   </td>
+   <td><code>UND</code>
+   </td>
+   <td><code>dlerror@libc</code>
+   </td>
+  </tr>
+  <tr>
+   <td><code>2</code>
+   </td>
+   <td><code>1ce0</code>
+   </td>
+   <td><code>20</code>
+   </td>
+   <td><code>FUNC</code>
+   </td>
+   <td><code>GLOB</code>
+   </td>
+   <td><code>DEF</code>
+   </td>
+   <td><code>12</code>
+   </td>
+   <td><code>Foo</code>
+   </td>
+  </tr>
+</table>
+
+
+<p>
+  Looking at <code>Foo</code>, direct/indirect reachable types include:
+</p>
+
+<table>
+  <tr>
+  <th>Type</th>
+  <th>Description</th>
+  </tr>
+  <tr>
+  <td><code>bool</code>
+  </td>
+  <td>Return type of <code>Foo</code>.
+  </td>
+  </tr>
+  <tr>
+  <td><code>int</code>
+  </td>
+  <td>Type of first <code>Foo</code> parameter.
+  </td>
+  </tr>
+  <tr>
+  <td><code>bar_t&nbsp;*</code>
+  </td>
+  <td>Type of second Foo parameter. By way of <code>bar_t *</code>,
+  <code>bar_t</code> is exported through <code>foo_exported.h</code>.
+  <br><br>
+  <code>bar_t</code> contains a member <code>mfoo</code>, of type
+  <code>foo_t</code>, which is exported through <code>foo_exported.h</code>,
+  which results in more types being exported:
+
+  <ul>
+    <li><code>int :</code> is the type of <code>m1</code>.</li>
+    <li><code>int * :</code> is the type of <code>m2</code>.</li>
+    <li><code>foo_private_t * : </code> is the type of <code>mPfoo</code>.</li>
+  </ul>
+  <br>
+  However, <code>foo_private_t</code> is NOT reachable because it is not
+  exported through <code>foo_exported.h</code>. (<code>foot_private_t *</code>
+  is opaque, therefore changes made to <code>foo_private_t</code> are allowed.)
+  </td>
+  </tr>
+</table>
+
+<p>
+  A similar explanation can be given for types reachable through base class
+  specifiers and template parameters as well.
+</p>
+
+<h2 id="ensuring-abi-compliance">Ensuring ABI compliance</h2>
+
+<p>
+  ABI compliance must be ensured for the libraries marked
+  <code>vendor_available: true</code> and <code>vndk.enabled: true</code> in the
+  corresponding <code>Android.bp</code> files. For example:
+</p>
+
+<pre class="prettyprint">
+cc_library {
+    name: "libvndk_example",
+    vendor_available: true,
+    vndk: {
+        enabled: true,
+    }
+}
+</pre>
+
+<p>
+  For data types reachable directly or indirectly by an exported function, the
+  following changes to a library are classified as ABI-breaking:
+</p>
+
+<table>
+  <tr>
+  <th>Data type</th>
+  <th>Description</th>
+  </tr>
+  <tr>
+  <td>Structures and Classes</td>
+  <td>
+  <ul>
+    <li>Removing non-static data members.</li>
+    <li>Change resulting in the change of the size of the class/struct.</li>
+    <li>Change resulting in a change in the v-table layout.</li>
+    <li>Adding/removing base classes.</li>
+    <li>Changing the order of base classes.</li>
+    <li>Change in template arguments.</li>
+    <li>Change resulting in a change to memory offset of a data
+      member<sup>**</sup>.</li>
+    <li>Change in the const-volatile-restricted qualifiers of a
+      member<sup>*</sup>.</li>
+    <li>Downgrading the access specifier of a data member<sup>*</sup>.</li>
+  </ul>
+  </td>
+  </tr>
+  <tr>
+  <td>Unions</td>
+  <td>
+  <ul>
+    <li>Adding/removing fields.</li>
+    <li>Change which results in the change in the size.</li>
+    <li>Changing the order of fields.</li>
+    <li>Changing field types.</li>
+  </ul>
+   </td>
+  </tr>
+  <tr>
+  <td>Enumerations</td>
+  <td>
+  <ul>
+    <li>Changing the value of a member.</li>
+    <li>Changing the name of a member.</li>
+    <li>Changing the underlying type.</li>
+  </ul>
+   </td>
+  </tr>
+  <tr>
+  <td>Global Symbols</td>
+  <td>
+  <ul>
+    <li>Removing symbols exported by public headers.</li>
+    <li>For global symbols of type FUNC
+      <ul>
+      <li>Adding/removing parameters.</li>
+      <li>Changing the type of any parameter in any way.</li>
+      <li>Changing the return type in any way.</li>
+      <li>Downgrading the access specifier<sup>*</sup>.</li>
+    </ul>
+    </li>
+    <li>For global symbols of type OBJECT
+    <ul>
+      <li>Changing the corresponding C/C++ type in any way.</li>
+      <li>Downgrading the access specifier<sup>*</sup>.</li>
+    </ul>
+    </li>
+    </ul>
+   </td>
+  </tr>
+</table>
+
+<p>
+ <strong><sup>**</sup></strong> Not restricted to changes in offsets of public
+  fields (as inline functions could use private fields internally).
+</p>
+
+<p>
+  <strong><sup>*</sup></strong> While these do not represent a change in the
+  memory layout of the type, they are semantic differences that could lead to
+  libraries not functioning as expected.
+</p>
+
+<h2 id="using-abi-compliance-tools">Using ABI compliance tools</h2>
+
+<p>
+  When a VNDK library is built, the library's ABI is compared with the
+  corresponding ABI reference for the version of the VNDK being built. Reference
+  ABI dumps are located in:
+</p>
+
+<pre class="prettyprint">
+${ANDROID_BUILD_TOP}/prebuilts/abi-dumps/(v)ndk/&lt;${PLATFORM_VNDK_VERSION}>/&lt;BINDER_BITNESS>/&lt;ARCH_ARCH-VARIANT>/source-based
+</pre>
+
+<p>
+  For example, on building <code>libfoo</code> for API level 27 of the VNDK,
+  <code>libfoo</code>'s inferred ABI is compared with its reference at:
+</p>
+
+<pre class="prettyprint">
+${ANDROID_BUILD_TOP}/prebuilts/abi-dumps/(v)ndk/27/64/&lt;ARCH_ARCH-VARIANT>/source-based/libfoo.so.lsdump
+</pre>
+
+<h3 id="abit-breakage-error">ABI breakage error</h3>
+
+<p>
+  On ABI breakages, the build log displays warnings with the warning type and a
+  path to the abi-diff report. For example, if <code>libbinder</code>'s ABI has
+  an incompatible change, the build system throws an error with a message
+  similar to the following:
+</p>
+
+<pre>
+*****************************************************
+error: VNDK library: libbinder.so's ABI has INCOMPATIBLE CHANGES
+Please check compatibility report at:
+out/soong/.intermediates/frameworks/native/libs/binder/libbinder/android_arm64_armv8-a_cortex-a73_vendor_shared/libbinder.so.abidiff
+******************************************************
+---- Please update abi references by running
+platform/development/vndk/tools/header-checker/utils/create_reference_dumps.py -l libbinder ----
+</pre>
+
+<h3 id="building-vndk-lib-abi-checks">Building VNDK library ABI checks</h3>
+
+<p>
+  When a VNDK library is built:
+</p>
+
+<ol>
+  <li><code>header-abi-dumper</code> processes the source files compiled to
+  build the VNDK library (the library's own source files as well as source files
+  inherited through static transitive dependencies), to produce
+  <code>.sdump</code> files that correspond to each source.
+  <br>
+  <img src="../images/abi_check_sdump.png" alt="sdump creation"
+  title="sdump creation">
+  <figcaption><strong>Figure 1.</strong> Creating the <code>.sdump</code>
+  files</figcaption>
+  </li>
+
+  <li><code>header-abi-linker</code> then processes the <code>.sdump</code>
+  files (using either a version script provided to it or the <code>.so</code>
+  file corresponding to the shared library) to produce a <code>.lsdump</code>
+  file that logs all of the ABI information corresponding to the shared library.
+  <br>
+  <img src="../images/abi_check_lsdump.png" alt="lsdump creation"
+  title="lsdump creation">
+  <figcaption><strong>Figure 2.</strong> Creating the <code>.lsdump</code>
+  file</figcaption>
+  </li>
+
+  <li><code>header-abi-diff</code> compares the <code>.lsdump</code>
+  file with a reference <code>.lsdump</code> file to produce a diff report
+  that outlines the differences in the ABIs of the two libraries.
+  <br>
+  <img src="../images/abi_check_abidiff.png" alt="abi diff creation"
+  title="abi diff creation">
+  <figcaption><strong>Figure 3.</strong> Creating the diff report</figcaption>
+  </li>
+</ol>
+
+<h3 id="header-abi-dumper">header-abi-dumper</h3>
+
+<p>
+  The <code>header-abi-dumper</code> tool parses a C/C++ source file and dumps
+  the ABI inferred from that source file into an intermediate file. The build
+  system runs <code>header-abi-dumper</code> on all compiled source files while
+  also building a library that includes the source files from transitive
+  dependencies.
+</p>
+
+<p>
+  Currently <code>.sdump</code> files are formatted as
+  <a href="https://developers.google.com/protocol-buffers/docs/reference/java/com/google/protobuf/TextFormat" class="external">Protobuf
+  TextFormatted</a>, which is not guaranteed to be stable across future
+  releases. As such, <code>.sdump</code> file formatting should be considered a
+  build system implementation detail.
+</p>
+
+<p>
+  For example, <code>libfoo.so</code> has the following source file
+  <strong><code>foo.cpp</code></strong>:
+</p>
+
+<pre class="prettyprint">
+#include &lt;stdio.h>
+#include &lt;foo_exported.h>
+
+bool Foo(int id, bar_t *bar_ptr) {
+    if (id > 0 &amp;&amp; bar_ptr->mfoo.m1 > 0) {
+        return true;
+    }
+    return false;
+}</pre>
+
+
+<p>
+  You can use <code>header-abi-dumper</code> to generate an intermediate
+  <code>.sdump</code> file that represents the ABI presented by the source file
+  using:
+</p>
+
+<pre class="prettyprint">
+$ header-abi-dumper foo.cpp -I exported -o foo.sdump -- -x c++
+</pre>
+
+<p>
+  This command tells <code>header-abi-dumper</code> to parse
+  <code>foo.cpp</code> and emit the ABI information that is exposed in the
+  public headers in the <code>exported</code> directory. This is an excerpt
+  (not a complete representation) from <strong><code>foo.sdump</code></strong>
+  generated by <code>header-abi-dumper</code>:
+</p>
+
+<pre class="prettyprint">
+record_types {
+  type_info {
+    name: "foo"
+    size: 12
+    alignment: 4
+    referenced_type: "type-1"
+    source_file: "foo/include/foo_exported.h"
+    linker_set_key: "foo"
+    self_type: "type-1"
+  }
+  fields {
+    referenced_type: "type-2"
+    field_offset: 0
+    field_name: "m1"
+    access: public_access
+  }
+  fields {
+    referenced_type: "type-3"
+    field_offset: 32
+    field_name: "m2"
+    access: public_access
+  }
+  fields {
+    referenced_type: "type-5"
+    field_offset: 64
+    field_name: "mPfoo"
+    access: public_access
+  }
+  access: public_access
+  record_kind: struct_kind
+  tag_info {
+    unique_id: "_ZTS3foo"
+  }
+}
+record_types {
+  type_info {
+    name: "bar"
+    size: 12
+    alignment: 4
+    referenced_type: "type-6"
+…
+pointer_types {
+  type_info {
+    name: "bar *"
+    size: 4
+    alignment: 4
+    referenced_type: "type-6"
+    source_file: "foo/include/foo_exported.h"
+    linker_set_key: "bar *"
+    self_type: "type-8"
+  }
+}
+builtin_types {
+  type_info {
+    name: "int"
+    size: 4
+    alignment: 4
+    referenced_type: "type-2"
+    source_file: ""
+    linker_set_key: "int"
+    self_type: "type-2"
+  }
+  is_unsigned: false
+  is_integral: true
+}
+functions {
+  return_type: "type-7"
+  function_name: "Foo"
+  source_file: "foo/include/foo_exported.h"
+  parameters {
+    referenced_type: "type-2"
+    default_arg: false
+  }
+  parameters {
+    referenced_type: "type-8"
+    default_arg: false
+  }
+  linker_set_key: "_Z3FooiP3bar"
+  access: public_access
+}
+</pre>
+
+
+<p>
+  <code>foo.sdump</code> contains ABI information exposed by the source file
+  <code>foo.cpp</code>, e.g.:
+</p>
+
+<ul>
+  <li><code>record_types</code>. Refer to structs, unions, or classes exposed by
+  the public headers. Each record type has information about its fields, its
+  size, access specifier, the header file it was exposed in, etc.</li>
+  <li><code>pointer_types</code>. Refer to pointer types directly/indirectly
+  referenced by records/functions exposed by public headers, along with the type
+  the pointer points to (via the <code>referenced_type</code> field in
+  <code>type_info</code>). Similar information is logged in the
+  <code>.sdump</code> file for qualified types, built-in C/C++ types, array
+  types, and lvalue and rvalue reference types (such logging information about
+  types allows for recursive diffing).</li>
+  <li><code>functions</code>. Represent functions exposed by public headers.
+  They also have information about the function's mangled name, the return type,
+  the types of the parameters, the access specifier, etc.</li>
+</ul>
+
+<aside class="tip">
+  <strong>Tip:</strong> To get help with the <code>header-abi-dumper</code>
+  tool, run <code>header-abi-dumper --help</code>.
+</aside>
+
+<h3 id="header-abi-linker">header-abi-linker</h3>
+
+<p>
+  The <code>header-abi-linker</code> tool takes the intermediate files produced
+  by <code>header-abi-dumper</code> as input then links those files:
+</p>
+
+<table>
+  <tr>
+   <th>Inputs</th>
+   <td>
+    <ul>
+    <li>Intermediate files produced by <code>header-abi-dumper</code></li>
+    <li>Version script/Map file (optional)</li>
+    <li>.so file of the shared library</li>
+  </ul>
+   </td>
+  </tr>
+  <tr>
+   <th>Output</th>
+   <td>A file that logs the ABI of a shared library (e.g.
+    <code>libfoo.so.lsdump </code>represents <code>libfoo</code>'s ABI).
+   </td>
+  </tr>
+</table>
+
+<p>
+  The tool merges the types graphs in all the intermediate files given to it,
+  taking into account one-definition (user-defined types in different
+  translation units with the same fully qualified name, might be semantically
+  different) differences across translation units. The tool then parses either
+  a version script or the <code>.dynsym</code> table of the shared library
+  (<code>.so</code> file) to make a list of the exported symbols.
+</p>
+
+<p>
+  For example, when <code>libfoo</code> adds the <code>bar.cpp</code> file
+  (which exposes a C function <code>bar</code>) to its compilation,
+  <code>header-abi-linker</code> could be invoked to create the complete
+  linked ABI dump of <code>libfoo</code> as follows:
+</p>
+
+<pre class="prettyprint">
+header-abi-linker -I exported foo.sdump bar.sdump \
+                  -o libfoo.so.lsdump \
+                  -so libfoo.so \
+                  -arch arm64 -api current
+</pre>
+
+<p>
+  Example command output in <strong><code>libfoo.so.lsdump</code></strong>:
+</p>
+
+<pre class="prettyprint">
+record_types {
+  type_info {
+    name: "foo"
+    size: 24
+    alignment: 8
+    referenced_type: "type-1"
+    source_file: "foo/include/foo_exported.h"
+    linker_set_key: "foo"
+    self_type: "type-1"
+  }
+  fields {
+    referenced_type: "type-2"
+    field_offset: 0
+    field_name: "m1"
+    access: public_access
+  }
+  fields {
+    referenced_type: "type-3"
+    field_offset: 64
+    field_name: "m2"
+    access: public_access
+  }
+  fields {
+    referenced_type: "type-4"
+    field_offset: 128
+    field_name: "mPfoo"
+    access: public_access
+  }
+  access: public_access
+  record_kind: struct_kind
+  tag_info {
+    unique_id: "_ZTS3foo"
+  }
+}
+record_types {
+  type_info {
+    name: "bar"
+    size: 24
+    alignment: 8
+...
+builtin_types {
+  type_info {
+    name: "void"
+    size: 0
+    alignment: 0
+    referenced_type: "type-6"
+    source_file: ""
+    linker_set_key: "void"
+    self_type: "type-6"
+  }
+  is_unsigned: false
+  is_integral: false
+}
+functions {
+  return_type: "type-19"
+  function_name: "Foo"
+  source_file: "foo/include/foo_exported.h"
+  parameters {
+    referenced_type: "type-2"
+    default_arg: false
+  }
+  parameters {
+    referenced_type: "type-20"
+    default_arg: false
+  }
+  linker_set_key: "_Z3FooiP3bar"
+  access: public_access
+}
+functions {
+  return_type: "type-6"
+  function_name: "FooBad"
+  source_file: "foo/include/foo_exported_bad.h"
+  parameters {
+    referenced_type: "type-2"
+    default_arg: false
+  }
+parameters {
+    referenced_type: "type-7"
+    default_arg: false
+  }
+  linker_set_key: "_Z6FooBadiP3foo"
+  access: public_access
+}
+elf_functions {
+  name: "_Z3FooiP3bar"
+}
+elf_functions {
+  name: "_Z6FooBadiP3foo"
+}
+</pre>
+
+<p>
+  The <code>header-abi-linker</code> tool:
+</p>
+
+<ul>
+  <li>Links the <code>.sdump</code> files provided to it (<code>foo.sdump</code>
+  and <code>bar.sdump</code>), filtering out the ABI information not present in
+  the headers residing in the directory: <code>exported</code>.</li>
+  <li>Parses <code>libfoo.so</code>, and collects information about the symbols
+  exported by the library through its <code>.dynsym</code> table.</li>
+  <li>Adds <code>_Z3FooiP3bar</code> and <code>Bar</code>.</li>
+</ul>
+
+<p>
+  <code>libfoo.so.lsdump</code> is the final generated ABI dump of
+  <code>libfoo.so</code>.
+</p>
+
+<aside class="tip"><strong>Tip:</strong> To get help with the
+  <code>header-abi-linker</code> tool, run
+  <code>header-abi-linker --help</code>.
+</aside>
+
+<h3 id="header-abi-diff">header-abi-diff</h3>
+
+<p>
+  The <code>header-abi-diff</code> tool compares two <code>.lsdump</code> files
+  representing the ABI of two libraries and produces a diff report stating the
+  differences between the two ABIs.
+</p>
+
+<table>
+  <tr>
+  <th>Inputs</th>
+  <td>
+  <ul>
+  <li><code>.lsdump</code> file representing the ABI of an old shared
+  library.</li>
+  <li><code>.lsdump</code> file representing the ABI of a new shared library.
+  </li>
+  </ul>
+  </td>
+  </tr>
+  <tr>
+  <th>Output</th>
+  <td>A diff report stating the differences in the ABIs offered by the two
+    shared libraries compared.
+  </td>
+  </tr>
+</table>
+
+<p>
+  The ABI diff file is designed to be as verbose and readable as possible. The
+  format is subject to change in future releases. For example, you have two
+  versions of <code>libfoo</code>: <code>libfoo_old.so</code> and
+  <code>libfoo_new.so</code>. In <code>libfoo_new.so</code>, in
+  <code>bar_t</code>, you change the type of <code>mfoo</code> from
+  <code>foo_t</code> to <code>foo_t *</code>. Since <code>bar_t</code> is a
+  directly reachable type, this should be flagged as an ABI breaking change by
+  <code>header-abi-diff</code>.
+</p>
+
+<p>
+  To run <code>header-abi-diff</code>:
+</p>
+
+<pre class="prettyprint">
+header-abi-diff -old libfoo_old.so.lsdump \
+                -new libfoo_new.so.lsdump \
+                -arch arm64 \
+                -o libfoo.so.abidiff \
+                -lib libfoo
+</pre>
+
+<p>
+  Example command output in <strong><code>libfoo.so.abidiff</code></strong>:
+</p>
+
+<pre class="prettyprint">
+lib_name: "libfoo"
+arch: "arm64"
+record_type_diffs {
+  name: "bar"
+  type_stack: "Foo-> bar *->bar "
+  type_info_diff {
+    old_type_info {
+      size: 24
+      alignment: 8
+    }
+    new_type_info {
+      size: 8
+      alignment: 8
+    }
+  }
+  fields_diff {
+    old_field {
+      referenced_type: "foo"
+      field_offset: 0
+      field_name: "mfoo"
+      access: public_access
+    }
+    new_field {
+      referenced_type: "foo *"
+      field_offset: 0
+      field_name: "mfoo"
+      access: public_access
+    }
+  }
+}</pre>
+
+
+<p>
+  The <code>libfoo.so.abidiff</code> contains a report of all ABI breaking
+  changes in <code>libfoo</code>. The <code>record_type_diffs</code> message
+  indicates a record has changed and lists the incompatible changes, which
+  include:
+</p>
+
+<ul>
+  <li>The size of the record changing from <code>24</code> bytes to
+  <code>8</code> bytes.</li>
+  <li>The field type of <code>mfoo</code> changing from <code>foo</code> to
+  <code>foo *</code> (all typedefs are stripped off).</li>
+</ul>
+
+<p>
+  The <code>type_stack</code> field indicates how <code>header-abi-diff</code>
+  reached the type that changed (<code>bar</code>). This field may be
+  interpreted as <code>Foo</code> is an exported function that takes in
+  <code>bar *</code> as parameter, that points to <code>bar</code>, which was
+  exported and changed.
+</p>
+
+<aside class="tip">
+  <strong>Tip:</strong> To get help with the <code>header-abi-diff</code> tool,
+  run <code>header-abi-diff --help</code>. You can also refer to
+  <code>development/vndk/tools/header-checker/README.md</code>.
+</aside>
+
+<h2 id="enforcing-abi-api">Enforcing ABI/API</h2>
+
+<p>
+  To enforce the ABI/API of VNDK and LLNDK shared libraries, ABI references must
+  be checked into <code>${ANDROID_BUILD_TOP}/prebuilts/abi-dumps/(v)ndk/</code>.
+  To create these references, run the following command:
+</p>
+
+<pre class="prettyprint">
+${ANDROID_BUILD_TOP}/development/vndk/tools/header-checker/utils/create_reference_dumps.py
+</pre>
+
+<p>
+  After creating the references, any change made to the source code that results
+  in an incompatible ABI/API change in a VNDK or LLNDK library now results in a
+  build error.
+</p>
+
+<p>
+  To update ABI references for specific VNDK core libraries, run the following
+  command:
+</p>
+
+<pre class="prettyprint">
+${ANDROID_BUILD_TOP}/development/vndk/tools/header-checker/utils/create_reference_dumps.py -l &lt;lib1> -l &lt;lib2>
+</pre>
+
+<p>
+  For example, to update <code>libbinder</code> ABI references, run:
+</p>
+
+<pre class="prettyprint">
+${ANDROID_BUILD_TOP}/development/vndk/tools/header-checker/utils/create_reference_dumps.py -l libbinder
+</pre>
+
+<p>
+  To update ABI references for specific LLNDK libraries, run the following
+  command:
+</p>
+
+<pre class="prettyprint">
+${ANDROID_BUILD_TOP}/development/vndk/tools/header-checker/utils/create_reference_dumps.py -l &lt;lib1> -l &lt;lib2> --llndk
+</pre>
+
+<p>
+  For example, to update <code>libm</code> ABI references, run:
+</p>
+
+<pre class="prettyprint">
+${ANDROID_BUILD_TOP}/development/vndk/tools/header-checker/utils/create_reference_dumps.py -l libm --llndk
+</pre>
+
+
+</body>
+</html>

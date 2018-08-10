@@ -1,0 +1,125 @@
+<html devsite>
+  <head>
+    <title>Vendor Init</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2018 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          //www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>
+The init process has nearly unrestricted permissions and uses input scripts from
+both the system and vendor partitions to initialize the system during the boot
+process. This access causes a huge hole in the Treble system/vendor split, as
+vendor scripts may instruct init to access files, properties, etc. that do not
+form part of the stable system-vendor application binary interface (ABI).
+</p>
+<p>
+<em>Vendor init</em> is designed to close this hole by using a separate
+security-enhanced Linux (SELinux) domain <code>vendor_init</code> to run
+commands found in <code>/vendor</code> with vendor-specific permissions.
+</p>
+<h2 id="mechanism">Mechanism</h2>
+<p>
+Vendor init forks a subprocess of init early in the boot process with the
+SELinux context <code>u:r:vendor_init:s0</code>. This SELinux context has
+considerably fewer permissions than the default init context and its access is
+confined to files, properties, etc. that are either vendor-specific or part of
+the stable system-vendor ABI.
+</p>
+<p>
+Init checks each script it loads to see if its path starts with
+<code>/vendor</code> and if so, tags it with an indication that its commands
+must be run in the vendor init context. Each init builtin is annotated with a
+boolean that specifies whether or not the command must be run in the vendor init
+subprocess:
+</p>
+<ul>
+<li>Most commands that access the file system are annotated to run in the vendor
+    init subprocess and are therefore subjected to the vendor init SEPolicy.</li>
+<li>Most commands that impact internal init state (e.g., starting and stopping
+    services) are run within the normal init process. These commands are made
+    aware that a vendor script is calling them to do their own non-SELinux
+    permissions handling.</li>
+</ul>
+<p>
+The main processing loop of init contains a check that if a command is annotated
+to run in the vendor subprocess and originates from a vendor script, that
+command is sent via inter-process communication (IPC) to the vendor init
+subprocess, which runs the command and sends the result back to init.
+</p>
+<h2 id="using-vendor-init">Using Vendor Init</h2>
+<p>
+Vendor init is enabled by default and its restrictions apply to all init scripts
+present in the <code>/vendor</code> partition. Vendor init should be transparent
+to vendors whose scripts are already not accessing system only files,
+properties, etc.
+</p>
+<p>
+However, if commands in a given vendor script violate the vendor init
+restrictions, the commands will fail. Failing commands have a line in the kernel
+log (visible with dmesg) from init indicating failure. An SELinux audit
+accompanies any failing command that failed due to the SELinux policy. Example
+of a failure including an SELinux audit:
+</p>
+
+
+<pre class="devsite-disable-click-to-copy">type=1400 audit(1511821362.996:9): avc: denied { search } for pid=540 comm="init" name="nfc" dev="sda45" ino=1310721 scontext=u:r:vendor_init:s0 tcontext=u:object_r:nfc_data_file:s0 tclass=dir permissive=0
+init: Command 'write /data/nfc/bad_file_access 1234' action=boot (/vendor/etc/init/hw/init.walleye.rc:422) took 2ms and failed: Unable to write to file '/data/nfc/bad_file_access': open() failed: Permission denied</pre>
+<p>
+If a command fails, there are two options:
+</p>
+<ul>
+<li>If the command is failing due to an intended restriction (such as if the
+command is accessing a system file or property), the command must be
+re-implemented in a Treble-friendly way, going through only stable interfaces.
+Neverallow rules prevent adding permissions to access system files that are not
+part of the stable system-vendor ABI.</li>
+<li>If the SELinux label is new and is not already granted permissions in the
+system <code>vendor_init.te</code> nor excluded permissions via the neverallow
+rules, the new label may be granted permissions in the device-specific
+<code>vendor_init.te</code>.</li>
+</ul>
+<p>
+For devices launching before Android 9, the neverallows rules may be bypassed by
+adding the <code>data_between_core_and_vendor_violators</code> typeattribute to
+the device-specific <code>vendor_init.te</code> file.
+</p>
+<p>
+For devices launching with Android 9, a GTS check prevents the usage of
+<code>data_between_core_and_vendor_violators</code>.
+</p>
+<h2 id="code-locations">Code Locations</h2>
+<p>
+The bulk of the logic for the vendor init IPC is in <a
+href="https://android.googlesource.com/platform/system/core/+/master/init/subcontext.cpp">system/core/init/subcontext.cpp</a>.
+</p>
+<p>
+The table of commands is in the <code>BuiltinFunctionMap</code> class in <a
+href="https://android.googlesource.com/platform/system/core/+/master/init/builtins.cpp">system/core/init/builtins.cpp</a>
+and includes annotations that indicate if the command must run in the vendor
+init subprocess.
+</p>
+<p>
+The SEPolicy for vendor init is split across the private (<a
+href="https://android.googlesource.com/platform/system/sepolicy/+/master/private/vendor_init.te">system/sepolicy/private/vendor_init.te</a>)
+and public (<a
+href="https://android.googlesource.com/platform/system/sepolicy/+/master/public/vendor_init.te">system/sepolicy/public/vendor_init.te</a>)
+directories in system/sepolicy.
+</p>
+	</body>
+</html>

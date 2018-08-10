@@ -22,9 +22,9 @@
 
 <p>本文档列出了可用于评估 Android 相机硬件抽象层 (HAL) 的所有测试，它面向的是原始设备制造商 (OEM) 和应用处理器 (AP) 供应商，旨在帮助他们确保正确实现相机 HAL，并最大限度减少缺陷。尽管这是 Android 兼容性测试套件 (CTS) 的自愿性补充测试，但它显著扩大了相机测试覆盖范围，并且确实能够发现一些潜在错误。</p>
 
-<p>通过执行这些测试，原始设备制造商 (OEM) 可验证其是否正确集成了最新的 Android 相机硬件抽象层 (HAL) 3.2 接口。当符合核对清单中的所有规范时，设备实施可被视为<em></em>完全符合新的 Android 相机 HAL 接口规范。这反过来又使得设备能够正确支持构建相机应用所依据的全新 <code>android.hardware.camera2</code> 文件包。</p>
+<p>通过执行这些测试，原始设备制造商 (OEM) 可验证其是否正确集成了最新的 Android 相机硬件抽象层 (HAL) 3.2 接口。当符合核对清单中的所有规范时，设备实现可被视为<em></em>完全符合新的 Android 相机 HAL 接口规范。这反过来又使得设备能够正确支持构建相机应用所依据的全新 <code>android.hardware.camera2</code> 文件包。</p>
 
-<h2 id="camera_hal_3_2_specification">[  ] 1. 相机 HAL 3.2 规范</h2>
+<h2 id="camera_hal_3_2_specification">相机 HAL 3.2 规范</h2>
 
 <p>Android 相机 HAL 3.2 规范是有关设备必须满足哪些要求的权威信息来源；本文档提供了所有测试的摘要，可将其用作核对清单。相机 HAL 实现方（例如 AP 供应商）应逐条检查 HAL 3.2 规范，并确保其设备符合该规范。</p>
 
@@ -36,85 +36,37 @@
   </li><li><em></em>HAL 像素格式接口和规范：<code><a href="https://android.googlesource.com/platform/system/core/+/master/include/system/graphics.h">system/core/include/system/graphics.h</a></code>
 </li></ul>
 
-<h2 id="camera_test_types">[  ] 2. 相机测试类型</h2>
+<h2 id="camera_test_types">相机测试类型</h2>
 
 <p>以下是适用于最新 Android 相机的主要测试类型以及相关说明：</p>
 
 <ul>
-  <li><em><a href="#native_tests">原生</a></em>：直接针对相机 HAL 接口的测试</li><li><em><a href="#cts_tests">兼容性测试套件 (CTS)</a></em>：自动运行的标准 Android 测试，可确保设备兼容性；有关详情，请参阅 <a href="/compatibility/cts/index.html">CTS 简介</a>和<a href="/devices/tech/test_infra/tradefed/index.html">贸易联盟概述</a>
-  </li><li><em><a href="#its_tests">图像测试套件 (ITS)</a></em>：手动运行的测试，可确保图像正确性；有关设置说明，请参阅顶级和测试专用的 <code>README</code> 文件以及 tutorial.py</li><li><em><a href="#manual_tests_with_aosp_camera_app">针对 Android 开放源代码项目 (AOSP) 相机应用的手动测试</a></em>：对常见相机功能进行用户体验之类的测试</li><li><em><a href="#manual_testingcam_tests">手动 TestingCam 测试</a></em>：从源中的 <code>pdk/apps/TestingCamera/</code> 运行
-  </li><li><em><a href="#manual_testingcam2_tests">手动 TestingCam2.1 测试</a></em>：从源中的 <code>pdk/apps/TestingCamera2/</code> 运行
+  <li><em><a href="#vendor_test_suite">供应商测试套件 (VTS)</a>：</em>直接针对相机 HAL 接口的测试
+  </li><li><em><a href="#cts_tests">兼容性测试套件 (CTS)</a></em>：自动运行的标准 Android 测试，可确保设备兼容性；有关详情，请参阅 <a href="/compatibility/cts/index.html">CTS 简介</a>和<a href="/devices/tech/test_infra/tradefed/index.html">贸易联盟概述</a>
+  </li><li><em><a href="#its_tests">图像测试套件 (ITS)</a>：</em>手动运行的测试，可确保图像正确性；有关设置说明，请参阅顶级和测试专用的 <code>README</code> 文件以及 <code>tutorial.py</code>
+  </li><li><em><a href="#manual_testingcam_tests">手动 TestingCam 测试</a>：</em>从源中的 <code>pdk/apps/TestingCamera/</code> 运行
+  </li><li><em><a href="#manual_testingcam2_tests">手动 TestingCam2.1 测试</a>：从源中的 <code>pdk/apps/TestingCamera2/</code></em> 运行
 </li></ul>
 
 <p>下面详细介绍了所有这些测试类型。我们按照 OEM 应执行这些测试的时间先后顺序对它们进行了介绍。</p>
 
 <p>例如，如果设备未通过原生测试，那么肯定无法通过随后的兼容性测试套件 (CTS) 测试。如果设备未能通过 CTS，则没必要继续进行图像测试套件 (ITS) 测试。我们建议先解决每种测试类型中发现的问题，然后再进行下一组测试。</p>
 
-<h2 id="native_tests">[  ] 3. 原生测试</h2>
+<h2 id="vendor_test_suite">供应商测试套件 (VTS) 测试</h2>
 
-<p>这类测试会直接测试相机 HAL 接口。</p>
+<p>Android 供应商测试套件 (VTS) 是在 HIDL 接口一级运行的测试套件。要详细了解如何使用 VTS，请参阅<a href="/compatibility/vts/">供应商测试套件</a>。</p>
 
-<p>相机原生测试的起始路径为：<code>platform/hardware/libhardware</code></p>
-
-<p>设置这类测试的命令如下：</p>
-
-<pre class="devsite-click-to-copy">
-<code class="devsite-terminal">cd hardware/libhardware/tests/camera*/</code>
-<code class="devsite-terminal">mm</code>
-<code class="devsite-terminal">adb remount; adb sync</code>
-</pre>
-
-<h3 id="hal_3_x_tests">[  ] 3.1. HAL 3.x 测试</h3>
-
-<p>这类相机测试位于以下路径：<code>hardware/libhardware/tests/camera3/*</code></p>
-
-<p>运行所有测试的命令如下：</p>
-
-<pre class="devsite-terminal devsite-click-to-copy">
-adb shell /data/nativetest/camera3_test/camera3_test
-</pre>
-
-<p>对于每项通过的测试，您会收到 <strong>OK</strong>。在输出信息末尾处会提供错误日志，以及有关所有已通过测试的摘要。</p>
-
-<h3 id="hal_2_3_tests">[  ] 3.2. HAL 2/3 测试</h3>
-
-<p>这类相机测试位于以下路径：<code>hardware/libhardware/tests/camera2/*</code></p>
-
-<p>运行所有测试的命令如下：</p>
-
-<pre class="devsite-terminal devsite-click-to-copy">
-adb shell /data/nativetest/camera3_test/camera3_test
-</pre>
-
-<p>要运行单个测试，请传递 <code>--gtest_filter</code> 参数和相应测试名称，命令如下：</p>
-
-<pre class="devsite-terminal devsite-click-to-copy">
-adb shell /data/nativetest/camera2_test/camera2_test --gtest_filter=Camera2Test.OpenClose
-</pre>
-
-<p>要运行一小组测试，请使用带有 <code>--gtest_filter</code> 参数的通配符，命令如下：</p>
-
-<pre class="devsite-terminal devsite-click-to-copy">
-adb shell /data/nativetest/camera2_test/camera2_test --gtest_filter=Camera2Test.*
-</pre>
-
-<h3 id="3_tests_that_interact_with_the_camera_service">[  ] 3.3. 与相机服务交互的测试</h3>
-
-<p>这类相机测试位于以下路径：<code>frameworks/av/camera/tests/*</code></p>
-
-<h3 id="camera_metadata_tests">[  ] 3.4. 相机元数据测试</h3>
-
-<p>这类相机测试位于以下路径：<code>system/media/camera/tests/*</code></p>
-
-<h2 id="cts_tests">[  ] 4. 兼容性测试套件 (CTS) 测试</h2>
+<h2 id="cts_tests">兼容性测试套件 (CTS) 测试</h2>
 
 <p>相机 Android 兼容性测试套件 (CTS) 测试重点测试设备兼容性。这类测试不需要特定的测试环境（唯一的例外是视野范围/FOV CTS 验证程序测试）。</p>
 
-<p>相机 CTS 测试的起始路径为：<code>platform/cts</code></p>
+<p>相机 CTS 测试的起始路径为：<code>platform/cts</code>。</p>
+
+<p>在针对支持外部相机（如 USB 网络摄像头）的设备运行相机 CTS 时，您必须在运行 CTS 时将设备连接到充电器，否则测试将自动失败。</p>
 
 <p>有关运行 CTS 的常规说明，请参阅 <a href="/compatibility/cts/index.html">CTS 简介</a>及其子页面。</p>
 
-<h3 id="cts_tests_for_the_android_hardware_camera_api">[  ] 4.1. 针对 <code>android.hardware.Camera</code> API 的 CTS 测试</h3>
+<h3 id="cts_tests_for_the_android_hardware_camera_api">针对 <code>android.hardware.Camera</code> API 的 CTS 测试</h3>
 
 <p>这类相机测试位于 <code>cts/tests/tests/</code> 路径下的下列位置：</p>
 
@@ -125,7 +77,7 @@ adb shell /data/nativetest/camera2_test/camera2_test --gtest_filter=Camera2Test.
   </li><li><code>permission/src/android/permission/cts/CameraPermissionTest.java</code>
 </li></ul>
 
-<h3 id="cts_tests_for_the_android_hardware_camera2_api">[  ] 4.2. 针对 <code>android.hardware.camera2</code> API 的 CTS 测试</h3>
+<h3 id="cts_tests_for_the_android_hardware_camera2_api">针对 <code>android.hardware.camera2</code> API 的 CTS 测试</h3>
 
 <p>这类相机测试位于 <code>cts/tests/tests/</code> 路径下的下列位置：</p>
 
@@ -134,11 +86,11 @@ adb shell /data/nativetest/camera2_test/camera2_test --gtest_filter=Camera2Test.
   </li><li><code>permission/src/android/permission/cts/Camera2PermissionTest.java</code>
 </li></ul>
 
-<h3 id="cts_verifier_camera_tests">[  ] 4.3. CTS 验证程序相机测试</h3>
+<h3 id="cts_verifier_camera_tests">CTS 验证程序相机测试</h3>
 
 <p>这类相机测试位于以下路径：<code>cts/apps/CtsVerifier/src/com/android/cts/verifier/camera/*</code></p>
 
-<h2 id="its_tests">[  ] 5. 图像测试套件 (ITS) 测试</h2>
+<h2 id="its_tests">图像测试套件 (ITS) 测试</h2>
 
 <p>CameraITS 测试重点测试图像的正确性。这些 Python 脚本在通过 USB 连接 Android 设备的工作站上手动运行。该工作站可以运行具备必需的 Python 2.7 环境的任何操作系统。</p>
 
@@ -158,73 +110,25 @@ cts</code></p>
 
 <p>有关脚本使用方法的演示，请参阅 <code>tests</code> 子目录中的 <code>tutorial.py</code>。每项测试都归属于相应的 <code>tests/scene<#></code> 子目录。有关具体的测试说明，请参阅每个子目录中的 <code>README</code> 文件。</p>
 
-<p>您将需要使用由可重复使用的特定目标（如白色墙面、灰色卡片和台灯）构建的简单物理环境。Android 设备安装在三脚架上，而设备的相机功能通过脚本运行。大多数测试的结果要么是通过，要么是失败，不过有些测试还会提供一些指标。</p>
+<p>要按照推荐的方法设置和运行相机图像测试套件，请参阅<a href="/compatibility/cts/camera-its-box">相机盒装 ITS</a>。</p>
+
+<p>要手动运行 ITS，您将需要使用由可重复使用的特定目标（如白色墙面、灰色卡片和台灯）构建的简单物理环境。Android 设备安装在三脚架上，而设备的相机功能通过脚本运行。大多数测试的结果要么是通过，要么是失败，不过有些测试还会提供一些指标。</p>
 
 <p>这些测试仍在不断开发改进，还不够全面，无法对相机 HAL 进行完全自动化的通过/失败验证。但是，这些脚本确实可以测试未在 CTS 中测试的情景，而且还是整个 HAL 3.2 测试计划的重要组成部分。</p>
 
-<h3 id="its_tests_on_scene_0_plain">[  ] 5.1. 对场景 0（纯色）的 ITS 测试</h3>
+<h3 id="its_tests_on_scene_0_plain">对场景 0（纯色）的 ITS 测试</h3>
 
 <p>此测试不需要特定设置。所有相机（背面 + 正面 + 任何其他相机）都必须通过 <code>tests/scene0</code> 文件夹中的所有测试。</p>
 
-<h3 id="its_tests_on_scene_1_grey_card">[  ] 5.2. 对场景 1（灰色卡片）的 ITS 测试</h3>
+<h3 id="its_tests_on_scene_1_grey_card">对场景 1（灰色卡片）的 ITS 测试</h3>
 
 <p>所有相机（背面 + 正面 + 任何其他相机）都必须通过 <code>tests/scene1</code> 文件夹中的所有测试。<code>tests/scene1/README</code> 文件对场景设置进行了说明。</p>
 
-<h3 id="its_tests_on_scene_2_camera_lab">[  ] 5.3. 对场景 2（相机实验室）的 ITS 测试</h3>
+<h3 id="its_tests_on_scene_2_camera_lab">对场景 2（相机实验室）的 ITS 测试</h3>
 
 <p>所有相机（背面 + 正面 + 任何其他相机）都必须通过 <code>tests/scene2</code> 文件夹中的所有测试。<code>tests/scene2/README</code> 文件对场景设置进行了说明。</p>
 
-<h2 id="manual_tests_with_aosp_camera_app">[  ] 6. 针对 AOSP 应用的手动测试</h2>
-
-<h3 id="camera_mode_aosp_camera_app">[  ] 6.1. 相机模式</h3>
-
-<p>对于设备上的所有相机（正面、背面和任何其他相机），您需要验证以下内容：</p>
-
-<ol>
-  <li>可以在设备上拍照和查看图像，并且图像效果良好，没有明显的问题。
-  </li><li>点按对焦、连续自动对焦、微距对焦、无限远对焦、自动白平衡和自动曝光控制均可正常使用。
-  </li><li>使用数码变焦时（拍摄期间），点按对焦、连续自动对焦、自动白平衡和自动曝光控制均可正常使用。
-  </li><li>闪光灯设置（开启/关闭/自动）可正常使用，并且能与 3A 有效同步。
-</li></ol>
-
-<h3 id="video_mode_aosp_camera_app">[  ] 6.2. 视频模式</h3>
-
-<p>对于设备上的所有相机（正面、背面和任何其他相机），您需要验证以下内容：</p>
-
-<ol>
-  <li>可以在设备上拍摄和查看视频，并且视频效果良好，没有明显的问题。
-  </li><li>在录制视频的过程中能够正常拍摄快照。
-  </li><li>点按对焦、连续自动对焦、微距对焦、无限远对焦、自动白平衡和自动曝光控制均可正常使用。
-  </li><li>使用数码变焦时（拍摄期间），点按对焦、连续自动对焦、自动白平衡和自动曝光控制均可正常使用。
-  </li><li>手电筒设置（开启/关闭）可正常使用，并且能与 3A 有效同步。
-</li></ol>
-
-<h3 id="camera_settings_resolution">[  ] 6.3. 相机设置：分辨率</h3>
-
-<p>对于设备上的所有相机（正面、背面和任何其他相机）以及菜单中可用的所有分辨率，您需要验证是否返回并应用了正确的分辨率设置：</p>
-
-<ul>
-  <li>相机模式</li><li>视频模式</li><li>镜头模糊</li><li>PhotoSphere</li><li>全景</li></ul>
-
-<h3 id="camera_settings_exposure_compensation">[  ] 6.4. 相机设置：曝光补偿</h3>
-
-<p>验证是否应用了曝光补偿（+2 和 -2）。</p>
-
-<h3 id="photosphere">[  ] 6.5. PhotoSphere</h3>
-
-<p>分别通过前置和后置摄像头拍摄 360 度全景 PhotoSphere 图像。确认每一帧都对焦在无限远处，并且各个拍摄画面之间的曝光和白平衡是一致的。</p>
-
-<h3 id="panorama">[  ] 6.6. 全景</h3>
-
-<p>拍摄纵向、横向和广角全景（分别使用前置和后置摄像头），然后确认每一帧都对焦在无限远处，并且各个拍摄画面之间的曝光和白平衡是一致的。</p>
-
-<h3 id="lensblur">[  ] 6.7. 镜头模糊</h3>
-
-<p>分别使用前置和后置摄像头拍摄一张镜头模糊图像，然后确认（在查看拍摄的照片时）重新对焦于不同景深的功能能够正常运行。</p>
-
-<p>此外，在此模式下验证点按对焦、连续自动对焦、自动白平衡和自动曝光控制是否能正常使用。</p>
-
-<h2 id="media_framework_tests">[  ] 7. 媒体框架测试</h2>
+<h2 id="media_framework_tests">媒体框架测试</h2>
 
 <p>通过 MediaFrameworkTest 中与相机相关的所有媒体测试。请注意，运行这些测试需要在 Android 设备上安装 mediaframeworktest.apk。您将需要 <code>make mediaframeworktest</code>，然后使用 adb 来安装生成的 .apk。下面提供了命令示例。</p>
 
@@ -258,7 +162,7 @@ frameworks/base/media/tests/MediaFrameworkTest/src/com/android/mediaframeworktes
   </li><li><code>unit/</code>
 </li></ul>
 
-<h3 id="running_media_framework_tests">[  ] 7.1. 运行媒体框架测试</h3>
+<h3 id="running_media_framework_tests">运行媒体框架测试</h3>
 
 <p>查看所有可用测试的命令如下：</p>
 
@@ -279,7 +183,8 @@ instrumentation:com.android.mediaframeworktest/.MediaFrameworkPowerTestRunner
 (target=com.android.mediaframeworktest)
 </pre>
 
-<p>从每个测试行中识别并提取组件（位于 <code>instrumentation:</code> 和 <code>(target=com.android.mediaframeworktest) </code>之间）。该组件包含目标文件包名称 (<code>com.android.mediaframeworktest</code>) 和测试运行器名称 (<code>MediaFramework<type>TestRunner</type></code>)。</p>
+<p>从每个测试行中识别并提取组件（位于 <code>instrumentation:</code> 和 <code>(target=com.android.mediaframeworktest) </code>之间）。
+该组件包含目标软件包名称 (<code>com.android.mediaframeworktest</code>) 和测试运行器名称 (<code>MediaFramework<type>TestRunner</type></code>)。</p>
 
 <p>例如：</p>
 
@@ -293,10 +198,10 @@ com.android.mediaframeworktest/.MediaFrameworkPowerTestRunner
 <p>然后，您可以将每个组件传递到 <code>adb shell am instrument</code>，如下所示：</p>
 
 <pre class="devsite-terminal devsite-click-to-copy">
-adb shell am instrument -w &lt;component.name&gt;
+adb shell am instrument -w <var>component.name</var>
 </pre>
 
-<p>其中 &lt;component.name&gt; 等同于上面提取的值。例如：</p>
+    <p>其中 <code><var>component.name</var></code> 等同于上面提取的值。例如：</p>
 
 <pre class="devsite-terminal devsite-click-to-copy">
 adb shell am instrument -w com.android.mediaframeworktest/.MediaFrameworkIntegrationTestRunner
@@ -316,7 +221,7 @@ adb shell am instrument -e class com.android.mediaframeworktest.integration.Came
 adb shell am instrument -e class 'com.android.mediaframeworktest.integration.CameraBinderTest#testConnectPro' -w com.android.mediaframeworktest/.MediaFrameworkIntegrationTestRunner
 </pre>
 
-<h3 id="media_settings_functional_tests">[  ] 7.2. 媒体设置功能测试</h3>
+<h3 id="media_settings_functional_tests">媒体设置功能测试</h3>
 
 <p>下面是一个运行功能测试的示例。该测试用于验证不同相机设置（即闪光灯、曝光、白平衡、场景、照片大小和地理标记）组合的基本功能。</p>
 
@@ -325,7 +230,7 @@ adb shell am instrument -e class 'com.android.mediaframeworktest.integration.Cam
 adb shell am instrument -w -r  -e delay_msec 15 -e log true -e class com.android.mediaframeworktest.functional.camera.CameraPairwiseTest com.android.mediaframeworktest/com.android.mediaframeworktest.CameraStressTestRunner
 </pre>
 
-<h3 id="media_integration_tests">[  ] 7.3. 媒体集成测试</h3>
+<h3 id="media_integration_tests">媒体集成测试</h3>
 
 <p>下面是一个运行集成测试的示例，此例中包括 mediaframeworktest/integration/CameraBinderTest.java 和 mediaframeworktest/CameraStressTestRunner.java：</p>
 
@@ -347,7 +252,7 @@ OK (11 tests)
 -----
 </pre>
 
-<h3 id="media_performance_tests">[  ] 7.4. 媒体性能测试</h3>
+<h3 id="media_performance_tests">媒体性能测试</h3>
 
 <p>此预览存储空间测试将打开并释放 200 次相机预览。系统每隔 20 次迭代会记录一次 ps mediaserver 的快照，并且在 200 次迭代后比较存储空间使用量的差异。如果差异大于 150kM，则表明未通过测试。</p>
 
@@ -358,7 +263,7 @@ adb shell am instrument -w -r  -e class com.android.mediaframeworktest.performan
 
 <p>更详细的输出信息位于以下路径：<code>/sdcard/mediaMemOutput.txt</code></p>
 
-<h3 id="media_unit_tests">[  ] 7.5. 媒体单元测试</h3>
+<h3 id="media_unit_tests">媒体单元测试</h3>
 
 <p>用于执行单元测试的命令很相似。例如，对于 CameraMetadataTest.java，测试命令如下：</p>
 
@@ -366,7 +271,7 @@ adb shell am instrument -w -r  -e class com.android.mediaframeworktest.performan
 adb shell am instrument -e class 'com.android.mediaframeworktest.unit.CameraMetadataTest' -w 'com.android.mediaframeworktest/.CameraStressTestRunner'
 </pre>
 
-<h3 id="media_stress_tests">[  ] 7.6. 媒体压力测试</h3>
+<h3 id="media_stress_tests">媒体压力测试</h3>
 
 <p>该测试用于对相机进行拍照压力测试和视频录制压力测试。</p>
 
@@ -378,21 +283,21 @@ adb shell am instrument -w com.google.android.camera.tests/com.android.camera.st
 
 <p>您必须确保通过所有测试。</p>
 
-<h2 id="manual_testingcam_tests">[  ] 8. 手动 TestingCam 测试</h2>
+<h2 id="manual_testingcam_tests">手动 TestingCam 测试</h2>
 
 <p>您必须手动运行 TestingCam 应用并执行以下检查。TestingCam 的来源位于以下位置：<code>pdk/apps/TestingCamera/</code></p>
 
-<h3 id="infinity_focus_with_camera_tilt">[  ] 8.1. 利用相机倾斜度进行无限远聚焦</h3>
+<h3 id="infinity_focus_with_camera_tilt">利用相机倾斜度进行无限远聚焦</h3>
 
 <p>启动 TestingCam，打开预览，并确保将自动对焦模式设置为无限远。使用<strong>拍照</strong>按钮，给距离较远（至少 10 米距离）的对象拍摄照片，且相机方向为水平、向上（接近垂直）和向下（接近垂直）；例如，向上拍摄可以是从下面拍摄大树高处的树叶/分枝，而向下拍摄则可以是从建筑物的顶部俯拍下面的街道。在所有情况下，距离较远的拍摄对象都必须成像清晰且对焦准确。保存并查看图库视图中的照片，以便您可以放大并且更轻松地检查锐度。</p>
 
 <p>请注意，对于具有 VCM 执行器的相机，要通过此测试，则需要使用闭环自动对焦控制系统，或者需要使用加速度计数据来确定相机方向，并据此进行一些 SW 校正。此外，还需要对镜头无限远位置进行可靠的工厂校准。</p>
 
-<h2 id="manual_testingcam2_tests">[  ] 9. 手动 TestingCam2 测试</h2>
+<h2 id="manual_testingcam2_tests">手动 TestingCam2 测试</h2>
 
 <p>您必须手动运行 TestingCam2 应用并执行以下检查。TestingCam2 的来源位于以下位置：<code>pdk/apps/TestingCamera2/</code></p>
 
-<h3 id="9_1_jpeg_capture">[  ] 9.1. JPEG 拍照</h3>
+<h3 id="9_1_jpeg_capture">JPEG 拍照</h3>
 
 <p>启动 TestingCam2，然后按 <strong>JPEG</strong> 按钮。显示在取景器图像右侧的图像应与取景器相同，包括具有一致的方向。</p>
 

@@ -4,6 +4,7 @@
     <meta name="project_path" value="/_project.yaml" />
     <meta name="book_path" value="/_book.yaml" />
   </head>
+  {% include "_versions.html" %}
   <body>
   <!--
       Copyright 2017 The Android Open Source Project
@@ -21,7 +22,7 @@
       limitations under the License.
   -->
 
-<p>In Android 8.0, the device kernel splits into System-on-Chip (SoC), device,
+<p>In Android 8.0, the device kernel split into System-on-Chip (SoC), device,
 and board-specific deliverables. This sets up the kernel and Android such that
 Original Device Manufacturers (ODMs) and Original Equipment Manufacturers (OEMs)
 can work in isolated board–specific trees for board–specific features, drivers,
@@ -32,8 +33,8 @@ the form of kernel modules, etc.</p>
 
 <ul>
 <li>Platform support for independent SoC and OEM/ODM kernel development. Android
-O recommends all board–specific code to be built and shipped as kernel modules
-in devices. As a result:
+{{ androidPVersionNumber }} recommends all board–specific code to be built and
+shipped as kernel modules in devices. As a result:
  <ul>
  <li>All platforms should support either
  <a href="https://www.devicetree.org/" class="external">Device Tree</a> or
@@ -55,7 +56,7 @@ framework.</li>
 </ul>
 
 <h2 id="loadable-kernel-modules">Loadable kernel modules</h2>
-<p>All SoC kernels should support loadable kernel modules. As a starting point,
+<p>All SoC kernels must support loadable kernel modules. As a starting point,
 the following kernel-config options (or their kernel-version equivalent) have
 been added to
 <a href="https://android.googlesource.com/kernel/common/+/android-4.4-o/android/configs/android-base.cfg" class="external">android-base.cfg</a>
@@ -67,8 +68,7 @@ CONFIG_MODULE_UNLOAD=y
 CONFIG_MODVERSIONS=y
 </pre>
 
-<p>All kernel modules are subject to module load/unload testing to ensure the
-correctness of the driver/module.</p>
+<p>Kernel modules should support unloading and reloading whenever possible.</p>
 
 <aside class="note"><strong>Note:</strong>
 <code>CONFIG_MODULE_SRCVERSION_ALL</code> is optional and will not be tested
@@ -93,9 +93,10 @@ in the future.</p>
 <h3 id="file-locations">File locations</h3>
 <p>While Android 7.x and earlier versions do not mandate against kernel modules
 (and include support for <code>insmod</code> and <code>rmmod</code>), Android
-8.0 recommends the use of kernel modules in the ecosystem. The following table
-shows potential board–specific peripheral support required across three Android
-boot modes:</p>
+8.x and higher recommends the use of kernel modules in the ecosystem. The
+following table shows potential board–specific peripheral support required
+across three Android boot modes:</p>
+
 <table>
 <tr>
 <th>Boot Mode</th>
@@ -154,7 +155,7 @@ being used, requirements for their placement in filesystem are as follows:</p>
 <ul>
 <li>All kernels should have built-in support for booting and mounting partitions.
 </li>
-<li>Kernel modules should be loaded from a read-only partition.</li>
+<li>Kernel modules must be loaded from a read-only partition.</li>
 <li>For devices required to have verified boot, kernel modules should be loaded
 from verified partitions.</li>
 <li>Kernel modules should not be located in <code>/system</code>.</li>
@@ -178,8 +179,8 @@ mounted in Recovery mode.</li>
 </ul>
 
 <p>In Android 7.x and earlier, <code>/vendor</code> and <code>/odm</code>
-partitions are <strong>not</strong> mounted early. In Android 8.0, to make
-module loading from these partitions possible, provisions have been made to
+partitions are <strong>not</strong> mounted early. In Android 8.x and higher, to
+make module loading from these partitions possible, provisions have been made to
 mount partitions early for both
 <a href="/devices/tech/ota/ab_updates">non-A/B and A/B devices</a>. This also
 ensures the partitions are mounted in both Android and
@@ -279,11 +280,11 @@ documentation in the kernel tree at
 loading of kernel modules as soon as possible after kernel boot).</p>
 
 <aside class="note"><strong>Note:</strong> For details on SELinux in Android
-8.0, see <a href="/security/selinux/images/SELinux_Treble.pdf">SELinux for
+8.x, see <a href="/security/selinux/images/SELinux_Treble.pdf">SELinux for
 Android 8.0</a>.</aside>
 
 <p>Android must have access to the filesystem(s) on which the modules reside. To
-enable, Android 8.0 supports mounting <code>/system</code>,
+enable, Android 8.x and higher supports mounting <code>/system</code>,
 <code>/vendor</code>, or <code>/odm</code> as early as <code>init</code>'s first
 stage (i.e before selinux is initialized). Device makers can use
 <a href="/devices/architecture/dto/index.html">device tree overlays</a> to
@@ -340,9 +341,9 @@ requirement).</li>
 
 <h3 id="early-mounting-device-tree-vboot-1-0">Early mounting device tree, VBoot
 1.0</h3>
-<p>In Android 8.0, <code>init</code> parses the device tree and creates
-<code>fstab</code> entries to mount the partition early during its first stage.
-An fstab entry takes the form:</p>
+<p>In Android 8.x and higher, <code>init</code> parses the device tree and
+creates <code>fstab</code> entries to mount the partition early during its first
+stage. An <code>fstab</code> entry takes the form:</p>
 
 <pre class="prettyprint">src mnt_point type mnt_flags fs_mgr_flags</pre>
 
@@ -577,10 +578,16 @@ DT blobs from user space, but instead recommends that vendors add the device
 tree patching in the bootloader with the help of
 <code>libfdt</code>/<code>libufdt</code>.</p>
 
-<p>In Android 7.x and earlier, Android did not require device tree support and
-did not provide recommendations regarding how vendors pass DT blobs to the
-kernel or where they store them. Android 8.0 recommends such support to keep the
-board–specific and SoC-only parts of the kernel separate.</p>
+<p>Support for DTOs in Android varies by Android release:</p>
+<ul>
+  <li>Android 7.x and earlier did not require device tree support and did not
+  provide recommendations regarding how vendors pass DT blobs to the kernel or
+  where they store them.</li>
+  <li>Android 8.x recommended such support to keep the board–specific and
+  SoC-only parts of the kernel separate.</li>
+  <li>Android {{ androidPVersionNumber }} requires a DTBO partition to be
+  present and at least one DTO to be applied.</li>
+</ul>
 
 <h3 id="partitioning-requirements">Partitioning requirements</h3>
 <p>Most Android devices today append the DT blob to the kernel at build time,
@@ -629,10 +636,11 @@ combined device tree to the kernel.</li>
 <a href="/devices/architecture/dto/index.html">Device Tree Overlays</a>.</p>
 
 <h2 id="core-kernel-requirements">Core kernel requirements</h2>
-<p>Android 8.0 mandates a minimum kernel version and kernel configuration and
-checks them both in VTS as well as during an OTA. Android device kernels must
-enable the kernel <code>.config</code> support along with the option to read the
-kernel configuration at runtime through <code>procfs</code>.</p>
+<p>As of Android 8.0, Android mandates a minimum kernel version and kernel
+configuration and checks them both in VTS as well as during an OTA. Android
+device kernels must enable the kernel <code>.config</code> support along with
+the option to read the kernel configuration at runtime through
+<code>procfs</code>.</p>
 
 <h3 id="kernel-config-support">Kernel .config support</h3>
 <p>All device kernels must enable the entirety of
@@ -646,17 +654,28 @@ CONFIG_IKCONFIG_PROC=y
 </pre>
 
 <h3 id="kernel-version">Kernel version</h3>
-<p>Kernel version requirements:</p>
+<p>For Android {{ androidPVersionNumber }}, the minimum LTS kernel version
+requirements are 4.4.107, 4.9.84, and 4.14.42.</p>
+
 <ul>
-<li>All SoCs productized in 2017 must launch with kernel 4.4 or newer.</li>
-<li>All other SoCs launching new Android devices running Android 8.0 must use
-kernel 3.18 or newer.</li>
-<li>Regardless of launch date, all SoCs with device launches on Android 8.0
-remain subject to kernel changes required to enable Treble.</li>
-<li>Older Android devices released prior to Android 8.0 but that will be
-upgraded to Android 8.0 can continue to use their original base kernel version
-if desired.</li>
+<li>All SoCs productized in 2018 must launch with kernel 4.9.84 or newer.</li>
+<li>All other SoCs launching new Android devices running Android 8.x must use
+kernel 3.18 or newer. All other SoCs launching new Android devices running
+Android {{ androidPVersionNumber }} must use kernel 4.4.107 or newer.</li>
+<li>Device kernels based on 4.14 must include the 4.14.42 or later LTS release.
+</li>
+<li>Regardless of launch date, all SoCs with device launches on Android 8.x
+and higher remain subject to the kernel changes required to enable Treble.</li>
+<li>Older Android devices that will be upgraded to Android 8.x or
+{{ androidPVersionNumber }} can continue to use their original base kernel
+version if desired.</li>
 </ul>
+
+<p>For details on LTS kernels, refer to
+<a href="/devices/architecture/kernel/releases#long-term-stable-kernels">Long-term
+stable kernels</a> and
+<a href="https://source.android.com/devices/architecture/kernel/android-common">Android
+Common Kernels</a></p>
 
 <h3 id="device-tree-support">Device tree support</h3>
 <p>Device tree support in the kernel must be enabled and bootloaders must pass
@@ -686,12 +705,11 @@ changelist</a>.</p>
 <code>debugfs</code>. It may be enabled, but VTS testing may be done with
 <code>debugfs</code> unmounted.</p>
 
-<h2 id="beyond-android-o">Beyond Android 8.0</h2>
-<p>Android 8.0 recommends any board–specific kernel functionality to be in the
-form of loadable kernel modules and device–tree overlays. The rest of the kernel
-is treated monolithically with respect to Android (whether or not is it is
-actually a monolithic kernel, or parts of it are compiled as kernel modules).
-</p>
+<h2 id="beyond-android-o">Future Android versions</h2>
+<p>The current Android release recommends that all board–specific code is built
+and shipped as kernel modules in devices. The rest of the kernel is treated
+monolithically with respect to Android (whether or not is it is actually a
+monolithic kernel, or parts of it are compiled as kernel modules).</p>
 
 <p>This monolithic kernel is an SoC kernel that can boot on the SoC vendor's
 reference hardware but nothing beyond that. Today, SoC kernels are treated
@@ -706,7 +724,7 @@ contributing to the same SoC kernel.</p>
 fragmented over time, across Android releases, and across ODMs.</p>
 
 <img src="../images/treble_kernel_current.png">
-<figcaption><strong>Figure 1.</strong> Device kernel replication.</figcaption>
+<figcaption><strong>Figure 1.</strong> Device kernel replication</figcaption>
 
 <p>Figure 1 shows the following:</p>
 <ol>
@@ -723,14 +741,14 @@ Figure 2 (below) illustrates how the workflow will change in an ideal,
 unified–per–SoC–kernel scenario:</p>
 
 <img src="../images/treble_kernel_treble.png">
-<figcaption><strong>Figure 2.</strong> Android 8.0 and higher device
-kernels.</figcaption>
+<figcaption><strong>Figure 2.</strong> Android 8.x and higher device
+kernels</figcaption>
 
 <p>This is intended to solve the problem of fragmented kernel repos by
 recommending and working with device manufacturers to stay up to date with the
-common SoC kernel. Android 8.0 provides all possible options to ODMs to help
-them avoid maintaining their own SoC kernels and instead rely on the common SoC
-kernel for LTS upgrades/bug fixes/security patches/etc.</p>
+common SoC kernel. Android 8.x and higher provides all possible options to ODMs
+to help them avoid maintaining their own SoC kernels and instead rely on the
+common SoC kernel for LTS upgrades/bug fixes/security patches/etc.</p>
 
 <p>As a start, we want to facilitate all ODMs/vendors using a single kernel
 source for an SoC. In the future, we want to move towards a single binary

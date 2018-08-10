@@ -1,0 +1,92 @@
+<html devsite="">
+<head>
+  <title>Dynamically Available HALs</title>
+  <meta name="project_path" value="/_project.yaml">
+  <meta name="book_path" value="/_book.yaml">
+</head>
+ {% include "_versions.html" %}
+<body>
+  <!--
+      Copyright 2018 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+  Android {{ androidPVersionNumber }} supports the dynamic shutdown of Android hardware
+  subsystems when they are not in use or not needed. For example, when a user
+  is not using Wi-Fi, the Wi-Fi subsystems should not be taking up memory,
+  power, or other system resources. In earlier versions of Android, HALs/drivers
+  were kept open on Android devices for the entire duration an Android
+  phone was booted.
+
+  <p>Implementing dynamic shutdown involves wiring up data flows and executing
+  dynamic processes as detailed in the following sections.</p>
+
+
+  <h2 id="changes-HAL-definitions">Changes to HAL definitions</h2>
+
+
+  <p>Dynamic shutdown requires information on which processes serve what HAL
+  interfaces (this information may also be useful later in other contexts) as
+  well as not starting processes on boot and not restarting them (until
+  requested again) when they exit.</p>
+
+  <pre class="prettyprint"># some init.rc script associated with the HAL
+service vendor.some-service-name /vendor/bin/hw/some-binary-service
+    # init language extension, provides information of what service is served
+    # if multiple interfaces are served, they can be specified one on each line
+    interface android.hardware.light@2.0::ILight default
+    # restarted if hwservicemanager dies
+    # would also cause the hal to start early during boot if oneshot wasn't set
+    class hal
+    # will not be restarted if it exits until it is requested to be restarted
+    oneshot
+    # will only be started when requested
+    disabled
+    # ... other properties</pre>
+
+  <h2 id="changes-init-and-hwservicemanager">Changes to init and hwservicemanager</h2>
+
+
+  <p>Dynamic shutdown also requires the <code>hwservicemanager</code> to tell
+  <code>init</code> to start requested services. In Android {{ androidPVersionNumber }},
+  <code>init</code> includes three additional control messages (e.g.
+  <code>ctl.start</code>): <code>ctl.interface_start</code>,
+  <code>ctl.interface_stop</code>, and <code>ctl.interface_restart</code>.
+  These messages can be used to signal <code>init</code> to bring up and down
+  specific hardware interfaces. When a service is requested and it is not
+  registered, <code>hwservicemanager</code> will request the service to be
+  started.</p>
+
+
+  <h2 id="determining-HAL-exit">Determining HAL exit</h2>
+
+
+  <p>Dynamic shutdown requires multiple policies for deciding when to start a
+  HAL and when to shutdown a HAL. If a HAL decides to exit for any reason, it
+  will automatically be restarted when it is needed again using the information
+  provided in the HAL definition and the infrastructure provided by changes to
+  <code>init</code> and <code>hwservicemanager</code>. This could involve a
+  couple of different strategies, including:</p>
+
+
+  <ul>
+    <li>A HAL could choose to call exit on itself if someone calls a close or
+    similar API on it. This behavior must be specified in the corresponding HAL
+    interface.</li>
+
+
+    <li>HALs can shut down when their task is completed (documented in the HAL
+    file).</li>
+  </ul>
+</body>
+</html>

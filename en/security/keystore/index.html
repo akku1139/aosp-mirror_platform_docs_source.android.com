@@ -28,7 +28,8 @@ offers an opportunity for Android devices to provide hardware-backed, strong
 security services to the Android OS, to platform services, and even to
 third-party apps. Developers seeking the Android-specific extensions should go
 to <a
-href="https://developer.android.com/reference/android/security/keystore/KeyGenParameterSpec.html">android.security.keystore</a>.</p>
+href="https://developer.android.com/reference/android/security/keystore/KeyGenParameterSpec.html"
+class="external">android.security.keystore</a>.</p>
 
 <p>Before Android 6.0, Android already had a simple, hardware-backed crypto
 services API, provided by versions 0.2 and 0.3 of the Keymaster Hardware
@@ -38,13 +39,25 @@ already implemented on many devices, but there are many security goals that
 cannot easily be achieved with only a signature API. Keystore in Android 6.0
 extends the Keystore API to provide a broader range of capabilities.</p>
 
-<p>In Android 6.0, Keystore added <a href="/security/keystore/features.html">symmetric cryptographic
-primitives</a>, AES and HMAC, and an access control system for hardware-backed
-keys. Access controls are specified during key generation and enforced for the
-lifetime of the key. Keys can be restricted to be usable only after the user has
+<p>In Android 6.0, Keystore added
+<a href="/security/keystore/features">symmetric cryptographic primitives</a>,
+AES and HMAC, and an access control system for hardware-backed keys. Access
+controls are specified during key generation and enforced for the lifetime of
+the key. Keys can be restricted to be usable only after the user has
 authenticated, and only for specified purposes or with specified cryptographic
-parameters. For more information, see the <a href="/security/keystore/tags">Authorization
-Tags</a> and <a href="/security/keystore/implementer-ref">Functions</a> pages.</p>
+parameters. For more information, see the
+<a href="/security/keystore/tags">Authorization Tags</a> and
+<a href="/security/keystore/implementer-ref">Functions</a> pages.</p>
+
+<p>In addition to expanding the range of cryptographic primitives, Keystore in
+Android 6.0 adds the following:</p>
+
+<ul>
+  <li>A usage control scheme to allow key usage to be limited, to mitigate the risk
+of security compromise due to misuse of keys</li>
+  <li>An access control scheme to enable restriction of keys to specified users,
+clients, and a defined time range</li>
+</ul>
 
 <p>
 In Android 7.0, Keymaster 2 added support for key attestation and version binding.
@@ -85,24 +98,78 @@ schema to add ID attestation. Keymaster implementations need to find some secure
 way to retrieve the relevant data items, as well as to define a mechanism for
 securely and permanently disabling the feature.
 </p>
+<p>
+In Android 9, updates include:
+</p>
+<ul>
+  <li>Update to
+    <a href="https://android.googlesource.com/platform/hardware/interfaces/+/master/keymaster/4.0/"
+       class="external">Keymaster 4</a></li>
+  <li>Support for embedded Secure Elements</li>
+  <li>Support for secure key import</li>
+  <li>Support for 3DES encryption</li>
+  <li>Changes to version binding so that boot.img and system.img have
+    separately set versions to allow for independent updates</li>
+</ul>
+<h2 id="glossary">Glossary</h2>
+<p>
+Here is a quick overview of Keystore components and their relationships.
+</p>
+<p>
+<strong>AndroidKeystore</strong> is the Android Framework API and component used
+by apps to access Keystore functionality. It is implemented as an extension to
+the standard Java Cryptography Architecture APIs, and consists of Java code that
+runs in the app's own process space. <code>AndroidKeystore</code> fulfills app
+requests for Keystore behavior by forwarding them to the keystore daemon.
+</p>
+<p>
+The <strong>keystore daemon</strong> is an Android system daemon that provides
+access to all Keystore functionality via a <a
+href="https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/security/IKeystoreService.aidl"
+class="external">Binder API</a>. It's responsible for storing "key blobs", which
+contain the actual secret key material, encrypted so Keystore can store it but
+not use it or reveal it.
+</p>
+<p>
+<strong>keymasterd</strong> is a HIDL server that provides access to the
+Keymaster TA. (This name is not standarized and is for conceptual purposes.)
+</p>
+<p>
+<strong>Keymaster TA</strong> (trusted application) is the software running in a
+secure context, most often in TrustZone on an ARM SoC, that provides all of the
+secure Keystore operations, has access to the raw key material, validates all of
+the access control conditions on keys, etc.
+</p>
+<p>
+<strong>LockSettingsService</strong> is the Android system component responsible
+for user authentication, both password and fingerprint. It's not part of
+Keystore, but relevant because many Keystore key operations require user
+authentication. <code>LockSettingsService</code> interacts with the Gatekeeper
+TA and Fingerprint TA to obtain authentication tokens, which it provides to the
+keystore daemon, and which are ultimately consumed by the Keymaster TA
+application.
+</p>
+<p>
+<strong>Gatekeeper TA</strong> (trusted application) is another component
+running in the secure context, which is responsible for authenticating user
+passwords and generating authentication tokens used to prove to the Keymaster TA
+that an authentication was done for a particular user at a particular point in
+time.
+</p>
+<p>
+<strong>Fingerprint TA </strong>(trusted application) is another component
+running in the secure context which is responsible for authenticating user
+fingerprints and generating authentication tokens used to prove to the Keymaster
+TA that an authentication was done for a particular user at a particular point
+in time.
+</p>
 
-<h2 id="goals">Goals</h2>
+
+<h2 id="architecture">Architecture</h2>
 
 <p>The Android Keystore API and the underlying Keymaster HAL
 provides a basic but adequate set of cryptographic primitives to allow the
 implementation of protocols using access-controlled, hardware-backed keys.</p>
-
-<p>In addition to expanding the range of cryptographic primitives, Keystore in
-Android 6.0 adds the following:</p>
-
-<ul>
-  <li>A usage control scheme to allow key usage to be limited, to mitigate the risk
-of security compromise due to misuse of keys</li>
-  <li>An access control scheme to enable restriction of keys to specified users,
-clients, and a defined time range</li>
-</ul>
-
-<h2 id="architecture">Architecture</h2>
 
 <p>The Keymaster HAL is an OEM-provided, dynamically-loadable library used by the
 Keystore service to provide hardware-backed cryptographic services. To keep
@@ -120,9 +187,9 @@ The resulting architecture looks like this:</p>
 multiple layers (e.g. app, framework, Keystore daemon), but that can be ignored
 for the purposes of this document. This means that the described Keymaster HAL
 API is low-level, used by platform-internal components, and not exposed to app
-developers. The higher-level API, for API level 23, is described on the <a
-href="https://developer.android.com/reference/android/security/keystore/KeyGenParameterSpec.html">Android
-Developer site</a>.</p>
+developers. The higher-level API is described on the <a
+href="https://developer.android.com/reference/android/security/keystore/KeyGenParameterSpec.html"
+class="external">Android Developer site</a>.</p>
 
 <p>The purpose of the Keymaster HAL is not to implement the security-sensitive
 algorithms but only to marshal and unmarshal requests to the secure world. The

@@ -21,6 +21,36 @@
       limitations under the License.
   -->
 
+<p>Android 4.4 and higher supports Verified Boot through the optional
+device-mapper-verity (dm-verity) kernel feature, which provides transparent
+integrity checking of block devices. dm-verity helps prevent persistent rootkits
+that can hold onto root privileges and compromise devices. This
+feature helps Android users be sure when booting a device it is in the same
+state as when it was last used.</p>
+<p>Potentially Harmful Applications (PHAs) with root privileges can hide from
+detection programs and otherwise mask themselves. The rooting software can do
+this because it is often more privileged than the detectors, enabling the
+software to "lie" to the detection programs.</p>
+
+<p>The dm-verity feature lets you look at a block device, the underlying storage
+layer of the file system, and determine if it matches its expected
+configuration. It does this using a cryptographic hash tree. For every block
+(typically 4k), there is a SHA256 hash.</p>
+
+<p>Because the hash values are stored in a tree of pages, only the top-level
+"root" hash must be trusted to verify the rest of the tree. The ability to
+modify any of the blocks would be equivalent to breaking the cryptographic hash.
+See the following diagram for a depiction of this structure.</p>
+
+<img src="../images/dm-verity-hash-table.png" alt="dm-verity-hash-table" id="figure1"/>
+<p class="img-caption">
+  <strong>Figure 1.</strong> dm-verity hash table
+</p>
+
+<p>A public key is included on the boot partition, which must be verified
+externally by the device manufacturer. That key is used to verify the signature
+for that hash and confirm the device's system partition is protected and
+unchanged.</p>
 
 
 <h2 id="operation">Operation</h2>
@@ -33,9 +63,10 @@ That key is not changeable once the device leaves the factory.</p>
 <p>Manufacturers use that key to verify the signature on the first-level
 bootloader, which in turn verifies the signature on subsequent levels, the
 application bootloader and eventually the kernel. Each manufacturer wishing to
-take advantage of <a href="verified-boot.html">verified boot</a> should have a
-method for verifying the integrity of the kernel. Assuming the kernel has been
-verified, the kernel can look at a block device and verify it as it is mounted.</p>
+take advantage of <a href="/security/verifiedboot/verified-boot.html">verified
+boot</a> should have a method for verifying the integrity of the kernel.
+Assuming the kernel has been verified, the kernel can look at a block device
+and verify it as it is mounted.</p>
 
 <p>One way of verifying a block device is to directly hash its contents and compare
 them to a stored value. However, attempting to verify an entire block device can
@@ -56,6 +87,17 @@ expected.</p>
 those results are not required to the application's primary function. However,
 if the application cannot continue without the data, it will fail.</p>
 
+<h2 id="fec">Forward error correction</h2>
+
+Android 7.0 and higher improves dm-verity robustness with forward error
+correction (FEC). The AOSP implementation starts with the the common
+<a href="https://en.wikipedia.org/wiki/Reed%E2%80%93Solomon_error_correction"
+   class="external">Reed-Solomon</a> error-correcting code and applies a
+technique called interleaving to reduce space overhead and increase the
+number of corrupted blocks that can be recovered. For more details on FEC, see
+<a href="https://android-developers.googleblog.com/2016/07/strictly-enforced-verified-boot-with.html"
+   class="external">Strictly Enforced Verified Boot with Error Correction</a>.
+
 <h2 id="implementation">Implementation</h2>
 
 <h3 id="summary">Summary</h3>
@@ -71,15 +113,16 @@ into verity metadata.</li>
 <li>Concatenate the system image, the verity metadata, and the hash tree.</li>
 </ol>
 
-<p>See the <a href="http://www.chromium.org/chromium-os/chromiumos-design-docs/verified-boot">The Chromium Projects - Verified
-Boot</a>
+<p>See the <a
+href="http://www.chromium.org/chromium-os/chromiumos-design-docs/verified-boot"
+class="external">The Chromium Projects - Verified Boot</a>
 for a detailed description of the hash tree and dm-verity table.</p>
 
 <h3 id="hash-tree">Generating the hash tree</h3>
 
-<p>As described in the <a href="#introduction">Introduction</a>, the hash tree is
-integral to dm-verity. The
-<a href="https://gitlab.com/cryptsetup/cryptsetup/wikis/DMVerity">cryptsetup</a> tool will
+<p>As described in the introduction, the hash tree is integral to dm-verity. The
+<a href="https://gitlab.com/cryptsetup/cryptsetup/wikis/DMVerity"
+   class="external">cryptsetup</a> tool will
 generate a hash tree for you. Alternatively, a compatible one is defined here:</p>
 
 <pre class="devsite-click-to-copy">
@@ -131,7 +174,8 @@ mapping is used for <code>fstab</code> generation and booting. The table also id
 the size of the blocks and the hash_start, the start location of the hash tree
 (specifically, its block number from the beginning of the image).</p>
 
-<p>See <a href="https://code.google.com/p/cryptsetup/wiki/DMVerity">cryptsetup</a> for a
+<p>See <a href="https://code.google.com/p/cryptsetup/wiki/DMVerity"
+class="external">cryptsetup</a> for a
 detailed description of the verity target mapping table fields.</p>
 
 <h3 id="signing">Signing the dm-verity table</h3>

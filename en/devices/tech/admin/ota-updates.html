@@ -1,0 +1,184 @@
+<html devsite>
+  <head>
+    <title>Enterprise OTA Updates</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2018 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+  {% include "_versions.html" %}
+
+    <p>
+      The
+      <a href="https://source.android.com/compatibility/android-cdd#11_updatable_software">Android
+        Compatibility Definition Document (CDD) Updatable Software</a>
+      requires devices to implement the
+      <a
+         href="https://developer.android.com/reference/android/app/admin/SystemUpdatePolicy.html"
+         class="external"><code>SystemUpdatePolicy</code></a>
+      class. <code>SystemUpdatePolicy</code> lets the Device Owner (DO) app, if
+      present, control the installation of system updates.
+    </p>
+
+    <p>
+      Android {{ androidPVersionNumber }} enhances the ability for device
+      owners to control updates by allowing device owners to postpone
+      over-the-air (OTA) updates for up to 90 days. Focusing on
+      corporate-owned, single-use (COSU) solutions, this feature lets owners
+      pause the OS version running on devices over critical periods, such as
+      holidays.
+    </p>
+
+    <h2 id="system-update-policy">System update policy</h2>
+
+      <p>
+        To comply with the CDD, the OTA client must implement behavioral
+        policies. The DO can set the following policies, which must be
+        respected by the device system update subsystems:
+      </p>
+
+      <ul>
+        <li>
+          <a
+        href="https://developer.android.com/reference/android/app/admin/SystemUpdatePolicy.html#TYPE_INSTALL_AUTOMATIC"
+        class="external"><code>TYPE_INSTALL_AUTOMATIC</code></a>
+        </li>
+        <li>
+          <a
+        href="https://developer.android.com/reference/android/app/admin/SystemUpdatePolicy.html#TYPE_INSTALL_WINDOWED"
+        class="external"><code>TYPE_INSTALL_WINDOWED</code></a>
+        </li>
+        <li>
+          <a
+        href="https://developer.android.com/reference/android/app/admin/SystemUpdatePolicy.html#TYPE_POSTPONE"
+        class="external"><code>TYPE_POSTPONE</code></a>
+        </li>
+      </ul>
+
+    <h2 id="implementing-installation-options">
+      Implementing installation options
+    </h2>
+
+      <p>
+      Android {{ androidPVersionNumber }} introduces an @SystemApi,
+        <code>SystemUpdatePolicy.InstallationOption</code>, that is designed
+        for the system update clients.
+        <code>SystemUpdatePolicy.InstallationOption</code> serves as a wrapper
+        class for the policies. An installation option tells clients how to act
+        on incoming system updates and how long that action is valid for, given
+        the current system update policy. An installation option can be one of
+        the following:
+      </p>
+
+      <ul>
+        <li>
+          <code>TYPE_INSTALL_AUTOMATIC</code> - Incoming system updates install
+          immediately and without user intervention as soon as they become
+          available. The device reboots automatically.
+        </li>
+        <li>
+          <code>TYPE_POSTPONE</code> - Incoming system updates can be delayed
+          for a maximum of 30 days. Users cannot install an update manually.
+          Device manufacturers can choose whether or not to block security
+          patches.
+        </li>
+        <li>
+          <code>TYPE_PAUSE</code> - Incoming system updates can be delayed
+          indefinitely until further notice. Users cannot install an update
+          manually. <code>TYPE_PAUSE</code> delays all updates, including
+          security patches.
+        </li>
+      </ul>
+
+      <p>
+        System update clients can query
+        <code>SystemUpdatePolicy.InstallationOption</code> using
+        <code>SystemUpdatePolicy.getInstallationOptionAt(long <var>when</var>)</code>,
+        where <var>when</var> represents the time the installation option is
+        being queried in number of milliseconds since Epoch. Using the
+        <code>SystemUpdatePolicy.getInstallationOptionAt(long <var>when</var>)</code>
+        method, system update clients can act on the returned option until the
+        effective time lapses. After the returned option lapses, the client can
+        make another query, using a new timestamp, for the most recent option.
+      </p>
+
+    <p>
+      The system update client must listen for
+      <code>DevicePolicyManager.ACTION_SYSTEM_UPDATE_POLICY_CHANGED</code>
+      broadcasts in case the whole policy is updated.
+    </p>
+
+  <h2 id="validating-the-type_pause-policy">
+    Validating the <code>TYPE_PAUSE</code> policy
+  </h2>
+
+    <p>
+      You can manually validate the <code>TYPE_PAUSE</code> option works
+      on an OTA system.
+    </p>
+
+    <h3 id="policy-type_pause-in-effect">
+      Policy <code>TYPE_PAUSE</code> is in effect
+    </h3>
+
+      <p>
+        To validate a <code>TYPE_PAUSE</code> policy is working:
+      </p>
+
+      <ol>
+        <li>
+          Set an automatic policy and specify <code>TYPE_PAUSE</code>.
+        </li>
+        <li>
+          While the system clock is in the pause period, push an OTA update.
+        </li>
+        <li>
+          Verify the device does not take the OTA update and the user
+          cannot manually install the update.
+        </li>
+        <li>
+          If the device is an A/B device, reboot the device and verify the
+          reboot did not trigger an auto-install of the update.
+        </li>
+      </ol>
+
+    <h3 id="policy-type_pause-is-expired">
+      Policy <code>TYPE_PAUSE</code> is expired
+    </h3>
+
+      <p>
+        To validate an expired <code>TYPE_PAUSE</code> policy is working:
+      </p>
+
+      <ol>
+        <li>
+          Set an automatic policy and specify <code>TYPE_PAUSE</code>.
+        </li>
+        <li>
+          While the system clock is in the pause period, push an OTA update.
+        </li>
+        <li>
+          Wait for the pause to period to expire.
+        </li>
+        <li>
+          Verify the device automatically reboots and the OTA update is
+          taken after the reboot.
+        </li>
+      </ol>
+  </body>
+</html>

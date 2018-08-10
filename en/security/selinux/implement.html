@@ -31,107 +31,82 @@ great deal of information available regarding SELinux already. See <a
 href="/security/selinux#supporting_documentation">Supporting
 documentation</a> for suggested resources.</p>
 
-<aside class="note"><strong>Note:</strong> For details on implementing SELinux
-in Android 8.0, see
-<a href="/security/selinux/images/SELinux_Treble.pdf">SELinux for Android
-8.0</a>.</aside>
+<h2 id="key_files">Key files</h2>
 
-<h2 id=summary_of_steps>Summary of steps</h2>
+<p>To enable SELinux, integrate the
+<a href="https://android.googlesource.com/kernel/common/" class="external">latest
+Android kernel</a> and then incorporate the files found in the
+<a href="https://android.googlesource.com/platform/system/sepolicy/" class="external">system/sepolicy</a>
+directory. When compiled, those files comprise the SELinux kernel security
+policy and cover the upstream Android operating system.</p>
+<p>In general, you should not modify the <code>system/sepolicy</code> files
+directly. Instead, add or edit your own device-specific policy files in the
+<code>/device/<var>manufacturer</var>/<var>device-name</var>/sepolicy</code>
+directory. In Android 8.0 and higher, the changes you make to these files should
+only affect policy in your vendor directory. For more details on separation of
+public sepolicy in Android 8.0 and higher, see
+<a href="/security/selinux/customize#android-o">Customizing SEPolicy in Android
+8.0+</a>. Regardless of Android version, you're still modifying these files:</p>
 
-<p>Here is a brief summary of the steps needed to implement SELinux on your
-Android device:</p>
 
-<ol>
-  <li>Add SELinux support in the kernel and configuration.
-  <li>Grant each service (process or daemon) started from <code>init</code> its own domain.
-  <li>Identify these services by:
+<h3 id="policy-files">Policy files</h3>
+
+<p>Files that end with <code>*.te</code> are SELinux policy source files, which
+define domains and their labels. You may need to create new policy files in
+<code>/device/<var>manufacturer</var>/<var>device-name</var>/sepolicy</code>,
+but you should try to update existing files where possible.</p>
+
+<h3 id="context-files">Context files</h3>
+<p>Context files are where you specify labels for your objects.</p>
   <ul>
-    <li>Reviewing the init.&lt;device&gt;.rc file and finding all services.
-    <li>Examining warnings of the form <em>init:  Warning!  Service name needs a SELinux domain defined; please fix!</em> in <code>dmesg</code> output.
-    <li>Checking <code>ps -Z | grep init</code> output to see which services are running in the init domain.
-  </ul>
-  <li>Label all new processes, drivers, sockets, etc.
-All objects need to be labeled
-properly to ensure they interact properly with the policies you apply. See the
-labels used in AOSP for examples to follow in label name creation.
-  <li>Institute security policies that fully cover all labels and restrict
-permissions to their absolute minimum.
-</ol>
-
-<p>Ideally, OEMs start with the policies in the AOSP and then build upon them for
-their own customizations.</p>
-
-<h2 id=key_files>Key files</h2>
-
-<p>SELinux for Android is accompanied by everything you need to enable SELinux
-now. You merely need to integrate the <a href="https://android.googlesource.com/kernel/common/">latest Android kernel</a> and then incorporate the files found in the <a href="https://android.googlesource.com/platform/system/sepolicy/">system/sepolicy</a> directory:</p>
-
-<p><a href="https://android.googlesource.com/kernel/common/">https://android.googlesource.com/kernel/common/ </a></p>
-
-<p><a href="https://android.googlesource.com/platform/system/sepolicy/">https://android.googlesource.com/platform/system/sepolicy/</a></p>
-
-<p>Those files when compiled comprise the SELinux kernel security policy and cover
-the upstream Android operating system. You should not need to modify the
-system/sepolicy files directly. Instead, add your own device-specific policy
-files within the /device/manufacturer/device-name/sepolicy directory.</p>
-
-<p>Here are the files you must create or edit in order to implement SELinux:</p>
-
-<ul>
-  <li><em>New SELinux policy source (*.te) files</em> - Located in the
-<root>/device/manufacturer/device-name/sepolicy directory. These files define
-domains and their labels. The new policy files get
-concatenated with the existing policy files during compilation into a single
-SELinux kernel policy file.
-<p class="caution"><strong>Important:</strong> Do not alter the app.te file
-provided by the Android Open Source Project.
-Doing so risks breaking all third-party applications.</p>
-  <li><em>Updated BoardConfig.mk makefile</em> - Located in the <device-name>
-directory containing the sepolicy subdirectory. It must be updated to reference
-the sepolicy subdirectory once created if it
-wasn’t in initial implementation.
-  <li><em>file_contexts</em> - Located in the sepolicy subdirectory. This file
-assigns labels to files and is used by various userspace components. As you
-create new policies, create or update this file to
-assign new labels to files. In order to apply new file_contexts, you must
-rebuild the filesystem image or run <code>restorecon</code> on the file to be
-relabeled.  On upgrades, changes to file_contexts are automatically applied to
-the system and userdata partitions as part of the upgrade.  Changes can also be
-automatically applied on upgrade to other partitions by adding
-restorecon_recursive calls to your init.<em>board</em>.rc file after the
-partition has been mounted read-write.
-  <li><em>genfs_contexts</em> - Located in the sepolicy subdirectory. This file
-assigns labels to filesystems such as proc or vfat that do not support extended
-attributes.  This configuration is loaded as part of the kernel policy but
-changes may not take effect for in-core inodes, requiring a reboot or
-unmounting and re-mounting the filesystem to fully apply the change.  Specific
-labels may also be assigned to specific mounts such as vfat using the context=
-mount option.
-  <li><em>property_contexts</em> - Located in the sepolicy subdirectory. This
-file assigns labels to Android system properties to control what processes can
-set them.  This configuration is read by the init process during startup.
-  <li><em>service_contexts</em> - Located in the sepolicy subdirectory. This
-file assigns labels to Android binder services to control what processes can
-add (register) and find (lookup) a binder reference for the service.  This
-configuration is read by the servicemanager process during startup.
-  <li><em>seapp_contexts</em> - Located in the sepolicy subdirectory. This file
-assigns labels to app processes and /data/data directories.  This configuration
-is read by the zygote process on each app launch and by installd during startup.
-  <li><em>mac_permissions.xml</em> - Located in the sepolicy subdirectory. This
-file assigns a seinfo tag to apps based on their signature and optionally their
-package name.  The seinfo tag can then be used as a key in the seapp_contexts
-file to assign a specific label to all apps with that seinfo tag.  This
-configuration is read by system_server during startup.
+  <li><code>file_contexts</code> assigns labels to files and is used by various
+    userspace components. As you create new policies, create or update this file
+    to assign new labels to files. To apply new <code>file_contexts</code>,
+    rebuild the filesystem image or run <code>restorecon</code> on the file to
+    be relabeled. On upgrades, changes to <code>file_contexts</code> are
+    automatically applied to the system and userdata partitions as part of the
+    upgrade. Changes can also be automatically applied on upgrade to other
+    partitions by adding <code>restorecon_recursive</code> calls to your
+    init.<var>board</var>.rc file after the partition has been mounted
+    read-write.</li>
+  <li><code>genfs_contexts</code> assigns labels to filesystems, such as
+    <code>proc</code> or <code>vfat</code> that do not support extended
+    attributes. This configuration is loaded as part of the kernel policy but
+    changes may not take effect for in-core inodes, requiring a reboot or
+    unmounting and re-mounting the filesystem to fully apply the change.
+    Specific labels may also be assigned to specific mounts, such as
+    <code>vfat</code> using the <code>context=mount</code> option.</li>
+  <li><code>property_contexts</code> assigns labels to Android system properties to
+    control what processes can set them. This configuration is read by the
+    <code>init</code> process during startup.</li>
+  <li><code>service_contexts</code> assigns labels to Android binder services to
+    control what processes can add (register) and find (lookup) a binder
+    reference for the service. This configuration is read by the
+    <code>servicemanager</code> process during startup.</li>
+  <li><code>seapp_contexts</code> assigns labels to app processes and
+    <code>/data/data</code> directories. This configuration is read by the
+    <code>zygote</code> process on each app launch and by <code>installd</code>
+    during startup.</li>
+  <li><code>mac_permissions.xml</code> assigns a <code>seinfo</code> tag to apps
+    based on their signature and optionally their package name. The
+    <code>seinfo</code> tag can then be used as a key in the
+    <code>seapp_contexts</code> file to assign a specific label to all apps with
+    that <code>seinfo</code> tag. This configuration is read by
+    <code>system_server</code> during startup.</li>
 </ul>
 
-<p>Then just update your BoardConfig.mk makefile - located in the directory
-containing the sepolicy subdirectory - to reference the sepolicy subdirectory
-and each policy file once created, as shown below. The BOARD_SEPOLICY variables
-and their meaning is documented in the system/sepolicy/README file.</p>
+<h3 id="boardconfig">BoardConfig.mk makefile</h3>
+
+<p>After editing or adding policy and context files, update your
+<code>/device/<var>manufacturer</var>/<var>device-name</var>/BoardConfig.mk</code>
+makefile to reference the <code>sepolicy</code> subdirectory and each new policy file.
+For more information about the <code>BOARD_SEPOLICY</code> variables, see
+<a href="https://android.googlesource.com/platform/system/sepolicy/+/master/README" class="external">
+<code>system/sepolicy/README</code> file</a>.</p>
 
 <pre class="devsite-click-to-copy">
 BOARD_SEPOLICY_DIRS += \
-        &lt;root>/device/manufacturer/device-name/sepolicy
+        &lt;root&gt;/device/<var>manufacturer</var>/<var>device-name</var>/sepolicy
 
 BOARD_SEPOLICY_UNION += \
         genfs_contexts \
@@ -139,108 +114,124 @@ BOARD_SEPOLICY_UNION += \
         sepolicy.te
 </pre>
 
-<p class="note"><strong>Note:</strong> As of the M release,
-BOARD_SEPOLICY_UNION is no longer required as all policy files found within any
-directory included in the BOARD_SEPOLICY_DIRS variable are joined with the
-base policy automatically.</p>
-
-<p>After rebuilding your device, it is enabled with SELinux. You can now either
+<p>After rebuilding, your device is enabled with SELinux. You can now either
 customize your SELinux policies to accommodate your own additions to the
-Android operating system as described in <a
-href="customize.html">Customization</a> or verify your existing setup as
-covered in <a href="validate.html">Validation</a>.</p>
+Android operating system as described in
+<a href="/security/selinux/customize.html">Customization</a> or verify your
+existing setup as covered in
+<a href="/security/selinux/validate.html">Validation</a>.</p>
 
-<p>Once the new policy files and BoardConfig.mk updates are in place, the new
-policy settings are automatically built into the final kernel policy file.</p>
+<p>When the new policy files and BoardConfig.mk updates are in place, the new
+policy settings are automatically built into the final kernel policy file.
+For more information about how sepolicy is built on the device, see
+<a href="security/selinux/building">Building sepolicy</a>.</p>
 
-<h2 id=use_cases>Use cases</h2>
+<h2 id="steps">Implementation</h2>
+
+<p>To get started with SELinux:</p>
+
+<ol>
+  <li>Enable SELinux in the kernel:
+    <code>CONFIG_SECURITY_SELINUX=y</code></li>
+  <li>Change the kernel_cmdline parameter so that:
+      <pre class="devsite-click-to-copy">
+BOARD_KERNEL_CMDLINE := androidboot.selinux=permissive</pre>
+      This is only for initial development of policy for the device. After you
+      have an initial bootstrap policy, remove this parameter so your
+      device is enforcing or it will fail CTS.</li>
+  <li>Boot up the system in permissive and see what denials are encountered on boot:<br/>
+      On Ubuntu 14.04 or newer:
+<pre class="devsite-terminal devsite-click-to-copy">
+adb shell su -c dmesg | grep denied | audit2allow -p out/target/product/<var>BOARD</var>/root/sepolicy
+</pre>
+      On Ubuntu 12.04:
+<pre class="devsite-terminal devsite-click-to-copy">
+adb pull /sys/fs/selinux/policy
+adb logcat -b all | audit2allow -p policy
+</pre></li>
+  <li>Evaluate the output for warnings that resemble <code>init: Warning!
+      Service name needs a SELinux domain defined; please fix!</code> See
+      <a href="/security/selinux/validate">Validation</a> for instructions
+      and tools.</li>
+  <li>Identify devices, and other new files that need labeling.</li>
+  <li>Use existing or new labels for your objects. Look at the
+      <code>*_contexts</code> files to see how things were previously labeled
+      and use knowledge of the label meanings to assign a new one. Ideally,
+      this will be an existing label which will fit into policy, but sometimes
+      a new label will be needed, and rules for access to that label will be
+      needed. Add your labels to the appropriate context files.</li>
+  <li>Identify domains/processes that should have their own security domains.
+      You will likely need to write a completely new policy for each. All
+      services spawned from <code>init</code>, for instance, should have their
+      own. The following commands help reveal those that remain running (but ALL
+      services need such a treatment):<br/>
+<pre class="devsite-terminal devsite-click-to-copy">
+adb shell su -c ps -Z | grep init
+</pre>
+<pre class="devsite-terminal devsite-click-to-copy">
+adb shell su -c dmesg | grep 'avc: '
+</pre></li>
+  <li>Review <code>init.<var>device</var>.rc</code> to identify any domains that
+      don't have a domain type. Give them a domain <em>early</em> in your
+      development process to avoid adding rules to <code>init</code> or
+      otherwise confusing <code>init</code> accesses with ones that are in their
+      own policy.</li>
+  <li>Set up <code>BOARD_CONFIG.mk</code> to use <code>BOARD_SEPOLICY_*</code>
+      variables. See the
+      <a href="https://android.googlesource.com/platform/system/sepolicy/+/master/README" class="external">README</a>
+      in <code>system/sepolicy</code> for details on setting this up.</li>
+  <li>Examine the init.<var>device</var>.rc and fstab.<var>device</var> file and
+      make sure every use of <code>mount</code> corresponds to a properly
+      labeled filesystem or that a <code>context= mount</code> option is
+      specified.</li>
+  <li>Go through each denial and create SELinux policy to properly handle each. See
+      the examples in <a href="/security/selinux/customize">Customization</a>.
+</ol>
+
+<p>You should start with the policies in the AOSP and then build upon them for
+your own customizations. For more information about policy strategy and a
+closer look at some of these steps, see
+<a href="/security/selinux/device-policy">Writing SELinux Policy</a>.</p>
+
+
+<h2 id="use_cases">Use cases</h2>
 
 <p>Here are specific examples of exploits to consider when crafting your own
 software and associated SELinux policies:</p>
 
-<p><strong>Symlinks</strong> - Because symlinks appear as files, they are often read just as that. This can
-lead to exploits. For instance, some privileged components such as init change
-the permissions of certain files, sometimes to be excessively open.</p>
+<p><strong>Symlinks</strong> - Because symlinks appear as files, they are often
+read as files, which can lead to exploits. For instance, some privileged
+components, such as <code>init</code>, change the permissions of certain files,
+sometimes to be excessively open.</p>
 
 <p>Attackers might then replace those files with symlinks to code they control,
 allowing the attacker to overwrite arbitrary files. But if you know your
 application will never traverse a symlink, you can prohibit it from doing so
 with SELinux.</p>
 
-<p><strong>System files</strong> - Consider the class of system files that should only be modified by the
-system server. Still, since netd, init, and vold run as root, they can access
-those system files. So if netd became compromised, it could compromise those
-files and potentially the system server itself.</p>
+<p><strong>System files</strong> - Consider the class of system files that
+should be modified only by the system server. Still, since <code>netd</code>,
+<code>init</code>, and <code>vold</code> run as root, they can access
+those system files. So if <code>netd</code> became compromised, it could
+compromise those files and potentially the system server itself.</p>
 
 <p>With SELinux, you can identify those files as system server data files.
 Therefore, the only domain that has read/write access to them is system server.
-Even if netd became compromised, it could not switch domains to the system
-server domain and access those system files although it runs as root.</p>
+Even if <code>netd</code> became compromised, it could not switch domains to the
+system server domain and access those system files although it runs as root.</p>
 
-<p><strong>App data</strong> - Another example is the class of functions that must run as root but should
-not get to access app data. This is incredibly useful as wide-ranging
-assertions can be made, such as certain domains unrelated to application data
-being prohibited from accessing the internet.</p>
+<p><strong>App data</strong> - Another example is the class of functions that
+must run as root but should not get to access app data. This is incredibly
+useful as wide-ranging assertions can be made, such as certain domains unrelated
+to application data being prohibited from accessing the internet.</p>
 
-<p><strong>setattr</strong> - For commands such as chmod and chown, you could identify the set of files
-where the associated domain can conduct setattr. Anything outside of that could
-be prohibited from these changes, even by root. So an application might run
-chmod and chown against those labeled app_data_files but not shell_data_files
-or system_data_files.</p>
-
-<h2 id=steps_in_detail>Steps in detail</h2>
-
-<p>Here is a detailed view of how Android recommends you employ and customize
-SELinux to protect your devices:</p>
-
-<ol>
-  <li>Enable SELinux in the kernel:
-<code>CONFIG_SECURITY_SELINUX=y</code>
-  <li>Change the kernel_cmdline parameter so that:<br/>
-<pre class="devsite-click-to-copy">
-BOARD_KERNEL_CMDLINE := androidboot.selinux=permissive
-</pre>
-<br/>
-This is only for initial development of policy for the device.  Once you have
-an initial bootstrap policy, remove this parameter so that your device is
-enforcing or it will fail CTS.
-  <li>Boot up the system in permissive and see what denials are encountered on boot:<br/>
-On Ubuntu 14.04 or newer:
-<br/>
-<pre class="devsite-terminal devsite-click-to-copy">
-adb shell su -c dmesg | grep denied | audit2allow -p out/target/product/<var>BOARD</var>/root/sepolicy
-</pre>
-<br/>
-On Ubuntu 12.04:<br/>
-<pre class="devsite-terminal devsite-click-to-copy">
-adb shell su -c dmesg | grep denied | audit2allow
-</pre>
-  <li>Evaluate the output. See <a href="validate.html">Validation</a> for instructions and tools.
-  <li>Identify devices, and other new files that need labeling.
-  <li>Use existing or new labels for your objects.
-Look at the *_contexts files to
-see how things were previously labeled and use knowledge of the label meanings
-to assign a new one. Ideally, this will be an existing label which will fit
-into policy, but sometimes a new label will be needed, and rules for access to
-that label will be needed, as well.
-  <li>Identify domains/processes that should have their own security domains. A policy will likely need to be written for each of these from scratch. All services spawned from <code>init</code>, for instance, should have their own. The following commands help reveal those that remain running (but ALL services need such a treatment):<br/>
-<pre class="devsite-terminal devsite-click-to-copy">
-adb shell su -c ps -Z | grep init
-</pre>
-<pre class="devsite-terminal devsite-click-to-copy">
-adb shell su -c dmesg | grep 'avc: '
-</pre>
-  <li>Review init.&lt;device&gt;.rc to identify any which are without a type.
-These should
-be given domains EARLY in order to avoid adding rules to init or otherwise
-confusing <code>init</code> accesses with ones that are in their own policy.
-  <li>Set up <code>BOARD_CONFIG.mk</code> to use <code>BOARD_SEPOLICY_*</code> variables. See
-the README in system/sepolicy for details on setting this up.
-  <li> Examine the init.&lt;device&gt;.rc and fstab.&lt;device&gt; file and make sure every use of “mount”
-corresponds to a properly labeled filesystem or that a context= mount option is specified.
-  <li> Go through each denial and create SELinux policy to properly handle each. See
-the examples within <a href="customize.html">Customization</a>.
-</ol>
+<p><strong>setattr</strong> - For commands such as <code>chmod</code> and
+<code>chown</code>, you could identify the set of files where the associated
+domain can conduct <code>setattr</code>. Anything outside of that could be
+prohibited from these changes, even by root. So an application might run
+<code>chmod</code> and <code>chown</code> against those labeled
+<code>app_data_files</code> but not <code>shell_data_files</code>
+or <code>system_data_files</code>.</p>
 
   </body>
 </html>

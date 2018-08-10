@@ -1,0 +1,252 @@
+<html devsite>
+  <head>
+    <title>Service Name Aware HAL Testing</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  {% include "_versions.html" %}
+  <!--
+      Copyright 2018 The Android Open Source Project
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+          http://www.apache.org/licenses/LICENSE-2.0
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>
+  Android {{ androidPVersionNumber }} includes support for obtaining the service
+  name of a given HAL instance based on the device on which Vendor Test Suite
+  (VTS) tests are running. Running VTS HAL tests that are service name aware
+  enables developers to automate testing vendor extensions, multiple HALs, and
+  multiple HAL instances on both target- and host-side VTS test runs.
+</p>
+
+<h3 id="about-service-names">About service names</h3>
+
+<p>
+  Each instance of the running HAL service registers itself with a service name.
+</p>
+
+<p>
+  In previous versions of Android, developers running VTS HAL tests were
+  required to set the correct service name for the test client in
+  <code>getService()</code> or leave the name empty and fallback to the default
+  service name. Disadvantages to this approach included:
+</p>
+
+<ul>
+  <li>Reliance on the test developer's knowledge to set the correct service
+  name.</li>
+  <li>Limited to testing against a single service instance by default.</li>
+  <li>Manual maintenance of service names (i.e. because names are hard-coded,
+  they must be manually updated if the service name changes.</li>
+</ul>
+
+<p>
+  In Android {{ androidPVersionNumber }}, developers can automatically get the
+  service name for a given HAL instance based on the device under test.
+  Advantages to this approach include support for testing:
+</p>
+
+<ul>
+  <li><strong>Vendor HAL extensions</strong>. For example, when a vendor has an
+  implementation of camera.provider HAL that runs on vendor devices with a
+  customized service name, VTS can identify the vendor instance and run the test
+  against it.</li>
+  <li><strong>Multiple HAL instances</strong>. For example, when the
+  <code>graphics.composer</code> HAL has two instances (one with service name
+  "default" and one with service name "vr"), VTS can identify both instances and
+run the test against each of them.</li>
+  <li><strong>Multi-HAL testing</strong>. Used when testing multiple HALs with
+  multiple instances For example, when running the VTS test that verifies how
+  the keymaster and gatekeeper HAL work together, VTS can test all combinations
+  of service instances for those HALs.</li>
+</ul>
+
+<h2 id="target-side-tests">Target-side tests</h2>
+
+<p>
+  To enable service name awareness for target-side testing, Android
+  {{ androidPVersionNumber }} includes a customizable test environment
+  (<code><a href="https://android.googlesource.com/platform/test/vts/+/master/runners/target/vts_hal_hidl_target/VtsHalHidlTargetTestEnvBase.h" class="external">VtsHalHidlTargetTestEnvBase</a></code>)
+  that provides interfaces to:
+</p>
+
+<ul>
+  <li>Register targeting HAL(s) in the test.</li>
+  <li>List all the registered HAL(s).</li>
+  <li>Get service name(s) for registered HAL(s) provided by VTS framework.</li>
+</ul>
+
+<p>
+  In addition, the VTS framework provides runtime support for:
+</p>
+
+<ul>
+  <li>Pre-processing the test binary to get all registered test HAL(s).</li>
+  <li>Identifying all running service instances and getting the service name for
+  each instance (retrieved based on <code>vendor/manifest.xml</code>).</li>
+  <li>Calculating all instance combinations (to support multiple HAL
+  testing).</li>
+  <li>Generating a new test for each service instance (combination).</li>
+</ul>
+
+<p>
+  Example:
+</p>
+
+<p>
+  <img src="images/runtime-support-target.png"
+  alt="Runtime support for target-side testing"
+  title="Runtime support for target-side testing">
+</p>
+<figcaption>
+  <strong>Figure 1.</strong> VTS framework runtime support for target-side
+  testing
+</figcaption>
+
+<h3 id="setting-up">Setting up service name aware target-side tests</h3>
+
+<p>
+  To setup your test environment for target-side service name aware testing:
+</p>
+
+<ol>
+  <li>Define a <code>testEnvironment</code> based on
+  <code>VtsHalHidlTargetTestEnvBase</code> and register test HALs:
+
+<pre class="prettyprint">#include &lt;VtsHalHidlTargetTestEnvBase.h>
+class testEnvironment  : public::testing::VtsHalHidlTargetTestEnvBase {
+      virtual void registerTestServices() override {
+    registerTestService&lt;IFoo>();
+      }
+};</pre>
+  </li>
+  <li>Use <code>getServiceName()</code> provided by the test environment to pass
+  service name:
+
+<pre
+class="prettyprint">::testing::VtsHalHidlTargetTestBase::getService&lt;IFoo>(testEnv->getServiceName&lt;IFoo>("default"));
+// "default" is the default service name you want to use.</pre>
+  </li>
+  <li>Register the test environment in <code>main()</code> and
+  <code>initTest</code>:
+<pre
+class="prettyprint">int main(int argc, char** argv) {
+        testEnv = new testEnvironment();
+        ::testing::AddGlobalTestEnvironment(testEnv);
+        ::testing::InitGoogleTest(&amp;argc, argv);
+        testEnv->init(argc, argv);
+        return RUN_ALL_TESTS();
+}</pre>
+  </li>
+</ol>
+
+<p>
+  For additional examples, refer to
+  <code><a href="https://android.googlesource.com/platform/hardware/interfaces/+/master/camera/provider/2.4/vts/functional/VtsHalCameraProviderV2_4TargetTest.cpp" class="external">VtsHalCameraProviderV2_4TargetTest.cpp</a></code>.
+
+<h2 id="host-side-tests">VTS host-side tests</h2>
+
+<p>
+  VTS host-side tests run test scripts on host side instead of test binaries on
+  the target device. To enable service name awareness for these tests, you can
+  use host side templates to run the same test script multiple times against
+  different parameters (similar to the gtest parameterized test).
+</p>
+
+<p>
+  <img src="images/runtime-support-host.png"
+  alt="Runtime support for host-side testing"
+  title="Runtime support for host-side testing">
+<p>
+<figcaption>
+  <strong>Figure 2.</strong> VTS framework runtime support for host-side
+  testing
+</figcaption>
+
+<ul>
+  <li>The <strong>hal test</strong> script specifies the targeting HAL
+  service(s) in the test.</li>
+  <li>The
+    <code><a href="https://android.googlesource.com/platform/test/vts/+/master/testcases/template/hal_hidl_host_test/hal_hidl_host_test.py" class="external">hal_hidl_host_test</a></code>
+  (subclass of <code>param_test</code>) takes the registered testing HAL(s) from
+  test script, identifies the corresponding service name(s) for the testing HAL,
+  then generates service name combinations (for multi-HAL testing) as test
+  parameters. It also provides a method <code>getHalServiceName()</code> which
+  returns the corresponding service name according to the parameter passed to
+  the current test case.</li>
+  <li>The
+  <a href="https://android.googlesource.com/platform/test/vts/+/master/testcases/template/param_test/param_test.py" class="external">param_test</a>
+  template supports logic to accept a list of parameters and run all the given
+  test cases against each parameter. I.e. for each test case it generates N new
+  parameterized test case (N = size of parameters), each with a given
+  parameter.</li>
+</ul>
+
+<h3 id="setting-up-host-side">Setting up service name aware host-side tests</h3>
+
+<p>
+  To setup your test environment for host-side service name aware testing:
+</p>
+
+<ol>
+  <li>Specify the target HAL service in the test script:
+<pre
+class="prettyprint">TEST_HAL_SERVICES = { "android.hardware.foo@1.0::IFoo" }
+</pre>
+  </li>
+  <li>Call <code>getHalServiceName()</code> and pass the name to init hal:
+
+<pre class="prettyprint">self.dut.hal.InitHidlHal(
+            target_type='foo',
+            target_basepaths=self.dut.libPaths,
+            target_version=1.0,
+            target_package='android.hardware.foo',
+            target_component_name='IFoo',
+            hw_binder_service_name
+                  =self.getHalServiceName("android.hardware.foo@1.0::IFoo"),
+            bits=int(self.abi_bitness))
+</pre>
+  </li>
+</ol>
+
+<p>
+  For additional examples, refer to
+  <code><a href="https://android.googlesource.com/platform/test/vts-testcase/hal/+/master/media/omx/V1_0/host_omxstore/VtsHalMediaOmxStoreV1_0HostTest.py" class="external">VtsHalMediaOmxStoreV1_0HostTest.py</a></code>.
+</p>
+
+<h2 id="register-test-hals">Registering test HALs</h2>
+
+<p>
+  In previous versions of Android, VTS identified the testing HAL using the
+  <code>&lt;precondition-lshal></code> option configured in
+  <code>AndroidTest.xml</code>. This approach was difficult to maintain (as it
+  relied on developers to configure the test properly and update the
+  configuration accordingly) and inaccurate (as it contained only the package
+  and version info and not the interface info).
+</p>
+
+<p>
+  In Android {{ androidPVersionNumber }}, VTS identifies the testing HAL using
+  service name awareness. The registered testing HALs are also useful for:
+</p>
+
+<ul>
+  <li><strong>Precondition checks</strong>. Before running a HAL test, VTS can
+  confirm the testing HAL is available on the target device and skip the tests
+  if it is not (refer to <a href="/compatibility/vts/hal-testability">VTS
+  testability check</a>).</li>
+  <li><strong>Coverage measurement</strong>. VTS supports cross-process code
+  coverage measurement via the knowledge about the testing HAL services it wants
+  to measure (i.e. to flush the coverage for the hal service process).</li>
+</ul>
+
+  </body>
+</html>

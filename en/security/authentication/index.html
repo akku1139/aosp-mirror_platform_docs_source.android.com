@@ -30,23 +30,26 @@ cryptographic keys and provides standard crypto routines on top of those keys.
 Android supports a <a href="/security/keystore/index.html">hardware-backed
 Keystore</a> and Keymaster for cryptographic services, including hardware-backed
 cryptography for key storage that might include a Trusted Execution Environment
-(TEE).</li>
+(TEE) or Secure Element (SE), such as Strongbox.</li>
 <li><strong>User authenticators</strong>. Attest to the user's presence and/or
 successful authentication. Android supports
 <a href="gatekeeper.html">Gatekeeper</a> for PIN/pattern/password authentication
 and <a href="fingerprint-hal.html">Fingerprint</a> for fingerprint
-authentication. These components communicate their authentication state with the
-keystore service via an authenticated channel. (The
-<a href="https://developer.android.com/training/articles/keystore.html" class="external">Android
-Keystore system</a> at the framework level is also backed by the keystore
-service.)</li>
+authentication. Devices that ship with Android 9 and higher can use <a
+href="https://developer.android.com/reference/android/hardware/biometrics/BiometricPrompt"
+class="external">BiometricPrompt</a> as a single integration point for
+fingerprint and additional biometrics. These components communicate their
+authentication state with the keystore service via an authenticated channel.
+(The <a href="https://developer.android.com/training/articles/keystore.html"
+class="external">Android Keystore system</a> at the framework level is also
+backed by the keystore service.)</li>
 </ul>
 
-<p>Gatekeeper and Fingerprint components work with Keystore and other components
-to support the use of hardware-backed <a href="#authtoken_format">authentication
-tokens</a> (AuthTokens).</p>
+<p>Gatekeeper, Fingerprint, and Biometric components work with Keystore and other
+components to support the use of hardware-backed
+<a href="#authtoken_format">authentication tokens</a> (AuthTokens).</p>
 
-<h2 id=enrollment>Enrollment</h2>
+<h2 id="enrollment">Enrollment</h2>
 
 <p>On first boot of the device after a factory reset, all authenticators are
 prepared to receive credential enrollments from the user. A user must initially
@@ -70,7 +73,7 @@ enroll, so most users won't ever see this functionality. However, forcible
 password resets, either by a device administrator or an attacker, may
 cause this to occur.</p>
 
-<h2 id=authentication>Authentication</h2>
+<h2 id="authentication">Authentication</h2>
 
 <p>After a user has set up a credential and received a User SID, they may
 proceed to start authentication, which begins when a user provides a PIN,
@@ -78,15 +81,27 @@ pattern, password, or fingerprint. All TEE components share a secret key which
 they use to authenticate each other's messages.</p>
 
 <img src="../images/authentication-flow.png" alt="Authentication flow"
-id="figure1" />
+id="Authentication flow" />
 <figcaption><strong>Figure 1.</strong> Authentication flow.</figcaption>
 
 <ol>
-  <li>A user provides a PIN, pattern, password, or fingerprint. The
-  <code>LockSettingsService</code> or <code>FingerprintService</code> makes a
-  request via Binder to appropriate daemon (<code>gatekeeperd</code> or
-  <code>fingerprintd</code>); fingerprint authentication occurs asynchronously
-  after the fingerprint request is sent.</li>
+  <li>A user provides an authentication method and the associated service
+    makes a request to the the associated daemon.
+    <ul>
+      <li>For PIN, pattern, or password, the <code>LockSettingsService</code>
+        makes a request to <code>gatekeeperd</code>.</li>
+      <li>Biometrics-based authentication flows depend on the Android version.
+        On devices running Android 8.x and lower, <code>FingerprintService</code>
+        makes a request to <code>fingerprintd</code>). On devices
+        running Android 9 and higher, <code>BiometricPrompt</code> makes a
+        request to the appropriate biometric daemon (for example,
+        <code>fingerprintd</code> for fingerprints or <code>faced</code> for
+        face) using the appropriate <code><var>Biometric</var>Manager</code>
+        class, such as <code>FingerprintManager</code> or
+        <code>FaceManager</code>. Regardless of version, biometric
+        authentication occurs asynchronously after the request is sent.</li>
+    </ul>
+  </li>
   <li>The daemon sends data to its counterpart, which generates an AuthToken:
     <ul>
     <li>For PIN/pattern/password authentication, <code>gatekeeperd</code> sends
@@ -99,22 +114,26 @@ id="figure1" />
     authentication in the TEE is successful, Fingerprint in the TEE sends an
     AuthToken (signed with the AuthToken HMAC key) to its counterpart in the
     Android OS.</li>
+    <li>For other biometric authentication, the appropriate biometric daemon
+      listens for the biometric event and sends it to the appropriate biometric
+      TEE component.</li>
   </ul>
   </li>
   <li>The daemon receives a signed AuthToken and passes it to the keystore
   service via an extension to the keystore service's Binder interface.
   (<code>gatekeeperd</code> also notifies the keystore service when the device
   is re-locked and when the device password changes.)
-  <li>The keystore service passes the AuthTokens to Keymaster, verifying them
-  using the key shared with the Gatekeeper and Fingerprint trustlets. Keymaster
-  trusts the timestamp in the token as the last authentication time and bases a
-  key release decision (to allow an app to use the key) on the timestamp.</li>
+  <li>The keystore service passes the AuthTokens to Keymaster and verifies them
+  using the key shared with the Gatekeeper and supported biometric TEE
+  component.  Keymaster trusts the timestamp in the token as the last
+  authentication time and bases a key release decision (to allow an app to use
+  the key) on the timestamp.</li>
 </ol>
 
 <aside class="note"><strong>Note:</strong> AuthTokens are invalidated when a
 device reboots.</aside>
 
-<h2 id=authtoken_format>AuthToken format</h2>
+<h2 id="authtoken_format">AuthToken format</h2>
 
 <p>To ensure token sharing and compatibility across languages and components,
 the AuthToken format is described in
@@ -183,12 +202,12 @@ The format is a simple serialization protocol with fixed size fields:</p>
  </tr>
 </table>
 
-<h2 id=device_boot_flow>Device boot flow</h2>
+<h2 id="device_boot_flow">Device boot flow</h2>
 
 <p>On every boot of a device, the AuthToken HMAC key must be generated and
-shared with all TEE components (Gatekeeper, Fingerprint, and Keymaster). Thus,
-for added protection against replay attacks, the HMAC key must be randomly
-generated every time the device reboots.</p>
+shared with all TEE components (Gatekeeper, Keymaster, and supported biometrics
+trustlets). Thus, for added protection against replay attacks, the HMAC key
+must be randomly generated every time the device reboots.</p>
 
 <p>The protocol for sharing this HMAC key with all components is a
 platform-dependent implementation feature. The key must <strong>never</strong>
@@ -199,9 +218,9 @@ untrusted OS, the transfer must be done via a secure key exchange protocol.</p>
 <p>The <a href="/security/trusty/index.html">Trusty</a> operating system,
 which runs next to Android, is an example of a TEE, but other TEEs can be used
 instead. Trusty uses an internal IPC system to communicate directly between
-Keymaster and Fingerprint or Gatekeeper. The HMAC key is kept solely in
-Keymaster; Fingerprint and Gatekeeper request the key from Keymaster for each
-use and do not persist or cache the value.</p>
+Keymaster and Gatekeeper or the appropriate biometric trustlet. The HMAC key is
+kept solely in Keymaster; Fingerprint and Gatekeeper request the key from
+Keymaster for each use and do not persist or cache the value.</p>
 
 <p>As some TEEs lack an IPC infrastructure, no communication occurs between
 applets in the TEE. This also permits the keystore service to quickly deny
