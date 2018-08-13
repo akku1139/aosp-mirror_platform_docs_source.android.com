@@ -105,7 +105,7 @@ then <code>stack</code> will be on your $PATH already so you don't need to give 
 full path.</p>
 
 <pre class="devsite-terminal devsite-click-to-copy">
-development/tools/stack
+development/scripts/stack
 </pre>
 
 <p>Example output (based on the logcat output above):</p>
@@ -172,6 +172,162 @@ For more information about diagnosing native crashes and tombstones, see
 From the command line, invoke <code>debuggerd</code> using a process ID (PID) to dump a
 full tombstone to <code>stdout</code>. To get just the stack for every thread in
 the process, include the <code>-b</code> or <code>--backtrace</code> flag.</p>
+
+<h2 id="complex">Understanding a complex unwind</h2>
+
+<p>When an app crashes, the stack tends to be pretty complex.
+The following detailed example highlights many of the complexities:</p>
+
+<pre class="devsite-click-to-copy">
+    #00 pc 00000000007e6918  /system/priv-app/Velvet/Velvet.apk (offset 0x346b000)
+    #01 pc 00000000001845cc  /system/priv-app/Velvet/Velvet.apk (offset 0x346b000)
+    #02 pc 00000000001847e4  /system/priv-app/Velvet/Velvet.apk (offset 0x346b000)
+    #03 pc 00000000001805c0  /system/priv-app/Velvet/Velvet.apk (offset 0x346b000) (Java_com_google_speech_recognizer_AbstractRecognizer_nativeRun+176)
+</pre>
+
+<p>Frames #00-#03 are from native JNI code that was stored uncompressed in the APK to save disk
+space rather than being extracted into a separate <code>.so</code> file. The stack unwinder in
+Android 9 doesn’t need the extracted <code>.so</code> file to be able to cope with this common
+Android-specific case.</p>
+
+<p>Frames #00-#02 don’t have symbol names because they were stripped by the developer.</p>
+
+<p>Frame #03 shows that where symbols are available, the unwinder uses them.</p>
+
+<pre class="devsite-click-to-copy">
+    #04 pc 0000000000117550  /data/dalvik-cache/arm64/system@priv-app@Velvet@Velvet.apk@classes.dex (offset 0x108000) (com.google.speech.recognizer.AbstractRecognizer.nativeRun+160)
+</pre>
+
+<p>Frame #04 is ahead-of-time compiled Java code. The old unwinder would have stopped here, unable
+to unwind through Java.</p>
+
+<pre class="devsite-click-to-copy">
+    #05 pc 0000000000559f88  /system/lib64/libart.so (art_quick_invoke_stub+584)
+    #06 pc 00000000000ced40  /system/lib64/libart.so (art::ArtMethod::Invoke(art::Thread*, unsigned int*, unsigned int, art::JValue*, char const*)+200)
+    #07 pc 0000000000280cf0  /system/lib64/libart.so (art::interpreter::ArtInterpreterToCompiledCodeBridge(art::Thread*, art::ArtMethod*, art::ShadowFrame*, unsigned short, art::JValue*)+344)
+    #08 pc 000000000027acac  /system/lib64/libart.so (bool art::interpreter::DoCall<false, false>(art::ArtMethod*, art::Thread*, art::ShadowFrame&, art::Instruction const*, unsigned short, art::JValue*)+948)
+    #09 pc 000000000052abc0  /system/lib64/libart.so (MterpInvokeDirect+296)
+    #10 pc 000000000054c614  /system/lib64/libart.so (ExecuteMterpImpl+14484)
+</pre>
+
+<p>Frames #05-#10 are from the ART interpreter implementation.
+The stack unwinder in releases prior to Android 9 would have shown these frames without the context
+of frame #11 explaining what code the interpreter was interpreting. These frames are useful if
+you're debugging ART itself. If you're debugging an app, you can ignore them. Some tools, such as
+<code>simpleperf</code>, will automatically omit these frames.</p>
+
+<pre class="devsite-click-to-copy">
+    #11 pc 00000000001992d6  /system/priv-app/Velvet/Velvet.apk (offset 0x26cf000) (com.google.speech.recognizer.AbstractRecognizer.run+18)
+</pre>
+
+<p>Frame #11 is the Java code being interpreted.</p>
+
+<pre class="devsite-click-to-copy">
+    #12 pc 00000000002547a8  /system/lib64/libart.so (_ZN3art11interpreterL7ExecuteEPNS_6ThreadERKNS_20CodeItemDataAccessorERNS_11ShadowFrameENS_6JValueEb.llvm.780698333+496)
+    #13 pc 000000000025a328  /system/lib64/libart.so (art::interpreter::ArtInterpreterToInterpreterBridge(art::Thread*, art::CodeItemDataAccessor const&, art::ShadowFrame*, art::JValue*)+216)
+    #14 pc 000000000027ac90  /system/lib64/libart.so (bool art::interpreter::DoCall<false, false>(art::ArtMethod*, art::Thread*, art::ShadowFrame&, art::Instruction const*, unsigned short, art::JValue*)+920)
+    #15 pc 0000000000529880  /system/lib64/libart.so (MterpInvokeVirtual+584)
+    #16 pc 000000000054c514  /system/lib64/libart.so (ExecuteMterpImpl+14228)
+</pre>
+
+<p>Frames #12-#16 are more of the interpreter implementation itself.</p>
+
+<pre class="devsite-click-to-copy">
+    #17 pc 00000000002454a0  /system/priv-app/Velvet/Velvet.apk (offset 0x1322000) (com.google.android.apps.gsa.speech.e.c.c.call+28)
+</pre>
+
+<p>Frame #17 is more Java code being interpreted. This Java method corresponds to interpreter frames #12-#16.</p>
+
+<pre class="devsite-click-to-copy">
+    #18 pc 00000000002547a8  /system/lib64/libart.so (_ZN3art11interpreterL7ExecuteEPNS_6ThreadERKNS_20CodeItemDataAccessorERNS_11ShadowFrameENS_6JValueEb.llvm.780698333+496)
+    #19 pc 0000000000519fd8  /system/lib64/libart.so (artQuickToInterpreterBridge+1032)
+    #20 pc 00000000005630fc  /system/lib64/libart.so (art_quick_to_interpreter_bridge+92)
+</pre>
+
+<p>Frames #18-#20 are more of the VM itself, code to transition from compiled Java code to interpreted Java code.</p>
+
+<pre class="devsite-click-to-copy">
+    #21 pc 00000000002ce44c  /system/framework/arm64/boot.oat (offset 0xdc000) (java.util.concurrent.FutureTask.run+204)
+</pre>
+
+<p>Frame #21 is the compiled Java method that calls the Java method in #17.</p>
+
+<pre class="devsite-click-to-copy">
+    #22 pc 0000000000559f88  /system/lib64/libart.so (art_quick_invoke_stub+584)
+    #23 pc 00000000000ced40  /system/lib64/libart.so (art::ArtMethod::Invoke(art::Thread*, unsigned int*, unsigned int, art::JValue*, char const*)+200)
+    #24 pc 0000000000280cf0  /system/lib64/libart.so (art::interpreter::ArtInterpreterToCompiledCodeBridge(art::Thread*, art::ArtMethod*, art::ShadowFrame*, unsigned short, art::JValue*)+344)
+    #25 pc 000000000027acac  /system/lib64/libart.so (bool art::interpreter::DoCall<false, false>(art::ArtMethod*, art::Thread*, art::ShadowFrame&, art::Instruction const*, unsigned short, art::JValue*)+948)
+    #26 pc 0000000000529880  /system/lib64/libart.so (MterpInvokeVirtual+584)
+    #27 pc 000000000054c514  /system/lib64/libart.so (ExecuteMterpImpl+14228)
+</pre>
+
+<p>Frames #22-#27 are the interpreter implementation, making a method invocation from interpreted
+code to a compiled method.</p>
+
+<pre class="devsite-click-to-copy">
+    #28 pc 00000000003ed69e  /system/priv-app/Velvet/Velvet.apk (com.google.android.apps.gsa.shared.util.concurrent.b.e.run+22)
+</pre>
+
+<p>Frame #28 is the Java code being interpreted.</p>
+
+<pre class="devsite-click-to-copy">
+    #29 pc 00000000002547a8  /system/lib64/libart.so (_ZN3art11interpreterL7ExecuteEPNS_6ThreadERKNS_20CodeItemDataAccessorERNS_11ShadowFrameENS_6JValueEb.llvm.780698333+496)
+    #30 pc 0000000000519fd8  /system/lib64/libart.so (artQuickToInterpreterBridge+1032)
+    #31 pc 00000000005630fc  /system/lib64/libart.so (art_quick_to_interpreter_bridge+92)
+</pre>
+
+<p>Frames #29-#31 are another transition between compiled code and interpreted code.</p>
+
+<pre class="devsite-click-to-copy">
+    #32 pc 0000000000329284  /system/framework/arm64/boot.oat (offset 0xdc000) (java.util.concurrent.ThreadPoolExecutor.runWorker+996)
+    #33 pc 00000000003262a0  /system/framework/arm64/boot.oat (offset 0xdc000) (java.util.concurrent.ThreadPoolExecutor$Worker.run+64)
+    #34 pc 00000000002037e8  /system/framework/arm64/boot.oat (offset 0xdc000) (java.lang.Thread.run+72)
+</pre>
+
+<p>Frames #32-#34 are compiled Java frames calling each other directly. In this case the native call
+stack is the same as the Java call stack.</p>
+
+<pre class="devsite-click-to-copy">
+    #35 pc 0000000000559f88  /system/lib64/libart.so (art_quick_invoke_stub+584)
+    #36 pc 00000000000ced40  /system/lib64/libart.so (art::ArtMethod::Invoke(art::Thread*, unsigned int*, unsigned int, art::JValue*, char const*)+200)
+    #37 pc 0000000000280cf0  /system/lib64/libart.so (art::interpreter::ArtInterpreterToCompiledCodeBridge(art::Thread*, art::ArtMethod*, art::ShadowFrame*, unsigned short, art::JValue*)+344)
+    #38 pc 000000000027acac  /system/lib64/libart.so (bool art::interpreter::DoCall<false, false>(art::ArtMethod*, art::Thread*, art::ShadowFrame&, art::Instruction const*, unsigned short, art::JValue*)+948)
+    #39 pc 0000000000529f10  /system/lib64/libart.so (MterpInvokeSuper+1408)
+    #40 pc 000000000054c594  /system/lib64/libart.so (ExecuteMterpImpl+14356)
+</pre>
+
+<p>Frames #35-#40 are the interpreter itself.</p>
+
+<pre class="devsite-click-to-copy">
+    #41 pc 00000000003ed8e0  /system/priv-app/Velvet/Velvet.apk (com.google.android.apps.gsa.shared.util.concurrent.b.i.run+20)
+</pre>
+
+<p>Frame #41 is the Java code being interpreted.</p>
+
+<pre class="devsite-click-to-copy">
+    #42 pc 00000000002547a8  /system/lib64/libart.so (_ZN3art11interpreterL7ExecuteEPNS_6ThreadERKNS_20CodeItemDataAccessorERNS_11ShadowFrameENS_6JValueEb.llvm.780698333+496)
+    #43 pc 0000000000519fd8  /system/lib64/libart.so (artQuickToInterpreterBridge+1032)
+    #44 pc 00000000005630fc  /system/lib64/libart.so (art_quick_to_interpreter_bridge+92)
+    #45 pc 0000000000559f88  /system/lib64/libart.so (art_quick_invoke_stub+584)
+    #46 pc 00000000000ced40  /system/lib64/libart.so (art::ArtMethod::Invoke(art::Thread*, unsigned int*, unsigned int, art::JValue*, char const*)+200)
+    #47 pc 0000000000460d18  /system/lib64/libart.so (art::(anonymous namespace)::InvokeWithArgArray(art::ScopedObjectAccessAlreadyRunnable const&, art::ArtMethod*, art::(anonymous namespace)::ArgArray*, art::JValue*, char const*)+104)
+    #48 pc 0000000000461de0  /system/lib64/libart.so (art::InvokeVirtualOrInterfaceWithJValues(art::ScopedObjectAccessAlreadyRunnable const&, _jobject*, _jmethodID*, jvalue*)+424)
+    #49 pc 000000000048ccb0  /system/lib64/libart.so (art::Thread::CreateCallback(void*)+1120)
+</pre>
+
+<p>Frames #42-#49 are the VM itself. This time it's the code that starts running Java on a new thread.</p>
+
+<pre class="devsite-click-to-copy">
+    #50 pc 0000000000082e24  /system/lib64/libc.so (__pthread_start(void*)+36)
+    #51 pc 00000000000233bc  /system/lib64/libc.so (__start_thread+68)
+</pre>
+
+<p>Frames #50-#51 are how all threads should actually start. This is the <code>libc</code>
+new thread start code.
+A handy tip is that you know you have a successful and complete unwind if you see these frames.
+Any time you don't see these frames at the bottom of your stack, you should be suspicious that
+you're either looking at a truncated stack or at a corrupted stack: you shouldn't blindly
+assume that the stack is correct if it doesn't end this way.</p>
 
   </body>
 </html>
