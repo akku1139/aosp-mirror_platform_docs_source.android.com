@@ -34,17 +34,15 @@ Wi-Fi.
 
 ### Manufacturers
 
-In the carrier config manager, configure the following parameters for each
-carrier:
+In the carrier config manager, configure the following parameters, located in
+[`CarrierConfigManager.java`](https://android.googlesource.com/platform/frameworks/base/+/master/telephony/java/android/telephony/CarrierConfigManager.java),
+for each carrier:
 
-+   [KEY_CARRIER_WIFI_STRING_ARRAY](https://android.googlesource.com/platform/frameworks/base/+/master/telephony/java/android/telephony/CarrierConfigManager.java#1599):
-    Base64-encoded Wi-Fi SSID.
-+   [IMSI_KEY_AVAILABILITY_INT](https://android.googlesource.com/platform/frameworks/base/+/master/telephony/java/android/telephony/CarrierConfigManager.java#1830):
-    Identifies whether the key used for IMSI encryption is available for WLAN or
-    EPDG, or both.
-+   [IMSI_KEY_DOWNLOAD_URL_STRING](https://android.googlesource.com/platform/frameworks/base/+/master/telephony/java/android/telephony/CarrierConfigManager.java#1823):
-    URL from which the proto containing the public key of the carrier used for
-    IMSI encryption is downloaded.
++   `KEY_CARRIER_WIFI_STRING_ARRAY`: Base64-encoded Wi-Fi SSID.
++   `IMSI_KEY_AVAILABILITY_INT`: Identifies whether the key used for IMSI
+    encryption is available for WLAN or EPDG, or both.
++   `IMSI_KEY_DOWNLOAD_URL_STRING`: URL from which the proto containing the
+    public key of the carrier used for IMSI encryption is downloaded.
 
 ### Carriers
 
