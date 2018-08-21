@@ -101,6 +101,7 @@ HALs, drivers, or kernel code are required to implement the new eBPF tool.
     1.  `CONFIG_BPF=y`
     1.  `CONFIG_BPF_SYSCALL=y`
     1.  `CONFIG_NETFILTER_XT_MATCH_BPF=y`
+    1.  `CONFIG_INET_UDP_DIAG=y`
 
     The
     [VTS kernel config test](https://android.googlesource.com/platform/test/vts-testcase/kernel/+/master/config/VtsKernelConfigTest.py){: .external}

@@ -21,12 +21,13 @@ Book: /_book.yaml
 
 # Wi-Fi RTT (IEEE 802.11mc)
 
-The [Wi-Fi Round Trip Time (RTT)](https://developer.android.com/guide/topics/connectivity/wifi-rtt) feature in Android
-{{ androidPVersionNumber }} enables supporting devices to measure a
-distance to other supporting devices: whether they are Access Points (APs) or
-Wi-Fi Aware peers (if [Wi-Fi Aware](/devices/tech/connect/wifi-aware) is
-supported on the device). This feature, built upon the IEEE 802.11mc protocol,
-enables apps to use enhanced location accuracy and awareness.
+The
+[Wi-Fi Round Trip Time (RTT)](https://developer.android.com/guide/topics/connectivity/wifi-rtt){: .external}
+feature in Android {{ androidPVersionNumber }} enables supporting devices to
+measure a distance to other supporting devices: whether they are Access Points
+(APs) or Wi-Fi Aware peers (if [Wi-Fi Aware](/devices/tech/connect/wifi-aware)
+is supported on the device). This feature, built upon the IEEE 802.11mc
+protocol, enables apps to use enhanced location accuracy and awareness.
 
 ## Examples and source
 
@@ -41,7 +42,7 @@ Follow the Wi-Fi HIDL to employ the Wi-Fi RTT feature:
 
 You can refer to the legacy Wi-Fi HAL to see how it correlates with the new HIDL
 interface:
-[hardware/libhardware_legacy/+/master/include/hardware_legacy/rtt.h](https://android.googlesource.com/platform/hardware/libhardware_legacy/+/master/include/hardware_legacy/rtt.h).
+[hardware/libhardware_legacy/+/master/include/hardware_legacy/rtt.h](https://android.googlesource.com/platform/hardware/libhardware_legacy/+/master/include/hardware_legacy/rtt.h){: .external}.
 
 ## Implementation
 
@@ -69,15 +70,20 @@ Otherwise, everything required for this feature is included in AOSP.
 
 ## MAC randomization
 
-To enhance privacy, the MAC address used during Wi-Fi RTT transactions must be randomized, i.e., it must not match the native MAC address of the Wi-Fi interface. However, as an exception, when a device is associated with an AP, it may use the MAC address with which it is associated for any RTT transactions with that AP or with other APs.
+To enhance privacy, the MAC address used during Wi-Fi RTT transactions must be
+randomized, i.e., it must not match the native MAC address of the Wi-Fi
+interface. However, as an exception, when a device is associated with an AP, it
+may use the MAC address with which it is associated for any RTT transactions
+with that AP or with other APs.
 
 ## Validation
 
 Android Compatibility Test Suite (CTS) tests exist for this feature. CTS detects
-when the feature is enabled and automatically includes the associated tests. This feature can also be tested using the
+when the feature is enabled and automatically includes the associated tests.
+This feature can also be tested using the
 [Vendor Test Suite (VTS)](/devices/tech/test_infra/tradefed/fundamentals/vts)
 and
-[acts/sl4a](https://android.googlesource.com/platform/tools/test/connectivity/+/master/acts/tests/google/wifi/),
+[acts/sl4a](https://android.googlesource.com/platform/tools/test/connectivity/+/master/acts/tests/google/wifi/){: .external},
 a test suite that conducts extensive integration testing.
 
 ### Unit tests
@@ -145,9 +151,9 @@ be tested under the following conditions:
     and aligned with the 0.5m markers, also at 20cm above the floor. Note: This
     repetitive task can be performed by a small robot, but a human operator is
     also fine.
-1.  50 ranging results should be recorded at each marker, along with the distance
-    from the access point. Statistics, such as range mean and variance should be
-    calculated for each marker position.
+1.  50 ranging results should be recorded at each marker, along with the
+    distance from the access point. Statistics, such as range mean and variance,
+    should be calculated for each marker position.
 
 From the results in step 5, a chart can be drawn for ground truth (x-axis)
 against estimated range (y-axis) and a best fit regression line estimated. Ideal

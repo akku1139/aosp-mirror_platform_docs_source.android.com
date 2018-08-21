@@ -34,7 +34,7 @@ vendors.
   990 Richard Ave, Ste 103, Santa Clara, CA 95050  
   fred@acuspecinc.com  
 * *MYWAY DESIGN*  
-  Website: http://www.myway.tw/  
+  Website: [http://www.myway.tw/](http://www.myway.tw/){: .external}  
   Fu-ming (Troy) Tsai, tsaifuming0205@gmail.com  
 
 ## Building a Sensor Fusion Box
@@ -64,7 +64,7 @@ stickers to the plastic box components:
 
 1. Apply vinyl on the smooth side of the ABS (acrylonitrile butadiene styrene)
    as shown in **Figure 2**. For helpful tips on applying vinyl, refer to
-   [wikiHow](https://www.wikihow.com/Install-a-Vinyl-Graphic).
+   [wikiHow](https://www.wikihow.com/Install-a-Vinyl-Graphic){: .external}.
 1. Cut out the necessary holes on the vinyl.
 
     <img src="images/sensor_fusion_assembly_abs_pieces.png" width="350" alt="BS pieces">  

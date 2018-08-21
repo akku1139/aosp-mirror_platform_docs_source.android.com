@@ -42,7 +42,7 @@ the Android Wi-Fi stack.
 ## Application framework
 
 At the application framework level is application code, which uses the various
-[android.net.wifi](https://developer.android.com/reference/android/net/wifi/package-summary)
+[android.net.wifi](https://developer.android.com/reference/android/net/wifi/package-summary){: .external}
 APIs to interact with the Wi-Fi framework and hardware. Internally, this code
 calls the Wi-Fi process through the Binder IPC mechanism.
 

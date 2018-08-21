@@ -419,7 +419,8 @@ explanation.
 If the form has one input field, use a normal dialog. This provides an easy way
 for users to enter a single input.
 
-However, if the form has several fields, consider using a [full-screen dialog](https://material.io/design/components/dialogs.html#full-screen-dialog).
+However, if the form has several fields, consider using a
+[full-screen dialog](https://material.io/design/components/dialogs.html#full-screen-dialog){: .external}.
 This provides more screen space to arrange the fields in a clear pattern.
 
 <img src="images/settings-guidelines39.png" width="250" class="screenshot">

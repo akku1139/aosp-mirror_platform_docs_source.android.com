@@ -107,7 +107,7 @@ Then:
 *   Update necessary SELinux permissions.
 
 For details, refer to
-[hardware/interfaces/health/2.0/README.md](https://android.googlesource.com/platform/hardware/interfaces/+/master/health/2.0/README.md).
+[hardware/interfaces/health/2.0/README.md](https://android.googlesource.com/platform/hardware/interfaces/+/master/health/2.0/README.md){: .external}.
 
 ## Health clients
 

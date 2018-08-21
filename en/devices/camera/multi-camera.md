@@ -40,21 +40,21 @@ physical cameras.
 ## Examples and sources
 
 Multi-camera devices must be advertised via the
-[logical multi-camera capability](https://developer.android.com/reference/android/hardware/camera2/CameraMetadata#REQUEST_AVAILABLE_CAPABILITIES_LOGICAL_MULTI_CAMERA).
+[logical multi-camera capability](https://developer.android.com/reference/android/hardware/camera2/CameraMetadata#REQUEST_AVAILABLE_CAPABILITIES_LOGICAL_MULTI_CAMERA){: .external}.
 
 Camera clients can query the camera ID of the physical devices a particular
 logical camera is made of by calling
-[`getPhysicalCameraIds()`](https://developer.android.com/reference/android/hardware/camera2/CameraCharacteristics.html#getPhysicalCameraIds\(\)).
+[`getPhysicalCameraIds()`](https://developer.android.com/reference/android/hardware/camera2/CameraCharacteristics.html#getPhysicalCameraIds\(\)){: .external}.
 The IDs returned as part of the result are then used to control physical devices
 individually via
-[`setPhysicalCameraId()`](https://developer.android.com/reference/android/hardware/camera2/params/OutputConfiguration.html#setPhysicalCameraId\(java.lang.String\)).
+[`setPhysicalCameraId()`](https://developer.android.com/reference/android/hardware/camera2/params/OutputConfiguration.html#setPhysicalCameraId\(java.lang.String\)){: .external}.
 The results from such individual requests can be queried from the complete
 result by invoking
-[`getPhysicalCameraResults()`](https://developer.android.com/reference/android/hardware/camera2/TotalCaptureResult.html#getPhysicalCameraResults\(\)).
+[`getPhysicalCameraResults()`](https://developer.android.com/reference/android/hardware/camera2/TotalCaptureResult.html#getPhysicalCameraResults\(\)){: .external}.
 
 Individual physical camera requests may support only a limited subset of
 parameters. To receive a list of the supported parameters, developers can call
-[`getAvailablePhysicalCameraRequestKeys()`](https://developer.android.com/reference/android/hardware/camera2/CameraCharacteristics.html#getAvailablePhysicalCameraRequestKeys\(\)).
+[`getAvailablePhysicalCameraRequestKeys()`](https://developer.android.com/reference/android/hardware/camera2/CameraCharacteristics.html#getAvailablePhysicalCameraRequestKeys\(\)){: .external}.
 
 Physical camera streams are supported only for non-reprocessing requests and
 only for monochrome and bayer sensors.
@@ -66,37 +66,37 @@ only for monochrome and bayer sensors.
 To add logical multi-camera devices on the HAL side:
 
 +   Add a
-    [`ANDROID_REQUEST_AVAILABLE_CAPABILITIES_LOGICAL_MULTI_CAMERA`](https://android.googlesource.com/platform/hardware/interfaces/+/master/camera/metadata/3.3/types.hal#232)
+    [`ANDROID_REQUEST_AVAILABLE_CAPABILITIES_LOGICAL_MULTI_CAMERA`](https://android.googlesource.com/platform/hardware/interfaces/+/master/camera/metadata/3.3/types.hal#232){: .external}
     capability for any logical camera device backed by two or more physical
     cameras that are also exposed to an application.
 +   Populate the static
-    [`ANDROID_LOGICAL_MULTI_CAMERA_PHYSICAL_IDS`](https://android.googlesource.com/platform/hardware/interfaces/+/master/camera/metadata/3.3/types.hal#161)
+    [`ANDROID_LOGICAL_MULTI_CAMERA_PHYSICAL_IDS`](https://android.googlesource.com/platform/hardware/interfaces/+/master/camera/metadata/3.3/types.hal#161){: .external}
     metadata field with a list of physical camera IDs.
 +   Populate the depth-related static metadata required to correlate between
     physical camera streams' pixels:
-    [`ANDROID_LENS_POSE_ROTATION`](https://android.googlesource.com/platform/hardware/interfaces/+/master/camera/metadata/3.2/types.hal#747),
-    [`ANDROID_LENS_POSE_TRANSLATION`](https://android.googlesource.com/platform/hardware/interfaces/+/master/camera/metadata/3.2/types.hal#753),
-    [`ANDROID_LENS_INTRINSIC_CALIBRATION`](https://android.googlesource.com/platform/hardware/interfaces/+/master/camera/metadata/3.2/types.hal#773),
-    [`ANDROID_LENS_RADIAL_DISTORTION`](https://android.googlesource.com/platform/hardware/interfaces/+/master/camera/metadata/3.2/types.hal#780),
-    [`ANDROID_LENS_POSE_REFERENCE`](https://android.googlesource.com/platform/hardware/interfaces/+/master/camera/metadata/3.3/types.hal#79)`
+    [`ANDROID_LENS_POSE_ROTATION`](https://android.googlesource.com/platform/hardware/interfaces/+/master/camera/metadata/3.2/types.hal#747){: .external},
+    [`ANDROID_LENS_POSE_TRANSLATION`](https://android.googlesource.com/platform/hardware/interfaces/+/master/camera/metadata/3.2/types.hal#753){: .external},
+    [`ANDROID_LENS_INTRINSIC_CALIBRATION`](https://android.googlesource.com/platform/hardware/interfaces/+/master/camera/metadata/3.2/types.hal#773){: .external},
+    [`ANDROID_LENS_RADIAL_DISTORTION`](https://android.googlesource.com/platform/hardware/interfaces/+/master/camera/metadata/3.2/types.hal#780){: .external},
+    [`ANDROID_LENS_POSE_REFERENCE`](https://android.googlesource.com/platform/hardware/interfaces/+/master/camera/metadata/3.3/types.hal#79){: .external}.
 +   Set the static
-    [`ANDROID_LOGICAL_MULTI_CAMERA_SENSOR_SYNC_TYPE`](https://android.googlesource.com/platform/hardware/interfaces/+/master/camera/metadata/3.3/types.hal#167)
+    [`ANDROID_LOGICAL_MULTI_CAMERA_SENSOR_SYNC_TYPE`](https://android.googlesource.com/platform/hardware/interfaces/+/master/camera/metadata/3.3/types.hal#167){: .external}
     metadata field to:
 
-    +   [`ANDROID_LOGICAL_MULTI_CAMERA_SENSOR_SYNC_TYPE_APPROXIMATE`](https://android.googlesource.com/platform/hardware/interfaces/+/master/camera/metadata/3.3/types.hal#256):
+    +   [`ANDROID_LOGICAL_MULTI_CAMERA_SENSOR_SYNC_TYPE_APPROXIMATE`](https://android.googlesource.com/platform/hardware/interfaces/+/master/camera/metadata/3.3/types.hal#256){: .external}:
         For sensors in master-master mode, no hardware shutter/exposure sync.
-    +   [`ANDROID_LOGICAL_MULTI_CAMERA_SENSOR_SYNC_TYPE_CALIBRATED`](https://android.googlesource.com/platform/hardware/interfaces/+/master/camera/metadata/3.3/types.hal#257):
+    +   [`ANDROID_LOGICAL_MULTI_CAMERA_SENSOR_SYNC_TYPE_CALIBRATED`](https://android.googlesource.com/platform/hardware/interfaces/+/master/camera/metadata/3.3/types.hal#257){: .external}:
         For sensors in master-slave mode, hardware shutter/exposure sync.
 
 +   Populate
-    [`ANDROID_REQUEST_AVAILABLE_PHYSICAL_CAMERA_REQUEST_KEYS`](https://android.googlesource.com/platform/hardware/interfaces/+/master/camera/metadata/3.3/types.hal#106)
+    [`ANDROID_REQUEST_AVAILABLE_PHYSICAL_CAMERA_REQUEST_KEYS`](https://android.googlesource.com/platform/hardware/interfaces/+/master/camera/metadata/3.3/types.hal#106){: .external}
     with a list of supported parameters for individual physical cameras. The
     list can be empty if the logical device doesn't support individual requests.
 
 +   If individual requests are supported, process and apply the individual
-    [`physicalCameraSettings`](https://android.googlesource.com/platform/hardware/interfaces/+/master/camera/device/3.4/types.hal#226)
+    [`physicalCameraSettings`](https://android.googlesource.com/platform/hardware/interfaces/+/master/camera/device/3.4/types.hal#226){: .external}
     that can arrive as part of capture requests and append the individual
-    [`physicalCameraMetadata`](https://android.googlesource.com/platform/hardware/interfaces/+/master/camera/device/3.4/types.hal#289)
+    [`physicalCameraMetadata`](https://android.googlesource.com/platform/hardware/interfaces/+/master/camera/device/3.4/types.hal#289){: .external}
     accordingly.
 
 The camera device must support replacing one logical YUV/RAW stream with
@@ -107,7 +107,7 @@ physical cameras.
 
 For a logical camera, the mandatory stream combinations for the camera device of
 a certain hardware level is the same as what's required in
-[`CameraDevice.createCaptureSession`](https://developer.android.com/reference/android/hardware/camera2/CameraDevice.html#createCaptureSession\(java.util.List<android.view.Surface>, android.hardware.camera2.CameraCaptureSession.StateCallback, android.os.Handler\)).
+[`CameraDevice.createCaptureSession`](https://developer.android.com/reference/android/hardware/camera2/CameraDevice.html#createCaptureSession\(java.util.List<android.view.Surface>, android.hardware.camera2.CameraCaptureSession.StateCallback, android.os.Handler\)){: .external}.
 All the streams in the stream configuration map should be fused/logical frames.
 
 If certain stream combinations cannot be fused, they should not be included in
@@ -128,7 +128,7 @@ the predefined `android.request.maxNumOutputStreams`.
 ### Guaranteed stream combination
 
 Both the logical camera and its underlying physical cameras must guarantee the
-[mandatory stream combinations](https://developer.android.com/reference/android/hardware/camera2/CameraDevice#createcapturesession_4)
+[mandatory stream combinations](https://developer.android.com/reference/android/hardware/camera2/CameraDevice#createcapturesession_4){: .external}
 required for their device levels.
 
 A logical camera device should operate in the same way as a physical camera
@@ -181,15 +181,15 @@ You can customize your device implementation in the following ways.
 
 Logical multi-camera devices must pass Camera CTS like any other regular camera.
 The test cases that target this type of device can be found in the
-[`LogicalCameraDeviceTest`](https://android.googlesource.com/platform/cts/+/master/tests/camera/src/android/hardware/camera2/cts/)
+[`LogicalCameraDeviceTest`](https://android.googlesource.com/platform/cts/+/master/tests/camera/src/android/hardware/camera2/cts/){: .external}
 module.
 
 These three ITS tests target multi-camera systems to facilitate the proper
 fusing of images:
 
-+   [`scene1/test_multi_camera_match.py`](https://android.googlesource.com/platform/cts/+/master/apps/CameraITS/tests/scene1/)
-+   [`scene4/test_multi_camera_alignment.py`](https://android.googlesource.com/platform/cts/+/master/apps/CameraITS/tests/scene4/)
-+   [`sensor_fusion/test_multi_camera_frame_sync.py`](https://android.googlesource.com/platform/cts/+/master/apps/CameraITS/tests/sensor_fusion/)
++   [`scene1/test_multi_camera_match.py`](https://android.googlesource.com/platform/cts/+/master/apps/CameraITS/tests/scene1/){: .external}  
++   [`scene4/test_multi_camera_alignment.py`](https://android.googlesource.com/platform/cts/+/master/apps/CameraITS/tests/scene4/){: .external}  
++   [`sensor_fusion/test_multi_camera_frame_sync.py`](https://android.googlesource.com/platform/cts/+/master/apps/CameraITS/tests/sensor_fusion/){: .external}  
 
 The scene1 and scene4 tests run with the
 [ITS-in-a-box](/compatibility/cts/camera-its-box) test
@@ -204,7 +204,9 @@ motion and asserts that the gyroscope and image sensor timestamps match and that
 the multi-camera frames are in sync.
 
 All boxes are available through AcuSpec, Inc.
-([www.acuspecinc.com](http://www.acuspecinc.com), fred@acuspecinc.com) and MYWAY
-Manufacturing ([www.myway.tw](http://www.myway.tw), sales@myway.tw).
+([www.acuspecinc.com](http://www.acuspecinc.com){: .external},
+fred@acuspecinc.com) and MYWAY
+Manufacturing ([www.myway.tw](http://www.myway.tw){: .external}, sales@myway.tw).
 Additionally, the rev1 ITS box can be purchased through West-Mark
-([www.west-mark.com](http://www.west-mark.com), dgoodman@west-mark.com).
+([www.west-mark.com](http://www.west-mark.com){: .external},
+dgoodman@west-mark.com).

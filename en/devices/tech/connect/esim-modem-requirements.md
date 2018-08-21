@@ -44,24 +44,24 @@ capabilities: "Local Profile Management" and "Profile Download" per ETSI TS 102
 ### Implement setSimPower API in Radio HAL v1.1
 
 The modem shall support the
-[setSimPower](https://source.android.com/reference/hidl/android/hardware/radio/1.1/IRadio#setsimcardpower_1_1)
+[setSimPower](/reference/hidl/android/hardware/radio/1.1/IRadio#setsimcardpower_1_1)
 API.
 
 ### Implement getSimSlotsStatus API in IRadioConfig HAL v1.0
 
 The modem shall support the
-[getSimSlotsStatus](https://android.googlesource.com/platform/hardware/interfaces/+/master/radio/config/1.0/IRadioConfig.hal#51)
+[getSimSlotsStatus](https://android.googlesource.com/platform/hardware/interfaces/+/master/radio/config/1.0/IRadioConfig.hal#51){: .external}
 API, which indicates whether a slot contains an eSIM.
 
 ### Implement getIccCardStatus API in IRadio HAL v1.2
 
 The modem shall provide the ATR and slot ID of the card status as specified in
 the
-[getIccCardStatus](https://source.android.com/reference/hidl/android/hardware/radio/1.0/IRadio#getIccCardStatus)
+[getIccCardStatus](/reference/hidl/android/hardware/radio/1.0/IRadio#getIccCardStatus)
 API. This API was first introduced in v1.0 and, in v1.2,
-[CardStatus](https://android.googlesource.com/platform/hardware/interfaces/+/master/radio/1.2/types.hal#341)
+[CardStatus](https://android.googlesource.com/platform/hardware/interfaces/+/master/radio/1.2/types.hal#341){: .external}
 was changed to include
-[ATR](https://android.googlesource.com/platform/hardware/interfaces/+/master/radio/1.2/types.hal#351).
+[ATR](https://android.googlesource.com/platform/hardware/interfaces/+/master/radio/1.2/types.hal#351){: .external}.
 
 ### (Optional) Support eSIM OS OTA
 

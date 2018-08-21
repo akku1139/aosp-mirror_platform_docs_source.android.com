@@ -67,9 +67,9 @@ concurrently. The supported combinations are defined in the HAL and are exposed
 to the framework. The specification format is defined in
 `android/hardware/interfaces/wifi/1.0/IWifiChip.hal`. For example, a device may
 support one STA and one interface of either NAN
-([Wi-Fi Aware](https://developer.android.com/guide/topics/connectivity/wifi-aware))
+([Wi-Fi Aware](https://developer.android.com/guide/topics/connectivity/wifi-aware){: .external})
 or P2P
-([Wi-Fi Direct](https://developer.android.com/guide/topics/connectivity/wifip2p))
+([Wi-Fi Direct](https://developer.android.com/guide/topics/connectivity/wifip2p){: .external})
 type (but not both). This would be expressed as:
 
 `[{STA} <= 1, {NAN,P2P} <= 1]`

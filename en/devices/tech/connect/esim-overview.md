@@ -45,26 +45,26 @@ available LPA, and routes all the eUICC operations through an LPA instance.
 
 Mobile network operators interested in creating a _carrier app_ should look at
 the APIs in
-[EuiccManager](https://android.googlesource.com/platform/frameworks/base/+/master/telephony/java/android/telephony/euicc/EuiccManager.java),
+[EuiccManager](https://android.googlesource.com/platform/frameworks/base/+/master/telephony/java/android/telephony/euicc/EuiccManager.java){: .external},
 which provides high-level profile management operations such as
 `downloadSubscription()`, `switchToSubscription()`, and
 `deleteSubscription()`.
 
 If you are a device OEM interested in creating your own LPA system app, you must
 extend
-[EuiccService](https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/service/euicc/EuiccService.java)
+[EuiccService](https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/service/euicc/EuiccService.java){: .external}
 for the Android framework to connect to your LPA services. In addition, you
 should use the APIs in
-[EuiccCardManager](https://android.googlesource.com/platform/frameworks/base/+/master/telephony/java/android/telephony/euicc/EuiccCardManager.java),
+[EuiccCardManager](https://android.googlesource.com/platform/frameworks/base/+/master/telephony/java/android/telephony/euicc/EuiccCardManager.java){: .external},
 which provides ES10x functions based on GSMA Remote SIM Provisioning (RSP) v2.0.
 These functions are used to issue commands to the eUICC chip, such as
 `prepareDownload()`, `loadBoundProfilePackage()`, `retrieveNotificationList()`,
 and `resetMemory()`.
 
 The APIs in
-[EuiccManager](https://android.googlesource.com/platform/frameworks/base/+/master/telephony/java/android/telephony/euicc/EuiccManager.java)
+[EuiccManager](https://android.googlesource.com/platform/frameworks/base/+/master/telephony/java/android/telephony/euicc/EuiccManager.java){: .external}
 require a properly implemented LPA app to function and the caller of
-[EuiccCardManager](https://android.googlesource.com/platform/frameworks/base/+/master/telephony/java/android/telephony/euicc/EuiccCardManager.java)
+[EuiccCardManager](https://android.googlesource.com/platform/frameworks/base/+/master/telephony/java/android/telephony/euicc/EuiccCardManager.java){: .external}
 APIs must be an LPA. This is enforced by the Android framework.
 
 ## Making a carrier app
@@ -205,10 +205,10 @@ user consent is required.
 For these cases, the caller's callback is called with
 `EuiccManager#EMBEDDED_SUBSCRIPTION_RESULT_RESOLVABLE_ERROR`. The callback
 `Intent` will contain internal extras such that when the caller passes it to
-[`EuiccManager#startResolutionActivity`](https://developer.android.com/reference/android/telephony/euicc/EuiccManager.html#startResolutionActivity(android.app.Activity,%20int,%20android.content.Intent,%20android.app.PendingIntent)),
+[`EuiccManager#startResolutionActivity`](https://developer.android.com/reference/android/telephony/euicc/EuiccManager.html#startResolutionActivity(android.app.Activity,%20int,%20android.content.Intent,%20android.app.PendingIntent)){: .external},
 resolution can be requested through the LUI. Using the confirmation code for
 example again,
-[`EuiccManager#startResolutionActivity`](https://developer.android.com/reference/android/telephony/euicc/EuiccManager.html#startResolutionActivity(android.app.Activity,%20int,%20android.content.Intent,%20android.app.PendingIntent))
+[`EuiccManager#startResolutionActivity`](https://developer.android.com/reference/android/telephony/euicc/EuiccManager.html#startResolutionActivity(android.app.Activity,%20int,%20android.content.Intent,%20android.app.PendingIntent)){: .external}
 triggers an LUI screen that allows the user to enter a confirmation code;
 after the code is entered, the download operation is resumed. This approach
 provides the carrier app with full control over when the UI is shown, but gives
@@ -216,7 +216,7 @@ the LPA/LUI an extensible method for adding new handling of user-recoverable
 issues in the future without needing client apps to change.
 
 Android {{ androidPVersionNumber }} defines these resolvable errors in
-[`EuiccService`](https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/service/euicc/EuiccService.java),
+[`EuiccService`](https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/service/euicc/EuiccService.java){: .external},
 which the LUI should handle:
 
 ```
@@ -256,7 +256,7 @@ Android platform loads certificates stored in the profile's Access Rule File
 to `EuiccManager` APIs. The high-level process is described below:
 
 1.  Operator signs the carrier app APK; the
-    [apksigner](https://developer.android.com/studio/command-line/apksigner)
+    [apksigner](https://developer.android.com/studio/command-line/apksigner){: .external}
     tool attaches the public-key certificate to the APK.
 1.  Operator/SM-DP+ prepares a profile and its metadata, which include an ARF
     that contains:
@@ -298,8 +298,8 @@ RefArDo ::= [PRIVATE 2] SEQUENCE {  -- Tag E2
 ```
 
 For more details on app signing, see
-[Sign your app](https://developer.android.com/studio/publish/app-signing). For
-details on carrier privileges, see
+[Sign your app](https://developer.android.com/studio/publish/app-signing){: .external}.
+For details on carrier privileges, see
 [UICC Carrier Privileges](/devices/tech/config/uicc).
 
 ## Making an LPA app
@@ -313,7 +313,7 @@ integrating it with the Android system.
 The LPA and the eSIM OS on the eUICC chip must support at least GSMA RSP (Remote
 SIM Provisioning) v2.0 or v2.2. You should also plan to use SM-DP+ and SM-DS
 servers that have a matching RSP version. For detailed RSP architecture, see
-[GSMA SGP.21 RSP Architecture Specification](https://www.gsma.com/newsroom/all-documents/sgp-21-rsp-architecture-v2-2/).
+[GSMA SGP.21 RSP Architecture Specification](https://www.gsma.com/newsroom/all-documents/sgp-21-rsp-architecture-v2-2/){: .external}.
 
 In addition, to integrate with the eUICC APIs in Android
 {{ androidPVersionNumber }}, the device modem should send terminal capabilities
@@ -336,7 +336,7 @@ An LPA consists of two separate components (may both be implemented in the same
 APK): the LPA backend, and the LPA UI or LUI.
 
 To implement the LPA backend, you must extend
-[`EuiccService`](https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/service/euicc/EuiccService.java)
+[`EuiccService`](https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/service/euicc/EuiccService.java){: .external}
 and declare this service in your manifest file. The service must require the
 `android.permission.BIND_EUICC_SERVICE` system permission to ensure that only
 the system can bind to it. The service must also include an intent filter with
@@ -372,7 +372,7 @@ intent filter with the appropriate action, the
 `android.service.euicc.category.EUICC_UI` category, and a non-zero priority.
 Similar logic is used to pick the implementations for these activities as
 with picking the implementation of
-[`EuiccService`](https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/service/euicc/EuiccService.java).
+[`EuiccService`](https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/service/euicc/EuiccService.java){: .external}.
 For example:
 
 ```
@@ -392,9 +392,9 @@ For example:
 
 This implies that the UI implementing these screens can come from a different
 APK from the one that implements
-[`EuiccService`](https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/service/euicc/EuiccService.java).
+[`EuiccService`](https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/service/euicc/EuiccService.java){: .external}.
 Whether to have a single APK or multiple APKs (e.g. one that implements
-[`EuiccService`](https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/service/euicc/EuiccService.java)
+[`EuiccService`](https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/service/euicc/EuiccService.java){: .external}
 and one that provides LUI activities) is a design choice.
 
 ### EuiccCardManager
@@ -445,7 +445,7 @@ Internally, `EuiccCardManager` binds to `EuiccCardController` (which runs in the
 phone process) through an AIDL interface, and each `EuiccCardManager` method
 receives its callback from the phone process through a different, dedicated AIDL
 interface. When using `EuiccCardManager` APIs, the caller (LPA) must provide an
-[`Executor`](https://developer.android.com/reference/java/util/concurrent/Executor)
+[`Executor`](https://developer.android.com/reference/java/util/concurrent/Executor){: .external}
 through which the callback is invoked. This `Executor` may run on a single
 thread or on a thread pool of your choice.
 
@@ -494,7 +494,7 @@ are valid in Android builds.
 You should make sure the builds pass the following CTS test cases (for public
 APIs):
 
-[https://android.googlesource.com/platform/cts/+/master/tests/tests/telephony/src/android/telephony/](https://android.googlesource.com/platform/cts/+/master/tests/tests/telephony/src/android/telephony/euicc/cts)
+[https://android.googlesource.com/platform/cts/+/master/tests/tests/telephony/src/android/telephony/](https://android.googlesource.com/platform/cts/+/master/tests/tests/telephony/src/android/telephony/euicc/cts){: .external}
 
 Carriers implementing a carrier app should go through their normal in-house
 quality assurance
@@ -508,4 +508,4 @@ testing. You should work with your modem vendor, eUICC chip or eSIM OS vendor,
 SM-DP+ vendors, and carriers to resolve issues and ensure interoperability of
 your LPA within the RSP architecture. A good amount of manual testing is
 inevitable. For best test coverage, you should follow the
-[GSMA SGP.23 RSP Test Plan](https://www.gsma.com/newsroom/all-documents/sgp-23-v1-2-rsp-test-specification/).
+[GSMA SGP.23 RSP Test Plan](https://www.gsma.com/newsroom/all-documents/sgp-23-v1-2-rsp-test-specification/){: .external}.

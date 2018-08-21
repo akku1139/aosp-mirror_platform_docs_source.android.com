@@ -54,8 +54,9 @@ shared_libs: [
 <pre class="prettyprint">
 import android.hardware.foo.V1_0.IFoo;
 ...
-IFoo server = IFoo.getService(); // throws exception if not available
-IFoo anotherServer = IFoo.getService("second_impl");
+// retry to wait until the service starts up if it is in the manifest
+IFoo server = IFoo.getService(true /* retry */); // throws NoSuchElementException if not available
+IFoo anotherServer = IFoo.getService("second_impl", true /* retry */);
 server.doSomething(…);
 </pre>
 </li>
@@ -64,15 +65,17 @@ server.doSomething(…);
 <h2 id="service">提供服务</h2>
 <p>Java 中的框架代码可能需要提供接口才能接收来自 HAL 的异步回调。</p>
 
-<p class="warning"><strong>警告</strong>：请勿用 Java 实现驱动程序 (HAL)。我们强烈建议您用 C ++ 实现驱动程序。</p>
+<p class="warning"><strong>警告</strong>：请勿用 Java 实现驱动程序 (HAL)。我们强烈建议您用 C++ 实现驱动程序。</p>
 
-<p>对于软件包 <code>android.hardware.foo</code> 版本 1.0 中的接口 <code>IFooCallback</code>，您可以按照以下步骤用 Java 实现接口。</p>
+<p class="warning"><strong>警告</strong>：Java 驱动程序必须与其客户端处于不同的进程中（不支持同一进程通信）。</p>
+
+<p>对于 1.0 版软件包 <code>android.hardware.foo</code> 中的接口 <code>IFooCallback</code>，您可以按照以下步骤用 Java 实现接口。</p>
 
 <ol>
 <li>用 HIDL 定义您的接口。</li>
 <li>打开 <code>/tmp/android/hardware/foo/IFooCallback.java</code> 作为参考。</li>
 <li>为您的 Java 实现创建一个新模块。</li>
-<li>检查抽象类 <code>android.hardware.foo.V1_0.IFooCallback.Stub</code>，然后编写一个新类以将其扩展，并实现抽象方法。</li>
+<li>检查抽象类 <code>android.hardware.foo.V1_0.IFooCallback.Stub</code>，然后编写一个新类以对其进行扩展，并实现抽象方法。</li>
 </ol>
 
 <h3 id="autogen">查看自动生成的文件</h3>
@@ -103,7 +106,7 @@ class FooCallback extends IFooCallback.Stub {
 ....
 // Get the service you will be receiving callbacks from.
 // This also starts the threadpool for your callback service.
-IFoo server = IFoo.getService(); // throws exception if not available
+IFoo server = IFoo.getService(true /* retry */); // throws NoSuchElementException if not available
 ....
 // This must be a persistent instance variable, not local,
 //   to avoid premature garbage collection.
@@ -129,7 +132,7 @@ interface IBetterFoo extends IFoo {
 <p>感知到扩展接口的调用代码可以使用 <code>castFrom()</code> Java 方法将基本接口安全地转换为扩展接口：</p>
 
 <pre class="prettyprint">
-IFoo baseService = Foo.getService();
+IFoo baseService = IFoo.getService(true /* retry */); // throws NoSuchElementException if not available
 IBetterFoo extendedService = IBetterFoo.castFrom(baseService);
 if (extendedService != null) {
   // The service implements the extended interface.

@@ -117,10 +117,10 @@ and recovery mode
 The health@2.0 HAL provides the same functionality to the framework as the old
 healthd daemon. It also provides APIs that are similar to what healthd
 previously provided as a binder service (i.e.
-[IBatteryPropertiesRegistrar](https://android.googlesource.com/platform/frameworks/base/+/2392cbd888212f61a242058f749bcc39d495bf4b/core/java/android/os/IBatteryPropertiesRegistrar.aidl)).
+[IBatteryPropertiesRegistrar](https://android.googlesource.com/platform/frameworks/base/+/2392cbd888212f61a242058f749bcc39d495bf4b/core/java/android/os/IBatteryPropertiesRegistrar.aidl){: .external}).
 
 The main interface,
-[IHealth](https://android.googlesource.com/platform/hardware/interfaces/+/de542acbbf46812cfb53d231ecb50048baf8780e/health/2.0/IHealth.hal)
+[IHealth](https://android.googlesource.com/platform/hardware/interfaces/+/de542acbbf46812cfb53d231ecb50048baf8780e/health/2.0/IHealth.hal){: .external}
 , provides the following functions:
 
 *   `registerCallback`, to replace
