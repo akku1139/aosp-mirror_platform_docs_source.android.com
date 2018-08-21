@@ -48,7 +48,7 @@ To implement MAC randomization on your device:
         implementation behavior may not work with certain chip vendors. 
 
 1.  Set
-    [`config_wifi_support_connected_mac_randomization`](https://android.googlesource.com/platform/packages/apps/Settings/+/master/res/values/config.xml#46)
+    [`config_wifi_support_connected_mac_randomization`](https://android.googlesource.com/platform/packages/apps/Settings/+/master/res/values/config.xml#46){: .external}
     to **true** in the Settings `config.xml` (this can be done in a device
     custom overlay).
 
@@ -67,7 +67,7 @@ The System UI must:
     Wi-Fi interface MAC address if the MAC randomization feature is enabled.
 
 Use the
-[reference implementation](https://android.googlesource.com/platform/packages/apps/Settings/+/master/src/com/android/settings/development/WifiConnectedMacRandomizationPreferenceController.java)
+[reference implementation](https://android.googlesource.com/platform/packages/apps/Settings/+/master/src/com/android/settings/development/WifiConnectedMacRandomizationPreferenceController.java){: .external}
 of Settings UI to implement new prompts.
 
 ## Validation

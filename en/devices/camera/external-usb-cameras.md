@@ -21,13 +21,13 @@ Book: /_book.yaml
 
 The Android platform supports the use of plug-and-play USB cameras (i.e.
 webcams) using the standard
-[Android Camera2 API](https://developer.android.com/reference/android/hardware/camera2/package-summary.html)
+[Android Camera2 API](https://developer.android.com/reference/android/hardware/camera2/package-summary.html){: .external}
 and the camera
-[HIDL](/reference/hidl/android/hardware/camera/provider/2.4/ICameraProvider)
+[HIDL](/reference/hidl/android/hardware/camera/provider/2.4/ICameraProvider){: .external}
 interface. Webcams generally support
-[USB video class (UVC)](https://en.wikipedia.org/wiki/USB_video_device_class)
+[USB video class (UVC)](https://en.wikipedia.org/wiki/USB_video_device_class){: .external}
 drivers and on Linux the standard
-[Video4Linux (V4L)](https://en.wikipedia.org/wiki/Video4Linux)
+[Video4Linux (V4L)](https://en.wikipedia.org/wiki/Video4Linux){: .external}
 driver is used to control UVC cameras.
 
 With support for webcams, devices can be used in lightweight use cases such as
@@ -47,19 +47,19 @@ devices as with any regular camera application.
 
 For more information on how to implement USB cameras, see an external camera
 provider reference implementation at
-[`ExternalCameraProvider`](https://android.googlesource.com/platform/hardware/interfaces/+/master/camera/provider/2.4/default/CameraProvider.cpp).
+[`ExternalCameraProvider`](https://android.googlesource.com/platform/hardware/interfaces/+/master/camera/provider/2.4/default/CameraProvider.cpp){: .external}.
 The external camera device and session implementations are included in
-[`ExternalCameraDevice`](https://android.googlesource.com/platform/hardware/interfaces/+/master/camera/device/3.4/default/ExternalCameraDevice.cpp)
+[`ExternalCameraDevice`](https://android.googlesource.com/platform/hardware/interfaces/+/master/camera/device/3.4/default/ExternalCameraDevice.cpp){: .external}
 and
-[`ExternalCameraDeviceSession`](https://android.googlesource.com/platform/hardware/interfaces/+/master/camera/device/3.4/default/ExternalCameraDeviceSession.cpp).
+[`ExternalCameraDeviceSession`](https://android.googlesource.com/platform/hardware/interfaces/+/master/camera/device/3.4/default/ExternalCameraDeviceSession.cpp){: .external}.
 The Java client API includes a new
-[`EXTERNAL`](https://developer.android.com/reference/android/hardware/camera2/CameraMetadata?authuser=3#INFO_SUPPORTED_HARDWARE_LEVEL_EXTERNAL)
+[`EXTERNAL`](https://developer.android.com/reference/android/hardware/camera2/CameraMetadata?authuser=3#INFO_SUPPORTED_HARDWARE_LEVEL_EXTERNAL){: .external}
 hardware level.
 
 ## Implementation
 
 The implementation must support the
-[`android.hardware.usb.host`](https://developer.android.com/guide/topics/connectivity/usb/host)
+[`android.hardware.usb.host`](https://developer.android.com/guide/topics/connectivity/usb/host){: .external}
 system feature.
 
 Kernel support for UVC devices must also be enabled. You can enable this by
@@ -71,7 +71,8 @@ adding the following to the respective kernel `deconfig` files.
 ```
 
 Note: Make sure you also have this
-[patch](https://patchwork.kernel.org/patch/6874491/) for uvcvideo.
+[patch](https://patchwork.kernel.org/patch/6874491/){: .external}
+for uvcvideo.
 
 To enable the external camera provider in the respective device build, which
 adds the necessary SELinux permissions, external camera configuration, and
@@ -193,5 +194,5 @@ webcam must remain plugged in the specific device during the entire test run,
 otherwise some test cases will fail.
 
 Note: `media_profiles` entries are not available for external USB webcams, so
-[camcorder profiles](https://developer.android.com/reference/android/media/CamcorderProfile)
+[camcorder profiles](https://developer.android.com/reference/android/media/CamcorderProfile){: .external}
 are absent.

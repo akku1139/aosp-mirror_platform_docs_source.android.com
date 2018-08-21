@@ -36,18 +36,18 @@ typed, character by character.
 ## Examples and source
 
 Framework components are available in AOSP at
-[Call.RttCall](https://developer.android.com/reference/android/telecom/Call.RttCall)
+[Call.RttCall](https://developer.android.com/reference/android/telecom/Call.RttCall){: .external}
 and
-[Connection.RttTextStream](https://developer.android.com/reference/android/telecom/Connection.RttTextStream).
+[Connection.RttTextStream](https://developer.android.com/reference/android/telecom/Connection.RttTextStream){: .external}.
 IMS/modem components are proprietary and should be supplied by the IMS/modem
 vendor. Dialer RTT reference implementation is also available.
 
 AOSP Dialer code for RTT:
 
 +   InCall:
-    [/java/com/android/incallui/rtt](https://android.googlesource.com/platform/packages/apps/Dialer/+/master/java/com/android/incallui/rtt)
+    [/java/com/android/incallui/rtt](https://android.googlesource.com/platform/packages/apps/Dialer/+/master/java/com/android/incallui/rtt){: .external}  
 +   Call log:
-    [/java/com/android/dialer/rtt](https://android.googlesource.com/platform/packages/apps/Dialer/+/master/java/com/android/dialer/rtt)
+    [/java/com/android/dialer/rtt](https://android.googlesource.com/platform/packages/apps/Dialer/+/master/java/com/android/dialer/rtt){: .external}  
 
 ## Implementation
 

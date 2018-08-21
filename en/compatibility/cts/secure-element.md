@@ -35,82 +35,44 @@ Elements (essentially checks if devices have SE HAL implementation and if yes,
 how many). This is used as the basis to test the API and the
 underlying Secure Element implementation.
 
-## Terminology
-
-<table>
-<thead>
-<tr>
-<th>Term</th>
-<th>Definition</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>AID</td>
-<td>Application Identifier</td>
-</tr>
-<tr>
-<td>APDU</td>
-<td>Application Protocol Data Unit</td>
-</tr>
-<tr>
-<td>BER</td>
-<td>Basic Encoding Rules</td>
-</tr>
-<tr>
-<td>TLV</td>
-<td>Tag Length Value</td>
-</tr>
-<tr>
-<td>UICC </td>
-<td>UMTS Integrated Circuit Card</td>
-</tr>
-<tr>
-<td>ARA</td>
-<td>Access Rule Application Master</td>
-</tr>
-<tr>
-<td>ARF</td>
-<td>Access Rule File</td>
-</tr>
-<tr>
-<td>Applet</td>
-<td>Java Card application on Secure Element</td>
-</tr>
-</tbody>
-</table>
-
 ## Open Mobile API test cases
 
-Open Mobile API test cases are used to enforce API guidelines and to confirm the
+Open Mobile API (OMAPI) test cases are used to enforce API guidelines and to
+confirm the
 underlying implementation of Secure Elements meets the Open Mobile API
-specification. These test cases require installation of a special applet that
+specification. These test cases require installation of a special applet, a Java
+Card application on Secure Element, that
 is used by the CTS application for communication. For installation, use the
 sample applet found in
-[CtsAndroidOmapiTestApplet.java](https://android.googlesource.com/platform/cts/+/master/tests/tests/secure_element/sample_applet/src/com/android/cts/omapi/test/CtsAndroidOmapiTestApplet.java){: .external} and [test.cap](https://android.googlesource.com/platform/cts/+/master/tests/tests/secure_element/sample_applet/test.cap){: .external}.
+[`CtsAndroidOmapiTestApplet.java`](https://android.googlesource.com/platform/cts/+/master/tests/tests/secure_element/sample_applet/src/com/android/cts/omapi/test/CtsAndroidOmapiTestApplet.java){: .external}
+and
+[`test.cap`](https://android.googlesource.com/platform/cts/+/master/tests/tests/secure_element/sample_applet/test.cap){: .external}.
 
 To pass OMAPI test cases, the underlying Secure Element Service and the SE
 should be capable of the following:
 
 <ol>
-<li>All Secure Element Reader names should start with SIM or eSE or SD.</li>
+<li>All Secure Element Reader names should start with SIM, eSE, or SD.</li>
 <li>Non-SIM based readers should be capable of opening basic channels.</li>
-<li><p><code>CtsOmapiTestCases.apk</code> should be capable of selecting an
-applet with the following AIDs:</p>
+<li><code>CtsOmapiTestCases.apk</code> should not be capable of selecting the
+A000000476416E64726F6964435453FF AID:</li>
+<li><code>CtsOmapiTestCases.apk</code> should be capable of selecting an
+applet with the following application identifiers (AIDs):
   <ol>
-  <li><p>0xA000000476416E64726F696443545331</p>
+  <li>0xA000000476416E64726F696443545331
     <ol>
-      <li><p>The applet should throw a Security Exception when it receives the
-        following APDUs in android.se.omapi.Channel.Transmit (hereby referred to
-        as <em>Transmit</em>):</p>
+      <li>The applet should throw a Security Exception when it receives the
+        following application protocol data unit (APDUs) in
+        <code>android.se.omapi.Channel.Transmit</code>
+        (<em>Transmit</em>):
         <ol>
           <li>0x00700000</li>
           <li>0x00708000</li>
           <li>0x00A40404104A535231373754657374657220312E30</li>
         </ol>
       </li>
-      <li><p>The applet should return no data when it receives the following
-        APDUs in<em> Transmit</em>:</p>
+      <li>The applet should return no data when it receives the following
+        APDUs in <em>Transmit</em>:
         <ol>
           <li>0x00060000</li>
           <li>0x80060000</li>
@@ -122,8 +84,8 @@ applet with the following AIDs:</p>
           <li>0x940A000001AA</li>
         </ol>
       </li>
-      <li><p>The applet should return 256 byte data for the following
-        <em>Transmit</em> APDUs:</p>
+      <li>The applet should return 256-byte data for the following
+        <em>Transmit</em> APDUs:
         <ol>
          <li>0x0008000000</li>
          <li>0x8008000000</li>
@@ -134,8 +96,8 @@ applet with the following AIDs:</p>
          <li>0xA00C000001AA00</li>
          <li>0x940C000001AA00</li>
        </ol>
-      <li><p>The applet should return the following Status word responses for
-        the respective <em>Transmit</em> APDU:</p>
+      <li>The applet should return the following status word responses for
+        the respective <em>Transmit</em> APDU:
         <table>
         <thead>
         <tr>
@@ -467,14 +429,14 @@ applet with the following AIDs:</p>
         </tr>
         </tbody>
         </table>
-        <p class="note"><strong>Note:</strong> The response should contain data
+        <small>*The response should contain data
             that is the same as input APDU,
-        except the first byte is 0x01 instead of 0x00.</p>
+          except the first byte is 0x01 instead of 0x00.</small>
       </li>
-      <li><p>The applet should return Segmented responses of size 2048 bytes for
+      <li>The applet should return segmented responses of size 2048 bytes for
         commands a,b,c,d, f and g whereas 32767 bytes for APDU(e), with last
-        data byte being 0xFF and success status word<0x9000> for the following
-        APDUs:</0x9000></p>
+        data byte being 0xFF and success status word <0x9000> for the following
+        APDUs:
         <ol>
          <li>0x00C2080000</li>
          <li>0x00C4080002123400</li>
@@ -486,22 +448,16 @@ applet with the following AIDs:</p>
        </ol>
       </li>
       <li>The applet should return success status word <0x9000> for the given
-      APDU: 0x00F40000</li>
+        APDU: 0x00F40000</li>
     </ol>
-  <li><p>A000000476416E64726F696443545332</p>
+  <li>A000000476416E64726F696443545332
     <ol>
-      <li><p>This AID when selected should return a select response greater than
-      2 bytes that are correctly BER TLV formatted.</p></li>
+      <li>When selected, this AID should return a select response greater than
+      2 bytes that are correctly formatted using Basic Encoding Rules (BER) and
+        tag-length-value (TLV).</li>
     </ol>
   </li>
 </ol>
-
-<li><p><code>CtsOmapiTestCases.apk</code> should not be capable of selecting the
-following AID:</p>
-  <ol>
-    <li>A000000476416E64726F6964435453FF</li>
-  </ol>
-</li>
 </ol>
 
 ## Access Control test cases
@@ -509,14 +465,14 @@ following AID:</p>
 Access Control uses configured in the Secure Element ensure that only the
 application with access to an applet can communicate with it. Additionally,
 Android supports configuring rules for specific APDUs that can be exchanged by
-the APK. The following tests will require the device manufacturer to configure
-special Access Control Rules (either ARA or ARF) to pass.
+the APK.
 
-We recommend using the same applet that is used for OMAPI tests (see applet
-functional behavior described in Open Mobile API test cases section) as the same
+To pass these tests, configure special Access Control Rules, either Access Rule
+Application Master (ARA) or Access Rule File (ARF). You should use the applet
+that is used for [OMAPI tests](#open_mobile_api_test_cases) as the same
 commands need to be supported to pass the Access Control tests.
 
-You must create an instance of the applet under each of the following AIDs:
+Create an instance of the applet under these AIDs:
 
 -   0xA000000476416E64726F696443545340
 -   0xA000000476416E64726F696443545341
@@ -533,15 +489,15 @@ You must create an instance of the applet under each of the following AIDs:
 -   0xA000000476416E64726F69644354534E
 -   0xA000000476416E64726F69644354534F
 
-### 1. `CtsSecureElementAccessControlTestCases1`
+### `CtsSecureElementAccessControlTestCases1`
 
--   Hash of the APK: 0x4bbe31beb2f753cfe71ec6bf112548687bb6c34e
--   Authorized AIDs
+-   **Hash of the APK:** 0x4bbe31beb2f753cfe71ec6bf112548687bb6c34e
+-   **Authorized AIDs**
 
     -   0xA000000476416E64726F696443545340
 
-        1.  Authorized APDU for above AID: 0x00060000A0060000
-        1.  Unauthorized APDUs for above AID:
+        1.  Authorized APDU: 0x00060000A0060000
+        1.  Unauthorized APDUs:
 
             1.  0x0008000000
             1.  0x80060000
@@ -550,14 +506,14 @@ You must create an instance of the applet under each of the following AIDs:
 
     -   0xA000000476416E64726F696443545341
 
-        1.  Authorized APDUs for above AID:
+        1.  Authorized APDUs:
 
             1.  0x94060000
             1.  0x9408000000
             1.  0x940C000001AA00
             1.  0x940A000001AA
 
-        1.  Unauthorized APDUs for above AID:
+        1.  Unauthorized APDUs:
 
             1.  0x00060000
             1.  0x80060000
@@ -596,24 +552,24 @@ You must create an instance of the applet under each of the following AIDs:
 
     -   0xA000000476416E64726F69644354534F
 
--   Unauthorized AID:
+-   **Unauthorized AIDs**
 
     -   0xA000000476416E64726F696443545343
     -   0xA000000476416E64726F696443545346
 
-### 2. `CtsSecureElementAccessControlTestCases2`
+### `CtsSecureElementAccessControlTestCases2`
 
--   Hash of the APK: 0x93b0ff2260babd4c2a92c68aaa0039dc514d8a33
--   Authorized AIDs:
+-   **Hash of the APK:** 0x93b0ff2260babd4c2a92c68aaa0039dc514d8a33
+-   **Authorized AIDs:**
 
     -   0xA000000476416E64726F696443545340
 
-        1.  Authorized APDU for the above AID:
+        1.  Authorized APDUs:
 
             1.  0x00060000
             1.  0xA0060000
 
-        1.  Unauthorized APDU for the above AID:
+        1.  Unauthorized APDUs:
 
             1.  0x0008000000
             1.  0x80060000
@@ -622,14 +578,14 @@ You must create an instance of the applet under each of the following AIDs:
 
     -   0xA000000476416E64726F696443545341
 
-        1.  Authorized APDU for the above AID:
+        1.  Authorized APDUs:
 
             1.  0x94060000
             1.  0x9408000000
             1.  0x940C000001AA00
             1.  0x940A000001AA
 
-        1.  Unauthorized APDU for the above AID:
+        1.  Unauthorized APDUs:
 
             1.  0x0006000
             1.  0x80060000
@@ -650,7 +606,7 @@ You must create an instance of the applet under each of the following AIDs:
 
     -   0xA000000476416E64726F696443545346
 
--   Unauthorized AIDs:
+-   **Unauthorized AIDs**
 
     -   0xA000000476416E64726F696443545342
     -   0xA000000476416E64726F696443545344
@@ -663,14 +619,14 @@ You must create an instance of the applet under each of the following AIDs:
     -   0xA000000476416E64726F69644354534E
     -   0xA000000476416E64726F69644354534F
 
-### 3. `CtsSecureElementAccessControlTestCases3`
+### `CtsSecureElementAccessControlTestCases3`
 
--   Hash of the APK: 0x5528ca826da49d0d7329f8117481ccb27b8833aa
--   Authorized AIDs:
+-   **Hash of the APK:** 0x5528ca826da49d0d7329f8117481ccb27b8833aa
+-   **Authorized AIDs:**
 
     -   0xA000000476416E64726F696443545340
 
-        1.  Authorized APDU for the above AID:
+        1.  Authorized APDUs:
 
             1.  0x00060000
             1.  0x80060000
@@ -691,14 +647,14 @@ You must create an instance of the applet under each of the following AIDs:
 
     -   0xA000000476416E64726F696443545341
 
-        1.  Authorized APDU for the above AID:
+        1.  Authorized APDUs:
 
             1.  0x94060000
             1.  0x9408000000
             1.  0x940C000001AA00
             1.  0x940A00000aAA
 
-        1.  Unauthorized APDU for the above AID:
+        1.  Unauthorized APDUs:
 
             1.  0x00060000
             1.  0x80060000
@@ -717,7 +673,7 @@ You must create an instance of the applet under each of the following AIDs:
 
     -   0xA000000476416E64726F696443545346
 
--   Unauthorized AIDs:
+-   **Unauthorized AIDs**
 
     -   0xA000000476416E64726F696443545342
     -   0xA000000476416E64726F696443545343
@@ -733,26 +689,26 @@ You must create an instance of the applet under each of the following AIDs:
 
 ## Appendix
 
-### Sample applet and installation steps for UICC
+### Sample applet and installation steps for UMTS Integrated Circuit Card (UICC)
 
 #### 1. Package specification
 
-File name: `google-cardlet.cap`
+**File name:** `google-cardlet.cap`
 
-Package AID: 6F 6D 61 70 69 63 61 72 64 6C 65 74
-Version: 1.0  
-SHA1: 5F72E0A073BA9E61A7358F2FE3F031  
-SHA256: ECC1217AA0BC687DD89D5BB233F743
+**Package AID:** 6F 6D 61 70 69 63 61 72 64 6C 65 74  
+**Version:** 1.0  
+**SHA1:** 5F72E0A073BA9E61A7358F2FE3F031  
+**SHA256:** ECC1217AA0BC687DD89D5BB233F743
 
-Module AIDs:  
-6F 6D 61 70 69 4A 53 52 31 37 37 = SelectResponse module
+**Module AIDs:**  
+6F 6D 61 70 69 4A 53 52 31 37 37 = SelectResponse module  
 6F 6D 61 70 69 43 61 63 68 69 6E 67 = XXLResponse module
 
-Imports:  
+**Imports:**  
 javacard.framework v1.3 - A0000000620101  
 java.lang v1.0 - A0000000620001
 
-Size on card: 4463
+**Size on card:** 4463
 
 #### 2. Installation steps
 
@@ -766,18 +722,19 @@ Run installation command for each applet.
 Command to install applet
 
 <code>80E60C00300C6F6D617069636172646C65740B<var>module_AID</var>10<var>AID</var>010002C90000</code><br>
-Module_AID => 6F 6D 61 70 69 4A 53 52 31 37 37
-AID: A000000476416E64726F696443545331
+**Module_AID**: 6F 6D 61 70 69 4A 53 52 31 37 37  
+**AID:** A000000476416E64726F696443545331
+
 <code>80E60C00310C6F6D617069636172646C65740B<var>module_AID</var>10<var>AID</var>010002C9000</code><br>
-Module_AID => 6F 6D 61 70 69 43 61 63 68 69 6E 67
-AID: A000000476416E64726F696443545332
+**Module_AID**: 6F 6D 61 70 69 43 61 63 68 69 6E 67  
+**AID:** A000000476416E64726F696443545332
 
 ##### AccessControl tests (template using PKCS#15 structure)
 
 <code>80E60C003C0C6F6D617069636172646C65740B<var>module_AID</var>10<var>AID</var>01000EEF0AA008810101A5038201C0C90000</code><br>
-Module_AID => 6F 6D 61 70 69 4A 53 52 31 37 37
+**Module_AID**: 6F 6D 61 70 69 4A 53 52 31 37 37
 
-AIDs:
+**AIDs:**
 
 +   0xA000000476416E64726F696443545340
 +   0xA000000476416E64726F696443545341

@@ -24,7 +24,7 @@ Book: /_book.yaml
 This feature introduces a set of methods that allows camera clients to add and
 remove output surfaces dynamically while the capture session is active and
 camera streaming is ongoing. A new output can map to a specific, user-selected
-[shared camera](https://developer.android.com/reference/android/hardware/camera2/params/OutputConfiguration#enableSurfaceSharing\(\))
+[shared camera](https://developer.android.com/reference/android/hardware/camera2/params/OutputConfiguration#enableSurfaceSharing\(\)){: .external}
 stream. After a surface is added, it can be removed at any time.
 
 The general idea is to share the buffers associated with a particular camera
@@ -45,12 +45,12 @@ the camera service.
 ## Examples and source
 
 The core implementation of this feature can be found in the
-[`Camera3StreamSplitter`](https://android.googlesource.com/platform/frameworks/av/+/master/services/camera/libcameraservice/device3/Camera3StreamSplitter.cpp)
+[`Camera3StreamSplitter`](https://android.googlesource.com/platform/frameworks/av/+/master/services/camera/libcameraservice/device3/Camera3StreamSplitter.cpp){: .external}
 module. Documentation on this feature can be found in the developer reference:
 
-+   [`updateOutputConfiguration()`](https://developer.android.com/reference/android/hardware/camera2/CameraCaptureSession.html#updateOutputConfiguration\(android.hardware.camera2.params.OutputConfiguration\))
-+   [`addSurface()`](https://developer.android.com/reference/android/hardware/camera2/params/OutputConfiguration#addSurface\(android.view.Surface\))
-+   [`removeSurface()`](https://developer.android.com/reference/android/hardware/camera2/params/OutputConfiguration#removeSurface\(android.view.Surface\))
++   [`updateOutputConfiguration()`](https://developer.android.com/reference/android/hardware/camera2/CameraCaptureSession.html#updateOutputConfiguration\(android.hardware.camera2.params.OutputConfiguration\)){: .external}  
++   [`addSurface()`](https://developer.android.com/reference/android/hardware/camera2/params/OutputConfiguration#addSurface\(android.view.Surface\)){: .external}  
++   [`removeSurface()`](https://developer.android.com/reference/android/hardware/camera2/params/OutputConfiguration#removeSurface\(android.view.Surface\)){: .external}  
 
 ## Implementation
 
@@ -60,7 +60,7 @@ implemented on the framework side.
 ## Validation
 
 Your implementation must pass CTS cases that cover this feature from the
-[MultiViewTest](https://android.googlesource.com/platform/cts/+/master/tests/camera/src/android/hardware/camera2/cts/MultiViewTest.java)
+[MultiViewTest](https://android.googlesource.com/platform/cts/+/master/tests/camera/src/android/hardware/camera2/cts/MultiViewTest.java){: .external}
 module and the
-[native JNI library](https://android.googlesource.com/platform/cts/+/master/tests/camera/libctscamera2jni/native-camera-jni.cpp)
+[native JNI library](https://android.googlesource.com/platform/cts/+/master/tests/camera/libctscamera2jni/native-camera-jni.cpp){: .external}
 for the native API.

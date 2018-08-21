@@ -40,7 +40,7 @@ Android {{ androidPVersionNumber }} supports the following types of cutouts:
 ## Examples and source
 
 The following window manager code at
-[frameworks/base/services/core/java/com/android/server/policy/PhoneWindowManager.java](https://android.googlesource.com/platform/frameworks/base/+/master/services/core/java/com/android/server/policy/PhoneWindowManager.java)
+[PhoneWindowManager.java](https://android.googlesource.com/platform/frameworks/base/+/master/services/core/java/com/android/server/policy/PhoneWindowManager.java){: .external}
 shows how display frames are inset to the safe area when
 `LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS` is not set.
 
@@ -94,7 +94,7 @@ if (cutoutMode != LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS) {
 ```
 
 SystemUI renders in the cutout area, and needs to determine where it can draw.
-[frameworks/base/packages/SystemUI/src/com/android/systemui/statusbar/phone/PhoneStatusBarView.java](https://android.googlesource.com/platform/frameworks/base/+/master/packages/SystemUI/src/com/android/systemui/statusbar/phone/PhoneStatusBarView.java)
+[PhoneStatusBarView.java](https://android.googlesource.com/platform/frameworks/base/+/master/packages/SystemUI/src/com/android/systemui/statusbar/phone/PhoneStatusBarView.java){: .external}
 provides an example of a view that determines where the display cutout is, how
 big it is, and whether or not the inset from the nav bar avoids the cutout area.
 
@@ -225,8 +225,8 @@ black.</p></td>
 
 See these `dimens` files for the default definitions:
 
-+   [`core/res/res/values-land/dimens.xml`](https://android.googlesource.com/platform/frameworks/base/+/master/core/res/res/values-land/dimens.xml)
-+   [`core/res/res/values/dimens.xml`](https://android.googlesource.com/platform/frameworks/base/+/master/core/res/res/values/dimens.xml)
++   [`core/res/res/values-land/dimens.xml`](https://android.googlesource.com/platform/frameworks/base/+/master/core/res/res/values-land/dimens.xml){: .external}  
++   [`core/res/res/values/dimens.xml`](https://android.googlesource.com/platform/frameworks/base/+/master/core/res/res/values/dimens.xml){: .external}  
 
 Example overlay for an emulated cutout:
 
@@ -276,4 +276,4 @@ Example overlay for an emulated cutout:
 ## Validation
 
 To validate your implementation of display cutouts, run the CTS tests at
-[tests/framework/base/windowmanager/src/android/server/wm](https://android.googlesource.com/platform/cts/+/master/tests/framework/base/windowmanager/src/android/server/wm).
+[tests/framework/base/windowmanager/src/android/server/wm](https://android.googlesource.com/platform/cts/+/master/tests/framework/base/windowmanager/src/android/server/wm){: .external}.

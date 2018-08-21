@@ -4,6 +4,7 @@
     <meta name="project_path" value="/_project.yaml" />
     <meta name="book_path" value="/_book.yaml" />
   </head>
+  {% include "_versions.html" %}
   <body>
   <!--
       Copyright 2017 The Android Open Source Project
@@ -389,6 +390,38 @@ ro.boot.vbmeta.avb_version       == 2.3 <font style="font-family: Roboto, Arial,
 ro.boot.avb_version              == 2.3 &amp;&amp;
 ro.boot.vbmeta.avb_version       == 2.1 <font style="font-family: Roboto, Arial, Helvetica, sans-serif; background-color: green; color: white">&nbsp;match&nbsp;</font>
 </pre>
+
+<h3 id="avb-version-ota">Matching AVB version during OTA</h3>
+<p>For devices launched with Android {{ androidPVersionNumber }} or lower, during OTA, the AVB
+version requirements in framework compatibility matrix are matched against the current AVB version
+on the device. If the AVB version has an major version upgrade during an OTA (for example, from
+0.0 to 1.0), the check in OTA does not reflect the compatibility after the OTA.</p>
+<p>To mitigate the issue, an OEM can place a fake AVB version in the OTA package
+(<code>compatibility.zip</code>) to pass the check. To do so:</p>
+<ol>
+<li>Cherry-pick the following CLs to the Android {{ androidPVersionNumber }} source tree:
+<ul>
+  <li><a href="https://android-review.googlesource.com/732261" class="external">CL 732261</a></li>
+  <li><a href="https://android-review.googlesource.com/732262" class="external">CL 732262</a></li>
+</ul>
+</li>
+<li>Define <code>BOARD_OTA_FRAMEWORK_VBMETA_VERSION_OVERRIDE</code> for the device. Its value
+should equal the AVB version before the OTA, i.e. the AVB version of the device when it was
+launched.</li>
+<li>Rebuild the OTA package.</li>
+</ol>
+<p>These changes automatically place
+<code>BOARD_OTA_FRAMEWORK_VBMETA_VERSION_OVERRIDE</code> as
+<code>compatibility-matrix.avb.vbmeta-version</code> in the following files:
+<ul>
+  <li><code>/system/compatibility_matrix.xml</code>
+  (which is not used in Android {{ androidPVersionNumber }}) on the device</li>
+  <li><code>system_matrix.xml</code> in <code>compatibility.zip</code> in the OTA package</li>
+</ul>
+These changes do not affect other framework compatibility matrices, including
+<code>/system/etc/vintf/compatibility_matrix.xml</code>. After the OTA, the new value in
+<code>/system/etc/vintf/compatibility_matrix.xml</code> is used for compatibility checks instead.
+</p>
 
 <h2 id="vndk">VNDK version matches</h2>
 <p>The device compatibility matrix declares the required VNDK version in

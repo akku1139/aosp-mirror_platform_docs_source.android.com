@@ -607,6 +607,13 @@ associated to a network. In this release, a developer option can be enabled to
 cause a device to use a randomized MAC address when connecting to a Wi-Fi
 network.
 
+#### Turn on Wi-Fi automatically
+
+[Turn on Wi-Fi automatically](/devices/tech/connect/wifi-infrastructure#turn_on_wi-fi_automatically)
+allows users to automatically re-enable Wi-Fi whenever the device is near a
+Wi-Fi network that has been saved and has a sufficiently high relative received
+signal strength indicator (RSSI).
+
 #### Wi-Fi Round Trip Time (RTT)
 
 [Wi-Fi Round Trip Time (RTT)](/devices/tech/connect/wifi-rtt) allows devices to

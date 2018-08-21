@@ -84,8 +84,8 @@ int (*batch)(
 <p>要详细了解 <code>sampling_period_ns</code> 在不同模式下造成的影响，请参阅<a href="report-modes.html">报告模式</a>。</p>
 <p>对于连续和变化传感器：</p>
 <ul>
-  <li>如果 <code>sampling_period_ns</code> 小于 <code>sensor_t.minDelay</code>，则 HAL 实现必须静默将其限制到 <code>max(sensor_t.minDelay, 1ms)</code>。Android 不支持以高于 1000Hz 的频率生成事件。</li>
-  <li>如果 <code>sampling_period_ns</code> 大于 <code>sensor_t.maxDelay</code>，则 HAL 实现必须静默将其截断为 <code>sensor_t.maxDelay</code>。</li>
+  <li>如果 <code>sampling_period_ns</code> 小于 <code>sensor_t.minDelay</code>，则 HAL 实现必须静默地将其限制到 <code>max(sensor_t.minDelay, 1ms)</code>。Android 不支持以高于 1000Hz 的频率生成事件。</li>
+  <li>如果 <code>sampling_period_ns</code> 大于 <code>sensor_t.maxDelay</code>，则 HAL 实现必须静默地将其截断为 <code>sensor_t.maxDelay</code>。</li>
 </ul>
 <p>物理传感器的运行速率和时钟精度有时会受到限制。因此，实际采样率与请求的频率可以不同，只要它满足下表中的要求即可。</p>
 <table>
@@ -115,7 +115,7 @@ int (*batch)(
 <p>当 <code>max_report_latency_ns&gt;0</code> 时，在检测到传感器事件后无需立即报告。只要所有事件的延迟均不超过 max_report_latency_ns 纳秒，就可以暂时存储在硬件 FIFO 中并批量报告。也就是说，一次性记录并返回上一批之后的所有事件。这样一来，发送到 SoC 的中断数量会减少，并且在传感器捕获数据并进行批量处理时，SoC 可以切换到低电耗模式（闲置）。</p>
 <p>每个事件都具有相关联的时间戳。事件的报告时间有所延迟并不影响事件时间戳。时间戳必须准确且对应于事件实际发生的时间，而不是对应于事件的报告时间。</p>
 <p>允许传感器事件暂时存储在硬件 FIFO 中不会修改 <code>poll</code> 的行为：来自于不同传感器的事件可交错，并且和往常一样，来自于同一传感器的所有事件按时间排序。</p>
-<p>要详细了解传感器批量处理（包括暂停模式和非暂停模式中的行为），请参阅<a href="batching.html">批量处理</a>。</p>
+<p>要详细了解传感器批量处理（包括暂停模式和非暂停模式下的行为），请参阅<a href="batching.html">批量处理</a>。</p>
 <h2 id="setdelay_sensor_sampling_period">setDelay(sensor, sampling period)</h2>
 <pre class="prettyprint">
 int (*setDelay)(
@@ -123,16 +123,16 @@ int (*setDelay)(
      int sensor_handle,
      int64_t sampling_period_ns);
 </pre>
-<p>在 1.0 版本之后的 HAL 中，该函数已被弃用，并且无法再调用。改为调用 <code>batch</code> 函数来设置 <code>sampling_period_ns</code> 参数。</p>
-<p>在 1.0 版本的 HAL 中，使用 setDelay（而非 batch）来设置 <a href="#sampling_period_ns">sampling_period_ns</a>。</p>
+<p>在 1.0 版之后的 HAL 中，该函数已被弃用，并且无法再调用。我们将调用 <code>batch</code> 函数来设置 <code>sampling_period_ns</code> 参数。</p>
+<p>在 1.0 版 HAL 中，使用 setDelay（而非 batch）来设置 <a href="#sampling_period_ns">sampling_period_ns</a>。</p>
 <h2 id="flush_sensor">flush(sensor)</h2>
 <pre class="prettyprint">int (*flush)(struct sensors_poll_device_1* dev, int sensor_handle);</pre>
 <p>将<a href="#metadata_flush_complete_events">刷写完成事件</a>添加到指定传感器的硬件 FIFO 的末尾并刷写 FIFO。这些事件会照常提交（即好像最大报告延迟已过期一样）并从 FIFO 中移除。</p>
-<p>刷写异步发生（即该函数必须立即返回）。如果实现将一个 FIFO 用于多个传感器，则刷写该 FIFO，并且仅为指定传感器添加刷写完成事件。</p>
+<p>刷写会异步执行（即该函数必须立即返回）。如果实现将一个 FIFO 用于多个传感器，则刷写该 FIFO，并且仅为指定传感器添加刷写完成事件。</p>
 <p>如果指定传感器没有 FIFO（无法缓冲），或者如果 FIFO 在调用时为空，则 <code>flush</code> 仍必须操作成功并为该传感器发送刷写完成事件。这适用于除单次传感器以外的所有传感器。</p>
 <p>当调用 <code>flush</code> 时，即使该传感器的 FIFO 中已经存在刷写事件，也必须另外创建一个刷写事件并将其添加到 FIFO 的末尾，并且必须刷写 FIFO。<code>flush</code> 调用的次数必须等于创建的刷写完成事件数。</p>
-<p><code>flush</code> 不适用于<a href="report-modes.html#one-shot">单次</a>传感器。如果 <code>sensor_handle</code> 引用的是单次传感器，则 <code>flush</code> 必须返回 <code>-EINVAL</code>，并且不生成任何刷写完成元数据事件。</p>
-<p>如果操作成功，该函数返回 0；如果指定的传感器是单次传感器或未启用，则返回 <code>-EINVAL</code>；其他情况，返回表示错误的负数。</p>
+<p><code>flush</code> 不适用于<a href="report-modes.html#one-shot">单次</a>传感器。如果 <code>sensor_handle</code> 指的是单次传感器，则 <code>flush</code> 必须返回 <code>-EINVAL</code>，并且不生成任何刷写完成元数据事件。</p>
+<p>如果操作成功，该函数返回 0；如果指定的传感器是单次传感器或未启用，则返回 <code>-EINVAL</code>；其他情况返回表示错误的负数。</p>
 <h2 id="poll">poll()</h2>
 <pre class="prettyprint">int (*poll)(struct sensors_poll_device_t *dev, sensors_event_t* data, int
   count);</pre>
@@ -164,7 +164,7 @@ int (*setDelay)(
 <p><strong>power</strong>：启用传感器的功耗成本，以毫安为单位。该字段值几乎始终大于底层传感器的相关数据表中报告的功耗。要了解详情，请参阅<a href="sensor-types.html#base_sensors_=_not_equal_to_physical_sensors">基础传感器不等于物理传感器</a>这篇文章；要详细了解如何测量传感器的功耗，请参阅<a href="power-use.html#power_measurement_process">功率测量过程</a>。如果传感器的功耗取决于设备是否正在移动，则 <code>power</code> 字段中报告的值是移动时的功耗。</p>
 <p><strong>minDelay</strong>：对于连续传感器，指对应于传感器支持的最快速率的采样周期（以微秒为单位）。要详细了解该值是如何使用的，请参阅 <a href="#sampling_period_ns">sampling_period_ns</a>。请注意，<code>minDelay</code> 以微秒为单位，而 <code>sampling_period_ns</code> 以纳秒为单位。对于变化和特殊报告模式传感器，除非另行指定，否则 <code>minDelay</code> 必须为 0。对于单次传感器，该值必须为 -1。</p>
 <p><strong>maxDelay</strong>：对于连续和变化模式传感器，指对应于传感器支持的最慢速率的采样周期（以微秒为单位）。要详细了解该值是如何使用的，请参阅 <a href="#sampling_period_ns">sampling_period_ns</a>。请注意，<code>maxDelay</code> 以微秒为单位，而 <code>sampling_period_ns</code> 以纳秒为单位。对于特殊和单次传感器，<code>maxDelay</code> 必须为 0。</p>
-<p><strong>fifoReservedEventCount</strong>：硬件 FIFO 中为该传感器保留的事件数。如果该传感器具有专属的 FIFO，则 <code>fifoReservedEventCount</code> 是该专属 FIFO 的大小。如果该传感器与其他传感器共用 FIFO，则 <code>fifoReservedEventCount</code> 是为该传感器保留的 FIFO 部分的大小。对于大多数共享 FIFO 的系统以及没有硬件 FIFO 的系统，该值为 0。</p>
+<p><strong>fifoReservedEventCount</strong>：在硬件 FIFO 中为该传感器保留的事件数。如果该传感器具有专属的 FIFO，则 <code>fifoReservedEventCount</code> 是该专属 FIFO 的大小。如果该传感器与其他传感器共用 FIFO，则 <code>fifoReservedEventCount</code> 是为该传感器保留的 FIFO 部分的大小。对于大多数共享 FIFO 的系统以及没有硬件 FIFO 的系统，该值为 0。</p>
 <p><strong>fifoMaxEventCount</strong>：FIFO 中可为该传感器存储的最大事件数。该值总是大于或等于 <code>fifoReservedEventCount</code>。该值用于估计在假设不激活任何其他传感器的情况下，以特定速率注册到传感器时 FIFO 多快会被填满。对于没有硬件 FIFO 的系统，<code>fifoMaxEventCount</code> 为 0。要了解详情，请参阅<a href="batching.html">批量处理</a>。</p>
 <p>对于官方传感器类型的传感器，一些字段会被框架覆盖。例如，强制要求<a href="sensor-types.html#accelerometer">加速度计</a>传感器使用连续报告模式，并强制要求<a href="sensor-types.html#heart_rate">心率</a>监测器受 <code>SENSOR_PERMISSION_BODY_SENSORS</code> 权限的保护。</p>
 <h2 id="sensors_event_t">sensors_event_t</h2>

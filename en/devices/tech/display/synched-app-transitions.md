@@ -42,16 +42,13 @@ can transform notifications into the app surface.
 
 See the following references for this feature.
 
-+   [`ActivityOptions.makeRemoteAnimation`](https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/app/ActivityOptions.java#844)
-
-+   [`RemoteAnimationAdapter`](https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/view/RemoteAnimationAdapter.java)
-
-+   [`RemoteAnimationRunner`](https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/view/IRemoteAnimationRunner.aidl)
-
-+   [`Activity.registerRemoteAnimations`](https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/app/Activity.java#7869)
++   [`ActivityOptions.makeRemoteAnimation`](https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/app/ActivityOptions.java#844){: .external}  
++   [`RemoteAnimationAdapter`](https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/view/RemoteAnimationAdapter.java){: .external}  
++   [`RemoteAnimationRunner`](https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/view/IRemoteAnimationRunner.aidl){: .external}  
++   [`Activity.registerRemoteAnimations`](https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/app/Activity.java#7869){: .external}  
 
 For a reference implementation for the notification launch animation, see
-[`ActivityLaunchAnimator.java`](https://android.googlesource.com/platform/frameworks/base/+/master/packages/SystemUI/src/com/android/systemui/statusbar/notification/ActivityLaunchAnimator.java).
+[`ActivityLaunchAnimator.java`](https://android.googlesource.com/platform/frameworks/base/+/master/packages/SystemUI/src/com/android/systemui/statusbar/notification/ActivityLaunchAnimator.java){: .external}.
 
 ## Implementation
 
@@ -65,4 +62,4 @@ Note: This feature increases the load on the GPU and CPU during animations.
 To validate the performance of the animations, measure the performance of the
 controlling app, i.e. SystemUI or Launcher, during the animations as described
 in
-[Test UI performance](https://developer.android.com/training/testing/performance).
+[Test UI performance](https://developer.android.com/training/testing/performance){: .external}.

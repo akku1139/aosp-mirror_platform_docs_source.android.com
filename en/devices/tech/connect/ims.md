@@ -22,7 +22,7 @@ Book: /_book.yaml
 # Implementing IMS
 
 Android {{ androidPVersionNumber }} introduces a new SystemApi interface called
-[ImsService](https://android.googlesource.com/platform/frameworks/base/+/master/telephony/java/android/telephony/ims/)
+[ImsService](https://android.googlesource.com/platform/frameworks/base/+/master/telephony/java/android/telephony/ims/){: .external}
 to help you implement IP Multimedia Subsystem (IMS). The ImsService API is a
 well-defined interface between the Android platform and a vendor or
 carrier-provided IMS implementation.
@@ -44,10 +44,10 @@ be Play Store updatable.
 Android provides an application on AOSP that implements portions of the
 ImsService API for testing and development purposes. You can find the
 application at
-[/testapps/ImsTestService](https://android.googlesource.com/platform/packages/services/Telephony/+/master/testapps/ImsTestService/).
+[/testapps/ImsTestService](https://android.googlesource.com/platform/packages/services/Telephony/+/master/testapps/ImsTestService/){: .external}.
 
 You can find the documentation for the ImsService API in
-[ImsService](https://android.googlesource.com/platform/frameworks/base/+/master/telephony/java/android/telephony/ims/ImsService.java)
+[ImsService](https://android.googlesource.com/platform/frameworks/base/+/master/telephony/java/android/telephony/ims/ImsService.java){: .external}
 and in the other classes in the API.
 
 ## Implementation
@@ -152,7 +152,7 @@ IMS PDN for emergency calling. Any implementation of `ImsService` that wishes to
 support the MMTEL features should extend the
 `android.telephony.ims.MmTelFeature` base class and return a custom
 `MmTelFeature` implementation in
-[`ImsService#createMmTelFeature`](https://android.googlesource.com/platform/frameworks/base/+/master/telephony/java/android/telephony/ims/ImsService.java#335).
+[`ImsService#createMmTelFeature`](https://android.googlesource.com/platform/frameworks/base/+/master/telephony/java/android/telephony/ims/ImsService.java#335){: .external}.
 
 #### FEATURE_EMERGENCY_MMTEL
 
@@ -197,7 +197,7 @@ appropriate. There are two types of ImsServices that the framework binds to:
 1.  Carrier "override" ImsService: These ImsServices are preloaded onto the
     device but are attached to one or more cellular carriers and will only be
     bound when a matching SIM card is inserted. This is configured using the
-    [`key_config_ims_package_override`](https://android.googlesource.com/platform/frameworks/base/+/master/telephony/java/android/telephony/CarrierConfigManager.java#309)
+    [`key_config_ims_package_override`](https://android.googlesource.com/platform/frameworks/base/+/master/telephony/java/android/telephony/CarrierConfigManager.java#309){: .external}
     CarrierConfig key.
 1.  Device "default" ImsService: This is the default ImsService that is loaded
     onto the device by an OEM and should be designed to provide IMS services in
@@ -205,7 +205,7 @@ appropriate. There are two types of ImsServices that the framework binds to:
     situations where the device has no SIM card inserted or the SIM card
     inserted does not have a carrier ImsService installed with it. This is
     defined in the device overlay
-    [`config_ims_package`](https://android.googlesource.com/platform/frameworks/base/+/master/core/res/res/values/config.xml#2705)
+    [`config_ims_package`](https://android.googlesource.com/platform/frameworks/base/+/master/core/res/res/values/config.xml#2705){: .external}
     key.
 
 Both of these ImsService implementations are required to be System applications,

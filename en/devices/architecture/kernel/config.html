@@ -5,6 +5,7 @@
     <meta name="book_path" value="/_book.yaml" />
   </head>
   <body>
+  {% include "_versions.html" %}
   <!--
       Copyright 2017 The Android Open Source Project
 
@@ -22,74 +23,125 @@
   -->
 
 
-<p>Use the following configuration settings as a base for an Android kernel
-configuration. Settings are organized into <code>android-base</code>,
-<code>android-base-&lt;arch&gt;</code>, and <code>android-recommended</code>
-.cfg files:</p>
+<p>
+  Use the following configuration settings as a base for an Android kernel
+  configuration. Settings are organized into <code>android-base</code>,
+  <code>android-base-<var>ARCH</var></code>, and
+  <code>android-recommended</code> .cfg files:
+</p>
 
 <ul>
-<li><code>android-base</code>. These options enable core Android features and
-should be configured as specified by all devices.</li>
-<li><code>android-base-&lt;arch&gt;</code>. These options enable core Android
-features and should be configured as specified by all devices of architecture
-&lt;arch&gt;. Not all architectures have a corresponding file of
-architecture-specific required options. If your architecture does not have a
-file, it does not have any additional architecture-specific kernel configuration
-requirements for Android.</li>
-<li><code>android-recommended</code>. These options enable advanced Android
-features and are optional for devices.</li>
+  <li><code>android-base</code>. These options enable core Android features and
+  should be configured as specified by all devices.</li>
+  <li><code>android-base-<var>ARCH</var></code>. These options enable core
+  Android features and should be configured as specified by all devices of
+  architecture <var>ARCH</var>. Not all architectures have a corresponding file
+  of architecture-specific required options. If your architecture does not have
+  a file, it does not have additional architecture-specific kernel configuration
+  requirements for Android.</li>
+  <li><code>android-recommended</code>. These options enable advanced Android
+  features and are optional for devices.</li>
 </ul>
 
-<p>These configuration files are located in the
-<code><a href="https://android.googlesource.com/kernel/configs/" class="external">kernel/configs</a></code>
-repo. Use the set of configuration files that corresponds to the version of the
-kernel you are using.</p>
+<p>
+  These configuration files are located in the
+  <code><a href="https://android.googlesource.com/kernel/configs/" class="external">kernel/configs</a></code>
+  repo. Use the set of configuration files that corresponds to the version of
+  the kernel you are using.
+</p>
 
-<p>For details on controls already undertaken to strengthen the kernel on your
-devices, see <a href="/security/overview/kernel-security.html">System
-and Kernel Security</a>. For details on required settings, see the
-<a href="/compatibility/cdd.html">Android Compatibility Definition
-Document (CDD)</a>.</p>
+<p>
+  For details on controls already undertaken to strengthen the kernel on your
+  devices, see <a href="/security/overview/kernel-security.html">System and
+  Kernel Security</a>. For details on required settings, see the
+  <a href="/compatibility/cdd.html">Android Compatibility Definition Document
+  (CDD)</a>.
+</p>
 
 <h2 id="generating">Generating kernel config</h2>
-<p>For devices that have a minimalist defconfig, you can use the
-<code>merge_config.sh</code> script in the kernel tree to enable options:</p>
+
+<p>
+  For devices that have a minimalist <code>defconfig</code>, use the
+  <code>merge_config.sh</code> script in the kernel tree to enable options:
+</p>
 
 <pre class="devsite-click-to-copy">
-ARCH=&lt;arch&gt; scripts/kconfig/merge_config.sh <...>/device_defconfig <...>/android-base.cfg <...>/android-base-&lt;arch&gt;.cfg <...>/android-recommended.cfg
+ARCH=<var>ARCH</var> scripts/kconfig/merge_config.sh <...>/device_defconfig <...>/android-base.cfg <...>/android-base-<var>ARCH</var>.cfg <...>/android-recommended.cfg
 </pre>
 
-<p>This generates a <code>.config</code> file you can use to save a new
-defconfig or compile a new kernel with Android features enabled.</p>
+<p>
+  This generates a <code>.config</code> file you can use to save a new
+  <code>defconfig</code> or compile a new kernel with Android features enabled.
+</p>
+
+<h2 id="additional-kernel-reqs">Additional kernel config requirements</h2>
+
+<p>
+  In some cases, the platform maintainer can choose from multiple kernel
+  features to satisfy an Android dependency. Such dependencies cannot be
+  expressed in the kernel config fragment files (described above) because the
+  format for those files does not support logical expressions. In Android
+  {{ androidPVersionNumber }},
+  <a href="/compatibility/cts/">Compatibility Test Suite (CTS)</a> and
+  <a href="/compatibility/vts/">Vendor Test Suite (VTS)</a> verify the following
+  requirements are satisfied:
+</p>
+
+<ul>
+  <li><code>CONFIG_OF=y</code> or <code>CONFIG_ACPI=y</code></li>
+  <li>4.4 and 4.9 kernels have <code>CONFIG_ANDROID_LOW_MEMORY_KILLER=y</code>
+  OR have both <code>CONFIG_MEMCG=y</code> and <code>CONFIG_MEMCG_SWAP=y</code>
+  </li>
+  <li><code>CONFIG_DEBUG_RODATA=y</code> or
+  <code>CONFIG_STRICT_KERNEL_RWX=y</code></li>
+  <li><code>CONFIG_DEBUG_SET_MODULE_RONX=y</code> or
+  <code>CONFIG_STRICT_MODULE_RWX=y</code></li>
+  <li>For ARM64 only: <code>CONFIG_ARM64_SW_TTBR0_PAN=y</code> or
+  <code>CONFIG_ARM64_PAN=y</code></li>
+</ul>
+
+<p>
+  In addition, the <code>CONFIG_INET_UDP_DIAG</code> option must be set to
+  <code>y</code> for 4.9 kernels in Android {{ androidPVersionNumber }}.
+</p>
 
 <h2 id="usb">Enabling USB host mode options</h2>
 
-<p>For USB host mode audio, enable the following options:</p>
+<p>
+  For USB host mode audio, enable the following options:
+</p>
+
 <pre class="devsite-click-to-copy">
 CONFIG_SND_USB=y
 CONFIG_SND_USB_AUDIO=y
 # CONFIG_USB_AUDIO is for a peripheral mode (gadget) driver
 </pre>
 
-<p>For USB host mode MIDI, enable the following option:</p>
-<pre class="devsite-click-to-copy">
-CONFIG_SND_USB_MIDI=y
-</pre>
+<p>
+  For USB host mode MIDI, enable the following option:
+</p>
+
+<pre class="devsite-click-to-copy">CONFIG_SND_USB_MIDI=y</pre>
 
 <h2 id="Seccomp-BPF-TSYNC">Seccomp-BPF with TSYNC</h2>
-<p>Seccomp-BPF is a kernel security technology that enables the creation of
-sandboxes to restrict the system calls a process is allowed to make. The TSYNC
-feature enables the use of Seccomp-BPF from multithreaded programs. This ability
-is limited to architectures that have seccomp support upstream: ARM, ARM64, x86,
-and x86_64.</p>
 
-<h3 id="backport-ARM-32">Backporting for Kernel 3.10 for ARM-32, X86, X86_64</h3>
+<p>
+  Seccomp-BPF is a kernel security technology that enables the creation of
+  sandboxes to restrict the system calls a process is allowed to make. The
+  TSYNC feature enables the use of Seccomp-BPF from multithreaded programs. This
+  ability is limited to architectures that have seccomp support upstream (ARM,
+  ARM64, x86, and x86_64).
+</p>
 
-<p>Ensure that <code>CONFIG_SECCOMP_FILTER=y</code> is enabled in the Kconfig
-(verified as of the Android 5.0 CTS), then cherry-pick the following changes
-from the AOSP kernel/common:android-3.10 repository:
-<a href="https://android.googlesource.com/kernel/common/+log/9499cd23f9d05ba159
-fac6d55dc35a7f49f9ce76..a9ba4285aa5722a3b4d84888e78ba8adc0046b28" class="external">9499cd23f9d05ba159fac6d55dc35a7f49f9ce76..a9ba4285aa5722a3b4d84888e78ba8adc0046b28</a>
+<h3 id="backport-ARM-32">Backporting for kernel 3.10 for ARM-32, X86,
+X86_64</h3>
+
+<p>
+  Ensure <code>CONFIG_SECCOMP_FILTER=y</code> is enabled in the
+  <code>Kconfig</code> (verified as of the Android 5.0 CTS), then cherry-pick
+  the following changes from the
+  <a href="https://android.googlesource.com/kernel/common/+log/9499cd23f9d05ba159fac6d55dc35a7f49f9ce76..a9ba4285aa5722a3b4d84888e78ba8adc0046b28" class="external">AOSP
+  kernel/common:android-3.10 repository</a>:
 </p>
 
 <ul>
@@ -127,9 +179,13 @@ ARM: add seccomp syscall</a> by Kees Cook</li>
 </ul>
 
 <h3 id="backport-ARM-64">Backporting for Kernel 3.10 for ARM-64</h3>
-<p>Ensure <code>CONFIG_SECCOMP_FILTER=y</code> is enabled in the Kconfig
-(verified as of the Android 5.0 CTS), then cherry-pick the following changes
-from the AOSP kernel/common:android-3.10 repository:</p>
+
+<p>
+  Ensure <code>CONFIG_SECCOMP_FILTER=y</code> is enabled in the
+  <code>Kconfig</code> (verified as of the Android 5.0 CTS), then cherry-pick
+  the following changes from the AOSP kernel/common:android-3.10 repository:
+</p>
+
 <ul>
 <li><a href="https://android.googlesource.com/kernel/common/+/cfc7e99e9e3900056028a7d90072e9ea0d886f8d" class="external">cfc7e99e9
 arm64: Add __NR_* definitions for compat syscalls</a> by JP Abgrall</li>

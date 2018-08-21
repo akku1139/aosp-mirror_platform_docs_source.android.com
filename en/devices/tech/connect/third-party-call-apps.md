@@ -37,11 +37,11 @@ user engages in the 3P call.
 In Android {{ androidPVersionNumber }}, 3P calling apps are encouraged to
 implement the self-managed `ConnectionService` API. For more information on how
 to build a calling app using this API, see
-[Build a calling app](https://developer.android.com/guide/topics/connectivity/telecom/selfManaged).
+[Build a calling app](https://developer.android.com/guide/topics/connectivity/telecom/selfManaged){: .external}.
 
 The self-managed `ConnectionService` API also gives developers the opportunity
 to opt-in to having calls in their app logged in the system call log (see
-[`EXTRA_LOG_SELF_MANAGED_CALLS`](https://developer.android.com/reference/android/telecom/PhoneAccount#EXTRA_LOG_SELF_MANAGED_CALLS)).
+[`EXTRA_LOG_SELF_MANAGED_CALLS`](https://developer.android.com/reference/android/telecom/PhoneAccount#EXTRA_LOG_SELF_MANAGED_CALLS){: .external}).
 Per the requirements in the
 [Android Compatibility Definition Document (CDD)](/compatibility/android-cdd#7_4_data_connectivity)
 (section 7.4.1.2), you should ensure your dialer/phone app displays these
@@ -51,9 +51,9 @@ see
 [Call log entries from 3P calling apps](#call_log_entries_from_3p_calling_apps)).
 
 Apps are responsible for setting
-[`CAPABILITY_SUPPORT_HOLD`](https://developer.android.com/reference/android/telecom/Connection.html#CAPABILITY_SUPPORT_HOLD)
+[`CAPABILITY_SUPPORT_HOLD`](https://developer.android.com/reference/android/telecom/Connection.html#CAPABILITY_SUPPORT_HOLD){: .external}
 and
-[`CAPABILITY_HOLD`](https://developer.android.com/reference/android/telecom/Connection.html#CAPABILITY_HOLD)
+[`CAPABILITY_HOLD`](https://developer.android.com/reference/android/telecom/Connection.html#CAPABILITY_HOLD){: .external}
 on their apps' connections. However, it is possible that an app cannot hold a
 call in some circumstances. The framework includes provisions for resolving
 these types of cases.
@@ -85,11 +85,11 @@ See the user interface below for an example:
 
 Your dialer app can check if an incoming call causes another call to be
 disconnected by checking the
-[call extras](https://developer.android.com/reference/android/telecom/Call.Details.html#getExtras\(\)).
+[call extras](https://developer.android.com/reference/android/telecom/Call.Details.html#getExtras\(\)){: .external}.
 Make sure that
-[`EXTRA_ANSWERING_DROPS_FG_CALL`](https://developer.android.com/reference/android/telecom/Connection.html#EXTRA_ANSWERING_DROPS_FG_CALL)
+[`EXTRA_ANSWERING_DROPS_FG_CALL`](https://developer.android.com/reference/android/telecom/Connection.html#EXTRA_ANSWERING_DROPS_FG_CALL){: .external}
 is set to `TRUE`, and
-[`EXTRA_ANSWERING_DROPS_FG_CALL_APP_NAME`](https://developer.android.com/reference/android/telecom/Connection.html#EXTRA_ANSWERING_DROPS_FG_CALL_APP_NAME)
+[`EXTRA_ANSWERING_DROPS_FG_CALL_APP_NAME`](https://developer.android.com/reference/android/telecom/Connection.html#EXTRA_ANSWERING_DROPS_FG_CALL_APP_NAME){: .external}
 is set to the name of the app whose call is disconnected upon answering the
 incoming mobile call.
 
@@ -97,7 +97,7 @@ incoming mobile call.
 
 Developers of 3P calling apps can opt-in to having calls in their app logged in
 the system call log (see
-[`EXTRA_LOG_SELF_MANAGED_CALLS`](https://developer.android.com/reference/android/telecom/PhoneAccount#EXTRA_LOG_SELF_MANAGED_CALLS)).
+[`EXTRA_LOG_SELF_MANAGED_CALLS`](https://developer.android.com/reference/android/telecom/PhoneAccount#EXTRA_LOG_SELF_MANAGED_CALLS){: .external}).
 This means that it is possible to have entries in the call log that are not for
 mobile network calls.
 
@@ -114,22 +114,22 @@ illustrated below:
 </figure>
 
 To determine the name of an app associated with a call log entry, use the
-[`PHONE_ACCOUNT_COMPONENT_NAME`](https://developer.android.com/reference/android/provider/CallLog.Calls.html#PHONE_ACCOUNT_COMPONENT_NAME)
+[`PHONE_ACCOUNT_COMPONENT_NAME`](https://developer.android.com/reference/android/provider/CallLog.Calls.html#PHONE_ACCOUNT_COMPONENT_NAME){: .external}
 and
-[`PHONE_ACCOUNT_ID`](https://developer.android.com/reference/android/provider/CallLog.Calls.html#PHONE_ACCOUNT_ID)
+[`PHONE_ACCOUNT_ID`](https://developer.android.com/reference/android/provider/CallLog.Calls.html#PHONE_ACCOUNT_ID){: .external}
 columns in the call log provider to create an instance of
-[`PhoneAccountHandle`](https://developer.android.com/reference/android/telecom/PhoneAccountHandle.html#PhoneAccountHandle\(android.content.ComponentName,%20java.lang.String\)),
+[`PhoneAccountHandle`](https://developer.android.com/reference/android/telecom/PhoneAccountHandle.html#PhoneAccountHandle\(android.content.ComponentName,%20java.lang.String\)){: .external},
 which identifies the source of a call log entry. Query
-[`TelecomManager`](https://developer.android.com/reference/android/telecom/TelecomManager.html#getPhoneAccount\(android.telecom.PhoneAccountHandle\))
+[`TelecomManager`](https://developer.android.com/reference/android/telecom/TelecomManager.html#getPhoneAccount\(android.telecom.PhoneAccountHandle\)){: .external}
 to get the details for the PhoneAccount. \
 To determine if a call log entry is from a 3P calling app, check
-[`PhoneAccount` capabilities ](https://developer.android.com/reference/android/telecom/PhoneAccount.html#getCapabilities\(\))
+[`PhoneAccount` capabilities ](https://developer.android.com/reference/android/telecom/PhoneAccount.html#getCapabilities\(\)){: .external}
 to see if
-[`CAPABILITY_SELF_MANAGED`](https://developer.android.com/reference/android/telecom/PhoneAccount.html#CAPABILITY_SELF_MANAGED)
+[`CAPABILITY_SELF_MANAGED`](https://developer.android.com/reference/android/telecom/PhoneAccount.html#CAPABILITY_SELF_MANAGED){: .external}
 is set.
 
 The
-[`getLabel`](https://developer.android.com/reference/android/telecom/PhoneAccount.html#getLabel\(\))
+[`getLabel`](https://developer.android.com/reference/android/telecom/PhoneAccount.html#getLabel\(\)){: .external}
 method of the returned `PhoneAccount` returns the name of the app associated
 with a call log entry from the 3P calling app.
 
@@ -138,7 +138,7 @@ with a call log entry from the 3P calling app.
 To test that your device supports 3P calling apps, use the Telecomm test
 application, which implements the self-managed ConnectionService API. The
 application is located in
-[`/packages/services/Telecomm/testapps/`](https://android.googlesource.com/platform/packages/services/Telecomm/+/master/testapps/).
+[`/packages/services/Telecomm/testapps/`](https://android.googlesource.com/platform/packages/services/Telecomm/+/master/testapps/){: .external}.
 
 1.  Build the test app from the root of your Android source repository using:
 

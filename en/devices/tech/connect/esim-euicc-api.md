@@ -77,9 +77,9 @@ code to the OEM LUI).
 ### APIs
 
 The following APIs can be found in the
-[`EuiccManager` reference documentation](https://developer.android.com/reference/android/telephony/euicc/EuiccManager)
+[`EuiccManager` reference documentation](https://developer.android.com/reference/android/telephony/euicc/EuiccManager){: .external}
 and
-[`EuiccManager.java`](https://android.googlesource.com/platform/frameworks/base/+/master/telephony/java/android/telephony/euicc/EuiccManager.java).
+[`EuiccManager.java`](https://android.googlesource.com/platform/frameworks/base/+/master/telephony/java/android/telephony/euicc/EuiccManager.java){: .external}.
 
 #### Get instance (public)
 
@@ -246,4 +246,4 @@ mgr.startResolutionActivity(getActivity(), 0 /* requestCode */, resultIntent, ca
 ### Constants
 
 To see a list of the the `public` constants in `EuiccManager`, see
-[Constants](https://developer.android.com/reference/android/telephony/euicc/EuiccManager#constants).
+[Constants](https://developer.android.com/reference/android/telephony/euicc/EuiccManager#constants){: .external}.

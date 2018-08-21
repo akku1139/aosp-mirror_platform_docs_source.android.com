@@ -1,0 +1,787 @@
+<html devsite>
+  <head>
+    <title>Hearing Aid Audio Support Using Bluetooth LE</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+    <!--
+      Copyright 2018 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License"); you may
+      not use this file except in compliance with the License.  You may obtain a
+      copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+      WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+      License for the specific language governing permissions and limitations
+      under the License.
+    -->
+
+    <p>
+      Hearing aid devices (HA) can have improved accessibility on
+      Android-powered mobile devices by using connection-oriented L2CAP
+      channels (COC) over Bluetooth Low Energy (BLE). COC uses an elastic
+      buffer of several audio packets to maintain a steady flow of audio, even
+      in the presence of packet loss. This buffer provides audio quality for
+      hearing aid devices at the expense of latency.
+    </p>
+
+    <p>
+      The design of COC references the
+      <a href="https://www.bluetooth.com/specifications/bluetooth-core-specification">Bluetooth Core Specification Version 5</a>
+      (BT). To stay aligned with the core specifications, all multi-byte
+      values on this page should be read as little-endian.
+    </p>
+
+    <h2 id="terminology">Terminology</h2>
+
+      <ul>
+        <li>
+          <strong>Central</strong> - the Android device that scans for
+          advertisements over Bluetooth.
+        </li>
+        <li>
+          <strong>Peripheral</strong> - the hearing instrument that sends
+          advertisement packets over Bluetooth.
+        </li>
+      </ul>
+
+    <h2 id="network-topology-and-system-architecture">
+      Network topology and system architecture
+    </h2>
+
+      <p>
+        When using COC for hearing aids, the network topology assumes a single
+        central and two peripherals, one left and one right, as seen in
+        <strong>Figure 1</strong>. The Bluetooth audio system views the left
+        and right peripherals as a single audio sink. If a peripheral is
+        missing, due to a monaural fit or a loss of connection, then the
+        central mixes the left and right audio channel and transmits the audio
+        to the remaining peripheral. If the central loses connection to both
+        peripherals, then the central considers the link to the audio sink
+        lost. In those cases, the central routes audio to another output.
+      </p>
+
+      <p><img src="/devices/bluetooth/images/bt_asha_topology.png"><br />
+        <strong>Figure 1.</strong> Topology for pairing hearing aids with
+        Android mobile devices using COC over BLE
+      </p>
+
+      <p>
+        When the central is not streaming audio data to the peripheral and can
+        maintain a BLE connection, the central should not disconnect from the
+        peripheral. Maintaining the connection allows the data communication
+        to the GATT server residing on the peripheral.
+      </p>
+
+      <aside class="note">
+        <strong>Note</strong>: There is no audio backlink between the central
+        and the peripherals. During a phone call the central microphones are
+        used for voice input.
+      </aside>
+
+      <p>
+        When pairing and connecting hearing devices, the central should:
+      </p>
+
+      <ul>
+        <li>
+          Keep track of the more recent left and right peripherals paired.
+          Those two peripherals should be considered the audio sink.
+        </li>
+        <li>
+          Assume the peripherals are in use if a valid pairing exists. The
+          central should attempt to connect or reconnect with the paired
+          device when the connection is lost.
+        </li>
+        <li>
+          Assume the peripherals are no longer in use if a pairing is deleted.
+        </li>
+      </ul>
+
+      <p>
+        In the cases above, <em>pairing</em> refers to the action of
+        registering a set of hearing aids with a given UUID and
+        left/right designators in the OS, not the Bluetooth pairing process.
+      </p>
+
+    <h2 id="system-requirements">System requirements</h2>
+
+      <p>
+        To properly implement COC for a good user experience, the Bluetooth
+        systems in the central and peripheral devices should:
+      </p>
+
+      <ul>
+        <li>
+          implement a compliant BT 4.2 or higher controller
+        </li>
+        <li>
+          support at least 2 simultaneous LE links with parameters as
+          described in <a href="#audio-packet-format-and-timing">Audio packet
+          format and timing</a>.
+        </li>
+        <li>
+          have an LE credit based flow control [BT Vol 3, Part A, Sec 10.1].
+          Devices should support an MTU and MPS size of at least 240 bytes on
+          COC and be able to buffer up to 8 packets.
+        </li>
+        <li>
+          have an LE data length extension [BT Vol 6, Part B, Sec 5.1.9] with
+          a payload of at least 24887 bytes. It is recommended that the data
+          length is at least 250 bytes.
+        </li>
+        <li>
+          have the central device support the HCI LE Connection Update Command
+          and comply with the non-zero minimum_CE_Length parameter.
+        </li>
+        <li>
+          maintain the data throughput for two LE COC connections to two
+          different peripherals with the connection intervals and payload
+          sizes in <a href="#audio-packet-format-and-timing">Audio packet
+          format and timing</a>.
+        </li>
+        <li>
+          have the peripheral set the <code>MaxRxOctets</code> and
+          <code>MaxRxTime</code> parameters in the <code>LL_LENGTH_REQ</code>
+          or <code>LL_LENGTH_RSP</code> frames to be the smallest required values
+          that are necessary for these specifications. This lets the central
+          optimize its time scheduler when calculating the amount of time
+          needed to receive a frame.
+        </li>
+      </ul>
+
+      <p>
+        The peripheral and central may implement 2 Mbit PHY as specified in
+        BT 5. The central should support audio links up to 64 kbit/s on both 1
+        Mbit and 2 Mbit PHY but can choose to limit support for links
+        requiring more than 64 kbit/s to the 2 Mbit PHY in order to improve
+        coexistence with other 2.4 GHz devices. The BLE long range PHY should
+        not be used.
+      </p>
+
+      <p>
+        COC uses the standard Bluetooth mechanisms for link layer encryption
+        and frequency hopping.
+      </p>
+
+    <h2 id="asha-gatt-services">ASHA GATT services</h2>
+
+      <p>
+        A peripheral should implement the Audio Streaming for Hearing Aid
+        (ASHA) GATT server service described below. The peripheral should
+        advertise this service when in general discoverable mode to let the
+        central recognize an audio sink. Any LE audio streaming operations
+        shall require encryption. The BLE audio streaming consists of the
+        following characteristics:
+      </p>
+
+      <table>
+        <tr>
+          <th>Characteristic</th>
+          <th>Properties</th>
+          <th>Description</th>
+        </tr>
+        <tr>
+          <td>ReadOnlyProperties</td>
+          <td>Read</td>
+          <td>See <a href="#readonlyproperties">ReadOnlyProperties</a>.</td>
+        </tr>
+        <tr>
+          <td>AudioControlPoint</td>
+          <td>Write without Response</td>
+          <td>
+            Control point for audio stream. See
+            <a href="#audiocontrolpoint">AudioControlPoint</a>.
+          </td>
+        </tr>
+        <tr>
+          <td>AudioStatusPoint</td>
+          <td>Read/Notify</td>
+          <td>
+            Status report field for the audio control point. Opcodes are:
+            <ul>
+              <li><strong>0</strong> - Status OK</li>
+              <li><strong>-1</strong> - Unknown command</li>
+              <li><strong>-2</strong> - Illegal parameters</li>
+            </ul>
+          </td>
+        </tr>
+        <tr>
+          <td>Volume</td>
+          <td>Write without Response</td>
+          <td>
+            Byte between -128 and 0 indicating volume in dB. -128 should be
+            interpreted as mute. 0 dB with a rail-to-rail sine tone streamed
+            should represent a 100 dBSPL input equivalent on the hearing
+            instrument. The central should stream in nominal full scale and
+            use this variable to set the desired presentation level in the
+            peripheral.
+          </td>
+        </tr>
+        <tr>
+          <td>LE_PSM</td>
+          <td>Read</td>
+          <td>
+            PSM to use for connecting the audio channel. To be picked from the
+            dynamic range [BT Vol 3, Part A, Sec 4.22]
+          </td>
+        </tr>
+      </table>
+
+      <p>The UUIDs assigned to the service and characteristics:</p>
+
+      <p><strong>Service UUID</strong>: <code>{0xFDF0}</code></p>
+
+      <table>
+        <tr>
+          <th>Characteristic</th>
+          <th>UUID</th>
+        </tr>
+        <tr>
+          <td>ReadOnlyProperties</td>
+          <td><code>{6333651e-c481-4a3e-9169-7c902aad37bb}</code></td>
+        </tr>
+        <tr>
+          <td>AudioControlPoint</td>
+          <td><code>{f0d4de7e-4a88-476c-9d9f-1937b0996cc0}</code></td>
+        </tr>
+        <tr>
+          <td>AudioStatus</td>
+          <td><code>{38663f1a-e711-4cac-b641-326b56404837}</code></td>
+        </tr>
+        <tr>
+          <td>Volume</td>
+          <td><code>{00e4ca9e-ab14-41e4-8823-f9e70c7e91df}</code></td>
+        </tr>
+        <tr>
+          <td>LE_PSM</td>
+          <td><code>{2d410339-82b6-42aa-b34e-e2e01df8cc1a}</code></td>
+        </tr>
+      </table>
+
+      <p>
+        In addition to the ASHA GATT service, the peripheral should also
+        implement the Device Information Service to let the central detect the
+        manufacturer names and device names of the peripheral.
+      </p>
+
+      <h3 id="readonlyproperties">ReadOnlyProperties</h3>
+
+        <p>ReadOnlyProperties have the following values:</p>
+
+        <table>
+          <tr>
+            <th>Byte</th>
+            <th>Description</th>
+          </tr>
+          <tr>
+            <td>0</td>
+            <td>Version - must be 0x01</td>
+          </tr>
+          <tr>
+            <td>1</td>
+            <td>See <a href="#devicecapabilities">DeviceCapabilities</a>.</td>
+          </tr>
+          <tr>
+            <td>2-9</td>
+            <td>See <a href="#hisyncid">HiSyncId</a>.</td>
+          </tr>
+          <tr>
+            <td>10</td>
+            <td>See <a href="#featuremap">FeatureMap</a><strong>.</strong></td>
+          </tr>
+          <tr>
+            <td>11-12</td>
+            <td>
+              RenderDelay. This is the time, in milliseconds, the peripheral
+              needs in order to render audio after the start command has been
+              issued, such as for loading codecs.The RenderDelay can be used
+              by the central to delay audio playback of short messages.
+            </td>
+          </tr>
+          <tr>
+            <td>13-14</td>
+            <td>
+              PreparationDelay. This is the time, in milliseconds, the
+              peripheral needs in order to render audio after the start
+              command has been issued,such as for loading codecs. The
+              PreparationDelay can be used by the central to delay audio
+              playback of short messages.
+            </td>
+          </tr>
+          <tr>
+            <td>15-16</td>
+            <td>
+              Supported <a href="#codec-ids">Codec IDs</a>. This is a bitmask
+              of supported codec IDs. A 1 in a bit location corresponds to a
+              supported codec. All other bits should be set to 0.
+            </td>
+          </tr>
+        </table>
+
+
+          <h4 id="devicecapabilities">DeviceCapabilities</h4>
+
+            <table>
+              <tr>
+                <th>Bit</th>
+                <th>Description</th>
+              </tr>
+              <tr>
+                <td>0</td>
+                <td>Device side (Left: 0, Right: 1).</td>
+              </tr>
+              <tr>
+                <td>1</td>
+                <td>
+                  Monaural (0) / Binaural (1). Indicates whether the device is
+                  stand-alone and receives mono data, or if the device is part
+                  of a set.
+                </td>
+              </tr>
+              <tr>
+                <td>2-7</td>
+                <td>Reserved (set to 0).</td>
+              </tr>
+            </table>
+
+          <h4 id="hisyncid">HiSyncID</h4>
+
+            <table>
+              <tr>
+                <th>Byte</th>
+                <th>Description</th>
+              </tr>
+              <tr>
+                <td>0-1</td>
+                <td>ID of the manufacturer.</td>
+              </tr>
+              <tr>
+                <td>2-7</td>
+                <td>
+                  Unique ID identifying the hearing aid set. This ID must be set
+                  to the same on both the left and the right peripheral.
+                </td>
+              </tr>
+            </table>
+
+          <h4 id="featuremap">FeatureMap</h4>
+
+            <table>
+              <tr>
+                <th>Bit</th>
+                <th>Description</th>
+              </tr>
+              <tr>
+                <td>0</td>
+                <td>LE COC audio streaming supported (Yes/No).</td>
+              </tr>
+              <tr>
+                <td>1-7</td>
+                <td>Reserved (set to 0).</td>
+              </tr>
+            </table>
+
+          <h4 id="codec-ids">Codec IDs</h4>
+
+            <p>
+              If the bit is set, then that particular codec is support.
+            </p>
+
+            <table>
+              <tr>
+                <th>Bit number</th>
+                <th>Codec and sample rate</th>
+                <th>Required bitrate</th>
+                <th>Frame time</th>
+                <th>Mandatory on central (C) or peripheral (P)</th>
+              </tr>
+              <tr>
+                <td>0</td>
+                <td>Reserved</td>
+                <td>Reserved</td>
+                <td>Reserved</td>
+                <td>Reserved</td>
+              </tr>
+              <tr>
+                <td>1</td>
+                <td>G.722 @ 16 kHz</td>
+                <td>64 kbit/s</td>
+                <td>Variable</td>
+                <td>C and P</td>
+              </tr>
+              <tr>
+                <td>2</td>
+                <td>G.722 @ 24 kHz</td>
+                <td>96 kbit/s</td>
+                <td>Variable</td>
+                <td>C</td>
+              </tr>
+              <tr>
+                <td>3</td>
+                <td>OPUS @ 48 kHz ?</td>
+                <td>48 kbit/s</td>
+                <td>10 ms</td>
+                <td>Not supported</td>
+              </tr>
+              <tr>
+                <td colspan="5">
+                  3-15 are reserved.<br />
+                  0 is also reserved.
+                </td>
+              </tr>
+            </table>
+
+        <h3 id="audiocontrolpoint">AudioControlPoint</h3>
+
+          <p>
+            This control point cannot be used when the LE COC is closed. See
+            <a href="#starting-and-stopping-an-audio-stream">Starting and
+            stopping an audio stream</a> for the procedure description.
+          </p>
+
+          <table>
+            <tr>
+              <th>Opcode</th>
+              <th>Arguments</th>
+              <th>Description</th>
+            </tr>
+            <tr>
+              <td>1 <code>«Start»</code></td>
+              <td>
+                <ul>
+                  <li><code>uint8_t codec</code></li>
+                  <li><code>uint8_t audiotype</code></li>
+                  <li><code>int8_t volume</code></li>
+                </ul>
+              </td>
+              <td>
+                Instructs the peripheral to reset the codec and start the
+                playback of frame 0. The codec field indicates the bit number
+                of the Codec ID to use for this playback.<br /><br />
+                The audio type bit field indicates the audio type(s) present
+                in the stream:
+                <ul>
+                  <li><strong>0</strong> - Unknown</li>
+                  <li><strong>1</strong> - Ringtone</li>
+                  <li><strong>2</strong> - Phonecall</li>
+                  <li><strong>3</strong> - Media</li>
+                </ul>
+                The peripheral should not request connection updates before a
+                <code>«Stop»</code> opcode has been received.
+              </td>
+            </tr>
+            <tr>
+              <td>2 <code>«Stop»</code></td>
+              <td>None</td>
+              <td>
+                Instructs the peripheral to stop rendering audio. A new audio
+                setup sequence should be initiated following this stop in order
+                to render audio again. The peripheral may request a connection
+                update following this command.
+              </td>
+            </tr>
+          </table>
+
+    <h2 id="advertisements-for-asha-gatt-service">
+      Advertisements for ASHA GATT Service
+    </h2>
+
+      <p>
+        The <a href="#asha-gatt-services">service UUID</a> must be in the
+        advertisement packet. In either the advertisement or the scan
+        response frame, the peripherals must have a Service Data:
+      </p>
+
+      <table>
+        <tr>
+          <th>Byte offset</th>
+          <th>Name</th>
+          <th>Description</th>
+        </tr>
+        <tr>
+          <td>0</td>
+          <td>AD Length</td>
+          <td>&gt;= 0x09</td>
+        </tr>
+        <tr>
+          <td>1</td>
+          <td>AD Type</td>
+          <td>0x16 (Service Data - 16-bits UUID)</td>
+        </tr>
+        <tr>
+          <td>2-3</td>
+          <td>Service UUID</td>
+          <td>
+            0xFDF0 (little-endian)<br /><br />
+            <strong>Note:</strong> This is a temporary ID.
+          </td>
+        </tr>
+        <tr>
+          <td>4</td>
+          <td>Protocol Version</td>
+          <td>0x01</td>
+        </tr>
+        <tr>
+          <td>5</td>
+          <td>Capability</td>
+          <td>
+            <ul>
+              <li><strong>0</strong> - left (0) or right (1) side</li>
+              <li><strong>1</strong> - single (0) or dual (1) devices.</li>
+              <li>
+                <strong>2-7</strong> - reserved. These bits must be zero.
+              </li>
+            </ul>
+          </td>
+        </tr>
+        <tr>
+          <td>6-9</td>
+          <td>Truncated <a href="#hisyncid">HiSyncID</a></td>
+          <td>
+            Four least significant bytes of the
+            <a href="#hisyncid">HiSyncId</a>.
+          </td>
+        </tr>
+      </table>
+
+      <p>
+        The peripherals must have a <strong>Complete Local Name</strong>
+        data type that indicates the name of the hearing aid. This name will
+        be used on the mobile device's user interface so the user can select
+        the right device. The name should not indicate the left or right
+        channel since this information is provided in
+        <a href="#devicecapabilities">DeviceCapabilities</a>.
+      </p>
+
+      <p>
+        If the peripherals put the name and service data types in the same
+        frame type (ADV or SCAN RESP), then the two data types should appear
+        in the same frame. This lets the mobile device scanner get both data
+        in the same scan result.
+      </p>
+
+      <p>
+        During the initial pairing, it is important that the peripherals
+        advertise at a rate fast enough to let the mobile device quickly
+        discover the peripherals and bond to them.
+      </p>
+
+    <h2 id="synchronizing-left-and-right-peripheral-devices">Synchronizing left and right peripheral devices</h2>
+
+      <p>
+        To work with Bluetooth on Android mobile devices, peripheral devices
+        are responsible for ensuring that they are synchronized. The playback
+        on the left and right peripheral devices needs to be synchronized in
+        time. Both peripheral devices must play back audio samples from the
+        source at the same time.
+      </p>
+
+      <p>
+        Peripheral devices can synchronize their time by using a sequence
+        number prepended to each packet of the audio payload. The central will
+        guarantee that audio packets that are meant to be played at the same
+        time on each peripheral have the same sequence number. The sequence
+        number is incremented by one after each audio packet. Each sequence
+        number is 8-bit long, so the sequence numbers will repeat after 256
+        audio packets. Since each audio packet size and sample rate is fixed
+        for each connection, the two peripherals can deduce the relative
+        playing time. For more information about the audio packet, see
+        <a href="#audio-packet-format-and-timing">Audio packet format and
+          timing</a>.
+      </p>
+
+    <h2 id="audio-packet-format-and-timing">Audio packet format and timing</h2>
+
+      <p>
+        Packing audio frames (blocks of samples) into packets lets the hearing
+        instrument derive timing from the link layer timing anchors. To
+        simplify the implementation:
+      </p>
+
+      <ul>
+        <li>
+          An audio frame should always match the connection interval in time.
+          For example, if the connection interval is 15ms and sample rate is
+          1 kHz, then the audio frame should contain 240 samples.
+        </li>
+        <li>
+          Sample rates in the system are restricted to multiples of 8kHz to
+          always have an integer number of samples in a frame regardless of
+          the frame time or the connection interval.
+        </li>
+        <li>
+          A sequence byte should prepend audio frames. The sequence byte
+          should be counting with wrap-around and allow the peripheral to
+          detect buffer mismatch or underflow.
+        </li>
+        <li>
+          An audio frame should always fit into a single LE packet. The audio
+          frame should be sent as a separate L2CAP packet. The size of the LE
+          LL PDU should be:<br />
+            <em>audio payload size + 1 (sequence counter) + 6
+              (4 for L2CAP header, 2 for SDU)</em>
+        </li>
+        <li>
+          A connection event should always be large enough to contain 2 audio
+          packets and 2 empty packets for an ACK to reserve bandwidth for
+          retransmissions.
+        </li>
+      </ul>
+
+      <p>
+        The peripherals should maintain a common clock at the same or better
+        resolution than the sample rate. This clock can be queried by the
+        central using the Timestamp command, which returns the value in
+        microseconds. The timestamp can be used to indicate the desired
+        playback time of the first audio frame to the peripherals when starting
+        the stream. The peripherals should perform the sample resynchronization
+        to keep in sync with the incoming stream based on the given timestamp.
+      </p>
+
+      <p>
+        To give the central some flexibility, the G.722 packet length is not
+        specified. The G.722 packet length can change based on the connection
+        interval that the central sets.
+      </p>
+
+      <p>
+        For all the codecs that a peripheral supports, the peripheral should
+        support the connection parameters below. This is a non-exhaustive list
+        of configurations that the central can implement.
+      </p>
+
+      <table>
+        <tr>
+          <th>Codec</th>
+          <th>Bitrate</th>
+          <th>Connection interval</th>
+          <th>CE Length (1/2 Mbit)</th>
+          <th>Audio payload size</th>
+        </tr>
+        <tr>
+          <td>G.722 @ 16 kHz</td>
+          <td>64 kbit/s</td>
+          <td>10 ms</td>
+          <td>2500 / 2500 us</td>
+          <td>80 bytes</td>
+        </tr>
+        <tr>
+          <td>G.722 @ 16 kHz</td>
+          <td>64 kbit/s</td>
+          <td>15 ms</td>
+          <td>3750 / 2500 us</td>
+          <td>120 bytes</td>
+        </tr>
+        <tr>
+          <td>G.722 @ 16 kHz</td>
+          <td>64 kbit/s</td>
+          <td>20 ms</td>
+          <td>5000/3750 us</td>
+          <td>160 bytes</td>
+        </tr>
+        <tr>
+          <td>G.722 @ 24 kHz</td>
+          <td>96 kbit/s</td>
+          <td>10 ms</td>
+          <td>3750 / 2500 us</td>
+          <td>120 bytes</td>
+        </tr>
+        <tr>
+          <td>G.722 @ 24 kHz</td>
+          <td>96 kbit/s</td>
+          <td>15 ms</td>
+          <td>5000 / 2500 us</td>
+          <td>180 bytes</td>
+        </tr>
+        <tr>
+          <td>G.722 @ 24 kHz</td>
+          <td>96 kbit/s</td>
+          <td>20 ms</td>
+          <td>5000 / 3750 us</td>
+          <td>240 bytes</td>
+        </tr>
+        <tr>
+          <td>OPUS @ 48 kHz</td>
+          <td>48 kbit/s</td>
+          <td>10 ms</td>
+          <td>2500 / 2500</td>
+          <td>60 bytes</td>
+        </tr>
+        <tr>
+          <td>OPUS @ 48 kHz Joint Stereo (JS)</td>
+          <td>96 kbit/s</td>
+          <td>10 ms</td>
+          <td>3750 / 2500</td>
+          <td>120 bytes</td>
+        </tr>
+      </table>
+
+    <h2 id="starting-and-stopping-an-audio-stream">
+      Starting and stopping an audio stream
+    </h2>
+
+      <aside class="note">
+        <strong>Note:</strong> This section is based on simulations with an
+        audio frame buffer depth of 6. This depth is enough to prevent
+        underflow on the peripheral in most packet loss scenarios. With this
+        depth, the network delay in the system is six times the connection
+        interval. To keep delays down, a short connection interval is
+        preferred.
+      </aside>
+
+      <p>
+        Before starting an audio stream, the central queries the peripherals
+        and establishes the best quality common denominator codec. The stream
+        setup then proceeds through sequence:
+      </p>
+
+      <ol>
+        <li>PSM, and optionally, PreparationDelay is read.</li>
+        <li>
+          COC L2CAP channel is opened – the peripheral should grant 8 credits
+          initially.
+        </li>
+        <li>
+          A connection update is issued to switch the link to the parameters
+          required for the chosen codec. The replica latency is set to 0 in this
+          update.
+        </li>
+        <li>
+          Both the central and the peripheral host wait for the update
+          complete event.
+        </li>
+        <li>
+          Restart the audio encoder, and reset the packet sequence count to 0.
+          A <code>«Start»</code> command with the relevant parameters is
+          issued on the AudioControlPoint.</li>
+        <li>
+          The peripheral takes the first audio packet from its internal queue
+          (sequence number 0) and plays it back with the first sample placed
+          at the playback deadline. A new deadline is computed based on the
+          sequence number. This happens once per connection event while
+          checking the sequence number.
+        </li>
+      </ol>
+
+      <p>
+        The central issues the <strong>«Stop»</strong> command to close the
+        audio stream. Once the audio stream is closed, the peripheral may ask
+        for more relaxed connection parameters. Go through the sequence above
+        again to restart the audio streaming. When the central is not
+        streaming audio, it should still maintain a LE connection for GATT
+        services.
+      </p>
+
+      <p>
+        The peripheral should not issue a connection update to the central.
+        To save power, the central may issue a connection update to the
+        peripheral when it is not streaming audio.
+      </p>
+  </body>
+</html>

@@ -22,7 +22,7 @@ The framework will continue to work with health@1.0 until it is fully deprecated
 according to the standard
 [HAL deprecation schedule](/devices/architecture/vintf/fcm#hal-version-deprecation).
 When health@1.0 is deprecated (entry removed from
-[framework compatibility matrix](https://source.android.com/devices/architecture/vintf/comp-matrices)),
+[framework compatibility matrix](/devices/architecture/vintf/comp-matrices)),
 `healthd` and `libbatterymonitor` must also be removed from system to avoid
 unknown behaviors for healthd. As health@1.0 is an optional HAL and all
 `healthd` dependencies to health@1.0 are guarded by NULL checks, nothing should

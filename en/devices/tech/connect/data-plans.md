@@ -31,7 +31,7 @@ example, setting warnings and limits to manage their data usage.
 
 To configure data plans, carriers can add functionality to their existing
 Android apps using the
-[`SubscriptionPlan` APIs](https://developer.android.com/reference/android/telephony/SubscriptionPlan.Builder).
+[`SubscriptionPlan` APIs](https://developer.android.com/reference/android/telephony/SubscriptionPlan.Builder){: .external}.
 The APIs are designed to support a wide range of data plan types, including both
 recurring and non-recurring plans, and plans that change over time.
 
@@ -54,9 +54,9 @@ sm.setSubscriptionPlans(subId, Lists.newArrayList(
 The device only lets an app configure data plans under one of these conditions:
 
 +   The SIM card has explicitly defined an app that can manage it, as defined by
-    [`SubscriptionManager.canManageSubscription()`](https://developer.android.com/reference/android/telephony/SubscriptionManager.html#canManageSubscription\(android.telephony.SubscriptionInfo\)).
+    [`SubscriptionManager.canManageSubscription()`](https://developer.android.com/reference/android/telephony/SubscriptionManager.html#canManageSubscription\(android.telephony.SubscriptionInfo\)){: .external}.
 +   The carrier has pushed the
-    [`KEY_CONFIG_PLANS_PACKAGE_OVERRIDE_STRING`](https://developer.android.com/reference/android/telephony/CarrierConfigManager#KEY_CONFIG_PLANS_PACKAGE_OVERRIDE_STRING)
+    [`KEY_CONFIG_PLANS_PACKAGE_OVERRIDE_STRING`](https://developer.android.com/reference/android/telephony/CarrierConfigManager#KEY_CONFIG_PLANS_PACKAGE_OVERRIDE_STRING){: .external}
     value via `CarrierConfigManager` to indicate which app can manage the
     carrier's data plans.
 +   The device has an app built into the system image that has the
@@ -73,9 +73,9 @@ update data plan details on a daily basis, but carriers are free to use a wide
 range of mechanisms, such as receiving data plan details via carrier-internal
 SMS messages. Idle maintenance services are best implemented with a
 `JobScheduler` job that uses
-[`setRequiresDeviceIdle()`](https://developer.android.com/reference/android/app/job/JobInfo.Builder#setRequiresDeviceIdle\(boolean\))
+[`setRequiresDeviceIdle()`](https://developer.android.com/reference/android/app/job/JobInfo.Builder#setRequiresDeviceIdle\(boolean\)){: .external}
 and
-[`setRequiresCharging()`](https://developer.android.com/reference/android/app/job/JobInfo.Builder.html#setRequiresCharging\(boolean\)).
+[`setRequiresCharging()`](https://developer.android.com/reference/android/app/job/JobInfo.Builder.html#setRequiresCharging\(boolean\)){: .external}.
 
 ## Usage by OS
 
@@ -84,17 +84,17 @@ following ways:
 
 +   The plan details are surfaced via the Settings app to display accurate data
     usage to users and to provide
-    [direct deep links into the carrier app](https://developer.android.com/reference/android/telephony/SubscriptionManager.html#ACTION_MANAGE_SUBSCRIPTION_PLANS)
+    [direct deep links into the carrier app](https://developer.android.com/reference/android/telephony/SubscriptionManager.html#ACTION_MANAGE_SUBSCRIPTION_PLANS){: .external}
     for upgrade/upsell opportunities.
 +   The data usage warning and limit notification thresholds are automatically
     configured based on the plan details; the warning is set to 90% of the
     limit.
 +   If the carrier temporarily indicates the network is
-    ["congested"](https://developer.android.com/reference/android/telephony/SubscriptionManager.html#setSubscriptionOverrideCongested\(int,%20boolean,%20long\)),
+    ["congested"](https://developer.android.com/reference/android/telephony/SubscriptionManager.html#setSubscriptionOverrideCongested\(int,%20boolean,%20long\)){: .external},
     the OS delays JobScheduler jobs that can be time-shifted, reducing the load
     on the carrier network.
 +   If the carrier temporarily indicates the network is
-    ["unmetered"](https://developer.android.com/reference/android/telephony/SubscriptionManager#setSubscriptionOverrideUnmetered\(int,%20boolean,%20long\)),
+    ["unmetered"](https://developer.android.com/reference/android/telephony/SubscriptionManager#setSubscriptionOverrideUnmetered\(int,%20boolean,%20long\)){: .external},
     the OS can report the cellular connection as "unmetered" until the carrier
     clears the override, or until the timeout value (if provided) is reached.
 +   By comparing the user's current data usage with the overall data limit, the

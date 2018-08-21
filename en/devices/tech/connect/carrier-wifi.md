@@ -35,7 +35,7 @@ Wi-Fi.
 ### Manufacturers
 
 In the carrier config manager, configure the following parameters, located in
-[`CarrierConfigManager.java`](https://android.googlesource.com/platform/frameworks/base/+/master/telephony/java/android/telephony/CarrierConfigManager.java),
+[`CarrierConfigManager.java`](https://android.googlesource.com/platform/frameworks/base/+/master/telephony/java/android/telephony/CarrierConfigManager.java){: .external},
 for each carrier:
 
 +   `KEY_CARRIER_WIFI_STRING_ARRAY`: Base64-encoded Wi-Fi SSID.

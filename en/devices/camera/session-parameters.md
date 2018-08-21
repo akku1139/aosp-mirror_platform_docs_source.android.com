@@ -30,24 +30,24 @@ efficiently.
 ## Examples and source
 
 A reference session parameter implementation is already part of the
-[CameraHal](https://android.googlesource.com/platform/hardware/qcom/camera/+/master/msm8998/QCamera2/HAL3/QCamera3HWI.cpp).
+[CameraHal](https://android.googlesource.com/platform/hardware/qcom/camera/+/master/msm8998/QCamera2/HAL3/QCamera3HWI.cpp){: .external}.
 This HAL uses the legacy Hal API.
-The [binderized](https://source.android.com/devices/architecture/hal-types)
+The [binderized](/devices/architecture/hal-types)
 CameraHal that implements the camera HIDL API must use the respective HIDL
-[sessionParams](https://android.googlesource.com/platform/hardware/interfaces/+/master/camera/device/3.4/types.hal#111)
+[sessionParams](https://android.googlesource.com/platform/hardware/interfaces/+/master/camera/device/3.4/types.hal#111){: .external}
 entry to access any new incoming session parameters during stream configuration.
 
 Camera clients can query the keys of all supported session parameters by calling
-[`getAvailableSessionKeys()`](https://developer.android.com/reference/android/hardware/camera2/CameraCharacteristics#getAvailableSessionKeys())
+[`getAvailableSessionKeys()`](https://developer.android.com/reference/android/hardware/camera2/CameraCharacteristics#getAvailableSessionKeys(){: .external})
 and eventually set their initial values via
-[`setSessionParameters()`](https://developer.android.com/reference/android/hardware/camera2/params/SessionConfiguration#setSessionParameters\(android.hardware.camera2.CaptureRequest\)).
+[`setSessionParameters()`](https://developer.android.com/reference/android/hardware/camera2/params/SessionConfiguration#setSessionParameters\(android.hardware.camera2.CaptureRequest\){: .external}).
 
 ## Implementation
 
 Your CameraHal implementation must populate the
-[`ANDROID_REQUEST_AVAILABLE_SESSION_KEYS`](https://android.googlesource.com/platform/hardware/interfaces/+/master/camera/metadata/3.3/types.hal#99)
+[`ANDROID_REQUEST_AVAILABLE_SESSION_KEYS`](https://android.googlesource.com/platform/hardware/interfaces/+/master/camera/metadata/3.3/types.hal#99){: .external}
 within the respective static camera metadata and provide a subset of
-[`ANDROID_REQUEST_AVAILABLE_REQUEST_KEYS`](https://android.googlesource.com/platform/hardware/interfaces/+/master/camera/metadata/3.2/types.hal#1016),
+[`ANDROID_REQUEST_AVAILABLE_REQUEST_KEYS`](https://android.googlesource.com/platform/hardware/interfaces/+/master/camera/metadata/3.2/types.hal#1016){: .external},
 which contains a list of keys that are difficult to apply per-frame and can
 result in unexpected delays when modified during the capture session lifetime.
 
@@ -72,10 +72,10 @@ available session parameter list empty.
 
 CTS includes the following new cases for testing session parameters:
 
-+   [`CameraDeviceTest#testSessionConfiguration`](https://android.googlesource.com/platform/cts/+/master/tests/camera/src/android/hardware/camera2/cts/CameraDeviceTest.java#795)
-+   [`CameraDeviceTest#testCreateSessionWithParameters`](https://android.googlesource.com/platform/cts/+/master/tests/camera/src/android/hardware/camera2/cts/CameraDeviceTest.java#1038)
-+   [`CameraDeviceTest#testSessionParametersStateLeak`](https://android.googlesource.com/platform/cts/+/master/tests/camera/src/android/hardware/camera2/cts/CameraDeviceTest.java#870)
-+   [`NativeCameraDeviceTest#testCameraDevicePreviewWithSessionParameters`](https://android.googlesource.com/platform/cts/+/master/tests/camera/libctscamera2jni/native-camera-jni.cpp#2140)
++   [`CameraDeviceTest#testSessionConfiguration`](https://android.googlesource.com/platform/cts/+/master/tests/camera/src/android/hardware/camera2/cts/CameraDeviceTest.java#795){: .external}  
++   [`CameraDeviceTest#testCreateSessionWithParameters`](https://android.googlesource.com/platform/cts/+/master/tests/camera/src/android/hardware/camera2/cts/CameraDeviceTest.java#1038){: .external}  
++   [`CameraDeviceTest#testSessionParametersStateLeak`](https://android.googlesource.com/platform/cts/+/master/tests/camera/src/android/hardware/camera2/cts/CameraDeviceTest.java#870){: .external}  
++   [`NativeCameraDeviceTest#testCameraDevicePreviewWithSessionParameters`](https://android.googlesource.com/platform/cts/+/master/tests/camera/libctscamera2jni/native-camera-jni.cpp#2140){: .external}  
 
 In general, once a certain parameter is part of the session key list, its
 current value is included as part of the session parameters passed during stream

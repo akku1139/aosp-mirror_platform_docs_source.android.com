@@ -22,32 +22,33 @@ Book: /_book.yaml
 # Wi-Fi Aware
 
 The
-[Wi-Fi Aware](https://developer.android.com/guide/topics/connectivity/wifi-aware.html)
+[Wi-Fi Aware](https://developer.android.com/guide/topics/connectivity/wifi-aware.html){: .external}
 feature added in Android 8.0 enables supporting devices to discover, connect,
 and range (added in Android {{ androidPVersionNumber }}) to one another directly
 using the Wi-Fi Aware protocol without internet or cellular network access. This
-feature, built upon the [Wi-Fi Alliance](https://www.wi-fi.org/) (WFA) [Wi-Fi
-Aware specification](https://www.wi-fi.org/discover-wi-fi/wi-fi-aware) (version
-2.0), allows easy sharing of high-throughput data among trusted devices and apps
-that are otherwise off-network.
+feature, built upon the [Wi-Fi Alliance](https://www.wi-fi.org/){: .external}
+(WFA)
+[Wi-Fi Aware specification](https://www.wi-fi.org/discover-wi-fi/wi-fi-aware){: .external}
+(version 2.0), allows easy sharing of high-throughput data among trusted devices
+and apps that are otherwise off-network.
 
 ## Examples and source
 
 To use this feature, device manufacturers should implement the Wi-Fi
-[Hardware Interface Design Language (HIDL)](/devices/architecture/hidl)
-provided in the Android Open Source Project (AOSP). HIDL replaces the previous
+[Hardware Interface Design Language (HIDL)](/devices/architecture/hidl) provided
+in the Android Open Source Project (AOSP). HIDL replaces the previous
 [Hardware Abstraction Layer (HAL)](/devices/architecture/hal) structure used to
 streamline implementations by specifying types and method calls collected into
 interfaces and packages.
 
 Follow the Wi-Fi HIDL to employ the Wi-Fi Aware feature:
 hardware/interfaces/wifi/1.2. The Wi-Fi Aware HAL surface is very large; the
-[hardware/interfaces/wifi/1.2/README-NAN.md]https://android.googlesource.com/platform/hardware/interfaces/+/master/wifi/1.2/README-NAN.md)
+[hardware/interfaces/wifi/1.2/README-NAN.md](https://android.googlesource.com/platform/hardware/interfaces/+/master/wifi/1.2/README-NAN.md){: .external}
 file describes the subset that is currently in use by the framework.
 
 You can reference the legacy Wi-Fi HAL to see how it correlates with the new
 HIDL interface:
-[hardware/libhardware_legacy/+/master/include/hardware_legacy/wifi_nan.h](https://android.googlesource.com/platform/hardware/libhardware_legacy/+/master/include/hardware_legacy/wifi_nan.h).
+[hardware/libhardware_legacy/+/master/include/hardware_legacy/wifi_nan.h](https://android.googlesource.com/platform/hardware/libhardware_legacy/+/master/include/hardware_legacy/wifi_nan.h){: .external}.
 
 ## Implementation
 
@@ -92,8 +93,8 @@ interfaces (NDPs) to be randomized and not be identical to the true MAC address
 of the device. The MAC addresses must be:
 
 +   Randomized whenever Wi-Fi Aware is enabled or re-enabled.
-+   When Wi-Fi Aware is enabled, the MAC address must be randomized at a
-    regular interval configured by the
++   When Wi-Fi Aware is enabled, the MAC address must be randomized at a regular
+    interval configured by the
     `NanConfigRequest.macAddressRandomizationIntervalSec` HIDL parameter. This
     is configured by the framework by default to be 30 minutes.
 
@@ -102,9 +103,10 @@ of the device. The MAC addresses must be:
 
 ## Validation
 
-Android provides a set of unit tests, integration tests (ACTS), [Compatibility Test Suite (CTS)](/compatibility/cts) tests, and [CTS Verifier](/compatibility/cts/verifier)
-tests to validate the Wi-Fi Aware feature. Wi-Fi Aware can also be tested using
-the
+Android provides a set of unit tests, integration tests (ACTS),
+[Compatibility Test Suite (CTS)](/compatibility/cts) tests, and
+[CTS Verifier](/compatibility/cts/verifier) tests to validate the Wi-Fi Aware
+feature. Wi-Fi Aware can also be tested using the
 [Vendor Test Suite (VTS)](/devices/tech/test_infra/tradefed/fundamentals/vts).
 
 ### Unit tests

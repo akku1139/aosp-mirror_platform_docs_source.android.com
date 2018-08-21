@@ -84,7 +84,7 @@ the framework to save IPC costs.
 ### Implementation
 
 For a reference implementation, see the
-[default implementation](https://android.googlesource.com/platform/hardware/interfaces/+/master/wifi/1.2/default/wifi_chip.cpp#1388)
+[default implementation](https://android.googlesource.com/platform/hardware/interfaces/+/master/wifi/1.2/default/wifi_chip.cpp#1388){: .external}
 in the vendor HAL.
 
 You can disable firmware logging by setting the resource,
@@ -101,8 +101,8 @@ a bug report.
 
 ### Manual test
 
-Run this manual test to verify that old files in the [tombstone directory](/devices/tech/debug/#debuggerd) are
-being deleted.
+Run this manual test to verify that old files in the
+[tombstone directory](/devices/tech/debug/#debuggerd) are being deleted.
 
 1.  Turn on Wi-Fi.
 1.  Connect to a network.
