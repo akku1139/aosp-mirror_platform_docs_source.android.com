@@ -44,9 +44,7 @@ specification. These test cases require installation of a special applet, a Java
 Card application on Secure Element, that
 is used by the CTS application for communication. For installation, use the
 sample applet found in
-[`CtsAndroidOmapiTestApplet.java`](https://android.googlesource.com/platform/cts/+/master/tests/tests/secure_element/sample_applet/src/com/android/cts/omapi/test/CtsAndroidOmapiTestApplet.java){: .external}
-and
-[`test.cap`](https://android.googlesource.com/platform/cts/+/master/tests/tests/secure_element/sample_applet/test.cap){: .external}.
+[`google-cardlet.cap`](https://android.googlesource.com/platform/cts/+/master/tests/tests/secure_element/sample_applet/uicc){: .external}.
 
 To pass OMAPI test cases, the underlying Secure Element Service and the SE
 should be capable of the following:
@@ -696,23 +694,27 @@ Create an instance of the applet under these AIDs:
 **File name:** `google-cardlet.cap`
 
 **Package AID:** 6F 6D 61 70 69 63 61 72 64 6C 65 74  
-**Version:** 1.0  
-**SHA1:** 5F72E0A073BA9E61A7358F2FE3F031  
-**SHA256:** ECC1217AA0BC687DD89D5BB233F743
+**Version:** 1.63  
+**Hash:** 5F72E0A073BA9E61A7358F2FE3F031A99F3F81E9
 
-**Module AIDs:**  
+**Applets:**  
 6F 6D 61 70 69 4A 53 52 31 37 37 = SelectResponse module  
 6F 6D 61 70 69 43 61 63 68 69 6E 67 = XXLResponse module
 
 **Imports:**  
 javacard.framework v1.3 - A0000000620101  
-java.lang v1.0 - A0000000620001
+java.lang v1.0 - A0000000620001  
+uicc.hci.framework v1.0 - A0000000090005FFFFFFFF8916010000  
+uicc.hci.services.cardemulation v1.0 - A0000000090005FFFFFFFF8916020100  
+uicc.hci.services.connectivity v1.0 - A0000000090005FFFFFFFF8916020200
 
-**Size on card:** 4463
+**Size on card:** 39597
 
 #### 2. Installation steps
 
-Load the `google-cardlet.cap` file to the SIM card using the appropriate
+Load the
+[`google-cardlet.cap`](https://android.googlesource.com/platform/cts/+/master/tests/tests/secure_element/sample_applet/uicc){: .external}
+file to the SIM card using the appropriate
 procedure (check with your SE manufacturers).
 
 Run installation command for each applet.

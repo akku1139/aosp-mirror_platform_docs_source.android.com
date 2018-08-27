@@ -63,7 +63,7 @@ client-&gt;doThing();
 <pre class="prettyprint">
 PACKAGE=android.hardware.nfc@1.0
 LOC=hardware/interfaces/nfc/1.0/default/
-make hidl-gen -j64
+m -j hidl-gen
 hidl-gen -o $LOC -Lc++-impl -randroid.hardware:hardware/interfaces \
     -randroid.hidl:system/libhidl/transport $PACKAGE
 hidl-gen -o $LOC -Landroidbp-impl -randroid.hardware:hardware/interfaces \
@@ -86,15 +86,25 @@ int main(int /* argc */, char* /* argv */ []) {
 
 <pre class="prettyprint">
 int main(int /* argc */, char* /* argv */ []) {
+    // This function must be called before you join to ensure the proper
+    // number of threads are created. The threadpool will never exceed
+    // size one because of this call.
+    ::android::hardware::configureRpcThreadpool(1 /*threads*/, true /*willJoin*/);
+
     sp<infc> nfc = new Nfc();
     const status_t status = nfc-&gt;registerAsService();
     if (status != ::android::OK) {
         return 1; // or handle error
     }
-    // join pool or do other things
+
+    // Adds this thread to the threadpool, resulting in one total
+    // thread in the threadpool. We could also do other things, but
+    // would have to specify 'false' to willJoin in configureRpcThreadpool.
+    ::android::hardware::joinRpcThreadpool();
+    return 1; // joinRpcThreadpool should never return
 }
 </infc></pre>
 
-<p>此守护进程应该存在于 <code>$PACKAGE + "-service"</code>（例如 <code>android.hardware.nfc@1.0-service</code>）中。HAL 的特定类的 <a href="/security/selinux/device-policy.html">sepolicy</a> 是属性 <code>hal_&lt;module&gt;</code>（例如 <code>hal_nfc)</code>）。您必须将此属性应用到运行特定 HAL 的守护进程（如果同一进程提供多个 HAL，则可以将多个属性应用到该进程）。</p>
+<p>此守护进程通常存在于 <code>$PACKAGE + "-service-suffix"</code>（例如 <code>android.hardware.nfc@1.0-service</code>）中，但也可以位于任何位置。HAL 的特定类的 <a href="/security/selinux/device-policy.html">sepolicy</a> 是属性 <code>hal_&lt;module&gt;</code>（例如 <code>hal_nfc)</code>）。您必须将此属性应用到运行特定 HAL 的守护进程（如果同一进程提供多个 HAL，则可以将多个属性应用到该进程）。</p>
 
 </body></html>

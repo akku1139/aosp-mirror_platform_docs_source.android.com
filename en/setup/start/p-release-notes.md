@@ -226,6 +226,23 @@ features and changes to requirements for previously released functionality.
 
 ## Settings
 
+### Better App Widgets
+
+The Android app widget framework now offers increased visibility into user
+interactions, specifically when a user deletes or manually adds widgets. This
+functionality comes by default with Launcher3.
+
+Manufacturers need to update their Launcher apps (which are shipped with devices)
+to support this feature if not based upon Launcher3. OEMs need to support the new
+[widgetFeatures API](https://developer.android.com/reference/android/appwidget/AppWidgetProviderInfo#widgetFeatures){: .external}
+in their default Launcher.
+
+The API in itself does not guarantee that it will work end to end unless the
+launchers implement it as expected. AOSP includes a sample implementation. See
+the AOSP Change-Id Iccd6f965fa3d61992244a365efc242122292c0ca for the sample code
+provided.
+
+
 ### Device State Change Notifications to Package Installers
 
 A protected system broadcast can now be sent to apps that hold the
@@ -800,6 +817,49 @@ uses a combination of kernel and user space implementation to monitor network
 usage on the device since the last device boot. It provides additional
 functionality such as socket tagging, separating foreground/background traffic
 and per-UID firewall to block apps from network access depending on device state.
+
+### Restore to lower APIs
+
+Devices can now restore from future versions of the operating system. This is
+especially useful when users have upgraded their phones but then lost or broken
+them.
+
+If an OEM modifies the backup agents for any of the system packages (android,
+system, settings), those agents should handle restoring backups sets that were
+made on later versions of the platform without crashing and with restoring at
+least some data.
+
+Consider using a validator to check for invalid values of a given piece of
+backup data and only restore valid data, as done in
+`core/java/android/provider/SettingsValidators.java`.
+
+The feature is on by default. SettingsBackupAgent support for restoring from
+future versions can be turned off via
+`Settings.Global.OVERRIDE_SETTINGS_PROVIDER_RESTORE_ANY_VERSION`. No additional
+implementation is required unless the device manufacturer extends one of backup
+agents included in the ROM (or adds a custom one).
+
+This feature allows system restores from future versions of the platform;
+however, it’s reasonable to expect that the restored data won’t be complete. The
+following instructions apply to the following backup agents:
+
+-   **PackageManagerBackupAgent**: Supports future versions of the backup data
+    via format versioning; extensions here MUST be compatible with current
+    restore code or follow instructions in the class, which include bumping the
+    proper constants.
+
+-   **SystemBackupAgent**: `restoreAnyVersion = false` in Android this release
+    and higher. Doesn’t support restore from higher versions of the API.
+
+-   **SettingsBackupAgent**: `restoreAnyVersion = true` starting in this release.
+    Partial support exists via validators. A setting can be restored from a
+    higher API version if a validator for it exists in the target OS. Adding any
+    setting should be accompanied by its validator. Check class for details.
+
+-   Any **custom backup agent** included in the ROM should increase its version
+    code any time an incompatible change is made to the backup data format and
+    ensure `restoreAnyVersion = false` (the default) if their agent is not
+    prepared to deal with backup data from a future version of their code.
 
 ## Enterprise
 
