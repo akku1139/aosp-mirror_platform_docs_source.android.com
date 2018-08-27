@@ -34,15 +34,50 @@ Wi-Fi.
 
 ### Manufacturers
 
-In the carrier config manager, configure the following parameters, located in
-[`CarrierConfigManager.java`](https://android.googlesource.com/platform/frameworks/base/+/master/telephony/java/android/telephony/CarrierConfigManager.java){: .external},
-for each carrier:
+In the carrier config manager,  configure the following parameters for each
+carrier:
 
-+   `KEY_CARRIER_WIFI_STRING_ARRAY`: Base64-encoded Wi-Fi SSID.
-+   `IMSI_KEY_AVAILABILITY_INT`: Identifies whether the key used for IMSI
-    encryption is available for WLAN or EPDG, or both.
-+   `IMSI_KEY_DOWNLOAD_URL_STRING`: URL from which the proto containing the
-    public key of the carrier used for IMSI encryption is downloaded.
++  [`KEY_CARRIER_WIFI_STRING_ARRAY`](https://android.googlesource.com/platform/frameworks/base/+/master/telephony/java/android/telephony/CarrierConfigManager.java#1606){: .external}:
+    A string array where each string entry is a Base64-encoded Wi-Fi SSID and
+    an EAP type separated by a comma, where the EAP type is an integer (refer to
+    [https://www.iana.org/assignments/eap-numbers/eap-numbers.xhtml](https://www.iana.org/assignments/eap-numbers/eap-numbers.xhtml){: .external}).
+    For example, the following configuration is for *SOME_SSID_NAME* using
+    **EAP-AKA** and *Some_Other_SSID* using **EAP-SIM**:
+
+    ```
+    config {
+      key: "carrier_wifi_string_array"
+      text_array {
+        item: "U09NRV9TU0lEX05BTUUK,23"
+        item: "U29tZV9PdGhlcl9TU0lECg==,18"
+      }
+    }
+    ```
+
++  [`IMSI_KEY_AVAILABILITY_INT`](https://android.googlesource.com/platform/frameworks/base/+/master/telephony/java/android/telephony/CarrierConfigManager.java#1837){: .external}:
+    Identifies whether the key used for IMSI encryption is available for WLAN
+    (bit 1 is set), EPDG (bit 0 is set), or both (both bit 0 and bit 1 are
+    set). For example, the following configuration indicates that IMSI
+    encryption is available for WLAN but not for EPDG:
+
+    ```
+    config {
+      key: "imsi_key_availability_int"
+      int_value: 2
+    }
+    ```
+
++  [`IMSI_KEY_DOWNLOAD_URL_STRING`](https://android.googlesource.com/platform/frameworks/base/+/master/telephony/java/android/telephony/CarrierConfigManager.java#1830){: .external}:
+    URL from which the proto containing the public key of the carrier used for
+    IMSI encryption is downloaded. For example, the following configuration
+    provides a specific URL:
+
+    ```
+    config {
+      key: "imsi_key_download_url_string"
+      text_value: "https://www.some_company_name.com:5555/some_directory_name/"
+    }
+    ```
 
 ### Carriers
 
