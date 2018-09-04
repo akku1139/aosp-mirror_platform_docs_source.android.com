@@ -152,7 +152,7 @@ The following sub-tree nodes are used under `Credential`:
     relax the IMSI matching to prefix only. For example, the IMSI string 123\*
     matches any SIM card with an IMSI starting with 123.
 
-# Example Profile OMA-DM XML
+## Example Profile OMA-DM XML
 
 ```xml
 <MgmtTree xmlns="syncml:dmddf1.2">
@@ -214,3 +214,99 @@ The following sub-tree nodes are used under `Credential`:
   </Node>
 </MgmtTree>
 ```
+
+## Auth advisory
+
+Devices running Android 8.0 or higher with a Passpoint R1 EAP-SIM, EAP-AKA,
+or EAP-AKA' profile will fail to auto-connect to the Passpoint network. This
+issue affects users, carriers, and services by reducing the Wi-Fi offload.
+
+
+<table>
+  <tr>
+   <th><strong>Segment</strong>
+   </th>
+   <th><strong>Impact</strong>
+   </th>
+   <th><strong>Size of impact</strong>
+   </th>
+  </tr>
+  <tr>
+   <td>Carriers and Passpoint service providers
+   </td>
+   <td>Increased load on cellular network.
+   </td>
+   <td>Any carrier using Passpoint R1.
+   </td>
+  </tr>
+  <tr>
+   <td>Users
+   </td>
+   <td>Missed opportunity to auto-connect to Carrier Wi-Fi access points
+    (APs), resulting in higher data costs.
+   </td>
+   <td>Any user with a device that runs on a carrier network supporting
+    Passpoint R1.
+   </td>
+  </tr>
+</table>
+
+### Cause of failure
+
+Passpoint specifies a mechanism to match an advertised (ANQP) service provider
+to a profile installed on the device. The following matching rules for
+EAP-SIM, EAP-AKA, and EAP-AKA' are a partial set of rules focusing on the
+EAP-SIM/AKA/AKA' failures:
+
+
+```
+If the FQDN (Fully Qualified Domain Name) matches
+    then the service is a Home Service Provider.
+Else: If the PLMN ID (3GPP Network) matches
+    then the service is a Roaming Service Provider.
+```
+
+The second criteria was modified in Android 8.0:
+
+```
+Else: If the PLMN ID (3GPP Network) matches AND the NAI Realm matches
+    then the service is a Roaming Service Provider.
+```
+
+This modified criteria meant the system observed no match for previously
+working service providers, so Passpoint devices did not auto-connect.
+
+
+### Workarounds
+
+To work around the issue of the modified matching criteria, carriers and
+service providers need to add the `NAI Realm` to the information published by
+the Passpoint AP.
+
+The recommended solution is for network service providers to implement a
+network-side workaround for the fastest time to deployment. A device-side
+workaround depends on OEMs picking up a changelist (CL) from the Android Open
+Source Project (AOSP) and then updating devices in the field.
+
+
+#### Network fix for Carriers and Passpoint service providers
+
+The network-side workaround requires reconfiguring the network to add the `NAI
+Realm` ANQP element as specified below. The Passpoint specifications do not
+require the `NAI Realm` ANQP element, but the addition of this property
+complies with the Passpoint specifications, so spec-compliant client
+implementations should not break.
+
+1.  Add the `NAI Realm` ANQP element.
+1.  Set the `NAI Realm` sub-field to match the `Realm` of the profile
+    installed on the device.
+
+####  Device/AOSP fix for OEMs
+
+To implement a device-side workaround, OEMs need to pick the patch CL [aosp/718508](https://android-review.googlesource.com/c/platform/frameworks/opt/net/wifi/+/718508).
+This patch can be applied on top of the following releases:
+
++   Android 8.x
++   Android 9
+
+Once the patch is picked up, OEMs need to update devices in the field.

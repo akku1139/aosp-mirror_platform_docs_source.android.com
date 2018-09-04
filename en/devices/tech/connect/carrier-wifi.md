@@ -34,7 +34,7 @@ Wi-Fi.
 
 ### Manufacturers
 
-In the carrier config manager,  configure the following parameters for each
+In the carrier config manager, configure the following parameters for each
 carrier:
 
 +  [`KEY_CARRIER_WIFI_STRING_ARRAY`](https://android.googlesource.com/platform/frameworks/base/+/master/telephony/java/android/telephony/CarrierConfigManager.java#1606){: .external}:

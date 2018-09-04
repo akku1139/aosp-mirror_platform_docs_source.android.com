@@ -24,14 +24,14 @@
     <p>
       Hearing aid devices (HA) can have improved accessibility on
       Android-powered mobile devices by using connection-oriented L2CAP
-      channels (COC) over Bluetooth Low Energy (BLE). COC uses an elastic
+      channels (CoC) over Bluetooth Low Energy (BLE). CoC uses an elastic
       buffer of several audio packets to maintain a steady flow of audio, even
       in the presence of packet loss. This buffer provides audio quality for
       hearing aid devices at the expense of latency.
     </p>
 
     <p>
-      The design of COC references the
+      The design of CoC references the
       <a href="https://www.bluetooth.com/specifications/bluetooth-core-specification">Bluetooth Core Specification Version 5</a>
       (BT). To stay aligned with the core specifications, all multi-byte
       values on this page should be read as little-endian.
@@ -55,7 +55,7 @@
     </h2>
 
       <p>
-        When using COC for hearing aids, the network topology assumes a single
+        When using CoC for hearing aids, the network topology assumes a single
         central and two peripherals, one left and one right, as seen in
         <strong>Figure 1</strong>. The Bluetooth audio system views the left
         and right peripherals as a single audio sink. If a peripheral is
@@ -68,7 +68,7 @@
 
       <p><img src="/devices/bluetooth/images/bt_asha_topology.png"><br />
         <strong>Figure 1.</strong> Topology for pairing hearing aids with
-        Android mobile devices using COC over BLE
+        Android mobile devices using CoC over BLE
       </p>
 
       <p>
@@ -112,7 +112,7 @@
     <h2 id="system-requirements">System requirements</h2>
 
       <p>
-        To properly implement COC for a good user experience, the Bluetooth
+        To properly implement CoC for a good user experience, the Bluetooth
         systems in the central and peripheral devices should:
       </p>
 
@@ -128,11 +128,11 @@
         <li>
           have an LE credit based flow control [BT Vol 3, Part A, Sec 10.1].
           Devices should support an MTU and MPS size of at least 240 bytes on
-          COC and be able to buffer up to 8 packets.
+          CoC and be able to buffer up to 8 packets.
         </li>
         <li>
           have an LE data length extension [BT Vol 6, Part B, Sec 5.1.9] with
-          a payload of at least 24887 bytes. It is recommended that the data
+          a payload of at least 87 bytes. It is recommended that the data
           length is at least 250 bytes.
         </li>
         <li>
@@ -140,7 +140,7 @@
           and comply with the non-zero minimum_CE_Length parameter.
         </li>
         <li>
-          maintain the data throughput for two LE COC connections to two
+          maintain the data throughput for two LE CoC connections to two
           different peripherals with the connection intervals and payload
           sizes in <a href="#audio-packet-format-and-timing">Audio packet
           format and timing</a>.
@@ -165,7 +165,7 @@
       </p>
 
       <p>
-        COC uses the standard Bluetooth mechanisms for link layer encryption
+        CoC uses the standard Bluetooth mechanisms for link layer encryption
         and frequency hopping.
       </p>
 
@@ -298,10 +298,10 @@
           <tr>
             <td>11-12</td>
             <td>
-              RenderDelay. This is the time, in milliseconds, the peripheral
-              needs in order to render audio after the start command has been
-              issued, such as for loading codecs.The RenderDelay can be used
-              by the central to delay audio playback of short messages.
+              RenderDelay. This is the time, in milliseconds, from when the
+              peripheral receives an audio frame until the peripheral renders
+              the output. These bytes can be used to delay a video to
+              synchronize with the audio.
             </td>
           </tr>
           <tr>
@@ -379,7 +379,7 @@
               </tr>
               <tr>
                 <td>0</td>
-                <td>LE COC audio streaming supported (Yes/No).</td>
+                <td>LE CoC audio streaming supported (Yes/No).</td>
               </tr>
               <tr>
                 <td>1-7</td>
@@ -423,12 +423,6 @@
                 <td>C</td>
               </tr>
               <tr>
-                <td>3</td>
-                <td>OPUS @ 48 kHz ?</td>
-                <td>48 kbit/s</td>
-                <td>10 ms</td>
-                <td>Not supported</td>
-              </tr>
               <tr>
                 <td colspan="5">
                   3-15 are reserved.<br />
@@ -440,7 +434,7 @@
         <h3 id="audiocontrolpoint">AudioControlPoint</h3>
 
           <p>
-            This control point cannot be used when the LE COC is closed. See
+            This control point cannot be used when the LE CoC is closed. See
             <a href="#starting-and-stopping-an-audio-stream">Starting and
             stopping an audio stream</a> for the procedure description.
           </p>
@@ -560,7 +554,7 @@
       </p>
 
       <p>
-        If the peripherals put the name and service data types in the same
+        If the peripherals put the name and ASHA service data types in the same
         frame type (ADV or SCAN RESP), then the two data types should appear
         in the same frame. This lets the mobile device scanner get both data
         in the same scan result.
@@ -635,16 +629,6 @@
       </ul>
 
       <p>
-        The peripherals should maintain a common clock at the same or better
-        resolution than the sample rate. This clock can be queried by the
-        central using the Timestamp command, which returns the value in
-        microseconds. The timestamp can be used to indicate the desired
-        playback time of the first audio frame to the peripherals when starting
-        the stream. The peripherals should perform the sample resynchronization
-        to keep in sync with the incoming stream based on the given timestamp.
-      </p>
-
-      <p>
         To give the central some flexibility, the G.722 packet length is not
         specified. The G.722 packet length can change based on the connection
         interval that the central sets.
@@ -674,13 +658,6 @@
         <tr>
           <td>G.722 @ 16 kHz</td>
           <td>64 kbit/s</td>
-          <td>15 ms</td>
-          <td>3750 / 2500 us</td>
-          <td>120 bytes</td>
-        </tr>
-        <tr>
-          <td>G.722 @ 16 kHz</td>
-          <td>64 kbit/s</td>
           <td>20 ms</td>
           <td>5000/3750 us</td>
           <td>160 bytes</td>
@@ -695,30 +672,9 @@
         <tr>
           <td>G.722 @ 24 kHz</td>
           <td>96 kbit/s</td>
-          <td>15 ms</td>
-          <td>5000 / 2500 us</td>
-          <td>180 bytes</td>
-        </tr>
-        <tr>
-          <td>G.722 @ 24 kHz</td>
-          <td>96 kbit/s</td>
           <td>20 ms</td>
           <td>5000 / 3750 us</td>
           <td>240 bytes</td>
-        </tr>
-        <tr>
-          <td>OPUS @ 48 kHz</td>
-          <td>48 kbit/s</td>
-          <td>10 ms</td>
-          <td>2500 / 2500</td>
-          <td>60 bytes</td>
-        </tr>
-        <tr>
-          <td>OPUS @ 48 kHz Joint Stereo (JS)</td>
-          <td>96 kbit/s</td>
-          <td>10 ms</td>
-          <td>3750 / 2500</td>
-          <td>120 bytes</td>
         </tr>
       </table>
 
@@ -744,13 +700,12 @@
       <ol>
         <li>PSM, and optionally, PreparationDelay is read.</li>
         <li>
-          COC L2CAP channel is opened – the peripheral should grant 8 credits
+          CoC L2CAP channel is opened – the peripheral should grant 8 credits
           initially.
         </li>
         <li>
           A connection update is issued to switch the link to the parameters
-          required for the chosen codec. The replica latency is set to 0 in this
-          update.
+          required for the chosen codec.
         </li>
         <li>
           Both the central and the peripheral host wait for the update
@@ -759,13 +714,13 @@
         <li>
           Restart the audio encoder, and reset the packet sequence count to 0.
           A <code>«Start»</code> command with the relevant parameters is
-          issued on the AudioControlPoint.</li>
+          issued on the AudioControlPoint. During audio streaming, the replica
+          should be available at every connection event even though the current
+          replica latency may be non-zero.
+        </li>
         <li>
           The peripheral takes the first audio packet from its internal queue
-          (sequence number 0) and plays it back with the first sample placed
-          at the playback deadline. A new deadline is computed based on the
-          sequence number. This happens once per connection event while
-          checking the sequence number.
+          (sequence number 0) and plays it.
         </li>
       </ol>
 
