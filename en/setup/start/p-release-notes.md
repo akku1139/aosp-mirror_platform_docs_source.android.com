@@ -320,6 +320,14 @@ pages for more information:
 *   [Sensor Fusion Box Assembly](/compatibility/cts/sensor-fusion-box-assembly)
     provides step-by-step instructions for assembling a Sensor Fusion Box.
 
+#### Wide Field of View ITS-in-a-Box
+
+The
+[Wide Field of View ITS-in-a-Box](/compatibility/cts/camera-wfov-box-assembly)
+is an automated system designed to test both wide field of view (WFoV) and
+regular field of view (RFoV) camera systems in the Camera Image Test Suite
+(ITS).
+
 ### Vendor Test Suite
 
 #### Host Controller Architecture
@@ -757,7 +765,18 @@ conform to this HAL.
 [Vehicle Properties](/devices/automotive/properties) describes changes to the
 vehicle HAL interface.
 
-### GNSS hardware model
+### GNSS Satellite Selection
+
+When working with new Global Navigation Satellite System (GNSS) HALs (v1.1+),
+the Android Framework will monitor Android Settings. Partners can change the
+Settings from Google Play Services or other system updatees. These settings
+tell the GNSS HAL if certain GNSS satellites should not be used. This can be
+useful in case of persistent GNSS satellite or constellation errors, or to
+react more rapidly to GNSS HAL implementation issues that may occur when
+intermixing constellations using different time systems and external events,
+such as leap-second and/or Day, or Week Number rollovers.
+
+### GNSS Hardware Model
 
 In Android {{ androidPVersionNumber }}, the GNSS HAL version 1.1 or higher can
 pass information about the hardware API to the platform. The platform needs to

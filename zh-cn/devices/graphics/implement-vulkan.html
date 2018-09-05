@@ -4,6 +4,7 @@
     <meta name="book_path" value="/_book.yaml"/>
   </head>
   <body>
+
   <!--
       Copyright 2017 The Android Open Source Project
 
@@ -64,6 +65,39 @@
 <p>在正常状态下，加载程序仅在应用的原生库目录中搜索层，并尝试加载任何名称符合特定格式（例如 <code>libVKLayer_foo.so</code>）的库。它不需要单独的清单文件，因为开发者有意包含这些层，而避免在启用库之前加载它们的原因不适用。</p>
 
 <p>Android 允许在 Android 与其他平台之间移植层（包括编译环境更改）。有关层与加载程序之间接口的详细信息，请参阅 <a href="https://github.com/KhronosGroup/Vulkan-LoaderAndValidationLayers/blob/master/loader/LoaderAndLayerInterface.md">Vulkan 加载程序规范和架构概览</a>。已经过验证可在 Android 上构建和运行的 LunarG 验证层的版本托管在 GitHub 上 <a href="https://github.com/KhronosGroup/Vulkan-LoaderAndValidationLayers/tree/android_layers">KhronosGroup/Vulkan-LoaderAndValidationLayers</a> 项目的 android_layers 分支下。</p>
+
+<h2 id="versions">Vulkan API 版本和功能</h2>
+<p>本部分将介绍受支持的 Vulkan API 版本。</p>
+
+<h3 id="v1_0">Vulkan API 版本 1.0</h3>
+<p>Android 7.0 版增加了对 Vulkan API 版本 1.0 的支持。</p>
+
+<h3 id="v1_1">Vulkan API 版本 1.1</h3>
+<p>Android 9 版本引入了对 Vulkan 1.1 图形 API 的支持。要详细了解 Vulkan 1.1 API，请参阅 <a href="https://www.khronos.org/registry/vulkan/specs/1.1-extensions/html/vkspec.html">Vulkan 1.1 API 规格</a>。</p>
+
+<h4>Vulkan 1.1 支持概览</h4>
+<p>Vulkan 1.1 支持包括对 Vulkan 1.1 和 memory/synchronization 交互操作的支持。这样一来，OEM 即可在设备上支持 Vulkan 1.1，而且开发者可以确定某个设备是否支持 Vulkan 1.1，并在支持时有效地使用该版本。Vulkan 1.1 没有 Vulkan 1.0 之外的新硬件要求，但相应实现大都位于特定于 SOS 的图形驱动程序（而不是框架）中。</p>
+<p>对于 Android，最重要的 Vulkan 1.1 功能包括：</p>
+<ul>
+<li>支持从 Vulkan 外部导入和导出内存缓冲区和同步对象（以便与摄像头、编解码器和 GLES 进行交互操作）</li>
+<li>支持 YCbCr 格式</li>
+</ul>
+<p>Vulkan 1.1 还包含几项较小的功能和 API 易用性增强功能。</p>
+
+<h4>实现 Vulkan 1.1</h4>
+<p>Vulkan 1.1 在 Android 9 版本中是可选的。要使用该版本，设备必须具有符合 Vulkan 1.1 最低功能要求的 GPU。</p>
+<p>要实现 Vulkan 1.1，请执行以下操作：</p>
+<ol>
+<li>添加支持 Vulkan 1.1 且符合其他 Android 1.1 要求的 Vulkan 驱动程序（请务必查看 9 API 级别文档），或更新现有 Vulkan 1.0 驱动程序。</li>
+<li>您可能需要更新内核 GPU 驱动程序，具体取决于您的实现。</li>
+<li>确保 <code>PackageManager#hasSystemFeature(PackageManager.FEATURE_VULKAN_HARDWARE_VERSION, 0x401000)</code> 返回 <code>true</code>，方法是将如下所示的规则添加到相关的 <code>device.mk</code> 文件：<p><code>
+PRODUCT_COPY_FILES += frameworks/native/data/etc/android.hardware.vulkan.version-1_1.xml:
+$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.vulkan.version.xml
+</code></p></li>
+</ol>
+
+<h4>自定义 Vulkan 1.1</h4>
+<p>依赖于 Vulkan 1.1 的应用与不提供 Vulkan 1.1 支持的设备不兼容。有些应用可能不需要 Vulkan 1.1，但会在具有 Vulkan 1.1 时提供额外的功能或性能。</p>
 
 <h2 id="wsi">窗口系统集成 (WSI)</h2>
 <p>窗口系统集成 (WSI) 扩展程序 <code>VK_KHR_surface</code>、<code>VK_KHR_android_surface</code> 和 <code>VK_KHR_swapchain</code> 由 Android 平台实现并存在于 <code>libvulkan.so</code> 中。<code>VkSurfaceKHR</code> 和 <code>VkSwapchainKHR</code> 对象以及与 <code>ANativeWindow</code> 的所有互动都由 Android 平台处理，不会提供给驱动程序。WSI 实现依赖于必须受驱动程序支持的 <code>VK_ANDROID_native_buffer</code> 扩展程序（如下所述）；此扩展程序仅由 WSI 实现使用，不会提供给应用。</p>
@@ -197,6 +231,10 @@ VkResult VKAPI vkQueueSignalReleaseImageANDROID(
 如果图像是使用 <code>VK_SWAPCHAIN_IMAGE_USAGE_SHARED_BIT_ANDROID</code> 创建的，则驱动程序必须允许反复调用 <code>vkQueueSignalReleaseImageANDROID</code>，而不会干预对 <code>vkAcquireImageANDROID</code> 的调用。
 
 <h2 id="validation">验证</h2>
-<p>OEM 可以使用 CTS 测试其 Vulkan 实现，其中包括使用 Vulkan 运行时的 <a href="/devices/graphics/cts-integration.html">drawElements 质量计划 (dEQP)</a> 测试。</p>
+<p>OEM 可以使用 CTS 测试其 Vulkan 实现，其中包括：</p>
+<ul>
+<li><code>CtsDeqpTestCases</code> 模块中的 <a href="/devices/graphics/cts-integration.html">drawElements 质量计划 (dEQP)</a> 测试，其中包括针对 Vulkan 1.0 和 1.1 的功能 API 测试。</li>
+<li><code>CtsGraphicsTestCases</code> 模块，用于测试设备是否针对所支持的 Vulkan 功能进行了正确的配置。</li>
+</ul>
 
 </body></html>
