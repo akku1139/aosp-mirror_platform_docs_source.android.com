@@ -1,0 +1,144 @@
+<html devsite><head>
+    <title>自动化测试基础架构</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+
+  <!--
+      Copyright 2018 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>Android 9 包含一个供应商测试套件 (VTS) 基础架构，用于在搭载 AOSP 常规系统映像 (GSI) 的合作伙伴设备上自动运行 VTS、CTS 或其他测试。以前，运行这些测试频繁需要手动操作；新的 VTS 测试基础架构可支持每天在多个设备上自动运行测试多次。
+</p>
+
+<h2 id="architecture">架构</h2>
+
+<p>VTS 自动化测试基础架构采用以下架构：</p>
+
+<p>
+  <img src="images/vts-automated.png" alt="自动化测试架构" title="自动化测试架构"/>
+</p>
+<figcaption>
+  <strong>图 1.</strong> VTS 自动化测试基础架构</figcaption>
+
+<p>触发测试后，VTS 自动化测试基础架构会执行以下任务：</p>
+
+<ol>
+  <li>从不同位置获取版本软件工件和测试资源：<ul>
+    <li><strong>合作伙伴 Android 版本 (PAB)</strong>。针对 GSI、VTS 框架以及一些其他版本。</li>
+    <li><strong>本地文件系统、Google Cloud Storage 或其他特定于供应商的编译系统</strong>。针对不在 Google 云服务中存储版本的合作伙伴。</li>
+  </ul>
+  </li>
+  <li>将版本软件工件（来自设备）和 GIS（来自 AOSP）刷写到连接的设备。</li>
+  <li>使用本地 TradeFed 或云服务中的 TradeFed 运行 VTS 测试。</li>
+  <li>向 VTS 信息中心报告测试结果。</li>
+</ol>
+
+<p>该进程由 VTS 主机控制器 (HC) 进行协调，HC 是实验室中的一台机器，用于指导在测试中连接的所有设备的行为。HC 负责获取最新版本、将其刷写到设备上，以及调用测试（本地调用或通过命令工具调用）。HC 还会与云端调度程序通信，并在调度程序和在 HC 上运行的 TradeFed 实例（或一些其他测试框架）之间引导流量。要详细了解主机控制器，请参阅<a href="/compatibility/vts/host-controller">主机控制器架构</a>。
+</p>
+
+<h2 id="resource-providers">资源提供程序</h2>
+
+<p>自动化测试需要各种资源，例如系统版本、测试文件和 VTS 软件工件。虽然可以从源代码中编译这些资源，但更简单的方式是定期从树形结构中编译它们，然后发布软件工件以供下载。
+</p>
+
+<p>合作伙伴可以从以下位置访问自动化资源：</p>
+
+<ul>
+  <li><strong>合作伙伴 Android 版本</strong>。按帐号授予的程序化访问权限。</li>
+  <li><strong>本地文件系统</strong>（或类似位置）。针对不使用合作伙伴 Android 版本的合作伙伴。</li>
+</ul>
+
+<p>为了在以后刷写设备时使用，资源中包含这两个选项的版本提供程序（从在本地临时目录中存储版本的单个 <code>build_provider.py</code> 扩展而来）。
+</p>
+
+<h3 id="partner-android-build">合作伙伴 Android 版本</h3>
+
+<p>在 Android 8.1 及更低版本中，Android 合作伙伴需要访问合作伙伴 Android 版本网站 (<a href="https://partner.android.com/build" class="external">https://partner.android.com/build</a>)，转到自己的帐号，然后通过界面获取最新的系统映像。为了帮助合作伙伴避免这种缓慢且耗费人力的过程，Android 9 支持在提供相关凭据后自动从 PAB 下载这些资源。
+</p>
+
+<h4 id="establishing-access">建立访问权限</h4>
+
+<p>程序化访问权限使用 Google API 中的 OAuth2 来访问所需的 RPC。要借助<a href="https://developers.google.com/api-client-library/python/guide/aaa_oauth#flow_from_clientsecrets" class="external">标准方法</a>生成 OAuth2 凭据，合作伙伴必须通过 Google 设置客户端 ID/密钥对。<code>PartnerAndroidBuildClient</code> 在首次指向该密钥时，会打开一个浏览器窗口供用户登录 Google 帐号，以生成继续操作所需的 OAuth2 凭据。这些凭据（访问令牌和刷新令牌）存储在本地，这意味着合作伙伴只需登录一次即可。
+</p>
+
+<h4>网址 POST 请求</h4>
+
+<p>点击 PAB 中的资源链接即会发送一个 POST 请求，其中包含相应资源的必要数据，这些数据包括：</p>
+
+<ul>
+  <li>版本号、版本目标</li>
+  <li>资源名称</li>
+  <li>分支</li>
+  <li>候选版本名称，以及候选版本是不是内部版本</li>
+</ul>
+
+<p><code>buildsvc</code> RPC 的 <code>downloadBuildArtifact</code> 方法会接收 POST 请求，并返回用于访问资源的网址。
+
+</p><ul>
+  <li>对于 Clockwork Companion APK 资源，该网址是在 PAB 上托管的可读取网址（受身份验证保护，可凭相关 OAuth2 凭据进行访问）。</li>
+  <li>对于其他资源，该网址是来自内部 Android Build API 的不受保护的长网址（5 分钟后即会过期）。</li>
+</ul>
+
+<h4 id="getting-url">获取网址</h4>
+
+<p>为了防止跨网站请求伪造，<code>buildsvc</code> RPC 需要一个 XSRF 令牌才能与其他参数一起进行 POST。虽然该令牌能够让这一过程更安全，但由于现在访问也需要该令牌（仅在 PAB 页面的 JavaScript 中提供），因此程序化访问就变得更困难了。
+</p>
+
+<p>为了避免这一问题，Android 9 重新设计了所有文件（不仅仅是 APK）的网址命名方案，以使用可预测的网址名称来访问软件工件列表和软件工件网址。现在，PAB 使用一种方便的网址格式，让合作伙伴能够轻松下载资源；HC 脚本可以轻松地下载这些 APK，因为网址格式是已知的，并且 HC 可以绕过 XSRF/Cookie 问题，因为 HC 不需要 <code>buildsvc</code> RPC。</p>
+
+<h3 id="local-filesystem">本地文件系统</h3>
+
+<p>在获得包含软件工件列表（或 zip 文件）的目录后，版本提供程序会根据该目录中的内容设置相关映像。您可以使用 <a href="https://cloud.google.com/storage/docs/gsutil" class="external">gsutil</a> 工具将文件从 Google Cloud Storage 复制到本地目录。
+</p>
+
+<h2 id="flashing-builds">刷写版本</h2>
+
+<p>将最新的设备映像下载到主机后，必须将这些映像刷写到设备上。您需要根据版本提供程序存储的临时文件路径，使用标准 <code>adb</code> 和 <code>fastboot</code> 命令以及 Python 子进程来完成相关操作。
+</p>
+
+<p>支持的操作：</p>
+
+<ul>
+  <li>仅刷写 GSI</li>
+  <li>刷写来自主系统的单个映像（例如 <code>fastboot flash boot boot.img</code>）</li>
+  <li>刷写来自主系统的所有映像，例如：<ul>
+    <li><code>fastboot flashall</code>（使用内置的 <code>flashall</code> 实用程序）</li>
+    <li><code>fastboot flash</code>（一次一个）</li>
+  </ul>
+  </li>
+</ul>
+
+<h2 id="running=tests">运行测试</h2>
+
+<p>在 Android 9 中，VTS 自动化测试基础架构仅支持 TradeFed 测试框架，但未来可能会支持其他框架。
+</p>
+
+<p>设备准备完毕后，您可以使用以下任一选项来调用测试：</p>
+
+<ul>
+  <li>在本地使用 TradeFed 时，请在主机控制器中使用 <code>test</code> 命令，该命令会接受 VTS 测试计划的名称（例如 <code>vts-selftest</code>）并运行测试。</li>
+  <li>在使用 TradeFed Cluster（可以选择连接到 MTT）时，请在主机控制器控制台中使用 <code>lease</code> 命令，以查找未完成运行的测试。</li>
+</ul>
+
+<p>如果使用 TradeFedCluster，TradeFed 便会<a href="/compatibility/vts/host-controller">作为远程管理器在本地</a>运行。如果未使用，则使用 Python 子进程来调用测试。
+</p>
+
+<h2 id="reporting-results">报告结果</h2>
+
+<p><code>VtsMultiDeviceTest</code> 会自动将测试结果报告给一些 VTS 信息中心项目。</p>
+
+</body></html>

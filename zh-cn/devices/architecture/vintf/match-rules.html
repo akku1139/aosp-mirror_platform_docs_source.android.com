@@ -22,11 +22,17 @@
 
 <p>两对兼容性矩阵和清单旨在 <a href="/devices/tech/ota/index.html">OTA</a> 时进行协调，以验证框架和供应商实现是否可以相互协同工作。当框架兼容性矩阵与设备清单之间以及框架清单与设备兼容性矩阵之间匹配时，便成功通过此验证。下面几部分将详细介绍各种组件使用的匹配规则。</p>
 
+<h2 id="fcm-version">框架兼容性矩阵版本匹配</h2>
+<p>要使设备清单与框架兼容性矩阵相匹配，<code>manifest.target-level</code> 指定的装运 FCM 版本必须与 <code>compatibility-matrix.level</code> 指定的 FCM 版本完全相同。否则，这二者将不匹配。</p>
+
+<p>如果使用 <code>libvintf</code> 请求框架兼容性矩阵，则此匹配始终都会成功，因为 <code>libvintf</code> 会打开设备清单，检索装运 FCM 版本，并返回该装运 FCM 版本的框架兼容性矩阵（以及更高 FCM 版本的兼容性矩阵中的一些可选 HAL）。</p>
+
 <h2 id="hals">HAL 匹配</h2>
 <p>HAL 匹配规则可以识别清单文件中被视为受相应兼容性矩阵的所有者支持的 <code>hal</code> 元素的版本。</p>
 <ul>
-<li>多个 <code>version</code> 元素使用 <strong>OR</strong> 进行连接（请参见下面的相机示例）。</li>
-<li>多个同名的 <code>&lt;hal&gt;</code> 元素使用 <strong>AND</strong> 进行连接。</li>
+<li>多个 <code>&lt;hal&gt;</code> 元素具有 <strong>AND</strong> 关系。</li>
+<li>同一 <code>&lt;hal&gt;</code> 中的多个 <code>&lt;version&gt;</code> 元素具有 <strong>OR</strong> 关系。如果指定了两个或两个以上版本，则只需要实现其中一个版本（请参见下面的 DRM 示例）。</li>
+<li>同一 <code>&lt;hal&gt;</code> 中的多个 <code>&lt;instance&gt;</code> 和 <code>&lt;regex-instance&gt;</code> 元素具有 <strong>AND</strong> 关系（请参见下面的 DRM 示例）。</li>
 </ul>
 
 <h4><strong>示例</strong>：相机模块的成功 HAL 匹配</h4>
@@ -73,28 +79,32 @@
     &lt;interface&gt;
         &lt;name&gt;ICryptoFactory&lt;/name&gt;
         &lt;instance&gt;default&lt;/instance&gt;
+        &lt;regex-instance&gt;[a-z]+/[0-9]+&lt;/regex-instance&gt;
     &lt;/interface&gt;
 &lt;/hal&gt;
 </pre>
 
-<p>供应商必须实现以下 HAL 之一：</p>
+<p>供应商必须实现以下实例之一：</p>
 
 <pre>
-android.hardware.drm@1.x::IDrmFactory/default          //where x &gt;= 0
-android.hardware.drm@1.x::IDrmFactory/specific         //where x &gt;= 0
+android.hardware.drm@1.x::IDrmFactory/default          // where x &gt;= 0
+android.hardware.drm@1.x::IDrmFactory/specific         // where x &gt;= 0
 </pre>
 
 或
 
 <pre>
-android.hardware.drm@3.y::IDrmFactory/default          //where y &gt;= 1
-android.hardware.drm@3.y::IDrmFactory/specific         //where y &gt;= 1
+android.hardware.drm@3.y::IDrmFactory/default          // where y &gt;= 1
+android.hardware.drm@3.y::IDrmFactory/specific         // where y &gt;= 1
 </pre>
 
-<p>…并且还必须实现以下 HAL：</p>
+<p>…并且还必须实现以下所有实例：</p>
 
 <pre>
-android.hardware.drm@2.z::ICryptoFactory/default       //where z &gt;= 0
+android.hardware.drm@2.z::ICryptoFactory/default       // where z &gt;= 0
+android.hardware.drm@2.z::ICryptoFactory/${INSTANCE}
+            // where z &gt;= 0 and ${INSTANCE} matches [a-z]+/[0-9]+
+            // e.g. legacy/0
 </pre>
 
 <h2 id="kernel">内核匹配</h2>
@@ -194,7 +204,7 @@ CONFIG_EMPTY=1   # mismatch; expects ""
 <p>SE 策略需要以下匹配：</p>
 <ul>
 <li><code>&lt;sepolicy-version&gt;</code> 定义了每个主要版本的次要版本的封闭范围。设备报告的 sepolicy 版本必须属于这些范围之一才能与框架兼容。匹配规则类似于 HAL 版本；如果 sepolicy 版本高于或等于范围内的最低版本，则匹配。最高版本仅供参考。</li>
-<li><code>&lt;kernel-sepolicy-version&gt;</code>（即 policydb 版本）必须与设备报告的 <code>security_policyvers()</code> 完全匹配。
+<li><code>&lt;kernel-sepolicy-version&gt;</code>（即 policydb 版本）必须低于设备报告的 <code>security_policyvers()</code>。
 </li>
 </ul>
 
@@ -203,16 +213,21 @@ CONFIG_EMPTY=1   # mismatch; expects ""
 </p>
 
 <pre class="prettyprint">
-    &lt;sepolicy&gt;
-        &lt;kernel-sepolicy-version&gt;30&lt;/kernel-sepolicy-version&gt;
-        &lt;sepolicy-version&gt;25.0&lt;/sepolicy-version&gt;
-        &lt;sepolicy-version&gt;26.0-3&lt;/sepolicy-version&gt;
-    &lt;/sepolicy&gt;
+&lt;sepolicy&gt;
+    &lt;kernel-sepolicy-version&gt;30&lt;/kernel-sepolicy-version&gt;
+    &lt;sepolicy-version&gt;25.0&lt;/sepolicy-version&gt;
+    &lt;sepolicy-version&gt;26.0-3&lt;/sepolicy-version&gt;
+&lt;/sepolicy&gt;
 </pre>
 
 <p>在设备上：</p>
 <ul>
-<li><code>security_policyvers()</code> 返回的值必须恰好等于 30。否则，不匹配。</li>
+<li><code>security_policyvers()</code> 返回的值必须大于或等于 30。否则，不匹配。例如：
+<ul>
+<li>如果设备返回 29，则不匹配。</li>
+<li>如果设备返回 31，则匹配。</li>
+</ul>
+</li>
 <li>SE 策略版本必须为 25.0-∞ 和 26.0-∞ 其中之一。否则，不匹配。（“<code>26.0</code>”后面的“<code>-3</code>”仅供参考。）</li>
 </ul>
 
@@ -280,5 +295,106 @@ ro.boot.vbmeta.avb_version       == 2.3 <font style="font-family: Roboto, Arial,
 ro.boot.avb_version              == 2.3 &amp;&amp;
 ro.boot.vbmeta.avb_version       == 2.1 <font style="font-family: Roboto, Arial, Helvetica, sans-serif; background-color: green; color: white"> match </font>
 </pre>
+
+<h2 id="vndk">VNDK 版本匹配</h2>
+<p>设备兼容性矩阵在 <code>compatibility-matrix.vendor-ndk.version</code> 中声明所需的 VNDK 版本。如果设备兼容性矩阵没有 <code>&lt;vendor-ndk&gt;</code> 标记，则系统不会实施任何要求，因此始终将其视为匹配项。</p>
+<p>如果设备兼容性矩阵具有 <code>&lt;vendor-ndk&gt;</code> 标记，则系统会从框架在框架清单中提供的 VNDK 供应商快照集中查找具有匹配 <code>&lt;version&gt;</code> 的 <code>&lt;vendor-ndk&gt;</code> 条目。如果不存在此类条目，则没有匹配项。</p>
+<p>如果确实存在此类条目，则设备兼容性矩阵中枚举的库集必须是框架清单中声明的一组库的子集；否则，系统不会将此类条目视为匹配项。</p>
+<ul>
+  <li>一种特殊情况是，如果设备兼容性矩阵中未枚举任何库，则系统会始终将该条目视为匹配项，因为空集是任何集的子集。</li>
+</ul>
+
+<h4><strong>示例</strong>：成功的 VNDK 版本匹配</h4>
+<p>如果设备兼容性矩阵在 VNDK 上声明了以下要求：
+</p>
+
+<pre class="prettyprint">
+&lt;!-- Example Device Compatibility Matrix --&gt;
+&lt;vendor-ndk&gt;
+    &lt;version&gt;27&lt;/version&gt;
+    &lt;library&gt;libjpeg.so&lt;/library&gt;
+    &lt;library&gt;libbase.so&lt;/library&gt;
+&lt;/vendor-ndk&gt;
+</pre>
+
+<p>在框架清单中，系统仅会考虑具有版本 27 的条目。</p>
+
+<pre class="prettyprint">
+&lt;!-- Framework Manifest Example A --&gt;
+&lt;vendor-ndk&gt;
+    &lt;version&gt;27&lt;/version&gt;
+    &lt;library&gt;libjpeg.so&lt;/library&gt;
+    &lt;library&gt;libbase.so&lt;/library&gt;
+    &lt;library&gt;libfoo.so&lt;/library&gt;
+&lt;/vendor-ndk&gt;
+</pre>
+
+<p>示例 A 是匹配项，因为 VNDK 版本 27 在框架清单中，并且 <code>{libjpeg.so, libbase.so, libfoo.so} ⊇ {libjpeg.so, libbase.so}</code>。
+</p>
+
+<pre class="prettyprint">
+&lt;!-- Framework Manifest Example B --&gt;
+&lt;vendor-ndk&gt;
+    &lt;version&gt;26&lt;/version&gt;
+    &lt;library&gt;libjpeg.so&lt;/library&gt;
+    &lt;library&gt;libbase.so&lt;/library&gt;
+&lt;/vendor-ndk&gt;
+&lt;vendor-ndk&gt;
+    &lt;version&gt;27&lt;/version&gt;
+    &lt;library&gt;libbase.so&lt;/library&gt;
+&lt;/vendor-ndk&gt;
+</pre>
+
+<p>示例 B 不是匹配项。即使 VNDK 版本 27 在框架清单中，该快照中的框架也不支持 <code>libjpeg.so</code>。VNDK 版本 26 将被忽略。</p>
+
+<h2 id="vsdk">系统 SDK 版本匹配</h2>
+<p>设备兼容性矩阵在 <code>compatibility-matrix.system-sdk.version</code> 中声明一组所需的系统 SDK 版本。只有当该集合是所提供的系统 SDK 版本（在框架清单的 <code>manifest.system-sdk.version</code> 中声明）的子集时，才存在匹配项。</p>
+<ul>
+  <li>一种特殊情况是，如果设备兼容性矩阵中未枚举任何系统 SDK 版本，则系统会始终将该条目视为匹配项，因为空集是任何集的子集。</li>
+</ul>
+
+<h4><strong>示例</strong>：成功的系统 SDK 版本匹配</h4>
+<p>如果设备兼容性矩阵在系统 SDK 上声明了以下要求：
+</p>
+
+<pre class="prettyprint">
+&lt;!-- Example Device Compatibility Matrix --&gt;
+&lt;system-sdk&gt;
+    &lt;version&gt;26&lt;/version&gt;
+    &lt;version&gt;27&lt;/version&gt;
+&lt;/system-sdk&gt;
+</pre>
+
+<p>然后，框架必须提供系统 SDK 版本 26 和 27 才能匹配。</p>
+
+<pre class="prettyprint">
+&lt;!-- Framework Manifest Example A --&gt;
+&lt;system-sdk&gt;
+    &lt;version&gt;26&lt;/version&gt;
+    &lt;version&gt;27&lt;/version&gt;
+&lt;/system-sdk&gt;
+</pre>
+
+<p>示例 A 是匹配项。</p>
+
+<pre class="prettyprint">
+&lt;!-- Framework Manifest Example B --&gt;
+&lt;system-sdk&gt;
+    &lt;version&gt;26&lt;/version&gt;
+    &lt;version&gt;27&lt;/version&gt;
+    &lt;version&gt;28&lt;/version&gt;
+&lt;/system-sdk&gt;
+</pre>
+
+<p>示例 B 是匹配项。</p>
+
+<pre class="prettyprint">
+&lt;!-- Framework Manifest Example C --&gt;
+&lt;system-sdk&gt;
+    &lt;version&gt;26&lt;/version&gt;
+&lt;/system-sdk&gt;
+</pre>
+
+<p>示例 C 不是匹配项，因为未提供系统 SDK 版本 27。</p>
 
 </body></html>
