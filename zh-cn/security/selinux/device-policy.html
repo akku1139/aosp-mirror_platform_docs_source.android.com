@@ -22,22 +22,20 @@
 
 <p>Android 开放源代码项目 (AOSP) 针对所有 Android 设备中常用的应用和服务提供了一个可靠实用的基本政策。AOSP 的贡献者会定期完善该政策。核心政策应占设备上最终政策的 90-95%，而剩下的 5-10% 则为设备专用自定义政策。本文重点介绍这些设备专用自定义政策、编写设备专用政策的方法，以及在编写此类政策时要避免的一些陷阱。</p>
 
-<aside class="note"><strong>注意</strong>：要详细了解如何在 Android 8.0 中编写 SELinux 政策，请参阅 <a href="/security/selinux/images/SELinux_Treble.pdf">SELinux for Android 8.0</a>。</aside>
-
 <h2 id="device_bringup">设备启动</h2>
 
-<p>在编写设备专用政策时，请按顺序执行以下步骤。</p>
+<p>在编写设备专用政策时，请按照下列步骤操作。</p>
 
 <h3 id="run_in_permissive_mode">在宽容模式下运行</h3>
 
-<p>当设备处于<a href="index.html#background">宽容模式</a>时，拒绝事件会被记录下来，但不会被强制执行。宽容模式非常重要，原因有以下两个：</p>
+<p>当设备处于<a href="/security/selinux/concepts#enforcement_levels">宽容模式</a>时，拒绝事件会被记录下来，但不会被强制执行。宽容模式非常重要，原因有以下两个：</p>
 
-<ol>
-  <li>宽容模式可确保政策启用不会延误其他早期设备启动任务。
-  </li><li>被强制执行的拒绝事件可能会掩盖其他拒绝事件。例如，文件访问通常会涉及目录搜索、文件打开和文件读取操作。在强制模式下，只会发生目录搜索拒绝事件。宽容模式可确保所有拒绝事件都会显示出来。
-</li></ol>
+<ul>
+  <li>宽容模式可确保政策启用不会延误其他早期设备启动任务。</li>
+  <li>被强制执行的拒绝事件可能会掩盖其他拒绝事件。例如，文件访问通常会涉及目录搜索、文件打开和文件读取操作。在强制模式下，只会发生目录搜索拒绝事件。宽容模式可确保所有拒绝事件都会显示出来。</li>
+</ul>
 
-<p>要使设备进入宽容模式，最简单的方法是通过<a href="validate.html#switching_to_permissive">内核命令行</a>来实现。相应命令可以添加到设备的 BoardConfig.mk 文件中：<code>platform/device/&lt;vendor&gt;/&lt;target&gt;/BoardConfig.mk</code>。修改命令行之后，执行 <code>make clean</code>，接着执行 <code>make bootimage</code>，然后刷写新的启动映像。</p>
+<p>要使设备进入宽容模式，最简单的方法是使用<a href="/security/selinux/validate.html#switching_to_permissive">内核命令行</a>来实现。相应命令可以添加到设备的 <code>BoardConfig.mk</code> 文件中：<code>platform/device/&lt;vendor&gt;/&lt;target&gt;/BoardConfig.mk</code>。修改命令行之后，执行 <code>make clean</code>，接着执行 <code>make bootimage</code>，然后刷写新的启动映像。</p>
 
 <p>在此之后，通过以下命令确认宽容模式：</p>
 
@@ -49,7 +47,7 @@ adb shell getenforce
 
 <h3 id="enforce_early">提早采用强制模式</h3>
 
-<p>在强制模式下，拒绝事件会被记录下来，并且会被强制执行。最佳做法是尽早使您的设备进入强制模式。如果花时间等待创建和强制执行设备专用政策，通常会导致有问题的产品和糟糕的用户体验。要提前足够长的时间开始参与 <a href="https://en.wikipedia.org/wiki/Eating_your_own_dog_food">dogfooding</a>，确保对实际使用中涉及的功能进行全面测试。提早开始有助于确保安全问题能够在相关人员做出设计决策时被考虑在内。相反，仅根据观察到的拒绝事件来授予权限是一种不安全的做法。可以利用这段时间对设备进行安全审核，并针对不应被允许的行为提出错误。</p>
+<p>在强制模式下，拒绝事件会被记录下来，并且会被强制执行。最佳做法是尽早使您的设备进入强制模式。如果花时间等待创建和强制执行设备专用政策，通常会导致有问题的产品和糟糕的用户体验。要提前足够长的时间开始参与 <a href="https://en.wikipedia.org/wiki/Eating_your_own_dog_food" class="external">dogfooding</a>，确保对实际使用中涉及的功能进行全面测试。提早开始有助于确保安全问题能够在相关人员做出设计决策时被考虑在内。相反，仅根据观察到的拒绝事件来授予权限是一种不安全的做法。可以利用这段时间对设备进行安全审核，并针对不应被允许的行为提出错误。</p>
 
 <h3 id="remove_or_delete_existing_policy">移除或删除现有政策</h3>
 
@@ -73,28 +71,30 @@ scontext=u:r:mediaserver:s0
 tcontext=u:object_r:device:s0 tclass=chr_file permissive=1
 </pre>
 
-<p>是完全通过为 <code>/dev/kgsl-3d0</code> 添加适当的标签来解决的。在此示例中，<code>tcontext</code> 是 <code>device</code>。这表示默认环境，在该环境中，<code>/dev</code> 中的内容除非被分配了更具体的标签，否则都会获得 <a href="https://android.googlesource.com/platform/external/sepolicy/+/marshmallow-dev/file_contexts#31">device</a> 标签。直接在此处接受来自 <a href="validate.html#using_audit2allow">audit2allow</a> 的输出会导致不正确且过度宽容的规则。</p>
+<p>是完全通过为 <code>/dev/kgsl-3d0</code> 添加适当的标签来解决的。在此示例中，<code>tcontext</code> 是 <code>device</code>。这表示默认环境，在该环境中，<code>/dev</code> 中的内容除非被分配了更具体的标签，否则都会获得 <a href="https://android.googlesource.com/platform/external/sepolicy/+/marshmallow-dev/file_contexts#31" class="external">device</a> 标签。直接在此处接受来自 <a href="/security/selinux/validate.html#using_audit2allow">audit2allow</a> 的输出会导致不正确且过度宽容的规则。</p>
 
 <p>要解决这种问题，可以为文件添加更具体的标签，在此示例中为 <a href="https://android.googlesource.com/device/lge/hammerhead/+/marshmallow-dev/sepolicy/file_contexts#1">gpu_device</a>。由于 <a href="https://android.googlesource.com/platform/external/sepolicy/+/marshmallow-dev/mediaserver.te#24">mediaserver 在核心政策中已有访问 gpu_device 所需的必要权限</a>，因此不再需要更多权限。</p>
 
 <p>其他需要以核心政策中预定义的类型作为标签的设备专用文件：</p>
 
-<ol>
-  <li> <a href="https://android.googlesource.com/device/lge/hammerhead/+/marshmallow-dev/sepolicy/file_contexts#31">块设备</a>
-  </li><li> <a href="https://android.googlesource.com/device/lge/hammerhead/+/marshmallow-dev/sepolicy/file_contexts#80">音频设备</a>
-  </li><li> <a href="https://android.googlesource.com/device/lge/hammerhead/+/marshmallow-dev/sepolicy/file_contexts#21">视频设备</a>
-  </li><li> <a href="https://android.googlesource.com/device/lge/hammerhead/+/marshmallow-dev/sepolicy/file_contexts#89">传感器</a>
-  </li><li> <a href="https://android.googlesource.com/device/lge/hammerhead/+/marshmallow-dev/sepolicy/file_contexts#8">nfc</a>
-  </li><li>gps_device</li><li> <a href="https://android.googlesource.com/device/lge/hammerhead/+/marshmallow-dev/sepolicy/file_contexts#139">/sys 中的文件</a>
-  </li><li>/proc 中的文件</li></ol>
+<ul>
+  <li><a href="https://android.googlesource.com/device/lge/hammerhead/+/marshmallow-dev/sepolicy/file_contexts#31" class="external">块设备</a></li>
+  <li><a href="https://android.googlesource.com/device/lge/hammerhead/+/marshmallow-dev/sepolicy/file_contexts#80" class="external">音频设备</a></li>
+  <li><a href="https://android.googlesource.com/device/lge/hammerhead/+/marshmallow-dev/sepolicy/file_contexts#21" class="external">视频设备</a></li>
+  <li><a href="https://android.googlesource.com/device/lge/hammerhead/+/marshmallow-dev/sepolicy/file_contexts#89" class="external">传感器</a></li>
+  <li><a href="https://android.googlesource.com/device/lge/hammerhead/+/marshmallow-dev/sepolicy/file_contexts#8" class="external">NFC</a></li>
+  <li>gps_device</li>
+  <li><a href="https://android.googlesource.com/device/lge/hammerhead/+/marshmallow-dev/sepolicy/file_contexts#139" class="external">/sys 中的文件</a></li>
+  <li>/proc 中的文件</li>
+</ul>
 
-<p>一般情况下，向默认标签授予权限的做法是错误的。其中许多权限都是 <a href="customize.html#neverallow">neverallow</a> 规则所不允许的，但即使该规则并未明确禁止这些权限，也最好是提供具体标签。</p>
+<p>一般情况下，向默认标签授予权限的做法是错误的。其中许多权限都是 <a href="/security/selinux/customize.html#neverallow">neverallow</a> 规则所不允许的，但即使该规则并未明确禁止这些权限，也最好是提供具体标签。</p>
 
 <h3 id="label_new_services_and_address_denials">为新服务添加标签并解决拒绝事件</h3>
 
 <p>通过 init 启动的服务需要在各自的 SELinux 域中运行。以下示例会将服务“foo”放入它自己的 SELinux 域中并为其授予权限。</p>
 
-<p>该服务是在设备的 <code>init.&lt;target&gt;.rc</code> 文件中启动的，如下所示：</p>
+<p>该服务是在设备的 <code>init.<var>device</var>.rc</code> 文件中启动的，如下所示：</p>
 
 <pre class="devsite-click-to-copy">
 service foo /system/bin/foo
@@ -104,7 +104,7 @@ service foo /system/bin/foo
 <ol>
   <li>创建一个新域“foo”<br />
 
-      <p>创建包含以下内容的文件 <code>device/&lt;oem&gt;/&lt;target&gt;/sepolicy/foo.te</code>：</p>
+      <p>创建包含以下内容的文件 <code>device/<var>manufacturer</var>/<var>device-name</var>/sepolicy/foo.te</code>：</p>
 
 <pre class="devsite-click-to-copy">
 # foo service
@@ -119,8 +119,7 @@ init_daemon_domain(foo)
 
   <li>为 <code>/system/bin/foo</code> 添加标签<br />
 
-      <p>将以下内容添加到 <code>device/&lt;oem&gt;/&lt;target&gt;/sepolicy/
-         file_contexts</code>：</p>
+      <p>将以下内容添加到 <code>device/<var>manufacturer</var>/<var>device-name</var>/sepolicy/file_contexts</code>：</p>
 
 <pre class="devsite-click-to-copy">
 /system/bin/foo   u:object_r:foo_exec:s0
@@ -133,7 +132,7 @@ init_daemon_domain(foo)
 
   <li>优化相应域的 SELinux 规则。<br />
 
-      <p>根据拒绝事件确定所需的权限。<a href="validate.html#using_audit2allow">audit2allow</a> 工具提供了一些实用的指南，但该工具仅适用于提供编写政策时所需的信息。切勿只是复制输出内容。</p>
+      <p>根据拒绝事件确定所需的权限。<a href="/security/selinux/validate.html#using_audit2allow">audit2allow</a> 工具提供了一些实用的指南，但该工具仅适用于提供编写政策时所需的信息。切勿只是复制输出内容。</p>
   </li>
 </ol>
 
@@ -170,20 +169,20 @@ init_daemon_domain(foo)
 <p>过大的政策：</p>
 
 <ul>
-  <li>由于此类政策位于 ramdisk 中，并且还会加载到内核内存中，因此会占据两倍的内存。
-  </li><li>需要较大的启动映像，浪费磁盘空间。
-  </li><li>影响运行时政策查询次数。
-</li></ul>
+  <li>由于此类政策位于 ramdisk 中，并且还会加载到内核内存中，因此会占据两倍的内存。</li>
+  <li>需要较大的启动映像，浪费磁盘空间。</li>
+  <li>影响运行时政策查询次数。</li>
+</ul>
 
 <p>以下示例显示了制造商专用政策分别占设备上政策 50% 和 40% 的两种设备。重写政策大幅提高了安全性，而且功能方面没有任何损失，如下所示。（AOSP 设备 Shamu 和 Flounder 也包含在了该示例中，以便进行比较。）</p>
 
 <p><img alt="图 1：安全审核后的设备专用政策规模对比。" src="images/selinux_device_policy_reduction.png"/></p>
 <p class="img-caption"><strong>图 1</strong>. 安全审核后的设备专用政策规模对比。</p>
 
-<p>在两种设备中，政策的规模和权限数量都大大减小了。政策规模的减小几乎完全是因为移除了不必要的权限，其中许多权限可能是由 audit2allow 生成且被随意添加到政策中的规则。对于这两种设备来说，Dead 域也是一个问题。</p>
+<p>在两种设备中，政策的规模和权限数量都大大减小了。政策规模的减小几乎完全是因为移除了不必要的权限，其中许多权限可能是由 <code>audit2allow</code> 生成且被随意添加到政策中的规则。对于这两种设备来说，Dead 域也是一个问题。</p>
 
 <h3 id="granting_the_dac_override_capability">授予 dac_override 权限</h3>
 
-<p><code> dac_override</code> 拒绝事件意味着违规进程正在尝试使用错误的 unix user/group/world 权限访问某个文件。正确的解决方案几乎从不授予 <code>dac_override</code> 权限，而是<a href="https://android-review.googlesource.com/#/c/174530/5/update_engine.te@11">更改相应文件或进程的 unix 权限</a>。有些域（例如 init、vold 和 installd）确实需要能够替换 unix 文件权限才能访问其他进程的文件。要查看更深入的讲解，请访问 <a href="http://danwalsh.livejournal.com/69478.html">Dan Walsh 的博客</a>。</p>
+<p><code> dac_override</code> 拒绝事件意味着违规进程正在尝试使用错误的 unix user/group/world 权限访问某个文件。正确的解决方案几乎从不授予 <code>dac_override</code> 权限，而是<a href="https://android-review.googlesource.com/#/c/174530/5/update_engine.te@11">更改相应文件或进程的 unix 权限</a>。有些域（例如 <code>init</code>、<code>vold</code> 和 <code>installd</code>）确实需要能够替换 unix 文件权限才能访问其他进程的文件。要查看更深入的讲解，请访问 <a href="http://danwalsh.livejournal.com/69478.html">Dan Walsh 的博客</a>。</p>
 
 </body></html>

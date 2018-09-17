@@ -1,0 +1,166 @@
+<html devsite><head>
+  <title>HAL 可测试性检查</title>
+  <meta name="project_path" value="/_project.yaml"/>
+  <meta name="book_path" value="/_book.yaml"/>
+</head>
+<body>
+
+  <!--
+      Copyright 2018 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>Android 9 供应商测试套件 (VTS) 支持一种运行时方法，用于利用设备配置来识别应针对相应设备目标跳过哪些 VTS 测试。
+</p>
+
+<h3 id="vts-test-flexibility">VTS 测试灵活性</h3>
+
+<p>自 Android 8.0 开始，所有搭载 Android 8.0 及更高版本的设备都需要完成 VTS 测试。不过，并非任何 VTS 测试都适用于所有设备目标。例如：</p>
+
+<ul>
+  <li>如果特定设备不支持某个测试 HAL（例如 IR），则 VTS 无需针对该设备目标运行该 HAL 测试的相关测试。</li>
+  <li>如果多个设备共享相同的 SoC 和供应商映像，但具有不同的硬件功能，则 VTS 必须确定应针对特定设备目标运行还是跳过测试。</li>
+</ul>
+
+<h3 id="vts-test-types">VTS 测试类型</h3>
+
+<p>VTS 包含以下测试类型：</p>
+
+<ul>
+  <li><strong>合规性</strong>测试可确保框架和供应商分区之间的兼容性。搭载 Android 8.0 或更高版本的设备需要运行（并通过）这些测试。</li>
+  <li><strong>非合规性</strong>测试可帮助供应商提高产品质量（性能/模糊测试等）。这些测试对供应商来说是可选测试。</li>
+</ul>
+
+<p>测试是否属于合规性测试，取决于测试属于哪个计划。通过 <a href="https://android.googlesource.com/platform/test/vts/+/master/tools/vts-tradefed/res/config/vts.xml" class="external">VTS 计划</a>运行的测试被视为合规性测试。
+</p>
+
+<h2 id="determine-supported-hals">确定支持哪些 HAL</h2>
+
+<p>VTS 可以根据以下文件确定设备目标是否支持特定 HAL：</p>
+
+<ul>
+  <li><code>/system/compatibility_matrix.xml</code>。用于声明框架所需的 HAL 实例。例如：<pre class="prettyprint">
+&lt;hal format="hidl" optional="true"&gt;
+    &lt;name&gt;android.hardware.vibrator&lt;/name&gt;
+    &lt;version&gt;1.0-1&lt;/version&gt;
+    &lt;interface&gt;
+       &lt;name&gt;IVibrator&lt;/name&gt;
+       &lt;instance&gt;default&lt;/instance&gt;
+    &lt;/interface&gt;
+&lt;/hal&gt;
+</pre>
+  <ul>
+    <li><code>optional</code> 属性可以指示框架是否严格要求使用相应 HAL。</li>
+    <li>文件可能针对同一 HAL 包含多个条目（具有相同的名称），但版本和接口有所不同。</li>
+    <li>文件可能针对同一条目包含多个 <code>version</code> 配置，表明框架支持不同的版本。
+    </li>
+    <li><code>version1.0-1</code> 表示框架可支持最低版本 1.0，并且不需要高于 1.1 的版本。</li>
+  </ul>
+  </li>
+  <li>设备 <code>manifest.xml</code>。用于声明供应商提供的 HAL 实例。例如：<pre class="prettyprint">
+&lt;hal format="hidl"&gt;
+    &lt;name&gt;android.hardware.vibrator&lt;/name&gt;
+    &lt;transport&gt;hwbinder&lt;/transport&gt;
+    &lt;version&gt;1.2&lt;/version&gt;
+    &lt;interface&gt;
+        &lt;name&gt;IVibrator&lt;/name&gt;
+       &lt;instance&gt;default&lt;/instance&gt;
+    &lt;/interface&gt;
+&lt;/hal&gt;
+</pre>
+  <ul>
+    <li>文件可能针对同一 HAL 包含多个条目（具有相同的名称），但版本和接口有所不同。</li>
+    <li>如果文件针对一个条目仅包含单个 <code>version</code> 配置，则 <code>version1.2</code> 表示供应商支持从 1.0 到 1.2 的所有版本。</li>
+  </ul>
+  </li>
+  <li><strong>lshal</strong>。设备上的工具，用于显示与向 <code>hwservicemanager</code> 注册的 HAL 服务有关的运行时信息。例如：<pre class="prettyprint">
+android.hardware.vibrator@1.0::IVibrator/default
+</pre>
+  <br /><code>lshal</code> 还显示具有直通实现（即在设备上具有相应的 <code>-impl.so</code> 文件）的所有 HAL。例如：<pre class="prettyprint">
+android.hardware.nfc@1.0::I*/* (/vendor/lib/hw/)
+android.hardware.nfc@1.0::I*/* (/vendor/lib64/hw/)
+</pre>
+  </li>
+  </ul>
+
+<h2 id="compliance-tests">合规性测试</h2>
+
+<p>对于合规性测试，VTS 依赖供应商清单来确定（和测试）设备提供的所有 HAL 实例。决策流程如下所示：</p>
+
+<p>
+  <img src="images/testability-check-compliance.png" alt="合规性可测试性检查" title="合规性可测试性检查"/>
+</p>
+<figcaption>
+  <strong>图 1.</strong> VTS 合规性测试的可测试性检查</figcaption>
+
+<h2 id="non-compliance-tests">非合规性测试</h2>
+
+<p>对于非合规性测试，VTS 依赖供应商清单和 <code>lshal</code> 输出来确定（和测试）未在 <code>manifest.xml</code> 文件中声明的实验性 HAL。决策流程如下所示：</p>
+
+<p>
+  <img src="images/testability-check-non-compliance.png" alt="非合规性可测试性检查" title="非合规性可测试性检查"/>
+</p><figcaption>
+  <strong>图 2.</strong> VTS 非合规性测试的可测试性检查</figcaption>
+
+<h2 id="locating-the-vendor-manifest">查找供应商清单</h2>
+
+<p>VTS 按以下顺序在以下位置查找供应商 <code>manifest.xml</code> 文件：</p>
+
+<ol>
+  <li><code>/vendor/etc/vintf/manifest.xml</code> + ODM 清单（如果这两个位置定义了同一 HAL，则 ODM 清单将替换 <code>/vendor/etc/vintf/manifest.xml</code> 中的 HAL）</li>
+  <li><code>/vendor/etc/vintf/manifest.xml</code></li>
+  <li>ODM <code>manifest.xml</code> 文件，按以下顺序从以下文件加载：<ol>
+  <li><code>/odm/etc/vintf/manifest_$(ro.boot.product.hardware.sku).xml</code>
+  </li>
+  <li><code>/odm/etc/vintf/manifest.xml</code></li>
+  <li><code>/odm/etc/manifest_$(ro.boot.product.hardware.sku).xml</code></li>
+  <li><code>/odm/etc/manifest.xml</code></li>
+  <li><code>/vendor/manifest.xml</code></li>
+  </ol>
+  </li>
+</ol>
+
+<h2 id="vts-testability-checker">VTS 可测试性检查工具</h2>
+
+<p><code><a href="https://android.googlesource.com/platform/test/vts/+/master/utils/native/testability_checker/?q=vts_testability&amp;g=0" class="external">
+  vts_testibility_checker</a></code> 是与 VTS 打包在一起的二进制文件，VTS 测试框架会在运行时根据该文件确定指定的 HAL 测试是否可测试。该文件基于 <code><a href="https://android.googlesource.com/platform/system/libvintf/+/master" class="external">libvintf</a></code> 来加载和解析供应商清单文件，并实现上一部分中所述的决策流程。
+</p>
+
+<p>要使用 <code>vts_testability_check</code>，请运行以下命令：</p>
+
+<ul>
+  <li>对于合规性测试：<pre class="prettyprint">
+vts_testability_check -c -b &lt;bitness&gt;  &lt;hal@version&gt;
+</pre>
+  </li>
+  <li>对于非合规性测试：<pre class="prettyprint">
+vts_testability_check -b &lt;bitness&gt;  &lt;hal@version&gt;
+</pre>
+  </li>
+</ul>
+
+<p><code>vts_testability_check</code> 的输出采用以下 json 格式：</p>
+
+<pre class="prettyprint">
+{testable: &lt;True/False&gt; Instances: &lt;list of instance names of HAL service&gt;}
+</pre>
+
+<h2 id="determining-accessed-hals">确定访问哪些 HAL</h2>
+
+<p>要确定 VTS 测试会访问哪些 HAL，请确保每个 HAL 测试都使用 <code><a href="https://android.googlesource.com/platform/test/vts/+/master/runners/target/vts_hal_hidl_target/VtsHalHidlTargetTestEnvBase.h" class="external">VtsHalHidlTargetTestEnvBase</a></code> 模板注册要在测试中访问的 HAL。然后，VTS 测试框架会在预处理测试时提取注册的 HAL。</p>
+
+<p>对于合规性测试，您还可以检查 <code>/system/etc/vintf/manifest.xml</code>。如果此文件中定义了 HAL，则 VTS 应测试该 HAL。（对于系统提供的 HAL 服务（例如 <code>graphics.composer/vr</code>），这些 HAL 会在 <code>/system/manifest.xml</code> 中声明。）
+</p>
+
+</body></html>
