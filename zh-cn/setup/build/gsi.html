@@ -1,0 +1,612 @@
+<html devsite><head>
+    <title>常规系统映像 (GSI)</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2018 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<h2 id="overview">概述</h2>
+<p>
+本文档介绍了适用于 Android 9 的常规系统映像 (GSI)，并详细介绍了适用于搭载 Android 9 设备的 GSI 与适用于升级到 Android 9 设备的 GSI 之间的差异。
+</p>
+<h2 id="gsi-types">GSI 类型</h2>
+<p>
+Android 9 支持以下 GSI：
+</p>
+<table>
+  <tbody><tr>
+   <th><strong>GSI 名称</strong>
+   </th>
+   <th><strong>说明</strong>
+   </th>
+   <th><strong>产品名称</strong>
+   </th>
+  </tr>
+  <tr>
+   <td>P GSI
+   </td>
+   <td>适用于搭载 Android 9 的设备
+   </td>
+   <td><code>aosp_$arch</code>
+   </td>
+  </tr>
+  <tr>
+   <td>旧版 GSI
+   </td>
+   <td>适用于升级到 Android 9 的设备
+   </td>
+   <td><code>aosp_$arch_a(b)</code>
+   </td>
+  </tr>
+</tbody></table>
+<p>
+所有 GSI 都是从 Android 9 代码库编译的。
+</p>
+<h3 id="changes-in-p-gsis">适用于 Android 9 的 GSI 中的变更</h3>
+<p>
+搭载 Android 9 的设备必须使用 P GSI，P GSI 与早期 GSI 相比存在以下主要变更：
+</p><ul>
+<li><strong>合并 GSI 和模拟器。</strong>GSI 是根据模拟器产品（例如，<code>aosp_arm64</code>、<code>aosp_x86</code> 等）的系统映像编译的。</li><li><strong>System-as-root</strong>。在以前的 Android 版本中，不支持 A/B 更新的设备可以在 <code>/system</code> 目录下装载系统映像。<strong></strong>在 Android 9 中，系统映像的 root 作为设备的 root 装载。
+</li><li><strong>64 位 binder 接口</strong>。在 Android 8.x 中，32 位 GSI 使用 32 位 binder 接口。Android 9 不支持 32 位 binder 接口，因此 32 位 GSI 和 64 位 GSI 都使用 64 位 binder 接口。
+</li><li><strong>强制执行 VNDK</strong>。在 Android 8.1 中，VNDK 是可选的。在 Android 9 中，VNDK 是强制性的，这意味着<strong>不得</strong>设置 <code>BOARD_VNDK_RUNTIME_DISABLE</code>：<code>BOARD_VNDK_RUNTIME_DISABLE :=  # must not be set</code>
+</li><li><strong>兼容的系统属性</strong>。Android 9 支持对兼容的系统属性进行访问检查：<code>
+PRODUCT_COMPATIBLE_PROPERTY_OVERRIDE := true</code>。</li></ul>
+<p>
+要通过 cts-on-gsi 测试搭载 Android 9 的设备，请使用 <a href="#p-gsi-build-targets">P GSI 的编译目标</a>。
+</p>
+<h3 id="changes-in-legacy-gsis">旧版 GSI 中的变更</h3>
+<p>
+升级到 Android 9 的设备可以使用名称带后缀 <code>_ab</code> 或 <code>_a</code> 的旧版 GSI 产品（例如，<code>aosp_arm64_ab</code>、<code>aosp_x86_a</code>）。此 GSI 支持以下升级用例：
+</p><ul>
+<li>具有 Android 8.1 供应商接口实现的设备</li><li>更新到 Android 9 供应商接口实现的设备</li></ul>
+<p>
+旧版 GSI 是从 Android 9 源代码树编译的，但包含以下针对升级设备的向后兼容配置：
+</p><ul>
+<li><strong>非 system-as-root</strong>。不支持系统作为 root 的设备可以继续使用 <code>_a</code> 产品（例如 <code>aosp_arm_a</code>）。
+</li><li><strong>32 位用户空间 + 32 位 binder 接口。</strong>32 位 GSI 可以继续使用 32 位 binder 接口。
+</li><li><strong>8.1 VNDK</strong>。设备可以使用随附的 8.1 VNDK。
+</li><li><strong>装载目录</strong>。一些旧版设备使用目录作为装载指针（例如，<code>/bluetooth</code>、<code>/firmware/radio</code>、<code>/persist</code> 等）。</li></ul>
+<p>
+要通过 cts-on-gsi 测试升级到 Android 9 的设备，请使用<a href="#legacy-gsi-build-targets">旧版 GSI 的编译目标</a>。
+</p>
+<p>
+<strong>注意</strong>：如果 Android 9 之前的设备实现了 Android 9 供应商接口并满足 Android 9 中引入的所有要求，请不要使用旧版 GSI，而是将 P GSI 用于 VTS 和 cts-on-gsi。
+</p>
+<h2 id="changes-to-keymaster-behavior">Keymaster 行为的变更</h2>
+<p>
+在早期版本的 Android 中，实现 Keymaster 3 或更早版本的设备需要验证并确保运行系统报告的版本信息（<code>ro.build.version.release</code> 和 <code>ro.build.version.security_patch</code>）与引导加载程序报告的版本信息匹配。此类信息通常可以从引导映像标头中获取。
+</p>
+<p>
+在 Android 9 中，为了让供应商引导 GSI，已经更改了此要求：Keymaster 不应该执行验证，因为 GSI 报告的版本信息可能与供应商的引导加载程序报告的版本信息不匹配。对于实现 Keymaster 3 或更早版本的设备，供应商必须修改 Keymaster 实现以跳过验证（或升级到 Keymaster 4）。
+</p>
+<p>
+有关 Keymaster 的详细信息，请参阅 source.android.com 上的<a href="https://source.android.com/security/keystore/">由硬件支持的 Keystore</a>。
+</p>
+<h2 id="vendor-binaries-and-vndk-dependencies">供应商二进制文件和 VNDK 依赖项</h2>
+<p>
+升级到 Android 9 的设备具有不同的升级路径，具体取决于设备上使用的供应商二进制文件的版本以及用于编译设备的 VNDK 相关配置。
+</p>
+<p>
+下表总结了针对升级设备的旧版 GSI 支持情况：</p>
+<table>
+  <tbody><tr>
+   <th><strong>用例</strong>
+   </th>
+   <th><strong>设备供应商二进制文件</strong>
+   </th>
+   <th><strong><code>BOARD_VNDK
+_VERSION</code></strong>
+   </th>
+   <th><strong><code>BOARD_VNDK
+_RUNTIME_DISABLE</code></strong>
+   </th>
+   <th><strong>旧版 GSI 系统二进制文件</strong>
+   </th>
+   <th><strong>支持</strong>
+   </th>
+  </tr>
+  <tr>
+   <td>1.a
+   </td>
+   <td>8.1
+   </td>
+   <td>（空）
+   </td>
+   <td>（任何）
+   </td>
+   <td>P
+   </td>
+   <td>否
+   </td>
+  </tr>
+  <tr>
+   <td>1.b
+   </td>
+   <td>8.1
+   </td>
+   <td><code>current</code>
+   </td>
+   <td><code>true</code>
+   </td>
+   <td>P
+   </td>
+   <td>否
+   </td>
+  </tr>
+  <tr>
+   <td>2
+   </td>
+   <td>8.1
+   </td>
+   <td><code>current</code>
+   </td>
+   <td>（空）
+   </td>
+   <td>P
+   </td>
+   <td>是
+   </td>
+  </tr>
+  <tr>
+   <td>3
+   </td>
+   <td>P
+   </td>
+   <td><code>current</code>
+   </td>
+   <td><code>true</code>
+   </td>
+   <td>P
+   </td>
+   <td>是
+   </td>
+  </tr>
+  <tr>
+   <td>4
+   </td>
+   <td>P
+   </td>
+   <td><code>current</code>
+   </td>
+   <td>（空）
+   </td>
+   <td>P
+   </td>
+   <td>是
+   </td>
+  </tr>
+</tbody></table>
+<p>
+最常见的受支持用例是 2，其中旧版 GSI 支持运行 8.1 且使用 <code>BOARD_VNDK_VERSION</code> 进行编译（而未通过设置 <code>BOARD_VNDK_RUNTIME_DISABLE</code> 进行编译，即，未停用运行时强制执行）的设备。
+</p>
+<p>
+两个不受支持的用例是 1.a 和 1.b，其中旧版 GSI 不支持运行 8.1 且未使用 <code>BOARD_VNDK_VERSION</code> 或通过设置 <code>BOARD_VNDK_RUNTIME_DISABLE</code> 进行编译（即，运行时强制执行已停用）的设备。这些设备不受支持，因为它们的供应商二进制文件依赖于 8.1 非 VNDK 共享库，这些库未包含在旧版 GSI 中。
+</p>
+<p>
+要使这些设备与旧版 GSI 兼容，供应商必须执行以下操作之一：
+</p><ul>
+<li>启用 <code>BOARD_VNDK_VERSION</code>，但未设置 <code>BOARD_VNDK_RUNTIME_DISABLE</code>（用例 2）
+
+或者
+</li><li>移植/升级供应商二进制文件，以便依赖于 Android 9 中的共享库（用例 3 和用例 4）。</li></ul>
+
+<h2 id="build-targets">编译目标</h2>
+<p>
+请根据以下编译目标表确定设备应使用哪个 GSI 版本。
+</p>
+<h3 id="p-gsi-build-targets">P GSI 编译目标</h3>
+<p>
+以下 P GSI 编译目标适用于搭载 Android 9 的设备。（由于架构之间的差异减少，Android 9 仅包含四个 GSI 产品）。
+</p>
+<table>
+  <tbody><tr>
+   <th><strong>GSI 名称</strong>
+   </th>
+   <th><strong>CPU 架构</strong>
+   </th>
+   <th><strong>Binder 接口位数</strong>
+   </th>
+   <th><strong>System-as-root</strong>
+   </th>
+   <th><strong>产品名称</strong>
+   </th>
+  </tr>
+  <tr>
+   <td><strong><code>aosp_arm</code></strong>
+   </td>
+   <td><code>ARM</code>
+   </td>
+   <td><code>64</code>
+   </td>
+   <td><code>Y</code>
+   </td>
+   <td><code>aosp_arm-userdebug</code>
+   </td>
+  </tr>
+  <tr>
+   <td><strong><code>aosp_arm64</code></strong>
+   </td>
+   <td><code>ARM64</code>
+   </td>
+   <td><code>64</code>
+   </td>
+   <td><code>Y</code>
+   </td>
+   <td><code>aosp_arm64-userdebug</code>
+   </td>
+  </tr>
+  <tr>
+   <td><strong><code>aosp_x86</code></strong>
+   </td>
+   <td><code>x86</code>
+   </td>
+   <td><code>64</code>
+   </td>
+   <td><code>Y</code>
+   </td>
+   <td><code>aosp_x86-userdebug</code>
+   </td>
+  </tr>
+  <tr>
+   <td><strong><code>aosp_x86_64</code></strong>
+   </td>
+   <td><code>x86-64</code>
+   </td>
+   <td><code>64</code>
+   </td>
+   <td><code>Y</code>
+   </td>
+   <td><code>aosp_x86_64-userdebug</code>
+   </td>
+  </tr>
+</tbody></table>
+<h3 id="legacy-gsi-build-targets">旧版 GSI 编译目标</h3>
+<p>
+以下旧版 GSI 编译目标适用于升级到 Android 9 的设备。旧版 GSI 名称包含后缀 <code>_ab</code> 或 <code>_a</code>，以区别于 P GSI 名称。
+</p>
+<table>
+  <tbody><tr>
+   <th><strong>GSI 名称</strong>
+   </th>
+   <th><strong>CPU 架构</strong>
+   </th>
+   <th><strong>Binder 接口位数</strong>
+   </th>
+   <th><strong>System-as-root</strong>
+   </th>
+   <th><strong>产品名称</strong>
+   </th>
+  </tr>
+  <tr>
+   <td><strong><code>aosp_arm_a</code></strong>
+   </td>
+   <td><code>ARM</code>
+   </td>
+   <td><code>32</code>
+   </td>
+   <td><code>N</code>
+   </td>
+   <td><code>aosp_arm_a-userdebug</code>
+   </td>
+  </tr>
+  <tr>
+   <td><strong><code>aosp_arm_ab</code></strong>
+   </td>
+   <td><code>ARM</code>
+   </td>
+   <td><code>32</code>
+   </td>
+   <td><code>Y</code>
+   </td>
+   <td><code>aosp_arm_ab-userdebug</code>
+   </td>
+  </tr>
+  <tr>
+   <td><code>**NA</code>
+   </td>
+   <td><code>ARM</code>
+   </td>
+   <td><code>64</code>
+   </td>
+   <td><code>N</code>
+   </td>
+   <td>
+   </td>
+  </tr>
+  <tr>
+   <td><code>aosp_arm_64b_ab</code>
+   </td>
+   <td><code>ARM</code>
+   </td>
+   <td><code>64</code>
+   </td>
+   <td><code>Y</code>
+   </td>
+   <td><code>aosp_arm_64b_ab-userdebug</code>
+   </td>
+  </tr>
+  <tr>
+   <td><strong><code>aosp_arm64_a</code></strong>
+   </td>
+   <td><code>ARM64</code>
+   </td>
+   <td><code>64</code>
+   </td>
+   <td><code>N</code>
+   </td>
+   <td><code>aosp_arm64_a-userdebug</code>
+   </td>
+  </tr>
+  <tr>
+   <td><strong><code>aosp_arm64_ab</code></strong>
+   </td>
+   <td><code>ARM64</code>
+   </td>
+   <td><code>64</code>
+   </td>
+   <td><code>Y</code>
+   </td>
+   <td><code>aosp_arm64_ab-userdebug</code>
+   </td>
+  </tr>
+  <tr>
+   <td><strong><code>aosp_x86_a</code></strong>
+   </td>
+   <td><code>x86</code>
+   </td>
+   <td><code>32</code>
+   </td>
+   <td><code>N</code>
+   </td>
+   <td><code>aosp_x86_a-userdebug</code>
+   </td>
+  </tr>
+  <tr>
+   <td><strong><code>aosp_x86_ab</code></strong>
+   </td>
+   <td><code>x86</code>
+   </td>
+   <td><code>32</code>
+   </td>
+   <td><code>Y</code>
+   </td>
+   <td><code>aosp_x86_ab-userdebug</code>
+   </td>
+  </tr>
+  <tr>
+   <td><code>**NA</code>
+   </td>
+   <td><code>x86</code>
+   </td>
+   <td><code>64</code>
+   </td>
+   <td><code>N</code>
+   </td>
+   <td>
+   </td>
+  </tr>
+  <tr>
+   <td><code>**NA</code>
+   </td>
+   <td><code>x86</code>
+   </td>
+   <td><code>64</code>
+   </td>
+   <td><code>Y</code>
+   </td>
+   <td>
+   </td>
+  </tr>
+  <tr>
+   <td><strong><code>aosp_x86_64_a</code></strong>
+   </td>
+   <td><code>x86-64</code>
+   </td>
+   <td><code>64</code>
+   </td>
+   <td><code>N</code>
+   </td>
+   <td><code>aosp_x86_64_a-userdebug</code>
+   </td>
+  </tr>
+  <tr>
+   <td><strong><code>aosp_x86_64_ab</code></strong>
+   </td>
+   <td><code>x86-64</code>
+   </td>
+   <td><code>64</code>
+   </td>
+   <td><code>Y</code>
+   </td>
+   <td><code>aosp_x86_64_ab-userdebug</code>
+   </td>
+  </tr>
+</tbody></table>
+<p>
+<em>**可以根据要求添加</em>
+</p>
+<p>
+<strong>注意</strong>：在未来的 Android 版本中可能会移除这些编译目标。
+</p>
+<h3 id="gsi-8-1-build-targets">GSI 8.1 编译目标</h3>
+<p>
+Android 8.1 GSI 支持八种普通产品（在表格中以<strong>粗体</strong>显示）和一款从 Android 8.1 源代码树编译的特殊产品。
+</p>
+<table>
+  <tbody><tr>
+   <th><strong>GSI 名称</strong>
+   </th>
+   <th><strong>CPU 架构</strong>
+   </th>
+   <th><strong>Binder 接口位数</strong>
+   </th>
+   <th><strong>System-as-root</strong>
+   </th>
+   <th><strong>产品名称</strong>
+   </th>
+  </tr>
+  <tr>
+   <td><strong><code>aosp_arm_a</code></strong>
+   </td>
+   <td><code>ARM</code>
+   </td>
+   <td><code>32</code>
+   </td>
+   <td><code>N</code>
+   </td>
+   <td><code>aosp_arm_a-userdebug</code>
+   </td>
+  </tr>
+  <tr>
+   <td><strong><code>aosp_arm_ab</code></strong>
+   </td>
+   <td><code>ARM</code>
+   </td>
+   <td><code>32</code>
+   </td>
+   <td><code>Y</code>
+   </td>
+   <td><code>aosp_arm_ab-userdebug</code>
+   </td>
+  </tr>
+  <tr>
+   <td><code>aosp_arm_64b_a</code>
+   </td>
+   <td><code>ARM</code>
+   </td>
+   <td><code>64</code>
+   </td>
+   <td><code>N</code>
+   </td>
+   <td><code>aosp_arm_64b_a-userdebug</code>
+   </td>
+  </tr>
+  <tr>
+   <td><code>**NA</code>
+   </td>
+   <td><code>ARM</code>
+   </td>
+   <td><code>64</code>
+   </td>
+   <td><code>Y</code>
+   </td>
+   <td>
+   </td>
+  </tr>
+  <tr>
+   <td><strong><code>aosp_arm64_a</code></strong>
+   </td>
+   <td><code>ARM64</code>
+   </td>
+   <td><code>64</code>
+   </td>
+   <td><code>N</code>
+   </td>
+   <td><code>aosp_arm64_a-userdebug</code>
+   </td>
+  </tr>
+  <tr>
+   <td><strong><code>aosp_arm64_ab</code></strong>
+   </td>
+   <td><code>ARM64</code>
+   </td>
+   <td><code>64</code>
+   </td>
+   <td><code>Y</code>
+   </td>
+   <td><code>aosp_arm64_ab-userdebug</code>
+   </td>
+  </tr>
+  <tr>
+   <td><strong><code>aosp_x86_a</code></strong>
+   </td>
+   <td><code>x86</code>
+   </td>
+   <td><code>32</code>
+   </td>
+   <td><code>N</code>
+   </td>
+   <td><code>aosp_x86_a-userdebug</code>
+   </td>
+  </tr>
+  <tr>
+   <td><strong><code>aosp_x86_ab</code></strong>
+   </td>
+   <td><code>x86</code>
+   </td>
+   <td><code>32</code>
+   </td>
+   <td><code>Y</code>
+   </td>
+   <td><code>aosp_x86_ab-userdebug</code>
+   </td>
+  </tr>
+  <tr>
+   <td><code>**NA</code>
+   </td>
+   <td><code>x86</code>
+   </td>
+   <td><code>64</code>
+   </td>
+   <td><code>N</code>
+   </td>
+   <td>
+   </td>
+  </tr>
+  <tr>
+   <td><code>**NA</code>
+   </td>
+   <td><code>x86</code>
+   </td>
+   <td><code>64</code>
+   </td>
+   <td><code>Y</code>
+   </td>
+   <td>
+   </td>
+  </tr>
+  <tr>
+   <td><strong><code>aosp_x86_64_a</code></strong>
+   </td>
+   <td><code>x86-64</code>
+   </td>
+   <td><code>64</code>
+   </td>
+   <td><code>N</code>
+   </td>
+   <td><code>aosp_x86_64_a-userdebug</code>
+   </td>
+  </tr>
+  <tr>
+   <td><strong><code>aosp_x86_64_ab</code></strong>
+   </td>
+   <td><code>x86-64</code>
+   </td>
+   <td><code>64</code>
+   </td>
+   <td><code>Y</code>
+   </td>
+   <td><code>aosp_x86_64_ab-userdebug</code>
+   </td>
+  </tr>
+</tbody></table>
+<p>
+<em>**可以根据要求添加</em>
+</p>
+
+</body></html>
