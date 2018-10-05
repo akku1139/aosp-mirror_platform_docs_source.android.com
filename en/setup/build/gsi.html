@@ -5,6 +5,7 @@
     <meta name="book_path" value="/_book.yaml" />
   </head>
   <body>
+    {% include "_versions.html" %}
   <!--
       Copyright 2018 The Android Open Source Project
 
@@ -21,656 +22,589 @@
       limitations under the License.
   -->
 
-<h2 id="overview">Overview</h2>
 <p>
-This document describes the Generic System Image (GSI) for Android 9, including
-details on the differences between GSIs for devices launching with Android 9 and
-devices upgrading to Android 9.
+  A generic system image (GSI) is a system image with adjusted configurations
+  for Android devices. It is considered a "pure Android" implementation with
+  unmodified Android Open Source Project (AOSP) code that any Android device
+  should be able to run successfully.
 </p>
+
+<p>
+  The content in a GSI does not depend on the vendor image. To verify GSI
+  independence, the system image of an Android device is replaced with a GSI
+  then tested thoroughly with the <a href="/compatibility/vts/">Vendor Test
+  Suite (VTS)</a> and the <a href="/compatibility/cts/">Compatibility Test Suite
+  (CTS)</a>. Similarly, you can use a GSI in place of your own system image
+  to verify your Android device implements vendor interfaces correctly.
+</p>
+
+<h2 id="gsi-configuration-and-variances">GSI configuration and variances</h2>
+
+<p>
+  The goal of a GSI is to offer a specific, universal configuration for all
+  Android devices while allowing for variances between different vendor devices.
+  The current GSI is based on Android {{ androidPVersionNumber }}.
+</p>
+
+<p>
+  The current GSI has the following configuration:
+</p>
+
+<ul>
+  <li><strong>Treble</strong>. A GSI includes full support for the
+    <a href="/devices/architecture/#hidl">HIDL-based architectural changes</a>
+    (also known as "Treble") introduced in Android 8.0, including support for
+    <a href="/reference/hidl/">HIDL interfaces</a>. You can use a GSI on any
+    Android device that uses HIDL vendor interfaces. (For more details, see
+    <a href="/devices/architecture/#resources">Architecture resources</a>.)</li>
+  <li><strong>Verify Boot.</strong> A GSI does not include a verify boot
+    solution (<a href="/security/verifiedboot/">vboot 1.0</a>,
+    <a href="/security/verifiedboot/avb">AVB</a>, etc.). To flash a GSI to an
+    Android device, it must have a method for disabling verify boot.</li>
+  <li><strong>Build variant</strong>. A GSI always uses a <code>userdebug</code>
+    build variant to enable running VTS and CTS. After replacing the system
+    image with GSI, you can root the device then test with a
+    <code>user</code>-build vendor image and a <code>userdebug</code>-build
+  system image.</li>
+  <li><strong>File system and image format</strong>. A GSI uses an ext4 file
+    system with sparse image format.</li>
+</ul>
+
+<p>
+  The current GSI includes following major variances:
+</p>
+
+<ul>
+  <li><strong>Version</strong>. Support for Android 8.0, Android 8.1, and
+    Android {{ androidPVersionNumber }}.</li>
+  <li><strong>CPU architecture</strong>. Support for different CPU instructions
+    (ARM, x86, etc.) and CPU bitness (32-bit or 64-bit).</li>
+  <li><strong>Partition layout</strong>. Can use
+    <a href="/devices/bootloader/system-as-root">system-as-root</a> or
+    non-system-as-root partition layout.</li>
+  <li>Support for binder interface bitness.</li>
+</ul>
+
 <h2 id="gsi-types">GSI types</h2>
+
 <p>
-Android 9 supports the following GSIs:
+  The GSI type is determined by the Android version the device launches with.
+  Android {{ androidPVersionNumber }} supports the following GSIs:
 </p>
+
 <table>
   <tr>
-   <th><strong>GSI Name</strong>
-   </th>
-   <th><strong>Description</strong>
-   </th>
-   <th><strong>Product Name</strong>
-   </th>
+   <th>GSI name</th>
+   <th>Description</th>
+   <th>Product name</th>
   </tr>
   <tr>
-   <td>P GSI
-   </td>
-   <td>For devices launching with Android 9
-   </td>
-   <td><code>aosp_$arch</code>
-   </td>
+   <td>Android GSI</td>
+   <td>For devices launching with Android {{ androidPVersionNumber }}</td>
+   <td><code>aosp_$arch</code></td>
   </tr>
   <tr>
-   <td>Legacy GSI
-   </td>
-   <td>For devices upgrading to Android 9
-   </td>
-   <td><code>aosp_$arch_a(b)</code>
-   </td>
+   <td>Legacy GSI</td>
+   <td>For devices launching with Android 8.0 or Android 8.1</td>
+   <td><code>aosp_$arch_a(b)</code></td>
   </tr>
 </table>
+
+<aside class="note">
+  <strong>Note:</strong> To determine the appropriate GSI for a device, connect
+  the device to a workstation and run
+  <code>adb shell getprop ro.product.first_api_level</code>. If the API level is 28,
+  use the Android GSI; if the API level is 27, use the Legacy GSI. If there is no
+  system property then it may not be supported.
+</aside>
+
 <p>
-All GSIs are built from the Android 9 codebase.
+  All GSIs are built from the Android {{ androidPVersionNumber }} codebase. As
+  Legacy GSI support depends on the vendor interface implementation of the
+  device, not all devices launching with Android 8.0 or Android 8.1 can use the
+  Legacy GSI. For details, see
+  <a href="#vendor-binaries-and-vndk-dependencies">Vendor binaries and VNDK
+  dependencies</a>.
 </p>
-<h3 id="changes-in-p-gsis">Changes in GSIs for Android 9</h3>
+
+<h3 id="changes-in-p-gsis">Android {{ androidPVersionNumber }} GSI changes</h3>
+
 <p>
-Devices launching with Android 9 must use P GSIs, which include the following
-major changes from earlier GSIs:
-</p><ul>
-<li><strong>Merges GSI and emulator. </strong>GSIs are built from the system
-images of emulator products, e.g. <code>aosp_arm64</code>,
-<code>aosp_x86</code>, etc.
-<li><strong>System-as-root</strong>. In previous versions of Android, devices
-that did not support A/B updates could mount the system image under
-<code>/system</code> directory.<strong> </strong>In Android 9, the root of the
-system image is mounted as the root of the device.
-<li><strong>64-bit binder interface</strong>. In Android 8.x, 32-bit GSIs used
-the 32-bit binder interface. Android 9 does not support 32-bit binder interface,
-so both 32-bit GSIs and 64-bit GSIs use the 64-bit binder interface.
-<li><strong>VNDK enforcement</strong>. In Android 8.1, VNDK was optional. In
-Android 9, VNDK is mandatory, meaning the
-<code>BOARD_VNDK_RUNTIME_DISABLE</code> must <strong>not</strong> be set:
-<code>BOARD_VNDK_RUNTIME_DISABLE :=  # must not be set</code>
-<li><strong>Compatible system property</strong>. Android 9 enables the access
-check for compatible system property:<code>
-PRODUCT_COMPATIBLE_PROPERTY_OVERRIDE := true</code>.</li></ul>
-<p>
-To test devices launching with Android 9 with cts-on-gsi, use the <a
-href="#p-gsi-build-targets">build targets for P GSI</a>.
+  Devices launching with Android {{ androidPVersionNumber }} must use Android
+  {{ androidPVersionNumber }} GSIs, which include the following major changes
+  from earlier GSIs:
 </p>
-<h3 id="changes-in-legacy-gsis">Changes in Legacy GSIs</h3>
+
+<ul>
+  <li><strong>Merges GSI and emulator</strong>. GSIs are built from the system
+    images of emulator products, e.g. <code>aosp_arm64</code>,
+    <code>aosp_x86</code>, etc.</li>
+  <li><strong>System-as-root</strong>. In previous versions of Android, devices
+    that did not support A/B updates could mount the system image under
+    <code>/system</code> directory. In Android {{ androidPVersionNumber }}, the
+    root of the system image is mounted as the root of the device.</li>
+    <li><strong>64-bit binder interface</strong>. In Android 8.x, 32-bit GSIs
+      used the 32-bit binder interface. Android {{ androidPVersionNumber }} does
+      not support 32-bit binder interface, so both 32-bit GSIs and 64-bit GSIs
+      use the 64-bit binder interface.</li>
+    <li><strong>VNDK enforcement</strong>. In Android 8.1, VNDK was optional. In
+      Android {{ androidPVersionNumber }}, VNDK is mandatory, meaning the
+      <code>BOARD_VNDK_RUNTIME_DISABLE</code> must <strong>not</strong> be set
+      (<code>BOARD_VNDK_RUNTIME_DISABLE :=  # must not be set</code>).</li>
+    <li><strong>Compatible system property</strong>. Android
+      {{ androidPVersionNumber }} enables the access check for compatible system
+      property (<code>PRODUCT_COMPATIBLE_PROPERTY_OVERRIDE := true</code>).</li>
+</ul>
+
 <p>
-Devices upgrading to Android 9 can use Legacy GSI product named with suffix
-<code>_ab</code> or <code>_a</code> (e.g.  <code>aosp_arm64_ab</code>,
-<code>aosp_x86_a</code> ). This GSI supports the following upgrade use cases:
-</p><ul>
-<li>For devices with an Android 8.1 vendor interface implementation
-<li>For devices updated to the Android 9 vendor interface
-implementation</li></ul>
-<p>
-Legacy GSIs are build from the Android 9 source tree but contain the following
-backward compatible configurations for upgraded devices:
-</p><ul>
-<li><strong>Non system-as-root</strong>. Devices that do not support
-system-as-root can continue to use  <code>_a</code> products (e.g.,
-<code>aosp_arm_a</code>).
-<li><strong>32-bit userspace + 32-bit binder interface. </strong>32-bit GSIs can
-continue to use the 32-bit binder interface.
-<li><strong>8.1 VNDK</strong>. Devices can use the included 8.1 VNDK.
-<li><strong>Mount directories</strong>. Some legacy devices use directories as
-mount-pointers (e.g. <code>/bluetooth</code>, <code>/firmware/radio</code>,
-<code>/persist</code>, etc.).</li></ul>
-<p>
-To test devices upgrading to Android 9 with cts-on-gsi, use the <a
-href="#legacy-gsi-build-targets">build targets for Legacy GSI</a>.
+  To test devices launching with Android {{ androidPVersionNumber }} with
+  cts-on-gsi, use the <a href="#p-gsi-build-targets">build targets for the
+  Android {{ androidPVersionNumber }} GSI</a>.
 </p>
+
+<h3 id="changes-in-legacy-gsis">Android {{ androidPVersionNumber }} Legacy GSI
+changes</h3>
+
 <p>
-<strong>Note:</strong> If a pre-Android 9 device implements the Android 9 vendor
-interface and meets all requirements introduced in Android 9, don't use the
-Legacy GSIs; instead use P GSIs for VTS and cts-on-gsi.
+  Devices upgrading to Android {{ androidPVersionNumber }} can use Legacy GSI
+  product named with suffix <code>_ab</code> or <code>_a</code> (e.g.
+  <code>aosp_arm64_ab</code>, <code>aosp_x86_a</code> ). This GSI supports the
+  following upgrade use cases:
 </p>
-<h2 id="changes-to-keymaster-behavior">Changes to Keymaster behavior</h2>
+
+<ul>
+  <li>Devices with an Android 8.1 vendor interface implementation</li>
+  <li>Devices updated to the Android {{ androidPVersionNumber }} vendor
+    interface implementation</li>
+</ul>
+
 <p>
-In earlier versions of Android, devices implementing Keymaster 3 or earlier were
-required to verify the version info (<code>ro.build.version.release</code> and
-<code>ro.build.version.security_patch</code>) reported by the running system
-matched the version info reported by bootloader. Such information was typically
-obtained from the boot image header.
+  Legacy GSIs are build from the Android {{ androidPVersionNumber }} source
+  tree but contain the following backward-compatible configurations for upgraded
+  devices:
 </p>
+
+<ul>
+  <li><strong>Non system-as-root</strong>. Devices that do not support
+    system-as-root can continue to use <code>_a</code> products (e.g.,
+    <code>aosp_arm_a</code>).</li>
+  <li><strong>32-bit userspace + 32-bit binder interface</strong>. 32-bit GSIs
+    can continue to use the 32-bit binder interface.</li>
+  <li><strong>8.1 VNDK</strong>. Devices can use the included 8.1 VNDK.</li>
+  <li><strong>Mount directories</strong>. Some legacy devices use directories as
+    mount-pointers (e.g. <code>/bluetooth</code>, <code>/firmware/radio</code>,
+    <code>/persist</code>, etc.).</li>
+</ul>
+
 <p>
-In Android 9, this requirement has changed for vendors to boot GSI: The
-Keymaster should not perform verification since the version info reported by the
-GSI may not match the version info reported by vendor's bootloader. For devices
-implementing Keymaster 3 or earlier, vendors must modify the Keymaster
-implementation to skip verification (or upgrade to Keymaster 4).
+  To test devices upgrading to Android {{ androidPVersionNumber }} with
+  cts-on-gsi, use the <a href="#legacy-gsi-build-targets">build targets for
+  Legacy GSI</a>.
 </p>
+
+<aside class="note">
+  <strong>Note:</strong> If a pre-Android {{ androidPVersionNumber }} device
+  implements the Android {{ androidPVersionNumber }} vendor interface and meets
+  all requirements introduced in Android {{ androidPVersionNumber }}, don't use
+  the Legacy GSIs; instead use Android {{ androidPVersionNumber }} GSIs for VTS
+  and cts-on-gsi.
+</aside>
+
+<h3 id="changes-to-keymaster-behavior">Android {{ androidPVersionNumber }}
+Keymaster changes</h3>
+
 <p>
-For details on Keymaster, refer to <a
-href="https://source.android.com/security/keystore/">Hardware-backed
-Keystore</a> on source.android.com.
+  In earlier versions of Android, devices implementing Keymaster 3 or lower were
+  required to verify the version info (<code>ro.build.version.release</code> and
+  <code>ro.build.version.security_patch</code>) reported by the running system
+  matched the version info reported by bootloader. Such information was
+  typically obtained from the boot image header.
 </p>
+
+<p>
+  In Android {{ androidPVersionNumber }}, this requirement has changed to enable
+  vendors to boot a GSI. Specifically, Keymaster should not perform verification
+  since the version info reported by the GSI may not match the version info
+  reported by vendor's bootloader. For devices implementing Keymaster 3 or
+  lower, vendors must modify the Keymaster implementation to skip verification
+  (or upgrade to Keymaster 4). For details on Keymaster, refer to
+  <a href="/security/keystore/">Hardware-backed Keystore</a>.
+</p>
+
 <h2 id="vendor-binaries-and-vndk-dependencies">Vendor binaries and VNDK
 dependencies</h2>
-<p>
-Devices upgrading to Android 9 have different upgrade paths depending on the
-version of vendor binaries in use on the device and the VNDK-related
-configurations used to build the device.
-</p>
-<p>
-The following table summarizes the Legacy GSI support for upgraded devices:
-</p>
-<table>
-  <tr>
-   <th><strong>Use Case</strong>
-   </th>
-   <th><strong>Device
-Vendor Binaries</strong>
-   </th>
-   <th><strong><code>BOARD_VNDK
-_VERSION</code></strong>
-   </th>
-   <th><strong><code>BOARD_VNDK
-_RUNTIME_DISABLE</code></strong>
-   </th>
-   <th><strong>Legacy GSI
-System Binaries</strong>
-   </th>
-   <th><strong>Support</strong>
-   </th>
-  </tr>
-  <tr>
-   <td>1.a
-   </td>
-   <td>8.1
-   </td>
-   <td>(empty)
-   </td>
-   <td>(any)
-   </td>
-   <td>P
-   </td>
-   <td>No
-   </td>
-  </tr>
-  <tr>
-   <td>1.b
-   </td>
-   <td>8.1
-   </td>
-   <td><code>current</code>
-   </td>
-   <td><code>true</code>
-   </td>
-   <td>P
-   </td>
-   <td>No
-   </td>
-  </tr>
-  <tr>
-   <td>2
-   </td>
-   <td>8.1
-   </td>
-   <td><code>current</code>
-   </td>
-   <td>(empty)
-   </td>
-   <td>P
-   </td>
-   <td>Yes
-   </td>
-  </tr>
-  <tr>
-   <td>3
-   </td>
-   <td>P
-   </td>
-   <td><code>current</code>
-   </td>
-   <td><code>true</code>
-   </td>
-   <td>P
-   </td>
-   <td>Yes
-   </td>
-  </tr>
-  <tr>
-   <td>4
-   </td>
-   <td>P
-   </td>
-   <td><code>current</code>
-   </td>
-   <td>(empty)
-   </td>
-   <td>P
-   </td>
-   <td>Yes
-   </td>
-  </tr>
-</table>
-<p>
-The most common supported use case is #2, where the Legacy GSI supports devices
-running 8.1 that were built with <code>BOARD_VNDK_VERSION</code> but built
-without <code>BOARD_VNDK_RUNTIME_DISABLE</code> (i.e., runtime enforcement was
-NOT disabled).
-</p>
-<p>
-The two unsupported use cases are #1.a and #1.b, where the Legacy GSI does NOT
-support devices running 8.1 that were not built with
-<code>BOARD_VNDK_VERSION</code> or built with
-<code>BOARD_VNDK_RUNTIME_DISABLE</code> (i.e. runtime enforcement WAS disabled).
-These devices are not supported because their vendor binaries depend on 8.1
-non-VNDK shared libraries, which are not included in Legacy GSI.
-</p>
-<p>
-To make these devices compatible with the Legacy GSI, vendors must do one of the
-following:
-</p><ul>
-<li>Enable <code>BOARD_VNDK_VERSION</code> without
-<code>BOARD_VNDK_RUNTIME_DISABLE</code> (use case #2)
 
-OR
-<li>Port/upgrade the vendor binaries to depend on the shared libraries from
-Android 9 (use case #3 and use case #4).</li></ul>
+<p>
+  Devices upgrading to Android {{ androidPVersionNumber }} have different
+  upgrade paths depending on the version of vendor binaries in use on the device
+  and the VNDK-related configurations used to build the device. The following
+  table summarizes the Legacy GSI support for upgraded devices:
+</p>
 
-<h2 id="build-targets">Build targets</h2>
-<p>
-Use the following build target tables to determine the correct GSI version for
-your device.
-</p>
-<h3 id="p-gsi-build-targets">P GSI build targets</h3>
-<p>
-The following P GSI build targets are for devices launching with Android 9. (Due
-to a reduction in variances between architectures, Android 9 includes only four
-GSI products).
-</p>
 <table>
   <tr>
-   <th><strong>GSI name</strong>
-   </th>
-   <th><strong>CPU arch</strong>
-   </th>
-   <th><strong>Binder interface bitness</strong>
-   </th>
-   <th><strong>System-as-root</strong>
-   </th>
-   <th><strong>Product name</strong>
-   </th>
+   <th>Use case</th>
+   <th>Vendor binaries version</th>
+   <th><code>BOARD_VNDK_VERSION</code></th>
+   <th><code>BOARD_VNDK_RUNTIME_DISABLE</code></th>
+   <th>Legacy GSI system binaries version</th>
+   <th>Legacy GSI support</th>
   </tr>
   <tr>
-   <td><strong><code>aosp_arm</code></strong>
-   </td>
-   <td><code>ARM</code>
-   </td>
-   <td><code>64</code>
-   </td>
-   <td><code>Y</code>
-   </td>
-   <td><code>aosp_arm-userdebug</code>
-   </td>
+   <td>0</td>
+   <td>8.0</td>
+   <td>(any)</td>
+   <td>(N/A)</td>
+   <td>{{ androidPVersionNumber }}</td>
+   <td>No</td>
   </tr>
   <tr>
-   <td><strong><code>aosp_arm64</code></strong>
-   </td>
-   <td><code>ARM64</code>
-   </td>
-   <td><code>64</code>
-   </td>
-   <td><code>Y</code>
-   </td>
-   <td><code>aosp_arm64-userdebug</code>
-   </td>
+   <td>1.a</td>
+   <td>8.1</td>
+   <td>(empty)</td>
+   <td>(any)</td>
+   <td>{{ androidPVersionNumber }}</td>
+   <td>No</td>
   </tr>
   <tr>
-   <td><strong><code>aosp_x86</code></strong>
-   </td>
-   <td><code>x86</code>
-   </td>
-   <td><code>64</code>
-   </td>
-   <td><code>Y</code>
-   </td>
-   <td><code>aosp_x86-userdebug</code>
-   </td>
+   <td>1.b</td>
+   <td>8.1</td>
+   <td><code>current</code></td>
+   <td><code>true</code></td>
+   <td>{{ androidPVersionNumber }}</td>
+   <td>No</td>
   </tr>
   <tr>
-   <td><strong><code>aosp_x86_64</code></strong>
-   </td>
-   <td><code>x86-64</code>
-   </td>
-   <td><code>64</code>
-   </td>
-   <td><code>Y</code>
-   </td>
-   <td><code>aosp_x86_64-userdebug</code>
-   </td>
+   <td>2</td>
+   <td>8.1</td>
+   <td><code>current</code></td>
+   <td>(empty)</td>
+   <td>{{ androidPVersionNumber }}</td>
+   <td>Yes</td>
+  </tr>
+  <tr>
+   <td>3</td>
+   <td>{{ androidPVersionNumber }}</td>
+   <td><code>current</code></td>
+   <td><code>true</code></td>
+   <td>{{ androidPVersionNumber }}</td>
+   <td>Yes</td>
+  </tr>
+  <tr>
+   <td>4</td>
+   <td>{{ androidPVersionNumber }}</td>
+   <td><code>current</code></td>
+   <td>(empty)</td>
+   <td>{{ androidPVersionNumber }}</td>
+   <td>Yes</td>
   </tr>
 </table>
-<h3 id="legacy-gsi-build-targets">Legacy GSI build targets</h3>
+
 <p>
-The following Legacy GSI build targets are for devices upgrading to Android 9.
-Legacy GSI names include the suffix <code>_ab</code> or <code>_a</code> to
-distinguish them from P GSI names.
+  The most common supported use case is #2, where the Legacy GSI supports
+  devices running Android 8.1 that were built with
+  <code>BOARD_VNDK_VERSION</code> but built without
+  <code>BOARD_VNDK_RUNTIME_DISABLE</code> (i.e., runtime enforcement was NOT
+  disabled).
 </p>
+
+<p>
+  The two unsupported use cases are #1.a and #1.b, where the Legacy GSI does NOT
+  support devices running Android 8.1 that were not built with
+  <code>BOARD_VNDK_VERSION</code> or built with
+  <code>BOARD_VNDK_RUNTIME_DISABLE</code> (i.e. runtime enforcement WAS
+  disabled). These devices are not supported because their vendor binaries
+  depend on Android 8.1 non-VNDK shared libraries, which are not included in
+  Legacy GSIs.
+</p>
+
+<p>
+  To make these devices compatible with the Legacy GSI, vendors must do one of
+  the following:
+</p>
+
+<ul>
+  <li>Enable <code>BOARD_VNDK_VERSION</code> without
+    <code>BOARD_VNDK_RUNTIME_DISABLE</code> (use case #2)
+    <br><br>OR<br><br></li>
+  <li>Port/upgrade the vendor binaries to depend on the shared libraries from
+  Android {{ androidPVersionNumber }} (use case #3 and use case #4).</li>
+</ul>
+
+<h2 id="building-gsis">Building GSIs</h2>
+
+<p>
+  Starting with Android {{ androidPVersionNumber }}, each Android version has a
+  GSI branch named <code><var>DESSERT</var>-gsi</code> on AOSP (for example,
+  <code>pie-gsi</code> is the GSI branch on Android
+  {{ androidPVersionNumber }}). GSI branches include the content of Android with
+  all <a href="/security/bulletin/">security patches</a> and
+  <a href="#contributing-to-a-gsi">GSI patches</a> applied.
+</p>
+
+<p>
+  To build a GSI, set up the Android source tree by
+  <a href="/setup/build/downloading">downloading</a> from a GSI branch and
+  <a href="/setup/build/building#choose-a-target">choosing a GSI build
+  target</a>. Use the build target tables below to determine the correct GSI
+  version for your device. After the build completes, the GSI is the system
+  image (e.g. <code>system.img</code>) and appears in the output folder
+  <code>out/target/product/<strong>generic_arm64_ab</strong></code>. The build
+  also outputs <code>vbmeta.img</code> , which you can use to disable verify
+  boot on the devices using <a href="/security/verifiedboot/avb">Android
+  Verified Boot</a>.
+<p>
+
+<p>
+  Example: The following commands build the Legacy GSI build target
+  <code>aosp_arm64_ab-userdebug</code> on GSI branch <code>pie-gsi</code>:
+</p>
+
+<pre class="prettyprint">
+$ repo init -u https://android.googlesource.com/platform/manifest -b pie-gsi
+$ repo sync -cq
+$ source build/envsetup.sh
+$ lunch aosp_arm64_ab-userdebug
+$ make -j4
+</pre>
+
+<h3 id="p-gsi-build-targets">Android {{ androidPVersionNumber }} GSI build
+targets</h3>
+
+<p>
+  The following GSI build targets are for devices launching with Android
+  {{ androidPVersionNumber }}. Due to a reduction in variances between
+  architectures, Android {{ androidPVersionNumber }} includes only four GSI
+  products.
+</p>
+
 <table>
   <tr>
-   <th><strong>GSI name</strong>
-   </th>
-   <th><strong>CPU arch</strong>
-   </th>
-   <th><strong>Binder interface bitness</strong>
-   </th>
-   <th><strong>System-as-root</strong>
-   </th>
-   <th><strong>Product name</strong>
-   </th>
+   <th>GSI name</th>
+   <th>CPU arch</th>
+   <th>Binder interface bitness</th>
+   <th>System-as-root</th>
+   <th>Product name</th>
   </tr>
   <tr>
-   <td><strong><code>aosp_arm_a</code></strong>
-   </td>
-   <td><code>ARM</code>
-   </td>
-   <td><code>32</code>
-   </td>
-   <td><code>N</code>
-   </td>
-   <td><code>aosp_arm_a-userdebug</code>
-   </td>
+   <td><code>aosp_arm</code></td>
+   <td><code>ARM</code></td>
+   <td><code>64</code></td>
+   <td><code>Y</code></td>
+   <td><code>aosp_arm-userdebug</code></td>
   </tr>
   <tr>
-   <td><strong><code>aosp_arm_ab</code></strong>
-   </td>
-   <td><code>ARM</code>
-   </td>
-   <td><code>32</code>
-   </td>
-   <td><code>Y</code>
-   </td>
-   <td><code>aosp_arm_ab-userdebug</code>
-   </td>
+   <td><code>aosp_arm64</code></td>
+   <td><code>ARM64</code></td>
+   <td><code>64</code></td>
+   <td><code>Y</code></td>
+   <td><code>aosp_arm64-userdebug</code></td>
   </tr>
   <tr>
-   <td><code>**NA</code>
-   </td>
-   <td><code>ARM</code>
-   </td>
-   <td><code>64</code>
-   </td>
-   <td><code>N</code>
-   </td>
-   <td>
-   </td>
+   <td><code>aosp_x86</code></td>
+   <td><code>x86</code></td>
+   <td><code>64</code></td>
+   <td><code>Y</code></td>
+   <td><code>aosp_x86-userdebug</code></td>
   </tr>
   <tr>
-   <td><code>aosp_arm_64b_ab</code>
-   </td>
-   <td><code>ARM</code>
-   </td>
-   <td><code>64</code>
-   </td>
-   <td><code>Y</code>
-   </td>
-   <td><code>aosp_arm_64b_ab-userdebug</code>
-   </td>
-  </tr>
-  <tr>
-   <td><strong><code>aosp_arm64_a</code></strong>
-   </td>
-   <td><code>ARM64</code>
-   </td>
-   <td><code>64</code>
-   </td>
-   <td><code>N</code>
-   </td>
-   <td><code>aosp_arm64_a-userdebug</code>
-   </td>
-  </tr>
-  <tr>
-   <td><strong><code>aosp_arm64_ab</code></strong>
-   </td>
-   <td><code>ARM64</code>
-   </td>
-   <td><code>64</code>
-   </td>
-   <td><code>Y</code>
-   </td>
-   <td><code>aosp_arm64_ab-userdebug</code>
-   </td>
-  </tr>
-  <tr>
-   <td><strong><code>aosp_x86_a</code></strong>
-   </td>
-   <td><code>x86</code>
-   </td>
-   <td><code>32</code>
-   </td>
-   <td><code>N</code>
-   </td>
-   <td><code>aosp_x86_a-userdebug</code>
-   </td>
-  </tr>
-  <tr>
-   <td><strong><code>aosp_x86_ab</code></strong>
-   </td>
-   <td><code>x86</code>
-   </td>
-   <td><code>32</code>
-   </td>
-   <td><code>Y</code>
-   </td>
-   <td><code>aosp_x86_ab-userdebug</code>
-   </td>
-  </tr>
-  <tr>
-   <td><code>**NA</code>
-   </td>
-   <td><code>x86</code>
-   </td>
-   <td><code>64</code>
-   </td>
-   <td><code>N</code>
-   </td>
-   <td>
-   </td>
-  </tr>
-  <tr>
-   <td><code>**NA</code>
-   </td>
-   <td><code>x86</code>
-   </td>
-   <td><code>64</code>
-   </td>
-   <td><code>Y</code>
-   </td>
-   <td>
-   </td>
-  </tr>
-  <tr>
-   <td><strong><code>aosp_x86_64_a</code></strong>
-   </td>
-   <td><code>x86-64</code>
-   </td>
-   <td><code>64</code>
-   </td>
-   <td><code>N</code>
-   </td>
-   <td><code>aosp_x86_64_a-userdebug</code>
-   </td>
-  </tr>
-  <tr>
-   <td><strong><code>aosp_x86_64_ab</code></strong>
-   </td>
-   <td><code>x86-64</code>
-   </td>
-   <td><code>64</code>
-   </td>
-   <td><code>Y</code>
-   </td>
-   <td><code>aosp_x86_64_ab-userdebug</code>
-   </td>
+   <td><code>aosp_x86_64</code></td>
+   <td><code>x86-64</code></td>
+   <td><code>64</code></td>
+   <td><code>Y</code></td>
+   <td><code>aosp_x86_64-userdebug</code></td>
   </tr>
 </table>
+
+<h3 id="legacy-gsi-build-targets">Android {{ androidPVersionNumber }} Legacy
+GSI build targets</h3>
+
 <p>
+  The following Legacy GSI build targets are for devices upgrading to Android
+  {{ androidPVersionNumber }}. Legacy GSI names include the suffix
+  <code>_ab</code> or <code>_a</code> to distinguish them from Android
+  {{ androidPVersionNumber }} GSI names.
+</p>
+
+<table>
+  <tr>
+   <th>GSI name</th>
+   <th>CPU arch</th>
+   <th>Binder interface bitness</th>
+   <th>System-as-root</th>
+   <th>Product name</th>
+  </tr>
+  <tr>
+   <td><code>aosp_arm_a</code></td>
+   <td><code>ARM</code></td>
+   <td><code>32</code></td>
+   <td><code>N</code></td>
+   <td><code>aosp_arm_a-userdebug</code></td>
+  </tr>
+  <tr>
+   <td><code>aosp_arm_ab</code></td>
+   <td><code>ARM</code></td>
+   <td><code>32</code></td>
+   <td><code>Y</code></td>
+   <td><code>aosp_arm_ab-userdebug</code></td>
+  </tr>
+  <tr>
+   <td><code>**NA</code></td>
+   <td><code>ARM</code></td>
+   <td><code>64</code></td>
+   <td><code>N</code></td>
+   <td></td>
+  </tr>
+  <tr>
+   <td><code>aosp_arm_64b_ab</code></td>
+   <td><code>ARM</code></td>
+   <td><code>64</code></td>
+   <td><code>Y</code></td>
+   <td><code>aosp_arm_64b_ab-userdebug</code></td>
+  </tr>
+  <tr>
+   <td><code>aosp_arm64_a</code></td>
+   <td><code>ARM64</code></td>
+   <td><code>64</code></td>
+   <td><code>N</code></td>
+   <td><code>aosp_arm64_a-userdebug</code></td>
+  </tr>
+  <tr>
+   <td><code>aosp_arm64_ab</code></td>
+   <td><code>ARM64</code></td>
+   <td><code>64</code></td>
+   <td><code>Y</code></td>
+   <td><code>aosp_arm64_ab-userdebug</code></td>
+  </tr>
+  <tr>
+   <td><code>aosp_x86_a</code></td>
+   <td><code>x86</code></td>
+   <td><code>32</code></td>
+   <td><code>N</code></td>
+   <td><code>aosp_x86_a-userdebug</code></td>
+  </tr>
+  <tr>
+   <td><code>aosp_x86_ab</code></td>
+   <td><code>x86</code></td>
+   <td><code>32</code></td>
+   <td><code>Y</code></td>
+   <td><code>aosp_x86_ab-userdebug</code></td>
+  </tr>
+  <tr>
+   <td><code>**NA</code></td>
+   <td><code>x86</code></td>
+   <td><code>64</code></td>
+   <td><code>N</code></td>
+   <td></td>
+  </tr>
+  <tr>
+   <td><code>**NA</code></td>
+   <td><code>x86</code></td>
+   <td><code>64</code></td>
+   <td><code>Y</code></td>
+   <td></td>
+  </tr>
+  <tr>
+   <td><code>aosp_x86_64_a</code></td>
+   <td><code>x86-64</code></td>
+   <td><code>64</code></td>
+   <td><code>N</code></td>
+   <td><code>aosp_x86_64_a-userdebug</code></td>
+  </tr>
+  <tr>
+   <td><code>aosp_x86_64_ab</code></td>
+   <td><code>x86-64</code></td>
+   <td><code>64</code></td>
+   <td><code>Y</code></td>
+   <td><code>aosp_x86_64_ab-userdebug</code></td>
+  </tr>
+</table>
 <em>** Could be added by request</em>
-</p>
+
+<aside class="aside">
+  <strong>Note: </strong>These build targets will likely be removed in a
+  future version of Android.
+</aside>
+
+<h2 id="flashing-gsis">Flashing GSIs</h2>
+
 <p>
-<strong>Note: </strong>These build targets will likely be removed in a future
-version of Android.
+  Android devices can have different designs, so no single command or set of
+  instructions for flashing a GSI to a specific device is possible. Use the
+  following general steps as guidelines:
 </p>
-<h3 id="gsi-8-1-build-targets">GSI 8.1 build targets</h3>
+
+<ol>
+  <li>Ensure the device has the following:
+    <ul>
+      <li>Support for HIDL-HAL interfaces.</li>
+      <li>A method for unlocking devices (so they can be flashed using
+        <code>fastboot</code>).</li>
+      <li>A method for disabling verify boot (e.g.
+        <a href="/security/verifiedboot/">vboot 1.0</a>,
+        <a href="/security/verifiedboot/avb">AVB</a>, etc.).</li>
+      <li>Unlock the device to make it flashable via <code>fastboot</code>.</li>
+      <aside class="note">
+        <strong>Note:</strong> Ensure you have the latest version of
+        <code>fastboot</code> by building it from Android source tree.</aside>
+    </ul>
+  </li>
+  <li>Disable verify boot.</li>
+  <li>Erase the current system partition, then flash the GSI to system
+    partition.</li>
+  <li>Wipe userdata and clear data from other necessary partitions (e.g.
+    metadata).</li>
+  <li>Reboot the device.</li>
+</ol>
+
 <p>
-Android 8.1 GSIs support eight normal products (<strong>bolded</strong> in the
-table) and one special product built from Android 8.1 source tree.
+  For example, to flash a GSI to a Pixel 2 device:
 </p>
-<table>
-  <tr>
-   <th><strong>GSI name</strong>
-   </th>
-   <th><strong>CPU arch</strong>
-   </th>
-   <th><strong>Binder interface bitness</strong>
-   </th>
-   <th><strong>System-as-root</strong>
-   </th>
-   <th><strong>Product name</strong>
-   </th>
-  </tr>
-  <tr>
-   <td><strong><code>aosp_arm_a</code></strong>
-   </td>
-   <td><code>ARM</code>
-   </td>
-   <td><code>32</code>
-   </td>
-   <td><code>N</code>
-   </td>
-   <td><code>aosp_arm_a-userdebug</code>
-   </td>
-  </tr>
-  <tr>
-   <td><strong><code>aosp_arm_ab</code></strong>
-   </td>
-   <td><code>ARM</code>
-   </td>
-   <td><code>32</code>
-   </td>
-   <td><code>Y</code>
-   </td>
-   <td><code>aosp_arm_ab-userdebug</code>
-   </td>
-  </tr>
-  <tr>
-   <td><code>aosp_arm_64b_a</code>
-   </td>
-   <td><code>ARM</code>
-   </td>
-   <td><code>64</code>
-   </td>
-   <td><code>N</code>
-   </td>
-   <td><code>aosp_arm_64b_a-userdebug</code>
-   </td>
-  </tr>
-  <tr>
-   <td><code>**NA</code>
-   </td>
-   <td><code>ARM</code>
-   </td>
-   <td><code>64</code>
-   </td>
-   <td><code>Y</code>
-   </td>
-   <td>
-   </td>
-  </tr>
-  <tr>
-   <td><strong><code>aosp_arm64_a</code></strong>
-   </td>
-   <td><code>ARM64</code>
-   </td>
-   <td><code>64</code>
-   </td>
-   <td><code>N</code>
-   </td>
-   <td><code>aosp_arm64_a-userdebug</code>
-   </td>
-  </tr>
-  <tr>
-   <td><strong><code>aosp_arm64_ab</code></strong>
-   </td>
-   <td><code>ARM64</code>
-   </td>
-   <td><code>64</code>
-   </td>
-   <td><code>Y</code>
-   </td>
-   <td><code>aosp_arm64_ab-userdebug</code>
-   </td>
-  </tr>
-  <tr>
-   <td><strong><code>aosp_x86_a</code></strong>
-   </td>
-   <td><code>x86</code>
-   </td>
-   <td><code>32</code>
-   </td>
-   <td><code>N</code>
-   </td>
-   <td><code>aosp_x86_a-userdebug</code>
-   </td>
-  </tr>
-  <tr>
-   <td><strong><code>aosp_x86_ab</code></strong>
-   </td>
-   <td><code>x86</code>
-   </td>
-   <td><code>32</code>
-   </td>
-   <td><code>Y</code>
-   </td>
-   <td><code>aosp_x86_ab-userdebug</code>
-   </td>
-  </tr>
-  <tr>
-   <td><code>**NA</code>
-   </td>
-   <td><code>x86</code>
-   </td>
-   <td><code>64</code>
-   </td>
-   <td><code>N</code>
-   </td>
-   <td>
-   </td>
-  </tr>
-  <tr>
-   <td><code>**NA</code>
-   </td>
-   <td><code>x86</code>
-   </td>
-   <td><code>64</code>
-   </td>
-   <td><code>Y</code>
-   </td>
-   <td>
-   </td>
-  </tr>
-  <tr>
-   <td><strong><code>aosp_x86_64_a</code></strong>
-   </td>
-   <td><code>x86-64</code>
-   </td>
-   <td><code>64</code>
-   </td>
-   <td><code>N</code>
-   </td>
-   <td><code>aosp_x86_64_a-userdebug</code>
-   </td>
-  </tr>
-  <tr>
-   <td><strong><code>aosp_x86_64_ab</code></strong>
-   </td>
-   <td><code>x86-64</code>
-   </td>
-   <td><code>64</code>
-   </td>
-   <td><code>Y</code>
-   </td>
-   <td><code>aosp_x86_64_ab-userdebug</code>
-   </td>
-  </tr>
-</table>
+
+<ol>
+  <li><a href="/setup/build/running#booting-into-fastboot-mode">Boot to
+    bootloader mode</a> and
+    <a href="/setup/build/running#unlocking-the-bootloader">unlock the
+    bootloader</a>.</li>
+  <li>Disable verify boot (AVB) by flashing <code>vbmeta.img</code>:
+<pre class="prettyprint">$ fastboot flash vbmeta vbmeta.img</pre></li>
+  <li>Erase and flash the GSI to system partition:
+<pre class="prettyprint">
+$ fastboot erase system 
+$ fastboot flash system system.img
+</pre></li>
+  <li>Wipe userdata and clear other necessary partitions:
+<pre class="prettyprint">$ fastboot -w</pre></li>
+  <li>Reboot:
+<pre class="prettyprint">$ fastboot reboot</pre></li>
+</ol>
+
+<h2 id="contributing-to-gsis">Contributing to GSIs</h2>
+
 <p>
-<em>** Could be added by request</em>
+  Android welcomes your contributions to GSI development. You can get involved
+  and help improve the GSI by:
 </p>
-  </body>
+
+<ul>
+  <li><strong>Creating a GSI patch</strong>. Because
+    <code><var>DESSERT</var>-gsi</code> is <strong>not</strong> a development
+    branch and accepts only cherrypicks from the AOSP master branch, to submit a
+    GSI patch, you must:
+    <ol>
+      <li>Submit the patch to the
+        <a href="https://android-review.googlesource.com" class="external">AOSP</a>
+        master branch.</li>
+      <li>Cherrypick the patch to <code><var>DESSERT</var>-gsi</code>.</li>
+      <li>File a bug to get the cherrypick reviewed.</li>
+    </ol>
+  </li>
+  <li><strong>Reporting GSI bugs</strong> or making other suggestions. Review
+    the instructions in
+    <a href="/setup/contribute/report-bugs#platform">Reporting Bugs</a>, then
+    browse or file GSI bugs (look for "Generic System Image" in the Platform
+    table).</li>
+</ul>
+
+</body>
 </html>
