@@ -49,21 +49,21 @@ To do so:
 1.  Remove `healthd` and `healthd.rc` from the system image by adding the
     following line to the device-specific implementation in Soong:
 
-        ```
-        cc_binary {
-            name: "android.hardware.health@2.0-service.device_name"
-            overrides: ["healthd"],
-            // ...
-        }
-        ```
+    ```
+    cc_binary {
+        name: "android.hardware.health@2.0-service.device_name"
+        overrides: ["healthd"],
+        // ...
+    }
+    ```
 
-        Or, if the module is in Make:
+    Or, if the module is in Make:
 
-        ```yaml
-        LOCAL_MODULE_NAME := \
-            android.hardware.health@2.0-service.device_name
-        LOCAL_OVERRIDES_MODULES := healthd
-        ```
+    ```yaml
+    LOCAL_MODULE_NAME := \
+        android.hardware.health@2.0-service.device_name
+    LOCAL_OVERRIDES_MODULES := healthd
+    ```
 
     If the default implementation `android.hardware.health@2.0-service` is
     installed, implement a device-specific
