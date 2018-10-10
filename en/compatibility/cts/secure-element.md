@@ -100,7 +100,7 @@ applet with the following application identifiers (AIDs):
         <thead>
         <tr>
         <th>Transmit APDU</th>
-        <th>Status Word</th>
+        <th>Status word</th>
         <th>Data</th>
         </tr>
         </thead>
@@ -431,21 +431,59 @@ applet with the following application identifiers (AIDs):
             that is the same as input APDU,
           except the first byte is 0x01 instead of 0x00.</small>
       </li>
-      <li>The applet should return segmented responses of size 2048 bytes for
-        commands a,b,c,d, f and g whereas 32767 bytes for APDU(e), with last
-        data byte being 0xFF and success status word <0x9000> for the following
-        APDUs:
-        <ol>
-         <li>0x00C2080000</li>
-         <li>0x00C4080002123400</li>
-         <li>0x00C6080000</li>
-         <li>0x00C8080002123400</li>
-         <li>0x00C27FFF00</li>
-         <li>0x00CF080000</li>
-         <li>0x94C2080000</li>
-       </ol>
+      <li>The applet should return segmented responses with <code>0xFF</code>
+      as the last data byte and have the respective status words and response
+      lengths for the following APDUs.
+
+        <table>
+        <thead>
+        <tr>
+        <th>APDU</th>
+        <th>Status word</th>
+        <th>Response length (bytes)</th>
+        </tr>
+        </thead>
+        <tbody>
+        <tr>
+        <td>0x00C2080000</td>
+        <td>0x9000</td>
+        <td>2048</td>
+        </tr>
+        <tr>
+        <td>0x00C4080002123400</td>
+        <td>0x9000</td>
+        <td>2048</td>
+        </tr>
+        <tr>
+        <td>0x00C6080000</td>
+        <td>0x9000</td>
+        <td>2048</td>
+        </tr>
+        <tr>
+        <td>0x00C8080002123400</td>
+        <td>0x9000</td>
+        <td>2048</td>
+        </tr>
+        <tr>
+        <td>0x00C27FFF00</td>
+        <td>0x9000</td>
+        <td>2048</td>
+        </tr>
+        <tr>
+        <td>0x00CF080000</td>
+        <td>0x9000</td>
+        <td>32767</td>
+        </tr>
+        <tr>
+        <td>0x94C2080000</td>
+        <td>0x9000</td>
+        <td>2048</td>
+        </tr>
+        </tbody>
+        </table>
       </li>
-      <li>The applet should return success status word <0x9000> for the given
+      <li>The applet should return success status word <code>0x9000</code> for
+      the given
         APDU: 0x00F40000</li>
     </ol>
   <li>A000000476416E64726F696443545332
