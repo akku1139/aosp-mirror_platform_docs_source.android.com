@@ -1,9 +1,10 @@
 <html devsite><head>
-    <title>实现 TEXTCLASSIFIER</title>
+    <title>实现文本分类</title>
     <meta name="project_path" value="/_project.yaml"/>
     <meta name="book_path" value="/_book.yaml"/>
   </head>
   <body>
+
   <!--
       Copyright 2017 The Android Open Source Project
 
@@ -20,10 +21,102 @@
       limitations under the License.
   -->
 
-<h2 id="overview">概览</h2>
+<p>文本分类使用机器学习技术协助开发者对文本进行分类。</p>
+
+<h2>Android 9 版本的文本分类增强功能</h2>
+
+<p>Android 9 借助新的文本分类程序服务扩展了 <a href="#8_1release">Android 8.1 中引入的文本分类框架</a>。建议原始设备制造商 (OEM) 使用文本分类程序服务提供文本分类系统支持。文本分类程序服务可以是任何系统 APK 的一部分，且可以根据需要进行更新。</p>
+
+<p>Android 9 包含系统会使用的默认文本分类程序服务实现 (<a href="https://android.googlesource.com/platform/frameworks/base/+/refs/heads/master/core/java/android/view/textclassifier/TextClassifierImpl.java"><code>TextClassifierImpl</code></a>)（除非您将其替换为自定义文本分类程序服务实现）。</p>
+
+<h3>实现自定义文本分类程序服务</h3>
+<p>下文介绍了如何实现您开发的自定义文本分类程序服务。</p>
+
+<h4>扩展 android.service.textclassifier.TextClassifierService</h4>
+<p></p><pre class="prettyprint">
+public final class TextClassifierServiceImpl
+        extends TextClassifierService {
+
+    // Returns TextClassifierImpl.
+    private final TextClassifier tc = getLocalTextClassifier();
+
+    @Override
+    public void onSuggestSelection(
+            @Nullable TextClassificationSessionId sessionId,
+            @NonNull TextSelection.Request request,
+            @NonNull CancellationSignal cancellationSignal,
+            @NonNull Callback&lt;TextSelection&gt; callback) {
+        CompletableFuture.supplyAsync(
+                () -&gt; tc.suggestSelection(request))
+                .thenAccept(r -&gt; callback.onSuccess(r));
+    }
+
+    @Override
+    public void onClassifyText(
+            @Nullable TextClassificationSessionId sessionId,
+		@NonNull TextClassification.Request request,
+		@NonNull CancellationSignal cancellationSignal,
+		@NonNull Callback&lt;TextClassification&gt; callback) {
+        ...
+    }
+
+    @Override
+    public void onGenerateLinks(
+            @Nullable TextClassificationSessionId sessionId,
+            @NonNull TextLinks.Request request,
+            @NonNull CancellationSignal cancellationSignal,
+            @NonNull Callback&lt;TextLinks&gt; callback) {
+        ...
+    }
+    ...
+}
+</pre>
+<p></p>
+
+<h4>在 Android 清单中定义该服务</h4>
+
+<p><em>[AndroidManifest.xml]</em></p>
+<p></p><pre class="prettyprint">
+&lt;service android:name=".TextClassifierServiceImpl"
+  android:permission="android.permission.BIND_TEXTCLASSIFIER_SERVICE"&gt;
+    &lt;intent-filter&gt;
+      &lt;action android:name=
+        "android.service.textclassifier.TextClassifierService"/&gt;
+    &lt;/intent-filter&gt;
+&lt;/service&gt;
+</pre><p></p>
 
 <p>
-Android 8.1 引入了 TextClassfier API，该 API 可以使用机器学习技术来协助开发者对文本进行分类：</p>
+请注意，该服务必须具有 <code>android.permission.BIND_TEXTCLASSIFIER_SERVICE</code> 权限，还必须指定 <code>android.service.textclassifier.TextClassifierService</code> Intent 操作。</p>
+
+<h4>在配置叠加层设置系统默认文本分类程序服务</h4>
+<p>[<em>config.xml</em>]</p>
+<p></p><pre class="prettyprint">
+&lt;string name="config_defaultTextClassifierPackage" translatable="false"&gt;com.example.textclassifierservice&lt;/string&gt;</pre><p></p>
+
+<h4>将文本分类程序服务编译到系统映像中</h4>
+<p>您的自定义文本分类程序服务可以是编译到系统映像中的独立 APK，也可以是其他系统 APK 的一部分。系统使用 <code>PackageManager.MATCH_SYSTEM_ONLY</code> 解析服务。
+</p>
+
+<h3>测试</h3>
+
+<p>在 <code>android.view.textclassifier.cts</code> 中运行测试</p>
+
+<h3>Android 9 中的其他文本分类更改</h3>
+
+<p>请参阅<a href="https://source.android.com/devices/tech/display/textclassifier#inspecting-installed-language-modules">检查已安装的语言模块</a>。</p>
+<p>Android 9 模型文件与 Android 8.x 模型文件不兼容。</p>
+<p>Android 9 模型文件的命名模式如下：<code>texclassifier.[language-code].model</code>（例如 <code>textclassifier.en.model</code>），而 Android 8.x 的命名模式则为 <code>textclassifier.smartselection.en.model</code>。</p>
+
+<h3>获取最新的文本分类模型文件</h3>
+<p>要获取最新的模型，可以运行以下脚本（该脚本可以更新源代码树中的 TextClassifier 模型）：</p>
+
+<p></p><pre class="devsite-terminal devsite-click-to-copy">
+<a href="https://android.googlesource.com/platform/external/libtextclassifier/+/master/models/">external/libtextclassifier/models/</a>update.sh</pre><p></p>
+
+<h2 id="8_1release">Android 8.1 版文本分类</h2>
+
+<p>Android 8.1 引入了 TextClassfier API 来实现文本分类</p>
 
 <pre class="prettyprint">TextClassificationManager tcm =
     context.getSystemService(TextClassificationManager.class);
@@ -50,14 +143,14 @@ TextView 和 WebView 会使用 TextClassifier 来实现智能选择和智能文�
   <b>图 1.</b> TEXTCLASSIFIER 的用法。
 </p>
 
-<h2 id="textclassifier-neural-net-models">TextClassifier 神经网络模型</h2>
+<h3 id="textclassifier-neural-net-models">TextClassifier 神经网络模型</h3>
 <p>
 Android 开源项目 (AOSP) 具有多个用于文本分类的神经网络模型。每个模型文件都已针对单一语言进行训练。您可以选择安装任何组合的模型。模型会在以下位置进行定义：</p>
 <p>
 <code>external/libtextclassifier/Android.mk</code>
 </p>
 
-<h2 id="pre-installing-language-models-on-devices">在设备上预安装语言模型</h2>
+<h3 id="pre-installing-language-models-on-devices">在设备上预安装语言模型</h3>
 <p>
 您可以指定一组语言模型并将其安装在设备上：</p>
 
@@ -83,7 +176,7 @@ PRODUCT_PACKAGES += \
     textclassifier.smartselection.bundle1
 </pre>
 
-<h2 id="inspecting-installed-language-modules">检查已安装的语言模块</h2>
+<h3 id="inspecting-installed-language-modules">检查已安装的语言模块</h3>
 <p>
 使用 ADB 命令列出目录下的文件：</p>
 
@@ -94,7 +187,7 @@ PRODUCT_PACKAGES += \
 -rw-r--r-- 1 root root ... textclassifier.smartselection.fr.model
 </pre>
 
-<h2 id="gservices-model-updates">模型更新</h2>
+<h3 id="gservices-model-updates">模型更新</h3>
 
 <p>
 要更新模型，您可以将新模型作为系统映像的一部分来更新，也可以通过使用系统 <code>API ACTION_UPDATE_SMART_SELECTION</code> intent 触发更新的系统组件来进行动态更新。通过广播该系统 API intent，框架得以更新当前所设置语言的语言模型。模型自身包含支持的语言和版本号，因此会使用最新的合适模型。
@@ -104,7 +197,7 @@ PRODUCT_PACKAGES += \
 因此，您无需预加载所有语言的模型，因为这些模型可以稍后再添加。如果未找到指定语言的模型文件，则文本分类将返回空操作值。
 </p>
 
-<h2 id="compatibility-test-suite-tests">兼容性测试套件测试</h2>
+<h3 id="compatibility-test-suite-tests">兼容性测试套件测试</h3>
 <p>
 您可以在以下位置找到相关的 Android 兼容性测试套件 (CTS) 测试：</p>
 <p>

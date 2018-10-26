@@ -54,8 +54,8 @@
   <li>仅针对您向 Android 添加的内容调整 SELinux 政策。默认政策能够自动适用于 <a href="https://android.googlesource.com/">Android 开源项目</a>代码库。</li>
   <li>将各个软件组件拆分成多个负责执行单项任务的模块。</li>
   <li>创建用于将这些任务与无关功能隔离开来的 SELinux 政策。</li>
-  <li>将这些政策放在 <code>/device/<var>manufacturer</var>/<var>device-name</var>/sepolicy</code> 目录中的 <code>*.te</code> 文件（te 是 SELinux 政策源代码文件的扩展名）内，然后使用 <code>BOARD_SEPOLICY</code> 变量将它们纳入您的版本。</li>
-  <li>将新域初设为宽容域。为此，可以在该域的 <code>.te</code> 文件中使用宽容声明。</li>
+  <li>将这些政策放在 <code>/device/<var>manufacturer</var>/<var>device-name</var>/sepolicy</code> 目录下的 <code>*.te</code> 文件（SELinux 政策源代码文件的扩展）中，然后使用 <code>BOARD_SEPOLICY</code> 变量将其纳入到您的细分版本。</li>
+  <li>先将新域设为宽容域。为此，可以在该域的 <code>.te</code> 文件中使用宽容声明。</li>
   <li>分析结果并优化域定义。</li>
   <li>当 userdebug 版本中不再出现拒绝事件时，移除宽容声明。</li>
 </ol>
@@ -227,7 +227,7 @@ audit_control setfcap</pre>
 
 <h2 id="neverallow">neverallow 规则</h2>
 
-<p>SELinux <code>neverallow</code> 规则用于禁止在任何情况下都不应该发生的行为。通过执行<a href="/compatibility/cts/">兼容性</a>测试，现在各种设备上都会强制执行 SELinux <code>neverallow</code> 规则。</p>
+<p>SELinux <code>neverallow</code> 规则用于禁止在任何情况下都不应该发生的行为。通过<a href="/compatibility/cts/">兼容性</a>测试，现在会在各种设备上强制执行 SELinux <code>neverallow</code> 规则。</p>
 
 <p>以下准则旨在协助制造商在自定义过程中避免出现与 <code>neverallow</code> 规则相关的错误。此处使用的规则编号与 Android 5.1 中使用的编号一致，并且会因版本而异。</p>
 
@@ -250,8 +250,8 @@ audit_control setfcap</pre>
 <ul>
   <li><strong>system/sepolicy/public</strong>。其中包括所导出的用于供应商特定政策的政策。所有内容都会纳入 Android 8.0 <a href="/security/selinux/compatibility">兼容性基础架构</a>。公共政策会保留在不同版本上，因此您可以在自定义政策的 <code>/public</code> 中添加任何内容。正因如此，可存放在 <code>/public</code> 中的政策类型的限制性更强。将此目录视为相应平台的已导出政策 API：处理 <code>/system</code> 与 <code>/vendor</code> 之间的接口的所有内容都位于这里。</li>
   <li><strong>system/sepolicy/private</strong>。包括系统映像正常运行所必需（但供应商映像政策应该不知道）的政策。</li>
-  <li><strong>system/sepolicy/vendor</strong>。包括位于 <code>/vendor</code> 但存在于核心平台树（非设备特定目录）中的组件的相关政策。这是编译系统区分设备和全局组件的软件工件；从概念上讲，这是如下所述的设备专用政策的一部分。</li>
-  <li><strong>device/&lt;制造商&gt;<var></var>/<var></var>&lt;设备名称&gt;/sepolicy</strong>。包含设备专用政策，以及对政策进行的设备自定义（在 Android 8.0 及更高版本中，该政策对应于供应商映像组件的相关政策）。</li>
+  <li><strong>system/sepolicy/vendor</strong>。包括位于 <code>/vendor</code> 但存在于核心平台树（非设备特定目录）中的组件的相关政策。这是编译系统区分设备和全局组件的软件工件；从概念上讲，这是下述设备专用政策的一部分。</li>
+  <li><strong>device/<var>manufacturer</var>/<var>device-name</var>/sepolicy</strong>。包含设备专用政策，以及对政策进行的设备自定义（在 Android 8.0 及更高版本中，该政策对应于供应商映像组件的相关政策）。</li>
 </ul>
 <h3 id="supported-policy-scenarios">支持的政策场景</h3>
 <p>
@@ -259,17 +259,17 @@ audit_control setfcap</pre>
 </p>
 <h4 id="vendor-image-only-extensions">仅含供应商映像的扩展</h4>
 <p>
-<strong>示例</strong>：从支持其中的进程的供应商映像向 <code>vndservicemanager</code> 添加新服务。
+<strong>示例</strong>：从支持相关进程的供应商映像向 <code>vndservicemanager</code> 添加新服务。
 </p>
 <p>
-与搭载之前的 Android 版本的设备一样，请在 <code>device/<var>manufacturer</var>/<var>device-name</var>/sepolicy</code> 中添加设备专属的自定义配置。用于管理供应商组件（仅）与其他供应商组件的互动方式的新政策<strong>应涉及仅存在于 <code>device/<var>manufacturer</var>/<var>device-name</var>/sepolicy</code> 中的类型</strong>。此处编写的政策允许运行供应商的代码，不会在仅针对框架的 OTA 期间更新，并且将存在于具有参考 AOSP 系统映像的设备上的组合政策中。
+与搭载之前 Android 版本的设备一样，请在 <code>device/<var>manufacturer</var>/<var>device-name</var>/sepolicy</code> 中添加专门针对特定设备的自定义配置。用于管控供应商组件如何与其他供应商组件（仅限这些组件）交互的新政策<strong>应涉及仅存在于 <code>device/<var>manufacturer</var>/<var>device-name</var>/sepolicy</code> 中的类型</strong>。此处编写的政策允许运行供应商的代码，不会在仅针对框架的 OTA 期间更新，并且将存在于具有参考 AOSP 系统映像的设备上的组合政策中。
 
 </p><h4 id="vendor-image-support-to-work-with-aosp">支持使用 AOSP 的供应商映像</h4>
 <p>
-<strong>示例</strong>：添加用于实施 AOSP 定义的 HAL 的新进程（通过供应商映像中的 <code>hwservicemanager</code> 注册）。
+<strong>示例</strong>：添加用于实现 AOSP 定义的 HAL 的新进程（通过供应商映像中的 <code>hwservicemanager</code> 注册）。
 </p>
 <p>
-与搭载之前的 Android 版本的设备一样，请在 <code>device/<var>manufacturer</var>/<var>device-name</var>/sepolicy</code> 中执行专门针对特定设备的自定义。作为 <code>system/sepolicy/public/</code> 的一部分导出的政策可供使用，并且包含在供应商政策中。公共政策中的类型和属性可以用在新规则中，指示与供应商特有新位的互动，但要遵守所提供的 <code>neverallow</code> 限制。与 vendor-only 情形一样，此处的新政策不会在仅针对框架的 OTA 期间更新，并且将存在于具有参考 AOSP 系统映像的设备上的组合政策中。
+与搭载之前 Android 版本的设备一样，请在 <code>device/<var>manufacturer</var>/<var>device-name</var>/sepolicy</code> 中执行专门针对特定设备的自定义配置。作为 <code>system/sepolicy/public/</code> 的一部分导出的政策可供使用，并且包含在供应商政策中。公共政策中的类型和属性可以用在新规则中，指示与供应商特有新位的互动，但要遵守所提供的 <code>neverallow</code> 限制。与 vendor-only 情形一样，此处的新政策不会在仅针对框架的 OTA 期间更新，并且将存在于具有参考 AOSP 系统映像的设备上的组合政策中。
 </p>
 <h4 id="system-image-only-extensions">仅含系统映像的扩展</h4>
 <p>
@@ -280,10 +280,10 @@ audit_control setfcap</pre>
 </p>
 <h4 id="vendor-image-extensions-that-serve-extended-aosp-components">提供扩展 AOSP 组件的供应商映像扩展</h4>
 <p>
-<strong>示例</strong>：供同时存在于 AOSP 系统映像（例如扩展的 system_server）中的扩展客户端使用的新的非 AOSP HAL。
+<strong>示例</strong>：供同样存在于 AOSP 系统映像中的扩展客户端（例如扩展的 system_server）使用且新增的非 AOSP HAL。
 </p>
 <p>
-系统与供应商之间的互动政策必须纳入供应商分区上装载的 <code>device/<var>manufacturer</var>/<var>device-name</var>/sepolicy</code> 目录中。这类似于上述添加供应商映像支持以使用参考 AOSP 映像的情景，不同之处在于修改后的 AOSP 组件可能还需要其他政策才能正确使用系统分区的其余部分（只要这些组件仍具有公开 AOSP 类型标签就可以）。
+系统与供应商之间的交互政策必须纳入供应商分区上的 <code>device/<var>manufacturer</var>/<var>device-name</var>/sepolicy</code> 目录中。这类似于上述添加供应商映像支持以使用参考 AOSP 映像的情景，不同之处在于修改后的 AOSP 组件可能还需要其他政策才能正确使用系统分区的其余部分（只要这些组件仍具有公开 AOSP 类型标签就可以）。
 </p>
 <p>
 用于控制公开 AOSP 组件与仅含系统映像的扩展之间的互动的政策应该位于 <code>system/sepolicy/private</code> 中。
@@ -294,14 +294,14 @@ audit_control setfcap</pre>
 <strong>示例</strong>：新的非 AOSP 系统进程必须访问 AOSP 所依赖的 HAL。
 </p>
 <p>
-这与<a href="#system-image-only-extensions">仅含系统映像的扩展示例</a>类似，不同之处在于新的系统组件可能在 <code>system/vendor</code> 接口中进行互动。新系统组件的相关政策必须位于 <code>system/sepolicy/private</code>，只要它是通过 AOSP 已在 <code>system/sepolicy/public</code> 中建立的接口发挥作用就可以接受（即，该目录中包含功能正常运行所需的类型和属性）。虽然可以在设备专用政策中添加政策，但无法在仅针对框架的更新中使用其他 <code>system/sepolicy/private</code> 类型或进行更改（以任何影响政策的方式）。此政策可以在仅针对框架的 OTA 中更改，但在使用 AOSP 系统映像时，此政策将不出现（也不会有新的系统组件）。
+这与<a href="#system-image-only-extensions">仅含系统映像的扩展示例</a>类似，不同之处在于新的系统组件可能在 <code>system/vendor</code> 接口进行交互。新系统组件的相关政策必须位于 <code>system/sepolicy/private</code>，只要它是通过 AOSP 已在 <code>system/sepolicy/public</code> 中建立的接口发挥作用就可以接受（即，该目录中包含功能正常运行所需的类型和属性）。虽然可以在设备专用政策中添加政策，但无法在仅针对框架的更新中使用其他 <code>system/sepolicy/private</code> 类型或进行更改（以任何影响政策的方式）。此政策可以在仅针对框架的 OTA 中更改，但在使用 AOSP 系统映像时，此政策将不出现（也不会有新的系统组件）。
 </p>
 <h4 id="vendor-image-extensions-that-serve-new-system-components">提供新系统组件的供应商映像扩展</h4>
 <p>
 <strong>示例</strong>：添加新的非 AOSP HAL 以供无需 AOSP 模拟的客户端进程使用（因此，该进程需要自己的域）。
 </p>
 <p>
-与 <a href="#vendor-image-extensions-that-serve-extended-aosp-components">AOSP 扩展示例</a>类似，系统与供应商之间的互动政策必须位于供应商分区上装载的 <code>device/<var>manufacturer</var>/<var>device-name</var>/sepolicy</code> 目录中（以确保系统政策不知道与供应商有关的特定详细信息）。您可以在 <code>system/sepolicy/public</code> 中添加新的公共类型来扩展政策；此操作只能在现有的 AOSP 政策之外执行，即不要移除 AOSP 公共政策。新添加的公共类型随后可用于 <code>system/sepolicy/private</code> 和 <code>device/<var>manufacturer</var>/<var>device-name</var>/sepolicy</code> 中的政策。
+与 <a href="#vendor-image-extensions-that-serve-extended-aosp-components">AOSP 扩展示例</a>类似，系统与供应商之间的互动政策必须位于供应商分区上的 <code>device/<var>manufacturer</var>/<var>device-name</var>/sepolicy</code> 目录中（以确保系统政策不知道与特定供应商有关的详细信息）。您可以在 <code>system/sepolicy/public</code> 中添加新的用于扩展该政策的公共类型；只能在现有 AOSP 政策的基础上进行添加，即不要移除 AOSP 公共政策。新添加的公共类型随后可用于 <code>system/sepolicy/private</code> 和 <code>device/<var>manufacturer</var>/<var>device-name</var>/sepolicy</code> 中的政策。
 </p>
 <p>
 请注意，每次向 <code>system/sepolicy/public</code> 添加内容都会增加复杂程度，因为这会增加必须在映射文件中跟踪的新兼容性保证（会受到其他限制）。只有新类型和相关项允许在 <code>system/sepolicy/public</code> 中添加规则；属性和其他政策声明不受支持。此外，新的公共类型不能用于直接为 <code>/vendor</code> 政策中的对象添加标签。
@@ -315,12 +315,12 @@ audit_control setfcap</pre>
 <strong>示例</strong>：在下一个 Android 版本中添加新的非 AOSP 系统进程（需要自己的域），该进程需要访问新的非 AOSP HAL。
 </p>
 <p>
-与<a href="#vendor-image-extensions-that-serve-extended-aosp-components">新的（非 AOSP）系统和供应商组件</a>互动类似，不同之处在于新的系统类型是在仅支持框架的 OTA 中引入的。虽然这个新类型可以添加到 <code>system/sepolicy/public</code> 下的政策中，但现有的供应商政策不知道这个新类型，因为它仅跟踪 Android 8.0 系统公共政策。AOSP 可通过某个属性（例如 <code>hal_foo</code> 属性）要求取得供应商提供的资源，进而处理此情况，但由于属性合作伙伴扩展在 <code>system/sepolicy/public</code> 中不受支持，因此供应商政策无法使用此方法。访问权限必须由之前存在的公共类型提供。
+与<a href="#vendor-image-extensions-that-serve-extended-aosp-components">新（非 AOSP）系统和供应商组件</a>之间的交互类似，不同之处在于新的系统类型是在仅针对框架的 OTA 中引入的。虽然这个新类型可以添加到 <code>system/sepolicy/public</code> 中的政策，但现有的供应商政策不知道这个新类型，因为它仅跟踪 Android 8.0 系统公共政策。AOSP 可通过某个属性（例如 <code>hal_foo</code> 属性）要求取得供应商提供的资源，进而处理此情况，但由于属性合作伙伴扩展在 <code>system/sepolicy/public</code> 中不受支持，因此供应商政策无法使用此方法。访问权限必须由之前存在的公共类型提供。
 </p>
 <p>
 <strong>示例</strong>：对系统进程（AOSP 或非 AOSP）的更改必须更改它与新的非 AOSP 供应商组件进行互动的方式。
 </p>
 <p>
-在编写系统映像上的政策时必须对供应商独有的自定义不知情。因此，系统会通过 system/sepolicy/public 中的属性公开 AOSP 中涉及特定接口的政策，以便供应商政策可以选择启用将来使用这些属性的系统政策。但是，<strong><code>system/sepolicy/public</code> 中的属性扩展不受支持</strong>，因此指明系统组件与新供应商组件的互动方式的所有政策（且该政策不由 AOSP <code>system/sepolicy/public</code> 中已有的属性处理）都必须位于 <code>device/<var>manufacturer</var>/<var>device-name</var>/sepolicy</code> 中。这意味着系统类型无法在仅支持框架的 OTA 中更改为供应商类型授予的访问权限。</p>
+在编写系统映像上的政策时必须对供应商独有的自定义不知情。因此，系统会通过 system/sepolicy/public 中的属性公开 AOSP 中涉及特定接口的政策，以便供应商政策可以选择启用将来使用这些属性的系统政策。不过，<strong><code>system/sepolicy/public</code> 中的属性扩展不受支持</strong>，因此指明系统组件与新供应商组件如何交互的所有政策（这些政策不通过 AOSP <code>system/sepolicy/public</code> 中已存在的属性进行处理）都必须位于 <code>device/<var>manufacturer</var>/<var>device-name</var>/sepolicy</code> 中。这意味着系统类型无法在仅针对框架的 OTA 中更改已为供应商类型授予的访问权限。</p>
 
 </body></html>

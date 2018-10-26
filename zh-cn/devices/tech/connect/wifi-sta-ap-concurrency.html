@@ -1,0 +1,67 @@
+<html devsite><head>
+
+  <meta name="book_path" value="/_book.yaml"/>
+
+  <meta name="project_path" value="/_project.yaml"/>
+</head>
+<body>
+
+<!--
+  Copyright 2018 The Android Open Source Project
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+<h1 id="wi_fi_staap_concurrency" class="page-title">WLAN STA/AP 并发</h1>
+
+<p>Android 9 引入了可让设备同时在 STA 和 AP 模式下运行的功能。对于支持双频并发 (DBS) 的设备，此功能让一些新功能得以实现，例如在用户想要启用热点 (softAP) 时不会中断 STA WLAN。</p>
+
+<h2 id="examples_and_source">示例和来源</h2>
+
+<p>默认的 AOSP Android 框架代码支持 WLAN STA/AP 并发。<a href="/devices/tech/connect/wifi-hal">WLAN HAL</a> 中介绍的参考 HAL 实现也支持 WLAN STA/AP 并发。下文“实现”部分中介绍的 <code>WIFI_HIDL_FEATURE_DUAL_INTERFACE</code> 编译时标记会启用接口并发规范（指示 STA 和 AP 的并发支持）。</p>
+
+<h2 id="implementation">实现</h2>
+
+<p>要在设备上实现 WLAN STA/AP 并发，请执行以下操作：</p>
+
+<ol>
+<li><p>开启编译时标记以在 HAL 中启用对这两个接口的支持。该标记位于 <code>device/&lt;oem&gt;/&lt;device&gt;/BoardConfig-common.mk</code> 中。</p>
+
+<ul>
+<li><strong>WIFI_HIDL_FEATURE_DUAL_INTERFACE := true</strong></li>
+</ul></li>
+<li><p>显示两个网络接口：</p>
+
+<ul>
+<li><strong>wlan0</strong> 和 <strong>wlan1</strong></li>
+</ul></li>
+</ol>
+<aside class="note"><strong>注意</strong>：<span>为了避免出现性能问题，请仅在采用支持多个独立硬件 MAC（无线链路）的 WLAN 芯片的设备上使用此功能。</span></aside>
+<h2 id="validation">验证</h2>
+
+<p>要验证该功能是否按预期正常运行，请同时执行集成测试 (ACTS) 和手动测试。</p>
+
+<p>ACTS 文件 <code>WifiStaApConcurrencyTest.py</code>（位于 <code>tools/test/connectivity/acts/tests/google/wifi</code> 中）包含一组可以启动不同 STA 和 AP 组合的测试。</p>
+
+<p>要手动验证此功能，请从界面中单独开启和关闭 STA 和 AP 接口。</p>
+
+<p>如果 AP 和 STA 位于同一子网上，则被测设备 (DUT) 上可能会出现路由问题。为避免冲突，请尝试将 AP 移动到其他子网。</p>
+
+<p>如果 STA 和 AP 位于同一频段但却在不同的频道上，则一些 WLAN 芯片供应商会将无线置于分时共享模式。这种做法会导致性能急剧下降。为了解决此问题，芯片可以使用 Channel Switch Avoidance (CSA) 以便：</p>
+
+<ul>
+<li>将 AP 移动到 STA 所在的频道</li>
+<li>将 AP 移动到非 STA 所在的频段</li>
+</ul>
+
+</body></html>

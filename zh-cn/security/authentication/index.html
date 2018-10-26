@@ -23,12 +23,11 @@
 <p>Android 采用通过用户身份验证把关的加密密钥的概念，该概念需要以下组件：</p>
 
 <ul>
-<li><strong>加密密钥存储和服务提供程序</strong>。存储加密密钥并基于这些密钥提供标准加密例程。
-Android 支持<a href="/security/keystore/index.html">由硬件支持的 Keystore</a> 和 Keymaster 这两种加密服务，其中包括由硬件支持的密钥存储加密服务，该服务可能包括可信执行环境 (TEE)。</li>
-<li><strong>用户身份验证程序</strong>。证明相应用户存在并/或已成功通过身份验证。Android 支持 <a href="gatekeeper.html">Gatekeeper</a>（用于 PIN 码/解锁图案/密码身份验证）和 <a href="fingerprint-hal.html">Fingerprint</a>（用于指纹身份验证）。这两个组件通过已经过身份验证的渠道与 Keystore 服务沟通身份验证状态。（Keystore 服务还支持框架级 <a href="https://developer.android.com/training/articles/keystore.html" class="external">Android Keystore 系统</a>。）</li>
+<li><strong>加密密钥存储和服务提供程序</strong>。存储加密密钥并基于这些密钥提供标准加密例程。Android 支持<a href="/security/keystore/index.html">由硬件支持的 Keystore</a> 和 Keymaster 这两种加密服务，其中包括由硬件支持的密钥存储加密服务，该服务可能包括可信执行环境 (TEE) 或安全元件 (SE)，例如 Strongbox。</li>
+<li><strong>用户身份验证程序</strong>。证明相应用户存在并/或已成功通过身份验证。Android 支持 <a href="gatekeeper.html">Gatekeeper</a>（用于 PIN 码/解锁图案/密码身份验证）和 <a href="fingerprint-hal.html">Fingerprint</a>（用于指纹身份验证）。搭载 Android 9 及更高版本的设备可以使用 <a href="https://developer.android.com/reference/android/hardware/biometrics/BiometricPrompt" class="external">BiometricPrompt</a> 作为指纹和其他生物识别技术的单一集成点。这些组件通过已经过身份验证的渠道与 Keystore 服务沟通身份验证状态。（Keystore 服务还支持框架级 <a href="https://developer.android.com/training/articles/keystore.html" class="external">Android Keystore 系统</a>。）</li>
 </ul>
 
-<p>Gatekeeper 和 Fingerprint 组件能够与 Keystore 及其他组件协同运作，以支持使用由硬件支持的<a href="#authtoken_format">身份验证令牌</a> (AuthToken)。</p>
+<p>Gatekeeper、Fingerprint 和 Biometric 组件能够与 Keystore 及其他组件协同运作，以支持使用由硬件支持的<a href="#authtoken_format">身份验证令牌</a> (AuthToken)。</p>
 
 <h2 id="enrollment">注册</h2>
 
@@ -43,20 +42,25 @@ Android 支持<a href="/security/keystore/index.html">由硬件支持的 Keystor
 
 <p>用户设置凭据并收到用户 SID 后，便可以开始进行身份验证，身份验证从用户提供 PIN 码、解锁图案、密码或指纹开始。所有 TEE 组件都共用一个密钥来验证对方的消息。</p>
 
-<img src="../images/authentication-flow.png" alt="身份验证流程" id="figure1"/>
+<img src="../images/authentication-flow.png" alt="身份验证流程" id="Authentication flow"/>
 <figcaption><strong>图 1.</strong> 身份验证流程。</figcaption>
 
 <ol>
-  <li>用户提供 PIN 码、解锁图案、密码或指纹。<code>LockSettingsService</code> 或 <code>FingerprintService</code> 通过 Binder 向相应的守护进程（<code>gatekeeperd</code> 或 <code>fingerprintd</code>）发出请求。指纹身份验证在指纹请求发出后异步进行。</li>
+  <li>用户提供身份验证方法，然后关联的服务向关联的守护进程发出请求。
+    <ul>
+      <li>对于 PIN 码、解锁图案或密码，<code>LockSettingsService</code> 会向 <code>gatekeeperd</code> 发出请求。</li>
+      <li>基于生物识别技术的身份验证流程取决于 Android 版本。在搭载 Android 8.x 及更低版本的设备上，<code>FingerprintService</code> 会向 <code>fingerprintd</code> 发出请求。在搭载 Android 9 及更高版本的设备上，<code>BiometricPrompt</code> 会使用合适的 <code><var>Biometric</var>Manager</code> 类（如 <code>FingerprintManager</code> 或 <code>FaceManager</code>）向相应的生物识别守护进程发出请求（例如，若是指纹身份验证，则向 <code>fingerprintd</code> 发出请求；若是人脸身份验证，则向 <code>faced</code> 发出请求）。无论什么版本，生物识别身份验证都会在请求发出后异步进行。</li>
+    </ul>
+  </li>
   <li>守护进程将数据发至其副本，后者生成 AuthToken：
     <ul>
     <li>对于 PIN 码/解锁图案/密码身份验证，<code>gatekeeperd</code> 将 PIN 码、解锁图案或密码哈希发送到 TEE 中的 Gatekeeper。如果 TEE 中的身份验证成功，TEE 中的 Gatekeeper 会将包含相应用户 SID（已使用 AuthToken HMAC 密钥签名）的 AuthToken 发送到它在 Android 操作系统中的副本。
     </li><li>对于指纹身份验证，<code>fingerprintd</code> 会监听指纹事件并将数据发送到 TEE 中的 Fingerprint。如果 TEE 中的身份验证成功，TEE 中的 Fingerprint 会将 AuthToken（已使用 AuthToken HMAC 密钥签名）发送到它在 Android 操作系统中的副本。</li>
+    <li>对于其他生物识别身份验证，相应的生物识别守护进程会监听生物识别事件，并将其发送到相应的生物识别 TEE 组件。</li>
   </ul>
   </li>
-  <li>守护进程收到经过签名的 AuthToken，并通过 Keystore 服务 Binder 接口的扩展程序将 AuthToken 传递给 Keystore 服务。
-（<code>gatekeeperd</code> 还会在设备被重新锁定以及设备密码发生变化时通知 Keystore 服务。）
-  </li><li>Keystore 服务将 AuthToken 传递给 Keymaster，以便使用与 Gatekeeper 和 Fingerprint Trustlet 共用的密钥验证 AuthToken。Keymaster 会将令牌中的时间戳视为最后一次身份验证的时间，并根据该时间戳做出密钥发布决定（以允许应用使用相应密钥）。</li>
+  <li>守护进程收到经过签名的 AuthToken，并通过 Keystore 服务 Binder 接口的扩展程序将 AuthToken 传递给 Keystore 服务。（<code>gatekeeperd</code> 还会在设备被重新锁定以及设备密码发生变化时通知 Keystore 服务。）
+  </li><li>Keystore 服务将 AuthToken 传递给 Keymaster，并使用与 Gatekeeper 和支持的生物识别 TEE 组件共用的密钥来验证这些 AuthToken。Keymaster 会将令牌中的时间戳视为最后一次身份验证的时间，并根据该时间戳做出密钥发布决定（以允许应用使用相应密钥）。</li>
 </ol>
 
 <aside class="note"><strong>注意</strong>：设备重新启动后，AuthToken 即作废。</aside>
@@ -123,11 +127,11 @@ Android 支持<a href="/security/keystore/index.html">由硬件支持的 Keystor
 
 <h2 id="device_boot_flow">设备启动流程</h2>
 
-<p>每次设备启动时，都必须生成 AuthToken HMAC 密钥并由所有 TEE 组件（Gatekeeper、Fingerprint 和 Keymaster）共用该密钥。因此，为了加强对重播攻击的防范力度，每次设备重新启动时都必须随机生成 HMAC 密钥。</p>
+<p>每次设备启动时，都必须生成 AuthToken HMAC 密钥并由所有 TEE 组件（Gatekeeper、Keymaster 以及支持的生物识别 Trustlet）共用该密钥。因此，为了加强对重播攻击的防范力度，每次设备重新启动时都必须随机生成 HMAC 密钥。</p>
 
 <p>关于与所有组件共用此 HMAC 密钥的协议是一项依赖于平台的实现功能。<strong>在任何情况下都不能</strong>将该密钥设为在 TEE 之外可用。如果 TEE 操作系统缺少内部进程间通信 (IPC) 机制，需要通过不可信操作系统传输数据，那么传输操作必须通过安全的密钥交换协议进行。</p>
 
-<p>与 Android 并排运行的 <a href="/security/trusty/index.html">Trusty</a> 操作系统就是一种 TEE，不过也可以使用其他 TEE。Trusty 使用内部 IPC 机制在 Keymaster 和 Fingerprint 或 Gatekeeper 之间直接进行通信。HMAC 密钥只保存在 Keymaster 中，Fingerprint 和 Gatekeeper 会在每次使用时向 Keymaster 请求该密钥，而不会保留或缓存该密钥的值。</p>
+<p>与 Android 并排运行的 <a href="/security/trusty/index.html">Trusty</a> 操作系统就是一种 TEE，不过也可以使用其他 TEE。Trusty 使用内部 IPC 机制在 Keymaster 和 Gatekeeper 或相应的生物识别 Trustlet 之间直接进行通信。HMAC 密钥只保存在 Keymaster 中，Fingerprint 和 Gatekeeper 会在每次使用时向 Keymaster 请求该密钥，而不会保留或缓存该密钥的值。</p>
 
 <p>由于一些 TEE 缺少 IPC 基础架构，因此 TEE 中的小程序之间不会进行通信。这还使得 Keystore 服务因知晓系统中的身份验证表而能够快速拒绝注定会失败的请求，从而避免向 TEE 发送可能会占用大量资源的 IPC。</p>
 

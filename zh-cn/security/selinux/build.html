@@ -1,0 +1,194 @@
+<html devsite><head>
+    <title>编译 SELinux 政策</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2018 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          //www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+<p>
+本文介绍了如何编译 SELinux 政策。SELinux 政策组合使用核心 AOSP 政策（平台）和设备专用政策（供应商）进行编译。从 Android 4.4 一直到 Android 7.0 的 SELinux 政策编译流程合并了所有 sepolicy 片段，然后在根目录中生成了整体文件。这意味着 SOC 供应商和 ODM 制造商每次修改政策时，都修改了 boot.img（针对非 A/B 设备）或 system.img（针对 A/B 设备）。
+</p>
+<p>
+在 Android 8.0 及更高版本中，平台政策和供应商政策是单独编译的。SOC 和原始设备制造商 (OEM) 可以更新自己那部分政策，编译自己的映像（vendor.img、boot.img 等），然后独立于平台更新来更新这些映像。
+</p>
+<p>
+不过，由于模块化的 SELinux 政策文件存储在 <code>/vendor</code> 分区中，因此 <code>init</code> 进程必须提早装载系统分区和供应商分区，以便能够从这些分区中读取 SELinux 文件，并将这些文件与系统目录中的核心 SELinux 文件合并（装载操作要在将这些文件加载到内核之前进行）。
+</p>
+
+<h2 id="files">源文件</h2>
+<p>
+SELinux 的编译逻辑位于以下文件中：
+</p>
+<ul>
+  <li><a href="https://android.googlesource.com/platform/external/selinux/" class="external"><code>external/selinux</code></a>：外部 SELinux 项目，用于构建 HOST 命令行实用工具以编译 SELinux 政策和标签。
+   <ul>
+    <li><a href="https://android.googlesource.com/platform/external/selinux/libselinux" class="external"><code>external/selinux/libselinux</code></a>：Android 仅使用外部 <code>libselinux</code> 项目的一个子集，以及一些 Android 专用自定义内容。如需了解详情，请参阅 <a href="https://android.googlesource.com/platform/external/selinux/+/master/README.android" class="external"><code>external/selinux/README.android</code></a>。</li>
+    <li><a href="https://android.googlesource.com/platform/external/selinux/+/master/libsepol/" class="external"><code>external/selinux/libsepol</code></a>：
+      <ul>
+        <li><a href="http://man7.org/linux/man-pages/man8/chkcon.8.html" i class="external"><code>chkcon</code></a>：确定安全环境对指定的二进制政策（主机可执行文件）是否有效。</li>
+        <li><a href="https://android.googlesource.com/platform/external/selinux/+/master/libsepol/" class="external"><code>libsepol</code></a>：用于操控二进制安全政策（主机静态/共享库）的 SELinux 库。</li>
+      </ul>
+    </li>
+    <li><a href="https://android.googlesource.com/platform/external/selinux/+/master/checkpolicy/" class="external"><code>external/selinux/checkpolicy</code></a>：SELinux 政策编译器（主机可执行文件：<code>checkpolicy</code>、<code>checkmodule</code> 和 <code>dispol</code>）。依赖于 <code>libsepol</code>。</li>
+   </ul>
+  </li>
+  <li><a href="https://android.googlesource.com/platform/system/sepolicy/+/master" class="external"><code>system/sepolicy</code></a>：核心 Android SELinux 政策配置，包括上下文文件和政策文件。主要 sepolicy 编译逻辑也位于此处：<code>system/sepolicy/Android.mk</code>。</li>
+</ul>
+<p>
+要详细了解 <code>system/sepolicy</code> 中的文件，请参阅<a href="/security/selinux/implement#key_files">实现 SELinux</a>。
+</p>
+
+<h2 id="android-7">Android 7.0 及更低版本</h2>
+
+<p>本部分介绍如何在 Android 7.x 及更低版本中编译 SELinux 政策。</p>
+
+<h3 id="android-7-building">编译 SELinux 政策</h3>
+<p>
+SELinux 政策通过将核心 AOSP 政策与设备专用自定义政策合并而创建。然后，系统会将合并后的政策传递给政策编译器和各种检查工具。设备专用自定义政策通过在设备专用 <code>Boardconfig.mk</code> 文件中定义的 <code>BOARD_SEPOLICY_DIRS</code> 变量完成。该全局编译变量包含一个用于指定其他政策文件搜索顺序的目录列表。
+</p>
+<p>
+例如，SOC 供应商和 ODM 可以分别添加一个目录，一个用于 SOC 专用设置，另一个用于设备专用设置，以生成针对指定设备的最终 SELinux 配置：
+</p>
+<ul>
+  <li><code>BOARD_SEPOLICY_DIRS += device/<var>SOC</var>/common/sepolicy</code></li>
+  <li><code>BOARD_SEPOLICY_DIRS += device/<var>SoC</var>/<var>DEVICE</var>/sepolicy</code></li>
+</ul>
+<p>
+<code>system/sepolicy</code> 和 <code>BOARD_SEPOLICY_DIRS</code> 中的 file_contexts 文件内容会连接在一起，以便在设备上生成 <code>file_contexts.bin</code>：
+</p>
+
+<figure>
+  <img src="images/n-selinux-build-logic.png" alt="此图显示了 Android 7.x 的 SELinux 编译逻辑。"/>
+  <figcaption><strong>图 1</strong>. SELinux 编译逻辑</figcaption>
+</figure>
+<p>
+<code>sepolicy</code> 文件由多个源文件组成：
+</p>
+<ul>
+  <li>纯文本 <code>policy.conf</code> 是通过依次连接 <code>security_classes</code>、<code>initial_sids</code>、<code>*.te</code> 文件、<code>genfs_contexts</code> 以及 <code>port_contexts</code> 而生成的。</li>
+  <li>对于每个文件（例如 <code>security_classes</code>），其内容都是由 <code>system/sepolicy/</code> 和 <code>BOARDS_SEPOLICY_DIRS</code> 下的同名文件连接而成。</li>
+  <li><code>policy.conf</code> 会被发送到 SELinux 编译器进行语法检查并被编译为二进制格式，从而生成设备上的 <code>sepolicy</code>。
+    <figure>
+      <img src="images/n-selinux-policy-file.png" alt="此图显示了为 Android 7.x 生成 SELinux 政策文件的文件。"/>
+      <figcaption><strong>图 2</strong>. SELinux 政策文件</figcaption>
+    </figure></li>
+</ul>
+
+<h3 id="selinux-files">SELinux 文件</h3>
+<p>
+编译完成后，搭载 Android 7.x 及更低版本的设备通常包含以下与 SELinux 相关的文件：
+</p>
+<ul>
+  <li><code>selinux_version</code></li>
+  <li><code>sepolicy: binary output after combining policy files (security_classes,
+            initial_sids, *.te, etc.)</code></li>
+  <li><code>file_contexts</code></li>
+  <li><code>property_contexts</code></li>
+  <li><code>seapp_contexts</code></li>
+  <li><code>service_contexts</code></li>
+  <li><code>system/etc/mac_permissions.xml</code></li>
+</ul>
+<p>
+如需了解详情，请参阅<a href="/security/selinux/implement">实现 SELinux</a>。
+</p>
+<h3 id="android-n-init">SELinux 初始化</h3>
+<p>
+在系统启动时，SELinux 处于宽容模式（并且不处于强制模式）。init 进程会执行以下任务：
+</p>
+<ul>
+  <li>通过 <code>/sys/fs/selinux/load</code> 将 <code>sepolicy</code> 文件从 ramdisk 加载到内核。</li>
+  <li>将 SELinux 切换到强制模式。</li>
+  <li>对自己执行 re-exec()，以将 SELinux 域规则应用于自身。</li>
+</ul>
+<p>
+为了缩短启动时间，请在尽早在 <code>init</code> 进程中执行 <code>re-exec()</code>。
+</p>
+
+<h2 id="android-o">Android 8.0 及更高版本</h2>
+<p>
+在 Android 8.0 中，SELinux 政策拆分为平台组件和供应商组件，以允许独立进行平台/供应商政策更新，同时保持兼容性。
+</p>
+<p>
+平台 sepolicy 进一步拆分为平台专用部分和平台公共部分，以便将特定类型和属性导出到供应商政策写入程序。平台会保证将公共类型/属性作为指定平台版本的稳定 API 进行维护。借助平台映射文件，平台可以保证与之前多个版本的公共类型/属性兼容。
+</p>
+<h3 id="platform-public">平台公共 sepolicy</h3>
+<p>
+平台公共 sepolicy 包含 <a href="https://android.googlesource.com/platform/system/sepolicy/+/master/public/" class="external"><code>system/sepolicy/public</code></a> 下定义的所有内容。平台可以假设在公共政策下定义的类型和属性是指定平台版本的稳定 API。这构成了 sepolicy 中平台导出的部分，供应商（即设备）政策开发者可以在这部分 sepolicy 中编写其他设备专用政策。
+</p>
+<p>
+类型的版本取决于在编写供应商文件时参照的政策版本（由 <code>PLATFORM_SEPOLICY_VERSION</code> 编译变量所定义）。然后，相应版本的公共政策（以其原始形式）便会与供应商政策一起包含在平台政策中。因此，最终政策包含平台专用政策、当前平台的公共 sepolicy、设备专用政策，以及与编写设备政策时参照的平台版本相对应的适当版本的公共政策。
+</p>
+<h3 id="platform-private">平台专用 sepolicy</h3>
+<p>
+平台专用 sepolicy 包含 <a href="https://android.googlesource.com/platform/system/sepolicy/+/master/private" class="external"><code>/system/sepolicy/private</code></a> 下定义的所有内容。这部分政策构成了运行平台功能所需的平台专用类型、权限和属性。这些内容不会导出到 <code>vendor/device</code> 政策写入程序。非平台政策的写入程序不得根据平台专用 sepolicy 中定义的类型/属性/规则来编写政策扩展程序。此外，在进行框架专用更新时，可以修改或移除这些规则。
+</p>
+<h3 id="platform-private-mapping">平台专用映射</h3>
+<p>
+平台专用映射包含相应政策声明，用于将在之前平台版本的平台公共政策中公开的属性映射到当前平台公共 sepolicy 中所使用的具体类型。这样可以确保根据之前平台公共 sepolicy 版本中的平台公共属性编写的供应商政策可以继续运行。版本控制基于在 AOSP 中为指定平台版本设置的 <code>PLATFORM_SEPOLICY_VERSION</code> 编译变量。之前的每个平台版本都有一个单独的映射文件；平台应通过相应的映射文件接受供应商政策。如需了解详情，请参阅<a href="/security/selinux/compatibility">兼容性</a>。
+</p>
+<h2 id="android-o-build">编译 SELinux 政策</h2>
+<p>
+Android 8.0 中的 SELinux 政策是通过合并 <code>/system</code> 和 <code>/vendor</code> 中的部分内容而创建。适当设置该政策的逻辑位于 <a href="https://android.googlesource.com/platform/system/sepolicy/+/master/Android.mk" class="external"><code>/platform/system/sepolicy/Android.mk</code></a>。
+</p>
+<p>
+政策存在于以下位置：
+</p>
+<table>
+  <tbody><tr>
+   <th>位置</th>
+   <th>包含</th>
+  </tr>
+  <tr>
+    <td><code>system/sepolicy/public</code></td>
+   <td>平台的 sepolicy API</td>
+  </tr>
+  <tr>
+    <td><code>system/sepolicy/private</code></td>
+   <td>平台实现详情（供应商可以忽略）</td>
+  </tr>
+  <tr>
+    <td><code>system/sepolicy/vendor</code></td>
+   <td>供应商可以使用的政策和上下文文件（供应商可以根据情况忽略）</td>
+  </tr>
+  <tr>
+    <td><code>BOARD_SEPOLICY_DIRS</code></td>
+   <td>供应商 sepolicy</td>
+  </tr>
+</tbody></table>
+
+<p>
+编译系统采用该政策，并在系统分区和供应商分区中分别生成平台政策组件和供应商政策组件。具体步骤包括：
+</p>
+<ol>
+ <li>将政策转换为 SELinux 通用中间语言 (CIL) 格式，具体如下：
+  <ol>
+    <li>平台公共政策</li>
+    <li>专用 + 公共组合政策</li>
+    <li>公共 + 供应商和 <code>BOARD_SEPOLICY_DIRS</code> 政策</li>
+  </ol>
+ </li>
+ <li>将公开提供的政策的版本控制为供应商政策的一部分。为此，应使用生成的公共 CIL 政策向公共 + 供应商 + <code>BOARD_SEPOLICY_DIRS</code> 组合政策指明必须将哪些部分转换为将与平台政策相关联的属性。</li>
+ <li>创建将平台和供应商部分关联在一起的映射文件。最初，该文件只是将公共政策中的类型与供应商政策中对应的属性相关联；之后，该文件还为未来的平台版本中维护的文件提供依据，从而兼容以此平台版本作为目标版本的供应商政策。</li>
+ <li>合并政策文件（介绍设备解决方案和预编译解决方案）。
+  <ol>
+    <li>合并映射政策、平台政策和供应商政策。</li>
+    <li>编译输出二进制政策文件。</li>
+  </ol>
+ </li>
+</ol>
+
+</body></html>

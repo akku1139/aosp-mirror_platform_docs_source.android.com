@@ -1,0 +1,340 @@
+<html devsite><head>
+  <title>使用配置文件引导的优化 (PGO)</title>
+  <meta name="project_path" value="/_project.yaml"/>
+  <meta name="book_path" value="/_book.yaml"/>
+</head>
+
+<body>
+  <!--
+      Copyright 2018 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+  <p>Android 编译系统支持在具有<a href="https://android.googlesource.com/platform/build/soong/">蓝图</a>编译规则的原生 Android 模块上使用 Clang 的<a href="https://clang.llvm.org/docs/UsersManual.html#profile-guided-optimization">配置文件引导优化 (PGO)</a>。本页面介绍了 Clang PGO、如何持续生成和更新用于 PGO 的配置文件，以及如何将 PGO 集成到编译系统（包含用例）。</p>
+
+  <h2 id="about-clang-pgo">Clang PGO 简介</h2>
+
+  <p>Clang 可以使用两类配置文件来执行配置文件引导的优化：</p>
+
+  <ul>
+    <li><strong>基于插桩的配置文件</strong>是从插桩的目标程序生成的。这些配置文件很详细，且会产生很高的运行时开销。</li>
+
+    <li><strong>基于采样的配置文件</strong>通常通过对硬件计数器进行采样生成。此类配置文件产生的运行时开销较低，并且无需对二进制文件进行任何插桩或修改即可收集。详细程度不如基于插桩的配置文件。</li>
+  </ul>
+
+  <p>所有配置文件都应该从执行应用的典型行为的代表性工作负载生成。虽然 Clang 同时支持基于 AST (<code>-fprofile-instr-generate</code>) 和基于 LLVM IR (<code>-fprofile-generate)</code>) 配置文件，但 Android 仅针对基于插桩的 PGO 支持基于 LLVM IR 的配置文件。</p>
+
+  <p>需要为配置文件集合编译以下标记：</p>
+
+  <ul>
+    <li><code>-fprofile-generate</code>，适用于基于 IR 的插桩。借助此选项，后端可使用加权最小生成树方法来减少插桩点的数量，并优化它们在低权重边缘的放置（对于链接步骤也使用此选项）。Clang 驱动程序会自动将分析运行时 (<code>libclang_rt.profile-<em>arch</em>-android.a</code>) 传递给链接器。该库包含可在程序退出时将配置文件写入磁盘的例程。</li>
+
+    <li><code>-gline-tables-only</code>，适用于基于采样的配置文件收集，可生成最少的调试信息。</li>
+  </ul>
+
+  <p>配置文件可用于 PGO（分别针对基于插桩的配置文件和基于采样的配置文件使用 <code>-fprofile-instr-use=<em>pathname</em></code> 和 <code>-fprofile-sample-use=<em>pathname</em></code>）。</p>
+
+  <p><strong>注意</strong>：当对代码进行更改时，如果 Clang 无法再使用配置文件数据，则会生成一条 <code>-Wprofile-instr-out-of-date</code> 警告。</p>
+
+  <h2 id="using-pgo">使用 PGO</h2>
+
+  <p>要使用 PGO，请按以下步骤操作：</p>
+
+  <ol>
+    <li>通过将 <code>-fprofile-generate</code> 传递给编译器和链接器，使用插桩编译库/可执行文件。</li>
+
+    <li>通过在插桩二进制文件上运行代表性工作负载来收集配置文件。</li>
+
+    <li>使用 <code>llvm-profdata</code> 实用程序对配置文件进行后处理（有关详情，请参阅<a href="#handling-llvm-profile-files">处理 LLVM 配置文件</a>）。</li>
+
+    <li>通过将 <code>-fprofile-use=&lt;&gt;.profdata</code> 传递给编译器和链接器，使用配置文件应用 PGO。</li>
+  </ol>
+
+  <p>对于 Android 中的 PGO，应离线收集配置文件并随代码签入，以确保编译可重现。无论代码如何变化，配置文件都可一直使用，但必须定期（或在 Clang 发出配置文件过时的警告时）重新生成。</p>
+
+  <h3 id="collecting-profiles">收集配置文件</h3>
+
+  <p>Clang 可以使用通过以下方式收集的配置文件：使用库的插桩编译运行基准，或在运行基准时对硬件计数器进行采样。目前，Android 不支持使用基于采样的配置文件收集，因此您必须使用插桩编译收集配置文件：</p>
+
+  <ol>
+    <li>确定一个基准以及由该基准统一执行的一组库。</li>
+
+    <li>将 <code>pgo</code> 属性添加到该基准和各个库（请参阅下文了解详情）。</li>
+
+    <li>使用以下命令生成包含这些库的插桩副本的 Android 编译：
+<pre class="prettyprint">make ANDROID_PGO_INSTRUMENT=benchmark</pre>
+    </li>
+  </ol>
+
+  <p><code><em>benchmark</em></code> 是占位符，用于标识在编译时插桩的库集合。实际的代表性输入（也可能是链接到进行基准化的库的其他可执行文件）并非专用于 PGO，不在本文档的讨论范围内。</p>
+
+  <ol>
+    <li>在设备上刷写或同步插桩编译。</li>
+
+    <li>运行基准以收集配置文件。</li>
+
+    <li>使用下文中介绍的 <code>llvm-profdata</code> 工具对配置文件进行后处理，并使其做好签入源代码树的准备。</li>
+  </ol>
+
+  <h3 id="using-profiles-during-build">在编译时使用配置文件</h3>
+
+  <p>将配置文件签入 Android 树中的 <code>toolchain/pgo-profiles</code>。名称应与库的 <code>pgo</code> 属性的 <code>profile_file</code> 子属性中指定的名称一致。编译库时，编译系统会自动将配置文件传递到 Clang。您可以将 <code>ANDROID_PGO_DISABLE_PROFILE_USE</code> 环境变量设置为 <strong><code>true</code></strong>，以暂时停用 PGO 并衡量其性能优势。</p>
+
+  <p>要指定额外的产品专用配置文件目录，请将其附加到 <code>BoardConfig.mk</code> 中的 <code>PGO_ADDITIONAL_PROFILE_DIRECTORIES</code> make 变量。如果指定了其他路径，则这些路径中的配置文件将替换 <code>toolchain/pgo-profiles</code> 中的配置文件。</p>
+
+  <p>当使用 <code>make</code> 的 <code>dist</code> 目标生成版本映像时，编译系统会将缺失的配置文件的名称写入 <code>$DIST_DIR/pgo_profile_file_missing.txt</code>。您可以检查此文件，看看哪些配置文件遭到了意外删除（以静默方式停用 PGO）。</p>
+
+  <h2 id="enabling-pgo-in-android-bp-files">在 Android.bp 文件中启用 PGO</h2>
+
+  <p>要在 <code>Android.bp</code> 文件中为原生模块启用 PGO，只需指定 <code>pgo</code> 属性即可。此属性具有以下子属性：</p>
+
+  <table>
+    <tbody><tr>
+      <th><strong>属性</strong>
+      </th>
+
+      <th><strong>说明</strong>
+      </th>
+    </tr>
+
+    <tr>
+      <td><code>instrumentation</code>
+      </td>
+
+      <td>对于使用插桩方法的 PGO，设置为 <code>true</code>。默认值为 <code>false</code>。</td>
+    </tr>
+
+    <tr>
+      <td><code>sampling</code>
+      </td>
+
+      <td><strong>当前不受支持。</strong> 对于使用采样方法的 PGO，设置为 <code>true</code>。默认值为 <code>false</code>。</td>
+    </tr>
+
+    <tr>
+      <td><code>benchmarks</code>
+      </td>
+
+      <td>字符串列表。如果该列表中的任何基准是在 <code>ANDROID_PGO_INSTRUMENT</code> 编译选项中指定的，则说明此模块是专为分析而构建的。</td>
+    </tr>
+
+    <tr>
+      <td><code>profile_file</code>
+      </td>
+
+      <td>要与 PGO 结合使用的配置文件（相对于 <code>toolchain/pgo-profile</code>）。编译系统通过将此文件添加到 <code>$DIST_DIR/pgo_profile_file_missing.txt</code> 来警告此文件不存在，除非将<em></em> <code>enable_profile_use</code> 属性设置为 <code>false</code> <strong>或者</strong>将 <code>ANDROID_PGO_NO_PROFILE_USE</code> 编译变量设置为 <code>true</code>。</td>
+    </tr>
+
+    <tr>
+      <td><code>enable_profile_use</code>
+      </td>
+
+      <td>如果在编译期间不应使用配置文件，则设置为 <code>false</code>。可在引导期间用来启用配置文件收集或暂时停用 PGO。默认值为 <code>true</code>。</td>
+    </tr>
+
+    <tr>
+      <td><code>cflags</code>
+      </td>
+
+      <td>在插桩编译期间使用的其他标记的列表。</td>
+    </tr>
+  </tbody></table>
+
+  <p>包含 PGO 的模块示例：</p>
+
+<pre class="prettyprint">cc_library {
+    name: "libexample",
+    srcs: [
+        "src1.cpp",
+        "src2.cpp",
+    ],
+    static: [
+        "libstatic1",
+        "libstatic2",
+    ],
+    shared: [
+        "libshared1",
+    ]
+    pgo: {
+        instrumentation: true,
+        benchmarks: [
+            "benchmark1",
+            "benchmark2",
+        ],
+        profile_file: "example.profdata",
+    }
+}
+</pre>
+
+  <p>如果基准 <code>benchmark1</code> 和 <code>benchmark2</code> 为 <code>libstatic1</code>、<code>libstatic2</code> 或 <code>libshared1</code> 库执行代表性行为，则这些库的 <code>pgo</code> 属性也可以包括这些基准。<code>Android.bp</code> 中的 <code>defaults</code> 模块可以包含一组库的常见 <code>pgo</code> 规范，以避免针对多个模块重复相同的编译规则。</p>
+
+  <p>要为某个架构选择不同的配置文件或有选择性地停用 PGO，请按架构指定 <code>profile_file</code>、<code>enable_profile_use</code> 和 <code>cflags</code> 属性。具体示例（架构目标以<strong>粗体</strong>显示）如下所示：</p>
+
+<pre class="prettyprint">cc_library {
+    name: "libexample",
+    srcs: [
+          "src1.cpp",
+          "src2.cpp",
+    ],
+    static: [
+          "libstatic1",
+          "libstatic2",
+    ],
+    shared: [
+          "libshared1",
+    ],
+    pgo: {
+         instrumentation: true,
+         benchmarks: [
+              "benchmark1",
+              "benchmark2",
+         ],
+    }
+
+    <strong>target: {
+         android_arm: {
+              pgo: {
+                   profile_file: "example_arm.profdata",
+              }
+         },
+         android_arm64: {
+              pgo: {
+                   profile_file: "example_arm64.profdata",
+              }
+         }
+    }
+}</strong>
+</pre>
+
+  <p>要在执行基于插桩的分析期间解析对分析运行时库的引用，请将编译标记 <code>-fprofile-generate</code> 传递至链接器。使用 PGO 插桩的静态库、所有共享库以及任何直接依赖于静态库的二进制文件也必需针对 PGO 进行插桩。不过，此类共享库或可执行文件不需要使用 PGO 配置文件，而且它们的 <code>enable_profile_use</code> 属性可以设置为 <code>false</code>。除此限制外，您可以将 PGO 应用于任何静态库、共享库或可执行文件。</p>
+
+  <h2 id="handling-llvm-profile-files">处理 LLVM 配置文件</h2>
+
+  <p>执行插桩库或可执行文件会在 <code>/data/local/tmp</code> 中生成一个名为 <code>default_<em>unique_id</em>_0.profraw</code> 的配置文件（其中 <code><em>unique_id</em></code> 是一个数字哈希值，对此库来说是唯一的）。如果此文件已存在，则分析运行时会在写入配置文件时将新老配置文件合并。要更改配置文件的位置，请在运行时设置 <code>LLVM_PROFILE_FILE</code> 环境变量。</p>
+
+  <p>然后使用 <code><a href="https://llvm.org/docs/CommandGuide/llvm-profdata.html">llvm-profdata</a></code> 实用程序将 <code>.profraw</code> 文件转换（可能会合并多个 <code>.profraw</code> 文件）为 <code>.profdata</code> 文件：</p>
+
+  <pre class="prettyprint">
+  llvm-profdata merge -output=profile.profdata &lt;.profraw and/or .profdata files&gt;</pre>
+
+  <p>然后，可以将 <code><em>profile.profdata</em></code> 签入源代码树，以供在编译时使用。</p>
+
+  <p>如果某个基准运行期间加载了多个插桩二进制文件/库，则每个库都会生成一个单独的<code>.profraw</code> 文件（包含单独的唯一 ID）。通常，所有这些文件都可以合并为一个 <code>.profdata</code> 文件，并用于 PGO 编译。如果某个库由另一个基准执行，则必须使用来自两个基准的配置文件优化该库。在这种情况下，<code>llvm-profdata</code> 的 <code>show</code> 选项非常有用：</p>
+
+  <pre class="prettyprint">
+  llvm-profdata merge -output=default_unique_id.profdata default_unique_id_0.profraw
+llvm-profdata show -all-functions default_unique_id.profdata</pre>
+
+  <p>要将 unique_id<em></em> 映射到各个库，请针对相应库独有的函数名称搜索各个 unique_id <em></em>的 <code>show</code> 输出。</p>
+
+  <h2 id="case-study-pgo-for-art">案例研究：适用于 ART 的 PGO</h2>
+
+  <p><em>该案例研究将 ART 作为一个相关的示例；但是，它并不能准确描述为 ART 或其相互依赖关系分析的一系列实际库。</em>
+  </p>
+
+  <p>ART 中的 <code>dex2oat</code> 预编译器依赖 <code>libart-compiler.so</code>，后者则依赖 <code>libart.so</code>。ART 运行时主要在 <code>libart.so</code> 中实现。编译器和运行时的基准有所不同：</p>
+
+  <table>
+    <tbody><tr>
+      <th><strong>基准</strong>
+      </th>
+
+      <th><strong>分析的库</strong>
+      </th>
+    </tr>
+
+    <tr>
+      <td><code>dex2oat</code>
+      </td>
+
+      <td><code>dex2oat</code>（可执行文件）、<code>libart-compiler.so</code>、<code>libart.so</code></td>
+    </tr>
+
+    <tr>
+      <td><code>art_runtime</code>
+      </td>
+
+      <td><code>libart.so</code>
+      </td>
+    </tr>
+  </tbody></table>
+
+  <ol>
+    <li>将以下 <code>pgo</code> 属性添加到 <code>dex2oat</code>、<code>libart-compiler.so</code>：
+
+      <pre class="prettyprint">    pgo: {
+        instrumentation: true,
+        benchmarks: ["dex2oat",],
+        profile_file: "dex2oat.profdata",
+    }</pre>
+    </li>
+
+    <li>将以下 <code>pgo</code> 属性添加到 <code>libart.so</code>：
+
+      <pre class="prettyprint">    pgo: {
+        instrumentation: true,
+        benchmarks: ["art_runtime", "dex2oat",],
+        profile_file: "libart.profdata",
+    }</pre>
+    </li>
+
+    <li>使用以下命令为 <code>dex2oat</code> 和 <code>art_runtime</code> 基准创建插桩编译：
+
+      <pre class="prettyprint">    make ANDROID_PGO_INSTRUMENT=dex2oat
+    make ANDROID_PGO_INSTRUMENT=art_runtime</pre>
+    </li>
+
+  <p>或者，使用以下命令创建一个包含所有插桩库的插桩编译：
+</p>
+
+  <pre class="prettyprint">    make ANDROID_PGO_INSTRUMENT=dex2oat,art_runtime
+    (or)
+    make ANDROID_PGO_INSTRUMENT=ALL</pre>
+
+  <p>第二个命令会编译<strong>所有</strong>启用 PGO 的模块，以进行分析。</p>
+
+    <li>运行执行 <code>dex2oat</code> 和 <code>art_runtime</code> 的基准以获得：
+
+    <ul>
+
+    <li>三个来自 <code>dex2oat</code> 的 <code>.profraw</code> 文件（<code>dex2oat_exe.profdata</code>、<code>dex2oat_libart-compiler.profdata</code> 和 <code>dexeoat_libart.profdata</code>），这三个文件均使用<a href="#handling-llvm-profile-files">处理 LLVM 配置文件</a>中说明的方法标识。</li>
+
+    <li>一个 <code>art_runtime_libart.profdata</code>。</li>
+    </ul>
+    </li>
+
+    <li>使用以下命令为 <code>dex2oat</code> 可执行文件和 <code>libart-compiler.so</code> 生成一个通用的 profdata 文件：
+
+      <pre class="prettyprint">llvm-profdata merge -output=dex2oat.profdata \
+    dex2oat_exe.profdata dex2oat_libart-compiler.profdata</pre>
+    </li>
+
+    <li>通过合并来自两个基准的配置文件，获取 <code>libart.so</code> 的配置文件：
+
+      <pre class="prettyprint">llvm-profdata merge -output=libart.profdata \
+    dex2oat_libart.profdata art_runtime_libart.profdata</pre>
+
+  <p>来自两个配置文件的 <code>libart.so</code> 的原始计数可能是不同的，因为不同基准的测试用例数量以及运行时长存在差异。在这种情况下，您可以使用以下加权合并命令：</p>
+
+  <pre class="prettyprint">llvm-profdata merge -output=libart.profdata \
+    -weighted-input=2,dex2oat_libart.profdata \
+    -weighted-input=1,art_runtime_libart.profdata</pre>
+
+  <p>上述命令将两倍的权重分配给来自 <code>dex2oat</code> 的配置文件。实际权重应取决于领域知识或实验。</p>
+    </li>
+
+    <li>将配置文件 <code>dex2oat.profdata</code> 和 <code>libart.profdata</code> 签入 <code>toolchain/pgo-profiles</code>，以供在编译时使用。</li>
+  </ol>
+
+</body></html>

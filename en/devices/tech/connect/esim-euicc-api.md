@@ -86,7 +86,7 @@ and
 Gets the instance of `EuiccManager` through `Context#getSystemService`.
 
 ```
-EuiccManager mgr = context.getSystemService(Context.EUICC_SERVICE);
+EuiccManager mgr = (EuiccManager) context.getSystemService(Context.EUICC_SERVICE);
 ```
 
 #### Check enabled (public)
@@ -245,5 +245,5 @@ mgr.startResolutionActivity(getActivity(), 0 /* requestCode */, resultIntent, ca
 
 ### Constants
 
-To see a list of the the `public` constants in `EuiccManager`, see
+To see a list of the `public` constants in `EuiccManager`, see
 [Constants](https://developer.android.com/reference/android/telephony/euicc/EuiccManager#constants){: .external}.

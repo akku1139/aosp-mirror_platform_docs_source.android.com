@@ -1,0 +1,188 @@
+<html devsite><head>
+
+  <meta name="book_path" value="/_book.yaml"/>
+
+  <meta name="project_path" value="/_project.yaml"/>
+</head>
+<body>
+
+<!--
+  Copyright 2018 The Android Open Source Project
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+<h1 id="euicc_apis" class="page-title">eUICC API</h1>
+
+<p>在 Android 9 中，配置文件管理 API（公共 API 和 @SystemApi）通过 <code>EuiccManager</code> 类提供。eUICC 通信 API（仅限 @SystemApi）通过 <code>EuiccCardManager</code> 类提供。</p>
+
+<h2 id="about_euicc">eUICC 简介</h2>
+
+<p>运营商可以构建使用 EuiccManager 管理配置文件的运营商应用（如图 1 所示）。运营商应用不需要是系统应用，但需要拥有 eUICC 配置文件授予的运营商权限。<a href="/devices/tech/connect/esim-overview#making-an-lpa-app">LPA 应用</a>（LUI 和 LPA 后端）需要是系统应用（即包含在系统映像中）才能调用 @SystemApi。</p>
+
+<p><img src="/devices/tech/connect/images/carrier-oem-lpa.png" alt="安装了运营商应用和 OEM LPA 的 Android 手机"/></p>
+
+<p><strong>图 1.</strong> 安装了运营商应用和 OEM LPA 的 Android 手机</p>
+
+<p>除了实现用于调用 <code>EuiccCardManager</code> 以及与 eUICC 通信的逻辑之外，LPA 应用还必须实现以下各项：</p>
+
+<ul>
+<li>SM-DP+ 客户端（与 SM-DP+ 服务器进行通信以进行身份验证并下载配置文件）</li>
+<li>[可选] SM-DS，以获得更多潜在的可下载配置文件</li>
+<li>通知处理，以向服务器发送通知，从而更新配置文件状态</li>
+<li>[可选] 插槽管理（包括在 eSIM 卡和 pSIM 卡逻辑之间切换）。如果手机只有一个 eSIM 卡芯片，则此项为可选项。</li>
+<li>eSIM 卡 OTA</li>
+</ul>
+
+<p>虽然 Android 手机上可以有多个 LPA 应用，但根据每个应用的 <code>AndroidManifest.xml</code> 文件中定义的优先级，只能选择一个 LPA 作为实际运行的 LPA。</p>
+
+<h2 id="using_euiccmanager">使用 EuiccManager</h2>
+
+<p>LPA API 通过 <code>EuiccManager</code>（在软件包 <code>android.telephony.euicc</code> 下）公开提供。运营商应用可以获得 <code>EuiccManager</code> 的实例，并调用 <code>EuiccManager</code> 中的方法，以获取 eUICC 信息并将订阅（在 GSMA RSP 文档中称为配置文件）作为 SubscriptionInfo 实例进行管理。</p>
+
+<p>要调用公共 API（包括下载、切换和删除订阅操作），运营商应用必须具有所需的权限。运营商权限由移动运营商添加到配置文件元数据中。eUICC API 会相应地强制执行运营商权限规则。</p>
+
+<p>Android 平台不处理配置文件政策规则。如果政策规则是在配置文件元数据中声明的，则 LPA 可以选择如何处理配置文件下载和安装过程。例如，第三方 OEM LPA 可以使用特殊错误代码处理政策规则（错误代码会从 OEM LPA 传递到平台，然后平台会再将其传递到 OEM LUI）。</p>
+
+<h3 id="apis">API</h3>
+
+<p>您可以在 <a href="https://developer.android.com/reference/android/telephony/euicc/EuiccManager"><code>EuiccManager</code> 参考文档</a>和 <a href="https://android.googlesource.com/platform/frameworks/base/+/master/telephony/java/android/telephony/euicc/EuiccManager.java"><code>EuiccManager.java</code></a> 中找到以下 API。</p>
+
+<h4 id="get_instance_public">获取实例（公共）</h4>
+
+<p>通过 <code>Context#getSystemService</code> 获取 <code>EuiccManager</code> 的实例。</p>
+<pre class="prettyprint"><code>EuiccManager mgr = context.getSystemService(Context.EUICC_SERVICE);
+</code></pre>
+<h4 id="check_enabled_public">检查启用情况（公共）</h4>
+
+<p>检查是否已启用嵌入式订阅。您应在访问 LPA API 之前完成这项检查。</p>
+<pre class="prettyprint"><code>boolean isEnabled = mgr.isEnabled();
+if (!isEnabled) {
+    return;
+}
+</code></pre>
+<h4 id="get_eid_public">获取 EID（公共）</h4>
+
+<p>获取用于标识 eUICC 硬件的 EID。如果 eUICC 尚未就绪，IED 可能为 null。调用程序必须具备运营商权限或 <code>READ_PRIVILEGED_PHONE_STATE</code> 权限。</p>
+<pre class="prettyprint"><code>String eid = mgr.getEid();
+if (eid == null) {
+  // Handle null case.
+}
+</code></pre>
+<h4 id="get_euiccinfo_public">获取 EuiccInfo（公共）</h4>
+
+<p>获取有关 eUICC 的信息，其中包含操作系统版本。</p>
+<pre class="prettyprint"><code>EuiccInfo info = mgr.getEuiccInfo();
+String osVer = info.getOsVersion();
+</code></pre>
+<h4 id="download_subscription_public">下载订阅（公共）</h4>
+
+<p>下载指定订阅（在 GSMA RSP 文档中称为“配置文件”）。您可以通过激活码创建订阅。例如，您可以从 QR 码中解析激活码。下载订阅是一项异步操作。</p>
+
+<p>调用程序必须具有 <code>WRITE_EMBEDDED_SUBSCRIPTIONS</code> 权限或针对目标订阅的运营商权限。</p>
+<pre class="prettyprint"><code>// Register receiver.
+String action = "download_subscription";
+BroadcastReceiver receiver =
+        new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                if (!action.equals(intent.getAction())) {
+                    return;
+                }
+                resultCode = getResultCode();
+                detailedCode = intent.getIntExtra(
+                    EuiccManager.EXTRA_EMBEDDED_SUBSCRIPTION_DETAILED_CODE,
+                    0 /* defaultValue*/);
+                resultIntent = intent;
+            }
+        };
+context.registerReceiver(
+        receiver,
+        new IntentFilter(action),
+        "example.broadcast.permission" /* broadcastPermission*/, null /* handler */);
+
+// Download subscription asynchronously.
+DownloadableSubscription sub =
+        DownloadableSubscription.forActivationCode(code /* encodedActivationCode*/);
+Intent intent = new Intent(action);
+PendingIntent callbackIntent = PendingIntent.getBroadcast(
+        getContext(), 0 /* requestCode */, intent, PendingIntent.FLAG_UPDATE_CURRENT);
+mgr.downloadSubscription(sub, true /* switchAfterDownload */, callbackIntent);
+</code></pre>
+<h4 id="switch_subscription_public">切换订阅（公开）</h4>
+
+<p>切换为（启用）指定订阅。调用程序必须具有 <code>WRITE_EMBEDDED_SUBSCRIPTIONS</code> 权限或针对当前启用的订阅和目标订阅的运营商权限。</p>
+<pre class="prettyprint"><code>// Register receiver.
+String action = "switch_to_subscription";
+BroadcastReceiver receiver =
+        new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                if (!action.equals(intent.getAction())) {
+                    return;
+                }
+                resultCode = getResultCode();
+                detailedCode = intent.getIntExtra(
+                    EuiccManager.EXTRA_EMBEDDED_SUBSCRIPTION_DETAILED_CODE, 0 /* defaultValue*/);
+                resultIntent = intent;
+            }
+        };
+context.registerReceiver(receiver, new IntentFilter(action),
+        "example.broadcast.permission" /* broadcastPermission*/, null /* handler */);
+
+// Switch to a subscription asynchronously.
+Intent intent = new Intent(action);
+PendingIntent callbackIntent = PendingIntent.getBroadcast(
+        getContext(), 0 /* requestCode */, intent, PendingIntent.FLAG_UPDATE_CURRENT);
+mgr.switchToSubscription(1 /* subscriptionId */, callbackIntent);
+</code></pre>
+<h4 id="delete_subscription_public">删除订阅（公共）</h4>
+
+<p>删除具有订阅 ID 的订阅。如果相应订阅当前处于有效状态，则应先予以停用。调用程序必须具有 <code>WRITE_EMBEDDED_SUBSCRIPTIONS</code> 权限或针对目标订阅的运营商权限。</p>
+<pre class="prettyprint"><code>// Register receiver.
+String action = "delete_subscription";
+BroadcastReceiver receiver =
+        new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                if (!action.equals(intent.getAction())) {
+                    return;
+                }
+                resultCode = getResultCode();
+                detailedCode = intent.getIntExtra(
+                    EuiccManager.EXTRA_EMBEDDED_SUBSCRIPTION_DETAILED_CODE,
+                    0 /* defaultValue*/);
+                resultIntent = intent;
+            }
+        };
+context.registerReceiver(receiver, new IntentFilter(action),
+        "example.broadcast.permission" /* broadcastPermission*/,
+        null /* handler */);
+
+// Delete a subscription asynchronously.
+Intent intent = new Intent(action);
+PendingIntent callbackIntent = PendingIntent.getBroadcast(
+        getContext(), 0 /* requestCode */, intent, PendingIntent.FLAG_UPDATE_CURRENT);
+mgr.deleteSubscription(1 /* subscriptionId */, callbackIntent);
+</code></pre>
+<h4 id="start_resolution_activity_public">启动解决活动（公共）</h4>
+
+<p>启动一项活动以修正可由用户修正的错误。如果操作返回 <code>EuiccManager#EMBEDDED_SUBSCRIPTION_RESULT_RESOLVABLE_ERROR</code>，则可以调用此方法，以提示用户解决相应问题。对于特定错误，此方法只能调用一次。</p>
+<pre class="prettyprint"><code>...
+mgr.startResolutionActivity(getActivity(), 0 /* requestCode */, resultIntent, callbackIntent);
+</code></pre>
+<h3 id="constants">常量</h3>
+
+<p>要查看 <code>EuiccManager</code> 中的 <code>public</code> 常量列表，请参阅<a href="https://developer.android.com/reference/android/telephony/euicc/EuiccManager#constants">常量</a>。</p>
+
+</body></html>
