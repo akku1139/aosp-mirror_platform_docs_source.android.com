@@ -86,7 +86,7 @@ To use the public APIs, a carrier app must first obtain the instance of
 `EuiccManager` through `Context#getSystemService`:
 
 ```
-EuiccManager mgr = context.getSystemService(Context.EUICC_SERVICE);
+EuiccManager mgr = (EuiccManager) context.getSystemService(Context.EUICC_SERVICE);
 ```
 
 You should check whether eSIM is supported on the device before performing any
@@ -419,7 +419,7 @@ first obtain the instance of `EuiccCardManager` through
 `Context#getSystemService`:
 
 ```
-EuiccCardManager cardMgr = context.getSystemService(Context.EUICC_CARD_SERVICE);
+EuiccCardManager cardMgr = (EuiccCardManager) context.getSystemService(Context.EUICC_CARD_SERVICE);
 ```
 
 Then, to get all the profiles on the eUICC:

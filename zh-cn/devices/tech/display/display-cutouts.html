@@ -1,0 +1,237 @@
+<html devsite><head>
+
+  <meta name="book_path" value="/_book.yaml"/>
+
+  <meta name="project_path" value="/_project.yaml"/>
+</head>
+<body>
+
+<!--
+  Copyright 2018 The Android Open Source Project
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+<h1 id="display_cutouts" class="page-title">刘海屏</h1>
+
+<p>Android 9 新增了对在设备上实现不同类型刘海屏的支持。通过刘海屏，您可以打造沉浸式全面屏体验，同时继续在设备前端为重要传感器留出空间。</p>
+
+<p><img src="/devices/tech/display/images/top-center-cutout.png" alt="顶部中间刘海屏" width="250px"/></p>
+
+<p><strong>图 1. </strong> 顶部中间刘海屏</p>
+
+<p>Android 9 支持以下类型的刘海屏：</p>
+
+<ul>
+<li>顶部中间刘海屏：刘海屏位于顶部边缘的中间位置</li>
+<li>顶部非中间刘海屏：刘海屏位于边角处或稍微偏离中心的位置</li>
+<li>底部刘海屏：刘海屏位于底部</li>
+<li>双刘海屏：一个刘海屏位于顶部，一个位于底部</li>
+</ul>
+
+<h2 id="examples_and_source">示例和来源</h2>
+
+<p>以下窗口管理器代码 (<a href="https://android.googlesource.com/platform/frameworks/base/+/master/services/core/java/com/android/server/policy/PhoneWindowManager.java">frameworks/base/services/core/java/com/android/server/policy/PhoneWindowManager.java</a>) 显示了如何在未设置 <code>LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS</code> 的情况下将显示屏框架嵌入安全区域。</p>
+<pre class="prettyprint lang-java"><code>// Ensure that windows with a DEFAULT or NEVER display cutout mode are laid out in
+// the cutout safe zone.
+if (cutoutMode != LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS) {
+    final Rect displayCutoutSafeExceptMaybeBars = mTmpDisplayCutoutSafeExceptMaybeBarsRect;
+    displayCutoutSafeExceptMaybeBars.set(displayFrames.mDisplayCutoutSafe);
+    if (layoutInScreen &amp;&amp; layoutInsetDecor &amp;&amp; !requestedFullscreen
+            &amp;&amp; cutoutMode == LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT) {
+        // At the top we have the status bar, so apps that are
+        // LAYOUT_IN_SCREEN | LAYOUT_INSET_DECOR but not FULLSCREEN
+        // already expect that there's an inset there and we don't need to exclude
+        // the window from that area.
+        displayCutoutSafeExceptMaybeBars.top = Integer.MIN_VALUE;
+    }
+    if (layoutInScreen &amp;&amp; layoutInsetDecor &amp;&amp; !requestedHideNavigation
+            &amp;&amp; cutoutMode == LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT) {
+        // Same for the navigation bar.
+        switch (mNavigationBarPosition) {
+            case NAV_BAR_BOTTOM:
+                displayCutoutSafeExceptMaybeBars.bottom = Integer.MAX_VALUE;
+                break;
+            case NAV_BAR_RIGHT:
+                displayCutoutSafeExceptMaybeBars.right = Integer.MAX_VALUE;
+                break;
+            case NAV_BAR_LEFT:
+                displayCutoutSafeExceptMaybeBars.left = Integer.MIN_VALUE;
+                break;
+        }
+    }
+    if (type == TYPE_INPUT_METHOD &amp;&amp; mNavigationBarPosition == NAV_BAR_BOTTOM) {
+        // The IME can always extend under the bottom cutout if the navbar is there.
+        displayCutoutSafeExceptMaybeBars.bottom = Integer.MAX_VALUE;
+    }
+    // Windows that are attached to a parent and laid out in said parent already avoid
+    // the cutout according to that parent and don't need to be further constrained.
+    // Floating IN_SCREEN windows get what they ask for and lay out in the full screen.
+    // They will later be cropped or shifted using the displayFrame in WindowState,
+    // which prevents overlap with the DisplayCutout.
+    if (!attachedInParent &amp;&amp; !floatingInScreenWindow) {
+        mTmpRect.set(pf);
+        pf.intersectUnchecked(displayCutoutSafeExceptMaybeBars);
+        parentFrameWasClippedByDisplayCutout |= !mTmpRect.equals(pf);
+    }
+    // Make sure that NO_LIMITS windows clipped to the display don't extend under the
+    // cutout.
+    df.intersectUnchecked(displayCutoutSafeExceptMaybeBars);
+}
+</code></pre>
+<p>SystemUI 在刘海屏区域呈现，且需要确定可以绘制的位置。
+<a href="https://android.googlesource.com/platform/frameworks/base/+/master/packages/SystemUI/src/com/android/systemui/statusbar/phone/PhoneStatusBarView.java">frameworks/base/packages/SystemUI/src/com/android/systemui/statusbar/phone/PhoneStatusBarView.java</a> 提供了一个视图示例，它确定了刘海屏的位置、刘海屏大小，以及从导航栏嵌入是否可以避开刘海屏区域。</p>
+
+<p>通过覆盖 <code>onApplyWindowInsets()</code>，视图可以确定刘海屏的位置，并相应地更新其布局。</p>
+<pre class="prettyprint lang-java"><code>@Override
+    public WindowInsets onApplyWindowInsets(WindowInsets insets) {
+        if (updateOrientationAndCutout(mLastOrientation)) {
+            updateLayoutForCutout();
+            requestLayout();
+        }
+        return super.onApplyWindowInsets(insets);
+    }
+</code></pre>
+<p>这些方法概述了各种类型的刘海屏（即顶部中间刘海屏、顶部非中间刘海屏、底部刘海屏和双刘海屏）在状态栏中的处理方式。</p>
+
+<h2 id="requirements">要求</h2>
+
+<p>要确保刘海屏不会对应用造成负面影响，您必须确保：</p>
+
+<ul>
+<li>在竖屏模式下，状态栏的高度至少与刘海屏的高度持平</li>
+<li>在全屏模式和横屏模式下，刘海屏区域必须显示遮幅式黑边</li>
+</ul>
+
+<p>您的设备最多可以在每个短边处（顶部和底部）各设一个刘海屏。</p>
+
+<p>有关详情，请参阅 <a href="/compatibility/android-cdd">CDD</a>。</p>
+<aside class="note"><strong>注意</strong>：<span>对于面向 Android 8.0 或更低版本的应用，您可以为用户提供一个可使全屏或横屏应用延伸至刘海屏区域的选项（例如导航栏中的切换开关）。由于这样做可能会导致内容被切断，因此 <code>layoutInDisplayCutoutMode</code> 活动主题属性已反向移植到 Android 8.1，以允许应用选择停用该选项。如果您设置了该属性，则可能无法显示特殊的模式切换开关。</span></aside>
+<h2 id="implementation">实现</h2>
+
+<p>要在设备上实现刘海屏，您必须为系统界面配置以下值。</p>
+
+<table>
+<thead>
+<tr>
+<th>值</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>
+quick_qs_offset_height
+</code>
+</td>
+<td><p>定义“快捷设置”面板的上外边距。时钟和电池图标显示在该面板上方的空间。</p>
+<p>在 values-land 中，将此值设置为 <code>status_bar_height_landscape</code>，在纵屏模式下，将此值设置为默认值 48dp 或刘海屏高度（以较大者为准）。可以根据需要选择高于刘海屏的高度。</p></td>
+</tr>
+<tr>
+<td><code>
+quick_qs_total_height
+</code>
+</td>
+<td><p>展开通知栏时，“超快设置”面板（收起的“快捷设置”面板）的总高度（其中包括包含时钟图标的面板上方的空间）。</p>
+<p>
+受“快捷设置”面板的布局方式限制，“超快设置”面板（包括偏移量）的总高度必须是静态已知的，因此必须由同一增量 <code>quick_qs_offset_height</code> 调整此值。在 Values-land 中，此值默认为 152dp，在纵屏模式下，此值默认为 176dp。</p></td>
+</tr>
+<tr>
+<td><code>
+status_bar_height_portrait
+</code>
+</td>
+<td><p>从框架的角度而言，状态栏的默认高度。</p>
+<p>在大多数设备上，此值默认为 24dp。如果设备上有刘海屏，则将此值设置为刘海屏的高度。可以根据需要选择高于刘海屏的高度。</p></td>
+</tr>
+<tr>
+<td><code>
+status_bar_height_landscape
+</code>
+</td>
+<td><p>状态栏在横屏模式下的高度。由于仅支持在设备的短边上显示刘海屏，因此此值始终是未经更改的状态栏高度。</p>
+<p>在没有刘海屏的设备上，此值等同于 <code>status_bar_height_portrait</code>。如果设备上有刘海屏，则将此值保留为默认的状态栏高度。</p></td>
+</tr>
+<tr>
+<td><code>
+config_mainBuiltInDisplayCutout
+</code>
+</td>
+<td><p>用于定义刘海屏形状的路径。这是一个可由 <code>android.util.PathParser</code> 解析的字符串，并且是向系统定义刘海屏大小和形状的方式。</p>
+<p>可在路径中指定 <code>@dp</code> 以便模拟针对不同设备的形状。由于实际的刘海屏具有精确的像素尺寸，因此在定义硬件刘海屏的路径时，请勿使用 <code>@dp</code> 指定符。</p></td>
+</tr>
+<tr>
+<td><code>
+config_fillMainBuiltinDisplayCutout
+</code>
+</td>
+<td><p>一个确定是否在软件中绘制刘海屏路径（在上文中进行了定义）的布尔值。可用于模拟刘海屏，或填充实际刘海屏，以实现抗锯齿。</p>
+<p>如果为 true，则系统会以黑色填充 <code>config_mainBuiltInDisplayCutout</code>。</p></td>
+</tr>
+</tbody>
+</table>
+
+<p>有关默认定义，请参阅以下 <code>dimens</code> 文件：</p>
+
+<ul>
+<li><a href="https://android.googlesource.com/platform/frameworks/base/+/master/core/res/res/values-land/dimens.xml"><code>core/res/res/values-land/dimens.xml</code></a></li>
+<li><a href="https://android.googlesource.com/platform/frameworks/base/+/master/core/res/res/values/dimens.xml"><code>core/res/res/values/dimens.xml</code></a></li>
+</ul>
+
+<p>模拟刘海屏的示例叠加层：</p>
+<pre class="prettyprint"><code>&lt;resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2"&gt;
+
+    &lt;!-- The bounding path of the cutout region of the main built-in display.
+         Must either be empty if there is no cutout region, or a string that is parsable by
+         {@link android.util.PathParser}.
+
+         The path is assumed to be specified in display coordinates with pixel units and in
+         the display's native orientation, with the origin of the coordinate system at the
+         center top of the display.
+
+         To facilitate writing device-independent emulation overlays, the marker `@dp` can be
+         appended after the path string to interpret coordinates in dp instead of px units.
+         Note that a physical cutout should be configured in pixels for the best results.
+         --&gt;
+    &lt;string translatable="false" name="config_mainBuiltInDisplayCutout"&gt;
+        M 0,0
+        L -48, 0
+        L -44.3940446283, 36.0595537175
+        C -43.5582133885, 44.4178661152 -39.6, 48.0 -31.2, 48.0
+        L 31.2, 48.0
+        C 39.6, 48.0 43.5582133885, 44.4178661152 44.3940446283, 36.0595537175
+        L 48, 0
+        Z
+        @dp
+    &lt;/string&gt;
+
+    &lt;!-- Whether the display cutout region of the main built-in display should be forced to
+         black in software (to avoid aliasing or emulate a cutout that is not physically existent).
+     --&gt;
+    &lt;bool name="config_fillMainBuiltInDisplayCutout"&gt;true&lt;/bool&gt;
+
+    &lt;!-- Height of the status bar --&gt;
+    &lt;dimen name="status_bar_height_portrait"&gt;48dp&lt;/dimen&gt;
+    &lt;dimen name="status_bar_height_landscape"&gt;28dp&lt;/dimen&gt;
+    &lt;!-- Height of area above QQS where battery/time go (equal to status bar height if &gt; 48dp) --&gt;
+    &lt;dimen name="quick_qs_offset_height"&gt;48dp&lt;/dimen&gt;
+    &lt;!-- Total height of QQS (quick_qs_offset_height + 128) --&gt;
+    &lt;dimen name="quick_qs_total_height"&gt;176dp&lt;/dimen&gt;
+
+&lt;/resources&gt;
+</code></pre>
+<h2 id="validation">验证</h2>
+
+<p>要验证刘海屏的实现，请在以下位置运行 CTS 测试：<a href="https://android.googlesource.com/platform/cts/+/master/tests/">tests/framework/base/windowmanager/src/android/server/wm</a>。</p>
+
+</body></html>

@@ -25,7 +25,7 @@
 
 <p>有时，Android OTA 包含的变更文件并非源于代码变更，而是编译系统造成的。在不同时间、不同目录或不同机器上编译相同的代码时可能会发生上述情况，产生大量变更文件。这些多余的文件不仅会增加 OTA 的大小，还会导致难以确定 OTA 中发生变更的代码。</p>
 
-<p>为了使 OTA 的内容更加透明，我们对 AOSP 编译系统做了多项改动，目的是消除多次编译之间不必要的文件变更，以此减小 OTA 的大小。这样做是为了减小 OTA 的大小，使其只包含与 OTA 中所含补丁程序相关的文件。AOSP 还包括<a href="#the_build_diff_tool">编译 diff 工具</a>（可过滤出常见的编译相关文件变更，并提供更清晰的编译文件 diff）以及<a href="#block-mapping-tool">块映射工具</a>（可协助您确保块分配的一致性）。</p>
+<p>为了使 OTA 的内容更加透明，我们对 AOSP 编译系统做了多项改动，目的是消除多次编译之间不必要的文件变更，以此减小 OTA 的大小。这样做是为了减小 OTA 的大小，使其只包含与 OTA 中所含补丁程序相关的文件。AOSP 还包括<a href="#the_build_diff_tool">编译 diff 工具</a>（可过滤出常见的与编译相关的文件变更，并提供更清晰的编译文件 diff）以及<a href="#block-mapping-tool">块映射工具</a>（可协助您确保块分配的一致性）。</p>
 
 <p>编译系统可能会通过多种方式创建不必要的文件 diff。下文讨论了其中一些问题和解决方案，并尽可能提供了 AOSP 中的修复示例。</p>
 
@@ -34,9 +34,9 @@
 <p><strong>问题</strong>：文件系统在请求目录中的文件列表时，并不保证文件顺序，尽管对于同一个检出，文件顺序通常是相同的。<code>ls</code> 等工具在默认情况下会对结果进行排序，但 <code>find</code> 和 <code>make</code> 等命令使用的通配符函数却不会对结果进行排序。用户在使用这类工具之前，务必要对输出进行排序。
 </p>
 
-<p><strong>解决方案</strong>：用户在使用支持通配符的 <code>find</code> 和 <code>make</code> 等工具之前，务必要对这些命令的输出进行排序。要在 <code>Android.mk</code> 文件中使用 <code>$(wildcard)</code> 或 <code>$(shell find)</code>，也应该进行排序。有些工具（如 Java）确实会对输入进行排序，因此有必要先对排序进行验证。</p>
+<p><strong>解决方案</strong>：用户在使用支持通配符的 <code>find</code> 和 <code>make</code> 等工具之前，必须对这些命令的输出进行排序。要在 <code>Android.mk</code> 文件中使用 <code>$(wildcard)</code> 或 <code>$(shell find)</code>，也应该进行排序。有些工具（如 Java）确实会对输入进行排序，因此有必要先对排序进行验证。</p>
 
-<p><strong>示例</strong>：多处问题在核心编译系统中通过内置的 <code>all-*-files-under</code> 宏得到修正，其中包括 <code>all-cpp-files-under</code>（一些定义分散在其他 makefile 中）。有关详情，请参阅以下 CL：</p>
+<p><strong>示例</strong>：很多问题在核心编译系统中通过内置的 <code>all-*-files-under</code> 宏（其中包括 <code>all-cpp-files-under</code>，因为一些定义分散在其他 makefile 中）得到了修正。有关详情，请参阅以下 CL：</p>
 
 <ul>
   <li><a href="https://android.googlesource.com/platform/build/+/4d66adfd0e6d599d8502007e4ea9aaf82e95569f" class="external">https://android.googlesource.com/platform/build/+/4d66adfd0e6d599d8502007e4ea9aaf82e95569f</a>
@@ -118,7 +118,7 @@
 
 <h2 id="the_build_diff_tool">使用编译 diff 工具</h2>
 
-<p>对于无法消除编译相关文件变更的情况，AOSP 纳入了编译 diff 工具 <code><a href="https://android.googlesource.com/platform/build/+/master/tools/releasetools/target_files_diff.py" class="external">target_files_diff.py</a></code>，以用于比较两个文件包。该工具会在两个编译之间执行递归 diff，从而排除常见的编译相关文件变更，例如：</p>
+<p>对于无法消除与编译相关的文件变更的情况，AOSP 纳入了编译 diff 工具 <code><a href="https://android.googlesource.com/platform/build/+/master/tools/releasetools/target_files_diff.py" class="external">target_files_diff.py</a></code>，以用于比较两个文件包。该工具会在两个编译之间执行递归 diff，从而排除常见的编译相关文件变更，例如：</p>
 
 <ul>
   <li>编译输出中的预期变更（例如，由于版本号变更所导致）。</li>

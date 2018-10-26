@@ -1,0 +1,205 @@
+<html devsite><head>
+    <title>APK 签名方案 v3</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2018 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          //www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>
+Android 9 支持 <a href="https://developer.android.com/preview/features/security#apk-key-rotation">APK 密钥轮转</a>，这使应用能够在 APK 更新过程中更改其签名密钥。为了实现轮转，APK 必须指示新旧签名密钥之间的信任级别。为了支持密钥轮转，我们将 <a href="/security/apksigning/v2">APK 签名方案</a>从 v2 更新为 v3，以允许使用新旧密钥。v3 在 APK 签名分块中添加了有关受支持的 SDK 版本和 proof-of-rotation 结构的信息。
+</p>
+<h2 id="apk-signing-block">APK 签名分块</h2>
+<p>
+为了保持与 v1 APK 格式向后兼容，v2 和 v3 APK 签名存储在“APK 签名分块”内紧邻 ZIP Central Directory 前面。
+</p>
+<p>
+v3 APK 签名分块的格式<a href="/security/apksigning/v2#apk-signing-block-format">与 v2 相同</a>。APK 的 v3 签名会存储为一个“ID-值”对，其中 ID 为 0xf05368c0。
+</p>
+<h2 id="apk-signature-scheme-v3-block">APK 签名方案 v3 分块</h2>
+<p>
+v3 方案的设计与 <a href="/security/apksigning/v2#apk-signature-scheme-v2-block">v2 方案</a>非常相似，采用相同的常规格式，并支持相同的<a href="/security/apksigning/v2#signature-algorithm-ids">签名算法 ID</a>、密钥大小和 EC 曲线。
+</p>
+<p>
+但是，v3 方案增添了有关受支持的 SDK 版本和 proof-of-rotation 结构的信息。
+</p>
+<h3 id="format">格式</h3>
+<p>
+“APK 签名方案 v3 分块”存储在“APK 签名分块”内，ID 为 <code>0xf05368c0</code>。
+</p>
+<p>
+“APK 签名方案 v3 分块”采用 v2 的格式：
+</p>
+
+<ul>
+ <li>带长度前缀的 <code>signer</code>（带长度前缀）序列：
+  <ul>
+   <li>带长度前缀的 <code>signed data</code>：
+    <ul>
+      <li>带长度前缀的 <code>digests</code>（带长度前缀）序列：
+       <ul>
+        <li><code>signature algorithm ID</code>（4 个字节）</li>
+        <li><code>digest</code>（带长度前缀）</li>
+       </ul>
+      </li>
+      <li>带长度前缀的 X.509 <code>certificates</code> 序列：
+       <ul>
+        <li>带长度前缀的 X.509 <code>certificate</code>（ASN.1 DER 形式）</li>
+       </ul>
+      </li>
+      <li><code>minSDK</code> (uint32) - 如果平台版本低于此数字，则应忽略该签名者。</li>
+      <li><code>maxSDK</code> (uint32) - 如果平台版本高于此数字，则应忽略该签名者。</li>
+      <li>带长度前缀的 <code>additional
+        attributes</code>（带长度前缀）序列：
+       <ul>
+         <li><code>ID</code> (uint32)</li>
+         <li><code>value</code>（可变长度：附加属性的长度 - 4 个字节）</li>
+         <li><code>ID -<strong> 0x3ba06f8c</strong></code></li>
+         <li><code>value -</code> Proof-of-rotation 结构</li>
+       </ul>
+      </li>
+     </ul>
+   </li>
+   <li><code>minSDK</code> (uint32) - 签名数据部分中 minSDK 值的副本 - 用于在当前平台不在相应范围内时跳过对此签名的验证。必须与签名数据值匹配。</li>
+   <li><code>maxSDK</code> (uint32) - 签名数据部分中 maxSDK 值的副本 - 用于在当前平台不在相应范围内时跳过对此签名的验证。必须与签名数据值匹配。</li>
+   <li>带长度前缀的 <code>signatures</code>（带长度前缀）序列：
+    <ul>
+     <li><code>signature algorithm ID</code> (uint32)</li>
+     <li><code>signed data</code> 上带长度前缀的 <code>signature</code></li>
+    </ul>
+   </li>
+   <li>带长度前缀的 <code>public key</code>（SubjectPublicKeyInfo，ASN.1 DER 形式）</li>
+  </ul>
+ </li>
+</ul>
+
+<h2 id="proof-of-rotation-and-self-trusted-old-certs-structs">Proof-of-rotation 和 self-trusted-old-certs 结构</h2>
+<p>
+proof-of rotation 结构允许应用轮转其签名证书，而不会使这些证书在与这些应用通信的其他应用上被屏蔽。为此，应用签名包含两个新数据块：
+</p>
+<ul>
+  <li>告知第三方应用的签名证书可信（只要其先前证书可信）的断言</li>
+  <li>应用的旧签名证书（应用本身仍信任这些证书）</li>
+</ul>
+<p>
+签名数据部分中的 proof-of-rotation 属性包含一个单链表，其中每个节点都包含用于为之前版本的应用签名的签名证书。此属性旨在包含概念性 proof-of-rotation 和 self-trusted-old-certs 数据结构。该单链表按版本排序，最旧的签名证书对应于根节点。在构建 proof-of-rotation 数据结构时，系统会让每个节点中的证书为列表中的下一个证书签名，从而为每个新密钥提供证据来证明它应该像旧密钥一样可信。
+</p>
+<p>
+在构造 self-trusted-old-certs 数据结构时，系统会向每个节点添加标记来指示它在组中的成员资格和属性。例如，可能存在一个标记，指示给定节点上的签名证书可信，可获得 Android 签名权限。此标记允许由旧证书签名的其他应用仍被授予由使用新签名证书签名的应用所定义的签名权限。由于整个 proof-of-rotation 属性都位于 v3 <code>signer</code> 字段的签名数据部分中，因此用于为所含 APK 签名的密钥会保护该属性。
+</p>
+<p>
+此格式排除了<a href="#multiple-certificates">多个签名密钥</a>的情况和将<a href="#multiple-ancestors">不同祖先签名证书</a>收敛到一个证书的情况（多个起始节点指向一个通用接收器）。
+</p>
+
+<h3 id="proof-of-rotation-format">格式</h3>
+<p>
+proof-of-rotation 存储在“APK 签名方案 v3 分块”内，ID 为 <code>0x3ba06f8c</code>。其格式为：
+</p>
+
+<ul>
+ <li>带长度前缀的 <code>levels</code>（带长度前缀）序列：
+  <ul>
+   <li>带长度前缀的 <code>signed data</code>（由上一个证书签名 - 如果存在）
+    <ul>
+     <li>带长度前缀的 X.509 <code>certificate</code>（ASN.1 DER 形式）</li>
+     <li><code>signature algorithm ID</code> (uint32) - 上一级证书使用的算法</li>
+    </ul>
+   </li>
+   <li><code>flags</code> (uint32) - 这些标记用于指示此证书是否应该在 self-trusted-old-certs 结构中，以及用于哪些操作。</li>
+   <li><code>signature algorithm ID</code> (uint32) - 必须与签名数据部分下一级中的相应 ID 一致。</li>
+   <li><code>signed
+       data</code> 上带长度前缀的 <code>signature</code></li>
+  </ul>
+ </li>
+</ul>
+
+<h3 id="multiple-certificates">多个证书</h3>
+<p>
+Android 目前将使用多个证书签名的 APK 视为具有与所含证书不同的签名身份。因此，签名数据部分中的 proof-of-rotation 属性构成了一个有向无环图，最好将其视为单链表，其中给定版本的每组签名者都表示一个节点。这为 proof-of-rotation 结构（下面的多签名者版本）带来了额外的复杂性。排序成为一个特别突出的问题。更重要的是，无法再单独为 APK 签名，因为 proof-of-rotation 结构必须让旧签名证书为新的证书集签名，而不是逐个签名。例如，如果希望由两个新密钥 B 和 C 签名的 APK 是由密钥 A 签名的，则它不能让 B 签名者仅包含 A 或 B 的签名，因为这是与 B 和 C 不同的签名身份。这意味着签名者必须在构建此类结构之前进行协调。
+</p>
+<h4 id="multiple-signers-proof-of-rotation-attribute">多个签名者 proof-of-rotation 属性</h4>
+<ul>
+ <li>带长度前缀的 <code>sets</code>（带长度前缀）序列：
+  <ul>
+   <li><code>signed data</code>（由上一组证书签名 - 如果存在）
+    <ul>
+     <li>带长度前缀的 <code>certificates</code> 序列
+      <ul>
+       <li>带长度前缀的 X.509 <code>certificate</code>（ASN.1 DER 形式）</li>
+      </ul>
+     </li>
+     <li><code>signature algorithm IDs </code>(uint32) 序列 - 上一组证书中的每个证书对应一个序列，且采用相同顺序。</li>
+    </ul>
+   </li>
+   <li><code>flags </code>(uint32) - 这些标记用于指示这组证书是否应该在 self-trusted-old-certs 结构中，以及用于哪些操作。</li>
+   <li>带长度前缀的 <code>signatures</code>（带长度前缀）序列：
+    <ul>
+     <li><code>signature algorithm ID</code> (uint32) - 必须与签名数据部分中的相应 ID 一致</li>
+     <li><code>signed data</code> 上带长度前缀的 <code>signature</code></li>
+    </ul>
+   </li>
+  </ul>
+ </li>
+</ul>
+
+<h3 id="multiple-ancestors">proof-of-rotation 结构中的多个祖先实体</h3>
+<p>
+v3 方案也无法处理轮转到同一个应用的同一签名密钥的两个不同密钥。这不同于收购情形，在收购情形中，收购公司希望转移收购的应用以使用其签名密钥来共享权限。收购被视为受支持的用例，因为新应用将通过其软件包名称来区分，并且可能包含自己的 proof-of-rotation 结构。不受支持的用例是，同一应用有两个不同的路径指向相同的证书，这打破了在密钥轮转设计中做出的许多假设。
+</p>
+<h2 id="verification">验证</h2>
+<p>在 Android 9 及更高版本中，可以根据 APK 签名方案 v3、v2 方案或 v1 方案验证 APK。较旧的平台会忽略 v3 签名并尝试验证 v2 签名，然后验证 v1。
+</p><p>
+  <img src="../images/apk-validation-process.png" alt="APK 签名验证过程" id="figure1"/>
+</p>
+<p class="img-caption"><strong>图 1.</strong> APK 签名验证过程</p>
+
+<h3 id="v3-verification">APK 签名方案 v3 验证</h3>
+<ol>
+ <li>找到“APK 签名分块”并验证以下内容：
+  <ol>
+   <li>“APK 签名分块”的两个大小字段包含相同的值。</li>
+   <li>“ZIP 中央目录结尾”紧跟在“ZIP 中央目录”记录后面。</li>
+   <li>“ZIP 中央目录结尾”之后没有任何数据。</li>
+  </ol>
+ </li>
+ <li>找到“APK 签名分块”中的第一个“APK 签名方案 v3 分块”。如果 v3 分块存在，则继续执行第 3 步。否则，回退至<a href="/security/apksigning/v2#v2-verification">使用 v2 方案</a>验证 APK。</li>
+ <li>对“APK 签名方案 v3 分块”中的每个 <code>signer</code>（最低和最高 SDK 版本在当前平台的范围内）执行以下操作：
+  <ol>
+   <li>从 <code>signatures</code> 中选择安全系数最高的受支持 <code>signature algorithm ID</code>。安全系数排序取决于各个实现/平台版本。</li>
+   <li>使用 <code>public
+       key</code> 并对照 <code>signed data</code> 验证 <code>signatures</code> 中对应的 <code>signature</code>。（现在可以安全地解析 <code>signed data</code> 了。）</li>
+   <li>验证签名数据中的最低和最高 SDK 版本是否与为 <code>signer</code> 指定的版本匹配。</li>
+   <li>验证 <code>digests</code> 和 <code>signatures</code> 中的签名算法 ID 列表（有序列表）是否相同。（这是为了防止删除/添加签名。）</li>
+   <li>使用签名算法所用的同一种摘要算法<a href="/security/apksigning/v2#integrity-protected-contents">计算 APK 内容的摘要</a>。</li>
+   <li>验证计算出的摘要是否与 <code>digests</code> 中对应的 <code>digest</code> 相同。</li>
+   <li>验证 <code>certificates</code> 中第一个 <code>certificate</code> 的 SubjectPublicKeyInfo 是否与 <code>public key</code> 相同。</li>
+   <li>如果 <code>signer</code> 存在 proof-of-rotation 属性，则验证结构是否有效，以及此 <code>signer</code> 是否为列表中的最后一个证书。</li>
+  </ol>
+ </li>
+ <li>如果在当前平台范围内仅找到了一个 <code>signer</code>，并且对该 <code>signer</code> 成功执行第 3 步，则验证成功。</li>
+</ol>
+
+<aside class="caution">
+<strong>注意</strong>：如果第 3 步或第 4 步失败，则不得使用 v1 或 v2 方案验证 APK。
+</aside>
+
+<h2 id="validation">验证</h2>
+<p>
+要测试您的设备是否正确支持 v3，请在 <code>cts/hostsidetests/appsecurity/src/android/appsecurity/cts/</code> 中运行 <code>PkgInstallSignatureVerificationTest.java</code> CTS 测试。
+</p>
+
+</body></html>

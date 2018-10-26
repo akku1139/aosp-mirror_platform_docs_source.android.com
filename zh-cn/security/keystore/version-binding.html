@@ -21,8 +21,36 @@
   -->
 
 <p>
-在 Keymaster 1 中，所有 Keymaster 密钥都以加密形式绑定至设备的信任根或已验证的启动密钥。<em></em>在 Keymaster 2 及更高版本中，所有密钥也绑定至系统映像的操作系统和补丁程序级别。这样可确保在旧版系统或 TEE 软件中发现漏洞的攻击者无法将设备回滚到易受攻击的版本，也无法使用在较新版本中创建的密钥。此外，在已经升级到更新的版本或补丁程序级别的设备上使用指定版本和补丁程序级别的密钥时，需要先升级该密钥才能使用，因为该密钥的旧版本已失效。这样一来，当设备升级时，密钥会随着设备一起“升级”，但是将设备恢复到任何一个旧版本都会导致密钥无法使用。
+在 Keymaster 1 中，所有 Keymaster 密钥都以加密形式绑定至设备的信任根或验证启动密钥。<em></em>在 Keymaster 2 和 3 中，所有密钥也绑定至系统映像的操作系统和补丁程序级别。这样可确保在旧版系统或 TEE 软件中发现漏洞的攻击者无法将设备回滚到含有漏洞的版本，也无法使用在较新版本中创建的密钥。此外，在已经升级到更新的版本或补丁程序级别的设备上使用指定版本和补丁程序级别的密钥时，需要先升级该密钥才能使用，因为该密钥的旧版本已失效。这样一来，当设备升级时，密钥会随着设备一起“升级”，但是将设备恢复到任何一个旧版本都会导致密钥无法使用。
 </p>
+<p>
+为了支持 Treble 的模块化结构并终止 system.img 到 boot.img 的绑定，Keymaster 4 将密钥版本绑定模式更改为每个分区都具有单独的补丁程序级别。这就让每个分区都可以独立更新，同时仍可提供回滚保护。
+</p>
+<p>
+在 Android 9 中，<code>boot</code> 分区、<code>system</code> 分区和 <code>vendor</code> 分区都拥有自己的补丁程序级别。
+</p><ul>
+  <li>包含 Android 验证启动 (AVB) 的设备可以将所有补丁程序级别和系统版本放在 vbmeta 中，因此引导加载程序能够将这些内容提供给 Keymaster。对于链接的分区，相应分区的版本信息位于链接的 vbmeta 中。通常，版本信息应位于包含指定分区的验证数据（哈希或哈希树）的 vbmeta 结构中。
+</li>
+<li>在没有 AVB 的设备上：
+  <ul>
+    <li>验证启动实现需要将版本元数据的哈希提供给引导加载程序，以便引导加载程序能够将其提供给 Keymaster。
+    </li>
+    <li>boot.img 可以继续在标头中存储补丁程序级别。</li>
+    <li>system.img 可以继续在只读属性中存储补丁程序级别和操作系统版本。</li>
+    <li>vendor.img 在只读属性 <code>ro.vendor.build.version.security_patch</code> 中存储补丁程序级别。</li>
+    <li>引导加载程序可以将验证启动验证过的所有数据的哈希提供给 Keymaster。</li>
+  </ul>
+</li>
+<li>在 Android 9 中，使用以下标记提供对应分区的版本信息：
+  <ul>
+    <li><code>VENDOR_PATCH_LEVEL</code>：<code>vendor</code> 分区</li>
+    <li><code>BOOT_PATCH_LEVEL</code>：<code>boot</code> 分区</li>
+    <li><code>OS_PATCH_LEVEL</code> 和 <code>OS_VERSION</code>：<code>system</code> 分区（<code>OS_VERSION</code> 已从 boot.img 标头中移除）。</li>
+  </ul>
+</li>
+<li>
+Keymaster 实现应单独处理所有补丁程序级别。如果所有版本信息都与某个密钥的相关值相匹配，则密钥可用；如果需要，<code>IKeymaster::upgradeDevice()</code> 可滚动到更高的补丁程序级别。</li>
+</ul>
 
 <h2 id="hal-changes">HAL 变更</h2>
 <p>

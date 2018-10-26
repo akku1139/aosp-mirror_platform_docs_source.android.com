@@ -19,9 +19,9 @@ Book: /_book.yaml
   limitations under the License.
 -->
 
-# Testing and Debugging
+# Testing, Debugging, and Tuning Wi-Fi
 
-This page describes how to test and debug the Wi-Fi implementation using the
+This page describes how to test, debug, and tune the Wi-Fi implementation using the
 tools provided in AOSP.
 
 ## Testing
@@ -72,7 +72,7 @@ Wi-Fi framework. These are located in
 device-under-test to be associated with an Access Point at the start of the test
 run.
 
-## Enhanced logging options
+## Enhanced logging options for debugging
 
 Android {{ androidPVersionNumber }} improves Wi-Fi logging to make it easier to
 debug Wi-Fi issues. In Android {{ androidPVersionNumber }}, driver/firmware ring
@@ -110,3 +110,56 @@ Run this manual test to verify that old files in the
 1.  Inspect the bugreport zip file and verify that
     `/lshal-debug/android.hardware.wifi@1.2__IWifi_default.txt` holds the
     archived firmware logs.
+
+## Configuration tuning
+
+To control the signal strength at which a device associates to or
+disassociates from a network, the Wi-Fi framework uses the *entry* and *exit*
+RSSI thresholds.
+
+The *entry* and *exit* thresholds are stored as overloadable configuration
+parameters with the following names (where the `bad` parameter refers to the
+*exit* RSSI threshold):
+
+*   `config_wifi_framework_wifi_score_bad_rssi_threshold_5GHz`
+*   `config_wifi_framework_wifi_score_entry_rssi_threshold_5GHz`
+*   `config_wifi_framework_wifi_score_bad_rssi_threshold_24GHz`
+*   `config_wifi_framework_wifi_score_entry_rssi_threshold_24GHz`
+
+The parameters are stored in
+`<root>/frameworks/base/core/res/res/values/config.xml` and may be overloaded
+using the overlay file
+`<root>/device/<dev_dir>/overlay/frameworks/base/core/res/res/values/config.xml`.
+
+Note: The `bad` configuration parameters (for 2.4GHz and 5GHz bands) were
+introduced pre-Android 8.1. The `entry` configuration parameters were introduced
+in Android 8.1 with the default values equal to the corresponding bad
+parameters. These defaults result in pre-Android 8.1 behavior where no
+hysteresis is used in network selection. To take advantage of the hysteresis
+functionality introduced in Android 8.1, set the `entry` parameters to 3dB or
+more above the `bad` parameters using the overlay file specified above.
+
+You can test new thresholds by configuring the device using adb commands.
+(Alternatively, you can create a build with new overlays but using adb commands
+provide a faster testing turnaround.)
+
+```
+% adb shell settings put global wifi_score_params \
+                             [rssi2|rssi5]=<bad>:<entry>:<low>:<good>
+```
+
+For example, the following command configures new threshold parameters (the
+values used in this sample command are the configured defaults in the AOSP
+codebase):
+
+```
+% adb shell settings put global wifi_score_params \
+                       rssi2=-85:-85:-73:-60,rssi5=-82:-82:-70:-57
+```
+
+To restore the built-in parameter values (i.e. remove the overrides) use the
+following adb command:
+
+```
+% adb shell settings delete global wifi_score_params
+```

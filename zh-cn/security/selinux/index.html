@@ -20,26 +20,24 @@
       limitations under the License.
   -->
 
-<p>Android 安全模型部分基于应用沙盒的概念。每个应用都在自己的沙盒内运行。在 Android 4.3 之前的版本中，这些沙盒是通过为每个应用创建独一无二的 Linux UID（在应用安装时创建）来定义的。从 Android 4.3 版起，安全增强型 Linux (SELinux) 开始用于进一步定义 Android 应用沙盒的边界。</p>
+<p>作为 Android <a href="/security/index.html">安全模型</a>的一部分，Android 使用安全增强型 Linux (SELinux) 对所有进程强制执行强制访问控制 (MAC)，其中包括以 Root/超级用户权限运行的进程（Linux 功能）。很多公司和组织都为 Android 的 <a href="https://android.googlesource.com/platform/external/selinux/" class="external">SELinux 实现</a>做出了贡献。借助 SELinux，Android 可以更好地保护和限制系统服务、控制对应用数据和系统日志的访问、降低恶意软件的影响，并保护用户免遭移动设备上的代码可能存在的缺陷的影响。</p>
 
-<aside class="note"><strong>注意</strong>：要详细了解 Android 8.0 SELinux，请参阅 <a href="/security/selinux/images/SELinux_Treble.pdf">SELinux for Android 8.0</a>。</aside>
-
-<p>作为 Android <a href="/security/index.html">安全模型</a>的一部分，Android 使用 SELinux 对所有进程强制执行强制访问控制 (MAC)，其中包括以 Root/超级用户权限运行的进程（也称为 Linux 功能）。SELinux 能够限制特权进程并能够自动创建安全政策，从而可提升 Android 的安全性。</p>
-
-<p>很多公司和组织都为 SELinux 做出了贡献；<a href="https://android.googlesource.com/" class="external">android.googlesource.com</a>（也称为 Android 开放源代码项目 (AOSP)）上公开了他们所做的贡献，以供所有人查看。借助 SELinux，Android 可以更好地保护和限制系统服务、控制对应用数据和系统日志的访问、降低恶意软件的影响，并保护用户免遭移动设备上的代码可能存在的缺陷的影响。</p>
-
-<p>Android 中包含 SELinux（处于强制模式）和默认适用于整个 AOSP 的相应安全政策。在强制模式下，非法操作会被阻止，并且尝试进行的所有违规行为都会被内核记录到 <code>dmesg</code> 和 <code>logcat</code> 中。Android 设备制造商应收集与错误相关的信息，以便在实施其软件和 SELinux 政策之前先对其进行优化。</p>
-
-<h2 id="background">背景</h2>
-<p>SELinux 按照默认拒绝的原则运行：任何未经明确允许的行为都会被拒绝。SELinux 可按两种全局模式之一运行：</p>
+<p>SELinux 按照默认拒绝的原则运行：任何未经明确允许的行为都会被拒绝。SELinux 可按两种全局模式运行：</p>
 <ul>
 <li><em></em>宽容模式：权限拒绝事件会被记录下来，但不会被强制执行。</li>
 <li><em></em>强制模式：权限拒绝事件会被记录下来<strong>并</strong>强制执行。</li>
 </ul>
 
-<p>此外，SELinux 还支持基于域的宽容模式。在这种模式下，可将特定域（进程）设为宽容模式，同时使系统的其余部分处于强制全局模式。<em></em>域简单来说就是安全政策中用于标识一个进程或一组进程的标签，安全政策会以相同的方式对待所有具有相同域标签的进程。借助基于域的宽容模式，可逐渐将 SELinux 应用于系统中越来越多的部分，还可以为新服务制定政策（同时确保系统的其余部分处于强制模式）。</p>
+<p>Android 中包含 SELinux（处于强制模式）和默认适用于整个 AOSP 的相应安全政策。在强制模式下，非法操作会被阻止，并且尝试进行的所有违规行为都会被内核记录到 <code>dmesg</code> 和 <code>logcat</code> 中。开发时，您应该在实施软件和 SELinux 政策之前，利用这些错误信息先对其进行优化。如需了解详情，请参阅<a href="/security/selinux/implement">实现 SELinux</a>。</p>
 
-<p>基于 Android 4.3（宽容模式）和 Android 4.4（部分强制模式）的 Android 5.0 版本，开始全面强制执行 SELinux。
+<p><em></em>此外，SELinux 还支持基于域的宽容模式。在这种模式下，可将特定域（进程）设为宽容模式，同时使系统的其余部分处于强制全局模式。域简单来说就是安全政策中用于标识一个进程或一组进程的标签，安全政策会以相同的方式对待所有具有相同域标签的进程。借助特定域宽容模式，可逐渐将 SELinux 应用于系统中越来越多的部分，还可以为新服务制定政策（同时确保系统的其余部分处于强制模式）。</p>
+
+<h2 id="background">背景</h2>
+
+<p>Android 安全模型部分基于<a href="/security/app-sandbox">应用沙盒</a>的概念。每个应用都在自己的沙盒内运行。在 Android 4.3 之前的版本中，这些沙盒是通过为每个应用创建独一无二的 Linux UID（在应用安装时创建）来定义的。
+Android 4.3 及更高版本使用 SELinux 进一步定义 Android 应用沙盒的边界。</p>
+
+<p>在 Android 5.0 及更高版本中，已全面强制执行 SELinux（基于 Android 4.3（宽容模式）和 Android 4.4（部分强制模式））。
 通过此项变更，Android 已从对有限的一组关键域（<code>installd</code>、<code>netd</code>、<code>vold</code> 和 <code>zygote</code>）强制执行 SELinux 转为对所有域（超过 60 个域）强制执行 SELinux。具体而言：</p>
 
 <ul>
@@ -47,7 +45,19 @@
 <li><code>init</code> 以外的任何进程都不应在 <code>init</code> 域中运行。</li>
 <li>如果出现任何常规拒绝事件（对于 <code>block_device</code>、<code>socket_device</code>、<code>default_service</code> 等），都表示设备需要一个特殊域。</li>
 </ul>
-<p>因此，制造商需要更好地了解并扩展其 SELinux 实现，以便提供兼容的设备。</p>
+
+<p>Android 6.0 通过降低我们政策的权限强化了系统安全，从而实现更好的用户隔离和 IOCTL 过滤、降低可从设备/系统之外访问的服务面临的威胁、进一步强化 SELinux 域，以及高度限制对 <code>/proc</code> 的访问。
+</p>
+<p>
+Android 7.0 更新了 SELinux 配置，以进一步锁定应用沙盒并减少受攻击面。此版本还将单片式 mediaserver 堆栈拆分为较小的进程，以缩小其权限范围。如需了解详情，请参阅<a href="https://android-developers.googleblog.com/2016/07/protecting-android-with-more-linux.html" class="external">利用更多的 Linux 内核防护功能保护 Android 系统</a>和<a href="https://android-developers.googleblog.com/2016/05/hardening-media-stack.html" class="external">媒体堆栈安全强化</a>。
+</p>
+<p></p>
+<p>
+Android 8.0 更新了 SELinux 以与 <a href="/devices/architecture/#hidl">Treble</a> 配合使用，后者可将较低级别的供应商代码与 Android 系统框架分离开来。此版本更新了 SELinux 政策以允许设备制造商和 SOC 供应商更新自己的政策部分、构建自己的映像（<code>vendor.img</code>、<code>boot.img</code> 等），然后更新这些映像而不受平台影响，反之亦然。
+</p>
+<p>
+虽然可以在设备上运行更高/更新版本的平台（框架），但反之并不成立；供应商映像 (<code>vendor.img/odm.img</code>) 的版本不能高于平台 (<code>system.img</code>) 的版本。因此，较新版平台可能会带来 SELinux 兼容性问题，因为平台 SELinux 政策的版本要比该政策的供应商 SELinux 部分更新。Android 8.0 模型提供了一种<a href="/security/selinux/compatibility">保持兼容性</a>的方法，以免进行不必要的同时 OTA。
+</p>
 
 <h2 id="supporting_documentation">其他资源</h2>
 
@@ -73,6 +83,9 @@ Configuring the SELinux Policy（配置 SELinux 政策）</a></li>
 
 <li><a href="https://www.gnu.org/software/m4/manual/index.html" class="external">
 GNU M4 - GNU Macro Processor Manual（GNU M4 - GNU 宏处理器手册）</a></li>
+
+<li><a href="https://opensource.com/business/13/11/selinux-policy-guide" class="external">
+Your visual how-to guide for SELinux policy enforcement（有关强制执行 SELinux 政策的直观操作指南）</a></li>
 </ul>
 
 </body></html>

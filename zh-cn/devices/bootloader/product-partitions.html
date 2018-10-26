@@ -1,0 +1,139 @@
+<html devsite><head>
+  <title>构建 product 分区</title>
+  <meta name="project_path" value="/_project.yaml"/>
+  <meta name="book_path" value="/_book.yaml"/>
+</head>
+
+<body>
+  <!--
+      Copyright 2018 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>
+  Android 9​ 支持使用 Android 编译系统构建 <code>/product</code> 分区。之前，Android 8.x 强制将系统芯片 (SoC) 专属组件从 <code>/system</code> 分区分隔到了 <code>/vendor</code> 分区，不会为从 Android 编译系统构建的原始设备制造商 (OEM) 专属组件提供专用空间。
+</p>
+
+<h2 id="product-partitions">product 分区简介</h2>
+
+<p>
+许多原始设备制造商 (OEM) 会自定义 AOSP 系统映像，以实施自己的功能并满足运营商的要求。不过，如果进行这类自定义，则无法针对多个软件 SKU 使用单个系统映像，因为映像必须各不相同，才能支持不同的语言区域、运营商等；如果使用单独的 <code>/product</code> 分区来包含自定义项，则可以无法针对多个软件 SKU 使用单个系统映像（<code>/system</code> 分区会托管可在众多软件 SKU 之间共享的通用代码）。<code>/vendor</code> 分区会继续托管 SoC 专用板级 (BSP) 代码，这类代码可以基于指定 SoC 在多台设备之间共享。</p>
+
+<p>
+使用单独的分区存在一些弊端，例如，难以管理磁盘空间（应该预留一定的空间满足未来增长的空间需求），以及难以在各分区之间<a href="/devices/architecture/vndk/abi-stability">维护稳定的应用二进制接口 (ABI)</a>。在决定使用 <code>/product</code> 分区之前，请花些时间考虑一下您独特的 AOSP 实现和可行的缓解策略（例如，在<a href="/devices/tech/ota/">无线下载 (OTA) 更新</a>期间对设备进行重新分区，这不是由 Google 完成的，而是由某些原始设备制造商(OEM) 完成的）。
+</p>
+
+<h3 id="legacy-oem">旧式 /oem 与 /product</h3>
+
+<p>
+新 <code>/product</code> 分区与旧式 <code>/oem</code> 分区之间没有共通性：</p>
+
+<table>
+  <tbody><tr>
+  <th>分区</th>
+  <th>属性</th>
+  </tr>
+  <tr>
+  <td><code>/oem</code></td>
+  <td>
+  <ul>
+    <li>不可更新；通常在出厂时刷写一次。</li>
+    <li>根据品牌信息和颜色等细微差异进行构建。不同的 <code>/oem</code> 分区内容不会使其成为不同的产品软件。</li>
+    <li>系统分区不依赖于 <code>/oem</code>（仅当在其中找到特定文件时才使用该分区）。</li>
+    <li>切勿在系统上使用除公共 API 之外的 API。</li>
+  </ul>
+  </td>
+  </tr>
+  <tr>
+  <td><code>/product</code></td>
+  <td>
+   <ul>
+    <li>可更新</li>
+    <li>搭配系统图像（该分区与系统映像一起更新）</li>
+    <li>按产品或产品系列构建。</li>
+    <li>系统分区可以依赖于 <code>/product</code> 分区。</li>
+    <li>可以使用非公共 API，因为它们同时更新。</li>
+  </ul>
+  </td>
+  </tr>
+  </tbody></table>
+
+<p>
+出于这些原因，Android 9 支持新的 <code>/product</code> 分区，同时也针对依赖于旧式 <code>/oem</code> 分区的设备保留了对该分区的支持。
+</p>
+
+<h3 id="product-components">/product 组件</h3>
+
+<p>
+<code>/product</code> 分区包含以下组件：
+</p>
+
+<ul>
+  <li>产品专用的系统属性 (<code>/product/build.prop</code>)</li>
+  <li>产品专用的 RRO (<code>/product/overlay/*.apk</code>)</li>
+  <li>产品专用的应用 (<code>/product/app/*.apk</code>)</li>
+  <li>产品专用的特权应用 (<code>/product/priv-app/*.apk</code>)</li>
+  <li>产品专用的内容库 (<code>/product/lib/*</code>)</li>
+  <li>产品专用的 Java 库 (<code>/product/framework/*.jar</code>)</li>
+  <li>产品专用的 Android 框架系统配置（<code>/product/etc/sysconfig/*</code> 和 <code>/product/etc/permissions/*</code>）</li>
+  <li>产品专用的媒体文件 (<code>/product/media/audio/*</code>)</li>
+  <li>产品专用的 <code>bootanimation</code> 文件</li>
+</ul>
+
+<h3 id="custom-images">不得使用 custom_images</h3>
+
+<p>
+您不能使用 <code>custom_images</code>，因为它们缺乏对以下各项的支持：
+</p>
+
+<ul>
+  <li><strong>将模块安装到特定目标分区中</strong>。
+  <code>custom_images</code> 支持将软件工件复制到映像中，但无法将模块安装到特定分区中（通过将其目标分区指定为编译规则的一部分）。</li>
+  <li><strong>Soong 支持</strong>。无法使用 Soong 编译系统构建 <code>custom_images</code>。</li>
+  <li>OTA 更新支持。<code>custom_images</code> 用作出厂 ROM 映像，无法执行 OTA 更新。</li>
+</ul>
+
+<h3 id="maintaining-abis">维护分区之间的 ABI</h3>
+
+<p>
+Android 9 中的 <code>/product</code> 分区是 <code>/system</code> 分区的扩展。由于 <code>/product</code> 和 <code>/system</code> 分区之间的 ABI 稳定性较弱，因此必须同时升级这两者，而且 ABI 应基于系统 SDK。如果系统 SDK 不涵盖 <code>/product</code> 和 <code>/system</code> 之间的所有 API 表面，则 OEM 负责在这两个分区之间维护自己的 ABI。
+</p>
+
+<p><code>/product</code> 分区和 <code>/system</code> 分区可以相互依赖。不过，在没有 <code>/product</code> 分区的情况下，对<a href="/setup/build/gsi">常规系统映像 (GSI) </a>的测试必须能够正常运行。
+</p>
+
+<p><code>/product</code> 分区不能对 <code>/vendor</code> 分区有任何依赖，而且 <code>/product</code> 分区和 <code>/vendor</code> 分区之间不允许有任何直接交互（由 SEpolicy 强制执行）。
+</p>
+
+<h2 id="implementing-product-partitions">实现 product 分区</h2>
+
+<p>
+实现新 product 分区之前，请查阅 <a href="https://android-review.googlesource.com/q/topic:product_partition+(status:open+OR+status:merged)" class="external">AOSP 中的相关 product 分区变化</a>。然后，为了设置 <code>/product</code>，请添加以下板或产品编译标记：
+</p>
+
+<ul>
+  <li><code>BOARD_USES_PRODUCTIMAGE</code></li>
+  <li><code>BOARD_PRODUCTIMAGE_PARTITION_SIZE</code></li>
+  <li><code>BOARD_PRODUCTIMAGE_FILE_SYSTEM_TYPE</code></li>
+  <li><code>PRODUCT_PRODUCT_PROPERTIES for /product/build.prop</code>，应该在 <code>$(call inherit-product path/to/device.mk)</code> 内，例如 <code>PRODUCT_PRODUCT_PROPERTIES += product.abc=ok</code>。
+   </li>
+ </ul>
+
+<h3 id="enabling-verified-boot">启用验证启动</h3>
+
+<p>
+为了防止 <code>/product</code> 分区被恶意软件篡改，您应该为该分区启用 <a href="https://android.googlesource.com/platform/external/avb/" class="external">Android 验证启动 (AVB)</a>（就像为 <code>/vendor</code> 和 <code>/system</code> 分区启用一样）。要启用 AVB，请添加以下编译标记：<code>BOARD_AVB_PRODUCT_ADD_HASHTREE_FOOTER_ARGS</code>
+</p>
+
+</body></html>

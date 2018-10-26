@@ -1,0 +1,115 @@
+<html devsite><head>
+
+  <meta name="book_path" value="/_book.yaml"/>
+
+  <meta name="project_path" value="/_project.yaml"/>
+</head>
+<body>
+
+<!--
+  Copyright 2018 The Android Open Source Project
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+<h1 id="wi_fi_rtt_ieee_80211mc" class="page-title">WLAN RTT (IEEE 802.11mc)</h1>
+
+<p>Android 9 中的 <a href="https://developer.android.com/reference/android/net/wifi/rtt/package-summary">WLAN 往返时间 (RTT)</a> 功能允许设备测量与其他支持设备的距离：无论它们是接入点 (AP) 还是 WLAN 感知对等设备（如果设备支持 <a href="/devices/tech/connect/wifi-aware">WLAN 感知</a>）。此功能基于 IEEE 802.11mc 协议，使应用能够使用准确性更高的定位功能和增强的感知功能。</p>
+
+<h2 id="examples_and_source">示例和来源</h2>
+
+<p>要使用此功能，请采用在 Android 开源项目 (AOSP) 中提供的 WLAN 硬件接口设计语言 (HIDL)。在 Android 8.0 中，HIDL 取代了之前使用的硬件抽象层 (HAL) 结构，以便通过指定收集到接口和软件包的类型和方法调用来简化实现流程。</p>
+
+<p>借助 WLAN HIDL 使用 WLAN RTT 功能：<code>hardware/interfaces/wifi/1.0</code> 或更高版本。</p>
+
+<p>您可以参考旧版 WLAN HAL 来了解它与新 HIDL 接口之间的关系：<a href="https://android.googlesource.com/platform/hardware/libhardware_legacy/+/master/include/hardware_legacy/rtt.h">hardware/libhardware_legacy/+/master/include/hardware_legacy/rtt.h</a>。</p>
+
+<h2 id="implementation">实现</h2>
+
+<p>要实现 WLAN RTT，您必须提供框架和 HAL/固件支持：</p>
+
+<ul>
+<li><p>框架：</p>
+
+<ul>
+<li>AOSP 代码</li>
+<li>启用 WLAN RTT：需要功能标记</li>
+</ul></li>
+<li><p>WLAN RTT (IEEE 802.11mc) HAL 支持（意味着固件支持）</p></li>
+</ul>
+
+<p>要实现此功能，请采用 WLAN HIDL，另外还要启用功能标记：</p>
+
+<ul>
+<li><p>在位于 <code>device/&lt;oem&gt;/&lt;device&gt;</code> 的 <code>device.mk</code> 中，修改 <code>PRODUCT_COPY_FILES</code> 环境变量，以便支持 WLAN RTT 功能：</p>
+<pre class="prettyprint"><code>PRODUCT_COPY_FILES += frameworks/native/data/etc/android.hardware.wifi.rtt.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.wifi.rtt.xml
+</code></pre></li>
+</ul>
+
+<p>除此以外，实现此功能所需的所有内容都会包含在 AOSP 中。</p>
+
+<h2 id="mac_randomization">随机分配 MAC 地址</h2>
+
+<p>为加强隐私保护，在 WLAN RTT 事务期间使用的 MAC 地址必须是随机分配的地址，即不得与 WLAN 接口的原生 MAC 地址一致。不过，有一种例外情况：如果某个设备与 AP 相关联，则此设备可能会使用与其相关联的 MAC 地址来处理与此 AP 或其他 AP 之间的任何 RTT 事务。</p>
+
+<h2 id="validation">验证</h2>
+
+<p>这项功能有适用的 Android 兼容性测试套件 (CTS) 测试。CTS 会检测何时启用了这项功能，并会自动包含相关测试。您也可以使用<a href="/devices/tech/test_infra/tradefed/fundamentals/vts">供应商测试套件 (VTS)</a> 和 <a href="https://android.googlesource.com/platform/tools/test/connectivity/+/master/acts/tests/google/wifi/">acts/sl4a</a>（用于执行扩展程序集成测试的测试套件）来测试此功能。</p>
+
+<h3 id="unit_tests">单元测试</h3>
+
+<p>使用以下测试执行 WLAN RTT 软件包测试：</p>
+
+<p>服务测试：</p>
+<pre class="prettyprint"><code>% ./frameworks/opt/net/wifi/tests/wifitests/runtests.sh -e package
+com.android.server.wifi.rtt
+</code></pre>
+<p>Manager 测试：</p>
+<pre class="prettyprint"><code>% ./frameworks/base/wifi/tests/runtests.sh -e package android.net.wifi.rtt
+</code></pre>
+<h3 id="integration_acts_tests">集成 (ACTS) 测试</h3>
+
+<p>acts/sl4a 测试套件（在 <code>/tools/test/connectivity/acts/tests/google/wifi/rtt/README.md</code> 中有相应说明）提供了功能测试、性能测试和压力测试。</p>
+
+<h3 id="cts">CTS</h3>
+
+<p>这项功能有适用的 Android 兼容性测试套件 (CTS) 测试。CTS 会检测何时启用了这项功能，并会自动包含相关测试。支持 WLAN RTT (IEEE 802.11mc) 的接入点必须位于被测设备的覆盖范围内。</p>
+
+<p>您可以使用以下命令触发 CTS 测试：</p>
+<pre class="prettyprint"><code>% atest WifiRttTest
+</code></pre>
+<h2 id="calibration">校准</h2>
+
+<p>为了确保 WLAN RTT 能够正常运行，802.11mc 协议中返回的距离的精确度应在关键绩效指标 (KPI) 范围内（理想情况下）。对于所列带宽出现的 90% 的 CDF 错误，针对距离估算值建议的 KPI 具有以下容差：</p>
+
+<ul>
+<li>80MHz：2 米</li>
+<li>40MHz：4 米</li>
+<li>20MHz：8 米</li>
+</ul>
+
+<p>为确保正确实现功能，您必须进行校准测试。</p>
+
+<p>您可以通过以下方式来实现这项测试：通过不断增加距离，比较地面真实距离和 RTT 估算距离。如果真实距离和 RTT 估算距离基本一致，则您应该针对已知已进行 RTT 校准的设备验证解决方案。距离校准应在下列条件下进行测试：</p>
+
+<ol>
+<li>大型开放实验室或没有大量金属物体（金属物体可能会导致多路径异常高发）的走廊。</li>
+<li>视线 (LOS) 路线/路径至少要延长 25 米。</li>
+<li>从路线一端到另一端以每次增加 0.5 米的方式标记。</li>
+<li>选择一个位于路线一端的位置来安装支持 RTT 的接入点（位于地面以上 20 厘米处）；一个可移动支架（也位于地面上方 20 厘米处），用于沿路线移动 Android 手机（或接受测试的其他 Android 移动设备），可移动支架应与每隔 0.5 米出现的标记对齐。注意：这项重复性任务可由小型机器人来完成，也可以由人工操作员来完成。</li>
+<li>每个标记处应记录 50 个距离结果，同时应记录相应标记距离接入点的距离。应在每个标记位置处计算统计信息（例如距离均值和方差）。</li>
+</ol>
+
+<p>您可以根据第 5 步中的结果绘制一个图表，其中 X 轴为地面真实距离，Y 轴为估算距离，以及一条估算出的最合适的回归路线。理想的设备校准会产生一条梯度为 1.0 的线，且 Y 轴的偏差为 0.0 米。如果这些值的偏差落在相应带宽的 KPI 范围内，则这些偏差是可接受的。如果结果超过 KPI 范围，则应该重新校准设备功能，以使结果符合 KPI 规范。</p>
+
+</body></html>
