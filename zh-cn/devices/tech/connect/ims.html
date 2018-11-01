@@ -1,0 +1,182 @@
+<html devsite><head>
+
+  <meta name="book_path" value="/_book.yaml"/>
+
+  <meta name="project_path" value="/_project.yaml"/>
+</head>
+<body>
+
+<!--
+  Copyright 2018 The Android Open Source Project
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+<h1 id="implementing_ims" class="page-title">实现 IMS</h1>
+
+<p>Android 9 引入了一个名为 <a href="https://android.googlesource.com/platform/frameworks/base/+/master/telephony/java/android/telephony/ims/">ImsService</a> 的新 SystemApi 接口，可帮助您实现 IP 多媒体子系统 (IMS)。ImsService API 是 Android 平台与供应商（即运营商提供的 IMS 实现）之间明确定义的接口。</p>
+
+<p><img src="/devices/tech/connect/images/imsservice.png" alt="ImsService 概览" width/></p>
+
+<p><strong>图 1.</strong> ImsService 概览</p>
+
+<p>通过使用 ImsService 接口，IMS 实现者可以向平台提供重要的信号信息（例如 IMS 注册信息、基于 IMS 集成的短信以及 MmTel 功能集成），以提供语音通话和视频通话功能。ImsService API 也是一种 Android System API，这意味着您可以直接针对 Android SDK（而不是来源）构建这种 API。预安装在设备上的 IMS 应用也可以配置为可通过 Play 商店更新。</p>
+
+<h2 id="examples_and_source">示例和来源</h2>
+
+<p>为了便于进行测试和开发，Android 在 AOSP 中提供了一个应用，它可以实现 ImsService API 的某些部分。您可以在以下位置找到该应用：<a href="https://android.googlesource.com/platform/packages/services/Telephony/+/master/testapps/ImsTestService/">/testapps/ImsTestService</a>。</p>
+
+<p>您可以在 <a href="https://android.googlesource.com/platform/frameworks/base/+/master/telephony/java/android/telephony/ims/ImsService.java">ImsService</a> 和该 API 的其他类中找到关于 ImsService API 的文档。</p>
+
+<h2 id="implementation">实现</h2>
+
+<p>ImsService API 是一种高级 API，它可以让您通过多种方式实现 IMS（具体取决于可用的硬件）。例如，根据 IMS 实现是完全在应用处理器上进行，还是部分或完全分流到调制解调器，实现也会发生相应的变化。Android 不提供用于分流到基带处理器的公共 HAL，因此您必须使用调制解调器的 HAL 扩展来进行所有的分流。</p>
+
+<h3 id="compatibility_with_older_ims_implementations">与较早的 IMS 实现之间的兼容性</h3>
+
+<p>尽管 Android 9 包含 ImsService API，但使用较早的 IMS 实现的设备无法支持该 API。对于这类设备，较早的 AIDL 接口和封装容器类已迁移至 <code>android.telephony.ims.compat</code> 命名空间。升级到 Android 9 后，旧款设备必须执行以下操作才能继续支持旧版 API。</p>
+
+<ul>
+<li>更改 ImsService 实现的命名空间，以从 <code>android.telephony.ims.compat</code> 命名空间 API 进行扩展。</li>
+<li>修改 AndroidManifest.xml 中的 ImsService 服务定义，以使用 <code>android.telephony.ims.compat.ImsService</code> intent-filter 操作（而不是 <code>android.telephony.ims.ImsService</code> 操作）。</li>
+</ul>
+
+<p>随后，框架将使用 Android 9 中提供的兼容性层绑定到 ImsService，以支持传统的 <code>ImsService</code> 实现。</p>
+
+<h3 id="imsservice_registration_with_the_framework">向框架注册 ImsService</h3>
+
+<p>ImsService API 是作为服务实现的，Android 框架会绑定到该服务以便与 IMS 实现进行通信。要向框架注册实现了 ImsService 的应用，您必须执行以下 3 个步骤：首先，ImsService 实现必须使用相关应用的 <code>AndroidManifest.xml</code> 向平台自行注册；其次，它必须定义实现支持哪种 IMS 功能（MmTel 还是 RCS）；最后，它必须在运营商配置或设备叠加层中验证为受信任的 IMS 实现。</p>
+
+<h4 id="service_definition">服务定义</h4>
+
+<p>IMS 应用可使用以下格式将 <code>service</code> 条目添加到清单中，从而向框架注册 ImsService：</p>
+<pre class="prettyprint"><code>&lt;service
+    android:name="com.egcorp.ims.EgImsService"
+    android:directBootAware="true"
+    Android:persistent="true"
+    ...
+    android:permission="android.permission.BIND_IMS_SERVICE" &gt;
+    ...
+    &lt;intent-filter&gt;
+        &lt;action android:name="android.telephony.ims.ImsService" /&gt;
+    &lt;/intent-filter&gt;
+&lt;/service&gt;
+</code></pre>
+<p><code>AndroidManifest.xml</code> 中的 <code>service</code> 定义对以下属性进行了定义，这些属性是正确运行所必需的属性：</p>
+
+<ul>
+<li><code>directBootAware="true"</code>：允许在文件系统被解密之前找到并绑定 <code>service</code>。这意味着 ImsService 不得在访问文件系统时打开任何加密文件。要详细了解文件级加密 (FBE)，请参阅<a href="/security/encryption/file-based">文件级加密</a>。</li>
+<li><code>persistent="true"</code>：允许此服务永久运行，不因系统回收内存而终止。只有在相应的应用作为系统应用进行构建时，此属性才有效。</li>
+<li><code>permission="android.permission.BIND_IMS_SERVICE"</code>：确保只有被授予 <code>BIND_IMS_SERVICE</code> 权限的进程才能绑定到相应的应用。这样可以防止将恶意应用绑定到该服务，因为框架只会向系统应用授予这项权限。</li>
+</ul>
+
+<p>此外，该服务还必须指定 <code>intent-filter</code> 元素以及操作 <code>android.telephony.ims.ImsService</code>。这样一来，框架便可以找到 <code>ImsService</code>。</p>
+
+<h3 id="ims_feature_specification">IMS 功能规范</h3>
+
+<p>在 AndroidManifest.xml 中将 ImsService 定义为 Android 服务后，ImsService 必须定义它支持的 IMS 功能。Android 目前支持 MmTel 和 RCS 功能，不过只有 MmTel 集成到了框架中。虽然框架中没有集成 RCS API，但将其声明为 ImsService 的功能仍有诸多好处。</p>
+
+<p>下面列出了 <code>android.telephony.ims.ImsFeature</code> 中定义的 ImsService 可以提供的有效功能，并举例说明了为什么 IMS 应用希望实现所有这些功能或其中某个功能。在对各个功能进行定义后，此页面还概述了 <code>ImsService</code> 如何声明它为每个 SIM 卡插槽定义的功能集。</p>
+
+<h4 id="feature_mmtel">FEATURE_MMTEL</h4>
+
+<p><code>ImsService</code> 可实现 IMS MMTEL 功能，该功能包含对所有 IMS 媒体（IR.92 和 IR.94 规范）的支持（紧急连接到 IMS PDN 以进行紧急呼叫的情况除外）。任何希望支持 MMTEL 功能的 <code>ImsService</code> 实现都应该扩展 <code>android.telephony.ims.MmTelFeature</code> 基类，并在 <a href="https://android.googlesource.com/platform/frameworks/base/+/master/telephony/java/android/telephony/ims/ImsService.java#335"><code>ImsService#createMmTelFeature</code></a> 中返回自定义 <code>MmTelFeature</code> 实现。</p>
+
+<h4 id="feature_emergency_mmtel">FEATURE_EMERGENCY_MMTEL</h4>
+
+<p>声明这项功能只会向可紧急连接到 IMS PDN 以获取紧急服务的平台发送信号。如果不为您的 <code>ImsService</code> 声明此功能，平台将始终默认将电路域回落用于紧急服务。要定义此功能，您必须先定义 <code>FEATURE_MMTEL</code> 功能。</p>
+
+<h4 id="feature_rcs">FEATURE_RCS</h4>
+
+<p>ImsService API 不实现任何 IMS RCS 功能，但 <code>android.telephony.ims.RcsFeature</code> 基类仍然非常有用。检测到软件包应提供 RCS 时，框架会自动绑定到 ImsService 并调用 <code>ImsService#createRcsFeature</code>。如果取出与 RCS 服务相关联的 SIM 卡，则框架会自动调用 <code>RcsFeature#onFeatureRemoved</code>，然后清除与 RCS 功能相关联的 <code>ImsService</code>。此功能可以移除某些 RCS 功能必须提供的自定义检测/绑定逻辑。</p>
+
+<h4 id="registration_of_supported_features">注册受支持的功能</h4>
+
+<p>电话框架会先绑定到 ImsService，以使用 <code>ImsService#querySupportedImsFeatures</code> API 查询它支持的功能。在框架计算出 ImsService 将会支持的功能之后，它会调用 ImsService 将负责的各项功能的 <code>ImsService#create[...]Feature</code>。如果 IMS 应用支持的功能发生更改，您可以使用 <code>ImsService#onUpdateSupportedImsFeatures</code> 向框架发出信号，以重新计算受支持的功能。有关 ImsService 的初始化和绑定的更多信息，请参见下图。</p>
+
+<p><img src="/devices/tech/connect/images/imsservice-sequence.png" alt="ImsService 初始化和绑定"/></p>
+
+<p><strong>图 2</strong>：ImsService 初始化和绑定</p>
+
+<h3 id="framework_detection_and_verification_of_imsservices">ImsService 的框架检测和验证</h3>
+
+<p>在 AndroidManifest.xml 中对 ImsService 进行正确定义后，必须将平台配置为适时（安全地）绑定到 ImsService。框架可绑定到以下两种 ImsService：</p>
+
+<ol>
+<li>运营商“替换”ImsService：这类 ImsService 会预先加载到设备上，但与一个或多个手机运营商相关联，并且只有在插入匹配的 SIM 卡时才会绑定。该类型是使用 <a href="https://android.googlesource.com/platform/frameworks/base/+/master/telephony/java/android/telephony/CarrierConfigManager.java#301"><code>key_config_ims_package_override</code></a> CarrierConfig 密钥配置的。</li>
+<li>设备“默认”ImsService：该类型是由原始设备制造商 (OEM) 加载到设备上的默认 ImsService。当运营商 ImsService 不可用时，它应该能够在任何情况下提供 IMS 服务。在设备没有插入 SIM 卡或插入的 SIM 卡没有安装运营商 ImsService 的情况下，这种 ImsService 非常有用。该类型是在设备叠加层 <a href="https://android.googlesource.com/platform/frameworks/base/+/master/core/res/res/values/config.xml#2517"><code>config_ims_package</code></a> 密钥中进行定义的。</li>
+</ol>
+
+<p>这两种类型的 ImsService 实现必须是系统应用，或必须驻留在 /system/priv-app/ 文件夹中，以授予相应的由用户授予的权限（即电话、麦克风、位置、相机和通讯录权限）。通过验证 IMS 实现的软件包名称是否与上文定义的 CarrierConfig 或设备叠加层值匹配，仅绑定受信任的应用。</p>
+
+<h2 id="customization">自定义</h2>
+
+<p>ImsService 允许通过更新（使用 <code>ImsService#onUpdateSupportedImsFeatures</code> 方法）以动态的形式启用或停用它支持的 IMS 功能（MMTEL 和 RCS）。这样会触发框架重新计算要绑定哪些 ImsService 以及它们支持哪些功能。如果 IMS 应用在没有任何受支持的功能的情况下更新框架，则在手机重新启动或插入与 IMS 应用匹配的新 SIM 卡之前，ImsService 将处于未绑定状态。</p>
+
+<h3 id="binding_priority_for_multiple_imsservice">多个 ImsService 的绑定优先级</h3>
+
+<p>框架不支持绑定到设备上预装的所有可能的 ImsService，并将按以下顺序绑定到 ImsService（每个 SIM 插槽最多可绑定两个 ImsService，每个功能一个 ImsService）：</p>
+
+<ol>
+<li>由 CarrierConfig 值 <code>key_config_ims_package_override</code> 定义的 ImsService 软件包名称（插入 SIM 卡的情况下）。</li>
+<li>在 <code>config_ims_package</code> 的设备叠加层值中定义的 ImsService 软件包名称，包括没有 SIM 卡插入的情况。此 ImsService 必须支持 Emergency MmTel 功能。</li>
+</ol>
+
+<p>您必须在 CarrierConfig 中为每个将使用 ImsService 软件包的运营商定义您 ImsService 的软件包名称；如果您的 ImsService 是默认类型，则应在设备叠加层中定义（如上所述）。</p>
+
+<p>下面我们针对每种功能进行详细介绍。单 SIM 卡设备可提供两种 IMS 功能：MMTel 和 RCS。框架将尝试按照上文中所述的顺序为每种功能进行绑定；如果相应功能不适用于运营商配置替换中定义的 ImsService，则框架将回退到您的默认 ImsService。例如，下表说明了框架将使用哪种 IMS 功能（假设三个 IMS 应用实现了某个系统上安装的具有以下功能的 ImsService）：</p>
+
+<ul>
+<li>运营商 A ImsService 支持 RCS</li>
+<li>运营商 B ImsService 支持 RCS 和 MMTel</li>
+<li>OEM ImsService 支持 RCS、MMTel 和 Emergency MMTel</li>
+</ul>
+
+<table>
+<thead>
+<tr>
+<th><strong>已插入 SIM 卡</strong></th>
+<th><strong>RCS 功能</strong></th>
+<th><strong>MMTel 功能</strong></th>
+<th><strong>紧急 MMTel 功能</strong></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>运营商 A</td>
+<td>运营商 A</td>
+<td>OEM</td>
+<td>OEM</td>
+</tr>
+<tr>
+<td>运营商 B</td>
+<td>运营商 B</td>
+<td>运营商 B</td>
+<td>OEM</td>
+</tr>
+<tr>
+<td>没有 SIM 卡</td>
+<td>OEM</td>
+<td>OEM</td>
+<td>OEM</td>
+</tr>
+</tbody>
+</table>
+
+<h2 id="validation">验证</h2>
+
+<p>ImsService API 包括一个 GTS 测试套件，可验证框架中 ImsService API 的功能以及 IMS 应用服务绑定逻辑。<code>GtsImsServiceTestCases</code> GTS APK 可以作为 GTS 测试套件的一部分运行，以确保 API 表面在所有 Android 9 实现中一致地运行。</p>
+
+<p>由于 IMS 规范非常多且使用的是特殊验证设备，因此测试套件中不包含用于自行验证 IMS 实现的工具。这些测试只能验证电话框架是否正确响应 ImsService API。</p>
+
+</body></html>

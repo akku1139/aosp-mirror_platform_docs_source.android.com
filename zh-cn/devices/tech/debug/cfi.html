@@ -1,0 +1,108 @@
+<html devsite><head>
+    <title>控制流完整性</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2018 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          //www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>
+从 2016 年开始，Android 上大约 86% 的漏洞与内存安全相关。大多数漏洞被攻击者所利用，他们会改变应用的正常控制流，获取遭利用的应用的所有权限来执行任意恶意活动。
+<a href="https://clang.llvm.org/docs/ControlFlowIntegrity.html">控制流完整性 (CFI)</a> 是一种安全机制，它不允许更改已编译二进制文件的原始控制流图，因而执行此类攻击变得异常困难。
+</p>
+<p>
+在 Android 8.1 中，我们在媒体堆栈中启用了 LLVM 的 CFI 实现。在 Android 9 中，我们在更多组件以及内核中启用了 CFI。系统 CFI 默认处于启用状态，但内核 CFI 需要您手动启用。</p>
+<p>
+LLVM 的 CFI 需要使用<a href="https://llvm.org/docs/LinkTimeOptimization.html">链接时优化 (LTO)</a> 进行编译。LTO 会一直保留对象文件的 LLVM 位码表示法直至链接时，以便编译器更好地推断可以执行哪些优化。启用 LTO 可缩减最终二进制文件的大小并提高性能，但会增加编译时间。在 Android 上进行测试时，结合使用 LTO 和 CFI 对代码大小和性能开销的影响微乎其微；在少数情况下，这两者都会有所改善。
+</p>
+<p>
+有关 CFI 以及如何处理其他前向控制检查的更多技术详情，请参阅 <a href="https://clang.llvm.org/docs/ControlFlowIntegrityDesign.html">LLVM 设计文档</a>。
+</p>
+
+<h2 id="examples">示例和来源</h2>
+<p>
+CFI 由编译器提供，在编译期间将插桩添加到二进制文件中。我们支持 Clang 工具链中的 CFI 和 AOSP 中的 Android 编译系统。</p>
+<p>
+对于 Arm64 设备位于 <code><a href="https://android.googlesource.com/platform/build/+/master/target/product/cfi-common.mk">/platform/build/target/product/cfi-common.mk</a></code> 的一组组件，默认情况下，CFI 是启用的。在一组媒体组件的 makefiles/blueprint 文件中，例如 <code><a href="https://android.googlesource.com/platform/frameworks/av/+/master/media/libmedia/Android.bp#117">/platform/frameworks/av/media/libmedia/Android.bp</a></code> 和 <code><a href="https://android.googlesource.com/platform/frameworks/av/+/master/cmds/stagefright/Android.mk#188">/platform/frameworks/av/cmds/stagefright/Android.mk</a></code>，它也是直接启用的。
+
+</p><h2 id="system-cfi">实现系统 CFI</h2>
+<p>
+如果您使用 Clang 和 Android 编译系统，则 CFI 默认处于启用状态。CFI 有助于确保 Android 用户安全无虞，因此请勿将其停用。
+</p>
+<p>
+事实上，我们强烈建议您针对更多组件启用 CFI。理想对象是特权原生代码，或处理不受信任的用户输入的原生代码。如果您使用 Clang 和 Android 编译系统，则可以通过向 makefile 或 blueprint 文件中添加几行代码以在新组件中启用 CFI。
+</p>
+
+<h3 id="cf-in-mk">在 makefile 中启用 CFI</h3>
+<p>
+要在 makefile（例如 <code><a href="https://android.googlesource.com/platform/frameworks/av/+/master/cmds/stagefright/Android.mk#188">/platform/frameworks/av/cmds/stagefright/Android.mk</a></code>）中启用 CFI，请添加以下几行代码：</p><pre class="prettyprint">LOCAL_SANITIZE := cfi
+# Optional features
+LOCAL_SANITIZE_DIAG := cfi
+LOCAL_SANITIZE_BLACKLIST := cfi_blacklist.txt</pre>
+<ul>
+  <li><code>LOCAL_SANITIZE</code> 在编译过程中将 CFI 指定为排错程序。</li>
+  <li><code>LOCAL_SANITIZE_DIAG</code> 打开 CFI 的诊断模式。诊断模式会在崩溃期间在 logcat 中输出额外的调试信息，这在开发和测试编译时很有用。不过，请务必对正式版编译移除诊断模式。</li>
+  <li><code>LOCAL_SANITIZE_BLACKLIST</code> 支持组件针对个别函数或源代码文件选择性地停用 CFI 插桩。在万不得已时，您可以使用黑名单来修复可能以其他方式存在的任何用户会遇到的问题。如需了解详情，请参阅<a href="#disabling-cfi">停用 CFI</a>。</li>
+</ul>
+<h3 id="cfi-in-bp">在 blueprint 文件中启用 CFI</h3>
+<p>
+要在 blueprint 文件（例如 <code><a href="https://android.googlesource.com/platform/frameworks/av/+/master/media/libmedia/Android.bp#117">/platform/frameworks/av/media/libmedia/Android.bp</a></code>）中启用 CFI，请添加以下几行代码：</p>
+
+<pre class="prettyprint">   sanitize: {
+        cfi: true,
+        diag: {
+            cfi: true,
+        },
+        blacklist: "cfi_blacklist.txt",
+    },</pre>
+
+<h3 id="troubleshooting">问题排查</h3>
+<p>
+如果您在新组件中启用 CFI，则可能会遇到以下问题：函数类型不匹配错误和汇编代码类型不匹配错误。<em></em><em></em>
+</p>
+<p>
+如果发生函数类型不匹配错误，则可能是因为 CFI 将间接调用限制为仅跳转到如下函数：与调用中使用的静态类型具有相同的动态类型。CFI 将虚拟和非虚拟成员函数调用限制为仅跳转到如下对象：用于发出调用的对象的静态类型派生类。也就是说，如果您的代码违反这些假设中的任何一个，CFI 添加的插桩将终止。例如，堆栈轨迹显示 SIGABRT，logcat 则包含一行与发现不匹配的控制流完整性有关的信息。
+</p>
+<p>
+为修复此问题，请确保被调用函数具有静态声明的类型。以下是两个示例 CL：</p>
+<ul>
+<li><strong>蓝牙</strong>：<a href="https://android-review.googlesource.com/c/platform/system/bt/+/532377">/c/platform/system/bt/+/532377</a></li>
+<li><strong>NFC</strong>：<a href="https://android-review.googlesource.com/c/platform/system/nfc/+/527858">/c/platform/system/nfc/+/527858</a></li>
+</ul>
+<p>
+另一个可能的问题是尝试在包含要汇编的间接调用的代码中启用 CFI。由于未指定汇编代码的类型，因此这会导致类型不匹配。
+</p>
+<p>
+为修复此问题，请为每个汇编调用创建原生代码封装容器，并为封装容器提供与调用指针相同的函数签名。然后，封装容器便可直接调用汇编代码。由于直接分支不由 CFI 进行插桩测试（它们不能在运行时重新定向，因此不会产生安全风险），因此这样做可以修复此问题。
+</p>
+<p>
+如果存在太多汇编函数且无法全部修复这些函数，您还可以将包含要汇编的间接调用的所有函数加入黑名单。我们建议不要采用这种做法，因为这样做会停用对这些函数进行 CFI 检查的功能，从而面临被攻击的风险。
+</p>
+<h3 id="disabling-cfi">停用 CFI</h3>
+<p>
+我们并未监测到任何性能开销，因此您不需要停用 CFI。不过，如果用户会受到影响，您可以通过在编译时提供排错程序黑名单文件，针对个别函数或源代码文件有选择性地停用 CFI。该黑名单会指示编译器停用指定位置的 CFI 插桩。
+</p>
+<p>
+Android 编译系统为 Make 和 Soong 提供对每个组件黑名单（允许您选择不接收 CFI 插桩的源代码文件或个别函数）的支持。有关黑名单文件格式的更多详情，请参阅<a href="https://clang.llvm.org/docs/ControlFlowIntegrity.html#blacklist">上游 Clang 文档</a>。
+</p>
+
+<h2 id="validation">验证</h2>
+<p>
+目前没有专门针对 CFI 的 CTS 测试。不过，您可以确保无论是否启用 CFI，CTS 测试均能通过，从而确定 CFI 不会影响设备。
+</p>
+
+</body></html>

@@ -1,0 +1,78 @@
+<html devsite><head>
+    <title>供应商 init</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2018 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          //www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>
+init 进程具有几乎不受限制的权限，并可使用系统分区和供应商分区中的输入脚本在启动过程中初始化系统。该访问权限会导致 Treble 系统/供应商拆分中出现巨大漏洞，因为供应商脚本可能会指示 init 访问不属于稳定系统-供应商 ABI（应用二进制接口）的文件、属性等。
+</p>
+<p>
+<em></em>供应商 init 设计为使用单独的安全增强型 Linux (SELinux) 域 <code>vendor_init</code>，利用供应商专用权限运行 <code>/vendor</code> 中的命令，从而填补此漏洞。
+</p>
+<h2 id="mechanism">机制</h2>
+<p>
+供应商 init 会在启动过程的早期派生在 SELinux 环境 <code>u:r:vendor_init:s0</code> 中运行的 init 子进程。此 SELinux 环境具有的权限明显少于默认 init 环境，并且其访问权限仅限于供应商专用或属于稳定系统-供应商 ABI 的文件、属性等。
+</p>
+<p>
+Init 会检查它加载的每个脚本以查看其路径是否以 <code>/vendor</code> 开头，如果是，则添加标记以指示其命令必须在供应商 init 环境中运行。每个内置 init 都使用布尔值进行注释，该布尔值指定是否必须在供应商 init 子进程中运行相应命令：
+</p>
+<ul>
+<li>访问文件系统的大多数命令都被注释为在供应商 init 子进程中运行，因此受供应商 init SEPolicy 的约束。</li>
+<li>大多数会影响内部 init 状态的命令（例如，启动和停止服务）都在普通 init 进程中运行。这些命令能获知供应商脚本正在调用它们来处理它们自己的非 SELinux 权限。</li>
+</ul>
+<p>
+Init 的主处理循环包含一项检查，以检查是否会发生以下情况：如果某个命令被注释为在供应商子进程中运行并且源自供应商脚本，则系统会通过进程间通信 (IPC) 将该命令发送到供应商 init 子进程，然后这个子进程会运行该命令并将结果发送回 init。
+</p>
+<h2 id="using-vendor-init">使用供应商 init</h2>
+<p>
+供应商 init 默认处于启用状态，其限制适用于 <code>/vendor</code> 分区中存在的所有 init 脚本。对于其脚本尚未访问系统专用文件、属性等的供应商，供应商 init 应该是透明的。
+</p>
+<p>
+但是，如果给定供应商脚本中的命令违反了供应商 init 限制，则这些命令将无法运行。如果命令运行失败，系统会在 init 内核日志中记录一行（可通过 dmesg 查看）来指示其运行失败。因 SELinux 政策限制而运行失败的任何命令都会伴有 SELinux 审核。包含 SELinux 审核的失败示例如下：
+</p>
+
+<pre class="devsite-disable-click-to-copy">type=1400 audit(1511821362.996:9): avc: denied { search } for pid=540 comm="init" name="nfc" dev="sda45" ino=1310721 scontext=u:r:vendor_init:s0 tcontext=u:object_r:nfc_data_file:s0 tclass=dir permissive=0
+init: Command 'write /data/nfc/bad_file_access 1234' action=boot (/vendor/etc/init/hw/init.walleye.rc:422) took 2ms and failed: Unable to write to file '/data/nfc/bad_file_access': open() failed: Permission denied</pre>
+<p>
+如果某个命令运行失败，则有两种选择：
+</p>
+<ul>
+<li>如果该命令是因既有限制而运行失败（例如，如果该命令访问的是系统文件或属性），则必须以适合 Treble 的方式重新实现该命令，并仅采用稳定的接口。Neverallow 规则禁止添加访问不属于稳定系统-供应商 ABI 的系统文件的权限。</li>
+<li>如果 SELinux 标签是新的且尚未在系统 <code>vendor_init.te</code> 中为其授予权限，也未通过 neverallow 规则为其排除权限，则可以在设备专用 <code>vendor_init.te</code> 中为这个新标签授予权限。</li>
+</ul>
+<p>
+对于搭载 Android 9 之前版本的设备，可以通过将 <code>data_between_core_and_vendor_violators</code> 类型属性添加到设备专用 <code>vendor_init.te</code> 文件来绕过 neverallows 规则。
+</p>
+<p>
+对于搭载 Android 9 的设备，GTS 检查可防止使用 <code>data_between_core_and_vendor_violators</code>。
+</p>
+<h2 id="code-locations">代码位置</h2>
+<p>
+供应商 init IPC 的大部分逻辑都位于 <a href="https://android.googlesource.com/platform/system/core/+/master/init/subcontext.cpp">system/core/init/subcontext.cpp</a> 中。
+</p>
+<p>
+命令表在 <a href="https://android.googlesource.com/platform/system/core/+/master/init/builtins.cpp">system/core/init/builtins.cpp</a> 的 <code>BuiltinFunctionMap</code> 类中，包含用于指示是否必须在供应商 init 子进程中运行相应命令的注释。
+</p>
+<p>
+供应商 init 的 SEPolicy 被拆分到 system/sepolicy 中的 (<a href="https://android.googlesource.com/platform/system/sepolicy/+/master/private/vendor_init.te">system/sepolicy/private/vendor_init.te</a>) 私有目录和 (<a href="https://android.googlesource.com/platform/system/sepolicy/+/master/public/vendor_init.te">system/sepolicy/public/vendor_init.te</a>) 公共目录。
+</p>
+	
+
+</body></html>

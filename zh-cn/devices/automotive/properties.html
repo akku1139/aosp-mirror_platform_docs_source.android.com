@@ -59,60 +59,100 @@ int32_t operation)</code>
 <p>属性可以是只读、只写（用于将信息传递到车载 HAL 一级），也可以是能够读取和写入（对大多数属性而言支持读写是可选的）。每个属性都由 int32 键唯一标识，且具有预定义的类型 (<code>value_type</code>)：</p>
 
 <ul>
-<li><code>INT32</code>（和数组）、<code>INT64</code>、<code>BOOLEAN</code>、<code>FLOAT</code>（和数组）、字符串、字节。</li>
-<li>区域类型除了值之外还有区域。</li>
+<li><code>BYTES</code></li>
+<li><code>BOOLEAN</code></li>
+<li><code>FLOAT</code></li>
+<li><code>FLOAT[]</code></li>
+<li><code>INT32</code></li>
+<li><code>INT32[]</code></li>
+<li><code>INT64</code></li>
+<li><code>INT64[]</code></li>
+<li><code>STRING</code></li>
+</ul>
+<p>区域属性可能具有多个值，具体取决于属性所支持的区域数量。</p>
+
+<h2 id="area_type">区域类型</h2>
+<p>车载 HAL 定义了多种区域类型：</p>
+<ul>
+<li><code>GLOBAL</code>
+<br />此属性是单一实例，不具备多个区域。</li>
+<li><code>WINDOW</code>
+<br />基于车窗的区域，使用 <code>VehicleAreaWindow</code> 枚举。</li>
+<li><code>MIRROR</code>
+<br />基于车镜的区域，使用 <code>VehicleAreaMirror</code> 枚举。</li>
+<li><code>SEAT</code>
+<br />基于座椅的区域，使用 <code>VehicleAreaSeat</code> 枚举。</li>
+<li><code>DOOR</code>
+<br />基于车门的区域，使用 <code>VehicleAreaDoor</code> 枚举。</li>
+<li><code>WHEEL</code>
+<br />基于车轮的区域，使用 <code>VehicleAreaWheel</code> 枚举。</li>
+</ul>
+<p>每个区域属性都必须使用预定义的区域类型。每种区域类型都有一组在区域类型的枚举中定义的位标记。例如，SEAT 区域定义了 VehicleAreaSeat 枚举：</p>
+<ul>
+<li><code>ROW_1_LEFT = 0x0001</code></li>
+<li><code>ROW_1_CENTER = 0x0002</code></li>
+<li><code>ROW_1_RIGHT = 0x0004</code></li>
+<li><code>ROW_2_LEFT = 0x0010</code></li>
+<li><code>ROW_2_CENTER = 0x0020</code></li>
+<li><code>ROW_2_RIGHT = 0x0040</code></li>
+<li><code>ROW_3_LEFT = 0x0100</code></li>
+<li>…</li>
 </ul>
 
-<h2 id-="zone_type">区域类型</h2>
-<p>车载 HAL 定义了 3 种区域类型：</p>
+<h2 id="area_id">区域 ID</h2>
+<p>区域属性通过区域 ID 进行处理。每个区域属性都可以支持一个或多个区域 ID。区域 ID 由其各自枚举中的一个或多个标记组成。例如，使用 <code>VehicleAreaSeat</code> 的属性可能会使用以下区域 ID：</p>
 <ul>
-<li><code>vehicle_zone</code>
-<br />基于排的区域。</li>
-<li><code>vehicle_seat</code>
-<br />基于座位的区域。</li>
-<li><code>vehicle_window</code>
-<br />基于窗户的区域。</li>
+<li><code>ROW_1_LEFT | ROW_1_RIGHT</code>
+<br />区域 ID 适用于两个前排座椅。</li>
+<li><code>ROW_2_LEFT</code>
+<br />仅适用于左后座椅。</li>
+<li><code>ROW_2_RIGHT</code>
+<br />仅适用于右后座椅。</li>
 </ul>
-<p>每个区域属性都应使用预定义的区域类型。如有必要，您可以为每个属性使用自定义区域类型（有关详情，请参阅<a href="#prop_custom">处理自定义属性</a>）。</p>
+
+<h2 id="status">属性状态</h2>
+<p>每个属性值都随附一个 <code>VehiclePropertyStatus</code> 值。该值指示相应属性的当前状态：
+</p><ul>
+<li><code>AVAILABLE</code>
+<br />属性可用，且值有效。</li>
+<li><code>UNAVAILABLE</code>
+<br />属性值目前不可用。该值用于受支持属性的暂时停用的功能。</li>
+<li><code>ERROR</code>
+<br />该属性有问题。</li>
+</ul>
+<aside class="note"><strong>注意</strong>：如果车辆不支持某个属性，则不应将其包含在 VHAL 中。您不得将属性状态永久性设置为 <code>UNAVAILABLE</code> 来表示不受支持的属性。</aside>
 
 <h2 id="prop_config">配置属性</h2>
 <p>使用 <code>vehicle_prop_config_t</code> 为每个属性提供配置信息。具体信息包括：</p>
 <ul>
 <li><code>access</code>（r、w、rw）</li>
-<li><code>change_mode</code>（表示监视属性的方式：变化模式还是连续模式）</li>
-<li><code>min_value</code>（int32、float、int64）、<code>max_value</code>（int32、float、int64）</li>
-<li><code>min_sample_rate</code>、<code>max_sample_rate</code></li>
-<li><code>permission_model</code></li>
+<li><code>changeMode</code>（表示监视属性的方式：变化模式还是连续模式）</li>
+<li><code>areaConfigs</code>（areaId、最小值和最大值）</li>
+<li><code>configArray</code>（其他配置参数）</li>
+<li><code>configString</code>（以字符串的形式传递的其他信息）</li>
+<li><code>minSampleRate</code>、<code>max_sample_rate</code></li>
 <li><code>prop</code>（属性 ID、int）</li>
-<li><code>value_type</code></li>
-<li><code>zone_flags</code>（将受支持的区域表示为位标记）</li>
 </ul>
-<p>此外，某些属性具有表示功能的具体配置标记。</p>
 
 <h2 id="zone_prop">处理区域属性</h2>
-<p>区域属性相当于多个属性的集合，其中每个子属性都可由指定的区域值访问。</p>
+<p>区域属性相当于多个属性的集合，其中每个子属性都可由指定的区域 ID 值访问。</p>
 <ul>
-<li>区域属性的 <code>get</code> 调用始终包含请求中的区域，因此，只应返回所请求区域的当前值。</li>
-<li>区域属性的 <code>set</code> 调用始终包含请求中的区域，因此，只应更改所请求的区域。</li>
-<li><code>subscribe</code> 调用包括所有已订阅区域的标记。不应报告来自未订阅区域的事件。</li>
+<li>区域属性的 <code>get</code> 调用始终包含请求中的区域 ID，因此，系统只会返回所请求的区域 ID 的当前值。如果属性是全局属性，则区域 ID 为 0。</li>
+<li>区域属性的 <code>set</code> 调用始终包含请求中的区域 ID，因此只有请求的区域 ID 会发生更改。</li>
+<li><code>subscribe</code> 调用将针对相应属性的所有区域 ID 生成事件。</li>
 </ul>
 
 <h3 id="get">Get 调用</h3>
-<p>在初始化期间，由于尚未收到匹配的车辆网络消息，属性的值可能不可用。在这种情况下，<code>get</code> 调用应该返回 <code>-EAGAIN</code>。某些属性（如 HVAC）具有独立的电源开/关属性。这种属性的 <code>get</code> 的调用（关机时）应返回特殊值 <code>(VEHICLE_INT_OUT_OF_RANGE_OFF/VEHICLE_FLOAT_OUT_OF_RANGE_OFF)</code>，而不是返回错误。</p>
-<p>此外，某些属性（如 HVAC 温度）可以用某个值来表示其处于最大功率模式，而不是特定的温度值。在这种情况下，请使用特殊值表示这种状态。</p>
-<ul>
-<li>VEHICLE_INT_OUT_OF_RANGE_MAX/MIN</li>
-<li>VEHICLE_FLOAT_OUT_OF_RANGE_MAX/MIN</li>
-</ul>
+<p>在初始化期间，由于尚未收到匹配的车辆网络消息，属性的值可能不可用。在这种情况下，<code>get</code> 调用应该返回 <code>-EAGAIN</code>。某些属性（如 HVAC）具有独立的电源开/关属性。这种属性的 <code>get</code> 的调用（关闭电源时）应返回 <code>UNAVAILABLE</code> 状态，而不是返回错误。</p>
 
 <p>示例：获取 HVAC 温度</p>
-<img src="../images/vehicle_hvac_get.png" alt="车载 HAL get 获取 HVAC 的示例"/>
+<img src="../images/vehicle_hvac_get.png" alt="车载 HAL 获取 HVAC 的示例"/>
 <p class="img-caption"><strong>图 1</strong>. 获取 HVAC 温度（CS = CarService、VNS = VehicleNetworkService、VHAL = 车载 HAL）</p>
 
 <h3 id="set">Set 调用</h3>
 <p><code>set</code> 调用属于异步操作，涉及进行所请求更改之后的事件通知。在典型的操作中，<code>set</code> 调用会导致在车辆网络中发出更改请求。拥有该属性的电子控制单元 (ECU) 执行更改后，更新后的值通过车辆网络返回，而车载 HAL 会将更新后的值作为事件发送给车辆网络服务 (VNS)。</p>
 <p>某些 <code>set</code> 调用可能要求准备好初始数据，而这些数据在初始化期间可能尚不可用。在这种情况下，<code>set</code> 调用应该返回 <code>-EAGAIN</code>。某些具有独立的电源开/关的属性应在属性关闭且无法设置时返回 <code>-ESHUTDOWN</code>。</p>
-<p>在 <code>set</code> 生效之前，<code>get</code> 不一定会返回所设置的值。例外情况是更改模式为 <code>VEHICLE_PROP_CHANGE_MODE_ON_SET.</code> 的属性。此属性仅在被 Android 之外的外部组件（如 <code>VEHICLE_PROPERTY_UNIX_TIME</code> 等时钟属性）设置时才通知更改。</p>
+<p>在 <code>set</code> 生效之前，<code>get</code> 不一定会返回所设置的值。</p>
 
 <p>示例：设置 HVAC 温度</p>
 <img src="../images/vehicle_hvac_set.png" alt="车载 HAL 设置 HVAC 的示例"/>
@@ -121,53 +161,111 @@ int32_t operation)</code>
 <h2 id="prop_custom">处理自定义属性</h2>
 <p>为了满足合作伙伴的特定需求，车载 HAL 允许使用针对系统应用的自定义属性。在使用自定义属性时，请遵循以下指南：</p>
 <ul>
-<li>键值应该在 [<code>VEHICLE_PROPERTY_CUSTOM_START,
-VEHICLE_PROPERTY_CUSTOM_END</code>] 范围内。其他范围会预留以供将来的扩展功能使用；使用这种范围可能会导致将来的 Android 版本中出现冲突。</li>
-<li>仅使用定义的 <code>value_type</code>。BYTES 类型允许传递原始数据，因此，在大多数情况下是足够的。通过自定义属性频繁发送大数据可能会减缓整个车辆网络的访问速度，因此，在添加大量需要 HAL 处理的数据时要小心谨慎。</li>
-<li>将访问策略添加到 <code>vendor_vns_policy.xml</code>（否则所有访问都将被拒）。</li>
-<li>通过 <code>VendorExtensionManager</code>（适用于 Java 组件）或 Vehicle Network Service API（适用于本机）访问。请勿修改其他汽车 API，因为这样做可能会在将来导致兼容性问题。</li>
+<li>应使用以下字段生成属性 ID：
+  <ul>
+    <li><code>VehiclePropertyGroup:VENDOR</code>
+      <br /><code>VENDOR</code> 组仅用于自定义属性。</li>
+    <li><code>VehicleArea</code>
+      <br />选择适当的区域类型。</li>
+    <li><code>VehiclePropertyType</code>
+      <br />选择适当的数据类型。BYTES 类型允许传递原始数据，因此，在大多数情况下是足够的。通过自定义属性频繁发送大数据可能会减缓整个车辆网络的访问速度，因此，在添加大量需要 HAL 处理的数据时要小心谨慎。</li>
+    <li>属性 ID
+      <br />为自定义属性选择一个四位半字节 ID。</li>
+  </ul></li>
+<li>通过 <code>CarPropertyManager</code>（适用于 Java 组件）或 Vehicle Network Service API（适用于本机）访问。请勿修改其他汽车 API，因为这样做可能会在将来导致兼容性问题。</li>
 </ul>
 
 <h2 id="prop_hvac">处理 HVAC 属性</h2>
-<p>您可以使用车载 HAL 控制 HVAC，具体方法是设置与 HVAC 相关的属性。大多数 HVAC 属性都是区域属性，但也有一些非区域（全局）属性。定义的示例属性包括：</p>
+<p>
+  您可以使用车载 HAL 控制 HVAC，具体方法是设置与 HVAC 相关的属性。大多数 HVAC 属性都是区域属性，但也有一些是非区域（全局）属性。定义的示例属性包括：</p>
+
 <ul>
-<li><code>VEHICLE_PROPERTY_HVAC_TEMPERATURE_SET</code>
-<br />按区域设置温度。</li>
-<li><code>VEHICLE_PROPERTY_HVAC_RECIRC_ON</code>
-<br />按区域控制再循环。</li>
+  <li><code>VEHICLE_PROPERTY_HVAC_TEMPERATURE_SET</code>
+  <br />按区域设置温度。</li>
+  <li><code>VEHICLE_PROPERTY_HVAC_RECIRC_ON</code>
+  <br />按区域控制再循环。</li>
 </ul>
-<p>有关 HVAC 属性的完整列表，请在 <code>vehicle.h</code> 中搜索 <code>VEHICLE_PROPERTY_HVAC_*</code>。</p>
+
+<p>
+  有关 HVAC 属性的完整列表，请在 <code>types.hal</code> 中搜索 <code>VEHICLE_PROPERTY_HVAC_*</code>。
+</p>
+
+<p>
+  当 HVAC 属性使用 <code>VehicleAreaSeat</code> 时，需遵守将区域 HVAC 属性映射到区域 ID 的其他规则。汽车中的每个可用座椅都必须是区域 ID 数组中某个区域 ID 的一部分。
+</p>
+
+<p>
+  示例 1：某辆汽车有两个前排座椅 <code>(ROW_1_LEFT, ROW_1_RIGHT)</code> 和三个后排座椅 <code>(ROW_2_LEFT, ROW_2_CENTER, ROW_2_RIGHT)</code>。有两个温度控制单元，分别位于驾驶员侧和乘客侧。
+</p>
+
+<ul>
+  <li><code>HVAC_TEMPERATURE SET</code> 的区域 ID 的有效映射集是：
+  <ul>
+    <li><code>ROW_1_LEFT | ROW_2_LEFT</code></li>
+    <li><code>ROW_1_RIGHT | ROW_2_CENTER | ROW_2_RIGHT</code></li>
+    </ul>
+  </li>
+  <li>同一硬件配置的替代映射是：
+  <ul>
+    <li><code>ROW_1_LEFT | ROW_2_LEFT | ROW_2_CENTER</code></li>
+    <li><code>ROW_1_RIGHT | ROW_2_RIGHT</code></li>
+  </ul>
+  </li>
+</ul>
+
+<p>
+  示例 2：某辆汽车有三排座位，第一排两个座椅 <code>(ROW_1_LEFT, ROW_1_RIGHT)</code>、第二排三个座椅 <code>(ROW_2_LEFT, ROW_2_CENTER, ROW_2_RIGHT)</code>，第三排三个座椅 <code>(ROW_3_LEFT, ROW_3_CENTER, ROW_3_RIGHT)</code>。有三个温度控制单元，分别位于驾驶员侧、乘客侧和后侧。将 <code>HVAC_TEMPERATURE_SET</code> 映射到区域 ID 的合理方法是三元素数组：
+</p>
+
+<ul>
+  <li><code>ROW_1_LEFT</code></li>
+  <li><code>ROW_1_RIGHT</code></li>
+  <li><code>ROW_2_LEFT | ROW_2_CENTER | ROW_2_RIGHT | ROW_3_LEFT | ROW_3_CENTER
+  | ROW_3_RIGHT</code></li>
+</ul>
 
 <h2 id="prop_sensor">处理传感器属性</h2>
-<p>车载 HAL 传感器属性表示真实的传感器数据或策略信息，如驾驶状态。某些传感器信息（如驾驶状态和日间/夜间模式）不限制任何应用的访问，因为这些数据是构建安全车载应用所必需的。其他传感器信息（如车辆速度）更为敏感，需要用户可以管理的特定权限。</p>
-<p>支持的传感器属性包括：</p>
+
+<p>
+  车载 HAL 传感器属性表示真实的传感器数据或策略信息（如驾驶状态）。任何应用都可以不受限制地访问某些传感器信息（如驾驶状态和日间/夜间模式），因为这些数据是构建安全车载应用所必需的。其他传感器信息（如车辆速度）较为敏感，需要获取用户可管理的特定权限才能查看。
+</p>
+
+<p>
+  支持的传感器属性包括：
+</p>
+
 <ul>
-<li><code>DRIVING_STATUS</code>
-<br />应该支持。表示在当前驾驶状态下允许的操作。此信息用于在驾驶过程中屏蔽不安全的应用。</li>
-<li><code>NIGHT_MODE</code>
-<br />应该支持。确定日间/夜间显示模式。</li>
-<li><code>GEAR_SELECTION/CURRENT_GEAR</code>
-<br />驾驶员选择的挡位与实际挡位。</li>
-<li><code>VEHICLE_SPEED</code>
-<br />车速。受权限保护。</li>
-<li><code>ODOMETER</code>
-<br />当前里程表读数。受权限保护。
-</li>
-<li><code>FUEL_LEVEL</code>
-<br />当前油位 (%)。</li>
-<li><code>FUEL_LEVEL_LOW</code>
-<br />油位是否较低（布尔值）。</li>
+  <li><code>NIGHT_MODE</code>
+  <br />应该支持。确定日间/夜间显示模式。</li>
+  <li><code>GEAR_SELECTION/CURRENT_GEAR</code>
+  <br />驾驶员选择的挡位与实际挡位。</li>
+  <li><code>VEHICLE_SPEED</code>
+  <br />车速。受权限保护。</li>
+  <li><code>ODOMETER</code>
+  <br />当前里程表读数。受权限保护。
+  </li>
+  <li><code>FUEL_LEVEL</code>
+  <br />当前油位 (%)。</li>
+  <li><code>FUEL_LEVEL_LOW</code>
+  <br />油位是否较低（布尔值）。</li>
 </ul>
 
 <h2 id="vms">车载地图服务 (VMS)</h2>
 
-<p>Android 8.1 引入了对车载地图服务 (VMS) 的支持，这是一种仅用于 Android Automotive 实现的新车辆属性。
-VMS 可用于支持常见车辆功能（例如高级驾驶辅助系统 (<a href="https://en.wikipedia.org/wiki/Advanced_driver-assistance_systems" class="external">ADAS</a>)）的内置车载地图服务。
+<p>
+  车载地图服务 (VMS) 提供了一种可通过发布/订阅接口在客户端之间交换地图数据的机制，旨在支持常见的车辆功能，例如高级驾驶辅助系统 (<a href="https://en.wikipedia.org/wiki/Advanced_driver-assistance_systems" class="external">ADAS</a>)。
+  客户端可能包括通过 Vehicle HAL 或 Android 特权应用中的 VMS 属性进行交互的车载系统。在 VMS 上共享的数据仅限用于地图数据，供车载系统和支持的应用使用。
+</p>
 
-</p><aside class="note"><strong>注意</strong>：有关 Automotive 兼容性要求的详细信息，请参阅 <a href="https://source.android.com/compatibility/android-cdd#2_5_automotive_requirements">Automotive 要求</a>。</aside>
+<p>VMS 仅适用于 Android Automotive 实现；AOSP 不包含发布或订阅 VMS 的默认客户端。
+</p>
 
-<p>VMS 属性是一种复杂的数据类型，它可以表示在 Android Automotive 实现与负责管理车载地图数据的底层车辆硬件之间交换的地图数据。</p>
+<p>
+  对于 Vehicle HAL 中的 VMS 属性，<a href="https://android.googlesource.com/platform/hardware/interfaces/+/master/automotive/vehicle/2.0/types.hal#3216" class="external">VmsMessageType</a> 枚举中的<a href="https://android.googlesource.com/platform/hardware/interfaces/+/master/automotive/vehicle/2.0/types.hal" class="external">车载 HAL 2.0</a> 中对消息类型和数据结构进行了说明，其中列出了受支持的 VMS 消息的类型。此枚举用作车辆属性整数数组中的第一个整数，并用于确定消息其余部分的解码方式。
+</p>
 
-<p>AOSP 不包含 VMS 的默认实现，它目前只以属性和相关枚举的形式存在。<a href="https://android.googlesource.com/platform/hardware/interfaces/+/master/automotive/vehicle/2.0/types.hal#3216">VMSMessageType</a> 枚举中的<a href="https://android.googlesource.com/platform/hardware/interfaces/+/master/automotive/vehicle/2.0/types.hal">车载 HAL 2.0</a> 中对消息类型和数据结构进行了说明，其中列出了受支持的 VMS 消息的类型。此枚举用作车辆属性整数数组中的第一个整数，并用于确定消息其余部分的解码方式。</p>
+<aside class="note">
+  <strong>注意</strong>：有关 Automotive 兼容性要求的详细信息，请参阅 <a href="/compatibility/android-cdd#2_5_automotive_requirements">Automotive 要求</a>。
+</aside>
 
 </body></html>

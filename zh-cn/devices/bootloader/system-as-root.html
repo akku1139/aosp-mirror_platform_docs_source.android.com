@@ -1,0 +1,253 @@
+<html devsite><head>
+  <title>System-as-root</title>
+  <meta name="project_path" value="/_project.yaml"/>
+  <meta name="book_path" value="/_book.yaml"/>
+</head>
+
+<body>
+  <!--
+      Copyright 2018 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+  <p>搭载 Android 9 的所有新设备都必须使用 system-as-root（<code>BOARD_BUILD_SYSTEM_ROOT_IMAGE</code> 必须为 <code>true</code>），它可以将 <code>ramdisk.img</code> 合并到 <code>system.img</code>，而后者会反过来再作为 rootfs 进行装载。对于要升级到 Android 9 的设备，使用 system-as-root 并非强制要求。本文档介绍了 system-as-root、列出了 dm-verity 支持的内核要求（包括所依赖的内核补丁程序），还提供了一些设置示例。</p>
+
+  <h2 id="about-system-only-otas">关于系统专用 OTA</h2>
+
+  <p>当前 Android 生态系统支持<a href="/devices/tech/ota/ab/ab_faqs#how-did-ab-affect-the-2016-pixel-partition-sizes">两种类型的分区布局</a>：</p>
+
+  <ul>
+    <li>在 A/B 分区架构中，<code>system</code> 分区作为 rootfs 装载。</li>
+
+    <li>在非 A/B 分区架构中，<code>/boot</code> 分区中的 <code>ramdisk.img</code> 会被加载到内存中（反过来再作为 rootfs 进行装载），而 <code>system</code> 分区则在 <code>/system</code> 中装载。</li>
+  </ul>
+
+  <p>在 Android 8.0 中进行的架构更改（在 <a href="/devices/architecture/#hidl">Project Treble</a> 项目中）支持系统专用 OTA（其中 <code>system.img</code> 可在不更改其他分区的情况下跨主要 Android 版本进行更新）。不过，对于非 A/B 设备来说，由于 <code>ramdisk.img</code> 位于 <code>/boot</code> 分区中，因此它无法使用 Android 8.x 架构通过系统专用 OTA 进行更新。这样一来，旧的 <code>ramdisk.img</code> 可能不适用于新的 <code>system.img</code>，具体原因如下：</p>
+
+  <ul>
+    <li><code>ramdisk.img</code> 中较旧的 <code>/init</code> 可能无法解析 <code>/system</code> 上的 *.rc 文件。</li>
+
+    <li>ramdisk 包含 <code>/init.rc</code>，它也可能已过期（相较于新 <code>/system</code> 所要求的）。</li>
+  </ul>
+
+  <p>为确保系统专用 OTA 按预期运行，Android 9 中<strong>必须使用</strong> system-as-root。非 A/B 设备必须从 ramdisk 分区布局切换到 system-as-root 分区布局；A/B 设备已被要求使用 system-as-root，因此无需做出改动。</p>
+
+  <h2 id="about-ab-nonab-devices">关于 A/B 设备和非 A/B 设备</h2>
+
+  <p>A/B 设备和非 A/B 设备的分区详情如下：</p>
+
+  <table>
+    <tbody><tr>
+      <th>A/B 设备</th>
+
+      <th>非 A/B 设备</th>
+    </tr>
+    <tr>
+      <td>每个分区（userdata 除外）都包含两个副本（插槽）：<ul>
+          <li>/boot_a</li>
+
+          <li>/boot_b</li>
+
+          <li>/system_a</li>
+
+          <li>/system_b</li>
+
+          <li>/vendor_a</li>
+
+          <li>/vendor_b</li>
+
+          <li>…</li>
+        </ul>
+      </td>
+
+      <td>每个分区都包含一个副本，无其他备份分区。
+
+        <ul>
+          <li>/boot</li>
+
+          <li>/system</li>
+
+          <li>/vendor</li>
+
+          <li>…</li>
+        </ul>
+      </td>
+    </tr>
+  </tbody></table>
+
+  <p>要详细了解 A/B 设备和非 A/B 设备，请参阅 <a href="/devices/tech/ota/ab_updates">A/B（无缝）系统更新</a>。</p>
+
+  <h2 id="about-system-as-root">关于 system-as-root</h2>
+
+  <p>在 Android 9 中，非 A/B 设备应采用 system-as-root，以便通过系统专用 OTA 进行更新。</p>
+
+<aside class="note"><strong>注意</strong>：如果设备使用的是 A/B 分区架构，则无需做出任何改动。</aside>
+
+  <p>与将 <code>/boot</code> 改编为 <a href="/devices/tech/ota/ab_implement#recovery">recovery</a> 分区的 A/B 设备不同，<strong>非 A/B 设备必须使 <code>/recovery</code> 分区单独存在，因为它们没有后备插槽分区</strong>（例如，从 <code>boot_a</code> → <code>boot_b</code>）。如果在非 A/B 设备上移除 <code>/recovery</code> 并使其与 A/B 架构类似，那么在 <code>/boot</code> 分区更新失败时，恢复模式可能会遭到破坏。因此，对于非 A/B 设备来说，<code>/recovery</code> 分区<strong>必须</strong>作为单独的分区存在（不同于非 A/B 设备的 <code>/boot</code>），这意味着恢复映像将继续延迟更新（即如同 <a href="/devices/tech/ota/nonab/#life-ota-update">pre-9</a> 设备中那样）。</p>
+
+  <p>非 A/B 设备在使用 Android 9 前后的分区布局差异：</p>
+
+  <table>
+    <tbody><tr>
+      <th>组件</th>
+
+      <th>映像</th>
+
+      <th>ramdisk（9 之前）</th>
+
+      <th>system-as-root（9 之后）</th>
+    </tr>
+
+    <tr>
+      <td rowspan="3"><strong>映像内容</strong>
+      </td>
+
+      <td>boot.img</td>
+
+      <td>包含内核和 ramdisk.img：<pre class="prettyprint">
+
+ramdisk.img
+  -/
+    - init.rc
+    - init
+    - etc -&gt; /system/etc
+    - system/ (mount point)
+    - vendor/ (mount point)
+    - odm/ (mount point)
+    ...</pre>
+      </td>
+
+      <td>仅包含正常启动内核。</td>
+    </tr>
+
+    <tr>
+      <td>recovery.img</td>
+
+      <td colspan="2">包含恢复内核和 recovery-ramdisk.img。</td>
+    </tr>
+
+    <tr>
+      <td>system.img</td>
+
+      <td>包含以下内容：<pre class="prettyprint">
+
+system.img
+  -/
+    - bin/
+    - etc
+    - vendor -&gt; /vendor
+    - ...</pre>
+      </td>
+
+      <td>包含原始 system.img 和 ramdisk.img 的合并内容：<pre class="prettyprint">
+
+system.img
+  -/
+    - init.rc
+    - init
+    - etc -&gt; /system/etc
+    - system/
+      - bin/
+      - etc/
+      - vendor -&gt; /vendor
+      - ...
+    - vendor/ (mount point)
+    - odm/ (mount point)
+    ...</pre>
+      </td>
+    </tr>
+
+    <tr>
+      <td><strong>分区布局</strong>
+      </td>
+
+      <td>无</td>
+
+      <td>
+        <ol>
+          <li>/boot</li>
+
+          <li>/system</li>
+
+          <li>/recovery</li>
+
+          <li>/vendor 等</li>
+        </ol>
+      </td>
+
+      <td>
+        <ol>
+          <li>/boot</li>
+
+          <li>/system</li>
+
+          <li>/recovery</li>
+
+          <li>/vendor 等</li>
+        </ol>
+      </td>
+    </tr>
+  </tbody></table>
+
+  <h2 id="setting-up-dm-verity">设置 dm-verity</h2>
+
+  <p>在 system-as-root 中，内核必须使用 <a href="https://www.kernel.org/doc/Documentation/device-mapper/verity.txt" class="external">dm-verity</a> 在 <strong><code>/</code></strong>（装载点）下装载 <code>system.img</code>。AOSP 支持 <code>system.img</code> 的下列 dm-verity 实现：</p>
+
+  <ol>
+    <li>对于 <a href="/security/verifiedboot/">vboot 1.0</a>，内核必须在 <code>/system</code> 上解析 Android 专用<a href="/security/verifiedboot/dm-verity#metadata">元数据</a>，然后转换为 <a href="https://www.kernel.org/doc/Documentation/device-mapper/verity.txt" class="external">dm-verity 参数</a>以设置 dm-verity。需要这些<a href="/devices/tech/ota/ab_implement#kernel">内核补丁程序</a>。</li>
+
+    <li>对于 vboot 2.0 (<a href="https://android.googlesource.com/platform/external/avb/" class="external">AVB</a>)，引导加载程序必须先整合 <a href="https://android.googlesource.com/platform/external/avb/+/master/libavb/" class="external">external/avb/libavb</a>，external/avb/libavb 随后会解析 <code>/system</code> 的<a href="https://android.googlesource.com/platform/external/avb/+/master/libavb/avb_hashtree_descriptor.h" class="external">哈希树描述符</a>），然后将其转换为 <a href="https://www.kernel.org/doc/Documentation/device-mapper/verity.txt" class="external">dm-verity 参数</a>，最后再通过内核命令行将这些参数传递给内核（<code>/system</code> 的哈希树描述符可能位于 <code>/vbmeta</code> 或 <code>/system</code> 本身上）。<br />
+      <br />需要下列内核补丁程序：<ul>
+        <li><a href="https://android-review.googlesource.com/#/c/kernel/common/+/158491/" class="external">https://android-review.googlesource.com/#/c/kernel/common/+/158491/</a>
+        </li>
+
+        <li><a href="https://android-review.googlesource.com/q/hashtag:avb-kernel-patch-4.4" class="external">内核 4.4 补丁程序</a>、<a href="https://android-review.googlesource.com/q/hashtag:avb-kernel-patch-4.9" class="external">内核 4.9 补丁程序</a>等<aside class="note"><strong>注意</strong>：您也可以在 <a href="https://android.googlesource.com/platform/external/avb/+/master/contrib/linux/" class="external">external/avb/contrib/linux/</a>{4.4,4.9,etc.}/* 上找到上述 AVB 专用内核补丁程序文件。
+</aside>
+        </li>
+      </ul>
+    </li>
+  </ol>
+
+  <p>下面是来自真实设备的示例，显示的是内核命令行中 system-as-root 的 dm-verity 相关设置：</p>
+
+  <p><strong><em>vboot 1.0</em></strong>
+  </p>
+
+  <pre class="prettyprint">ro root=/dev/dm-0 rootwait skip_initramfs init=/init
+dm="system none ro,0 1 android-verity /dev/sda34"
+veritykeyid=id:7e4333f9bba00adfe0ede979e28ed1920492b40f</pre>
+
+  <p><strong><em>vboot 2.0 (AVB)</em></strong>
+  </p>
+
+  <pre class="prettyprint">
+ro root=/dev/dm-0 rootwait  skip_initramfs init=/init
+
+dm="1 vroot none ro 1,0 5159992 verity 1
+PARTUUID=00000016-0000-0000-0000-000000000000
+PARTUUID=00000016-0000-0000-0000-000000000000 4096 4096 644999 644999
+sha1 d80b4a8be3b58a8ab86fad1b498640892d4843a2
+8d08feed2f55c418fb63447fec0d32b1b107e42c 10 restart_on_corruption
+ignore_zero_blocks use_fec_from_device
+PARTUUID=00000016-0000-0000-0000-000000000000 fec_roots 2 fec_blocks
+650080 fec_start 650080"
+  </pre>
+
+  <h2 id="device-specific-folders">特定于设备的根文件夹</h2>
+
+<p>借助 system-as-root，在设备上刷写<a href="/setup/build/gsi">常规系统映像 (GSI)</a> 之后（以及在运行<a href="/compatibility/vts/">供应商测试套件</a>测试之前），任何通过 <code>BOARD_ROOT_EXTRA_FOLDERS</code> 添加的特定于设备的根文件夹都将消失，因为整个根目录内容已被 system-as-root GSI 取而代之。如果存在对特定于设备的根文件夹的依赖性（例如此类文件夹用作装载点），则移除这些文件夹可能会导致设备无法启动。</p>
+
+  <p>要避免出现此问题，请不要使用 <code>BOARD_ROOT_EXTRA_FOLDERS</code> 来添加特定于设备的根文件夹（此类文件夹将来可能会被弃用）。如果您需要指定特定于设备的装载点，请使用 <code>/mnt/vendor/&lt;mount point&gt;</code>（已在这些<a href="https://android-review.googlesource.com/q/topic:vmount" class="external">更改列表</a>中添加）。这些特定于供应商的装载点可在 <code>fstab</code> 设备树（适用于第一阶段的装载）和 <code>/vendor/etc/fstab.{ro.hardware}</code> 文件中直接指定，而无需进行额外设置（因为 <code>fs_mgr</code> 将在 <code>/mnt/vendor/*</code> 下自动创建它们）。</p>
+
+</body></html>

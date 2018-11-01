@@ -1,0 +1,221 @@
+<html devsite><head>
+    <title>测量生物识别解锁模式的安全性</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>
+如今，基于生物识别的解锁模式几乎仅通过错误接受率 (FAR) 指标（即模型错误地接受随机选择的有误输入的概率）进行评估。<em></em>虽然它是很有用的测量指标，但它无法提供足够信息来评估模型抵御针对性攻击的效果。
+</p>
+
+<h2 id="metrics">指标</h2>
+
+<p>
+Android 8.1 引入了两项与生物识别解锁相关的新指标，旨在帮助设备制造商更准确地评估设备安全性：
+</p>
+
+<ul>
+<li><em></em>冒名接受率 (IAR)：生物识别模型接受意图模仿已知良好样本输入的概率。例如，在 <a href="https://support.google.com/nexus/answer/6093922" class="external">Smart Lock</a> 可信声音（语音解锁）机制中，该指标将测量攻击者尝试模仿用户声音（使用相似的音调、口音等）成功解锁设备的概率。我们将此类攻击称为“冒名攻击”。<em></em></li>
+<li><em></em>欺骗接受率 (SAR)<strong></strong>：生物识别模型接受事先录制的已知良好样本的概率。例如，对于语音解锁，该指标会测量使用已录制的用户语音样本“Ok, Google”成功解锁用户手机的概率。我们将此类攻击称为“欺骗攻击”<em>。</em><strong></strong></li>
+</ul>
+
+<p>
+其中，IAR 测量并非对所有生物识别模式都有用。下面以指纹为例。攻击者可创建用户指纹的模具，并试图使用此模具绕过指纹传感器，此行为被视为欺骗攻击。但是，没有一种方法可成功模仿用户的指纹，所以没有关于指纹传感器冒名攻击的明确概念。
+</p>
+
+<p>
+但是，SAR 适用于所有生物识别模式。
+</p>
+
+<h3 id="example-attacks">攻击示例</h3>
+
+<p>
+下表列出了针对四种模式的冒名攻击和欺骗攻击示例。
+</p>
+
+<table>
+  <tbody><tr>
+   <th>模式</th>
+   <th>冒名攻击</th>
+   <th>欺骗攻击</th>
+  </tr>
+  <tr>
+   <td>指纹
+   </td>
+   <td>不适用
+   </td>
+   <td>指纹 + 指纹模具
+   </td>
+  </tr>
+  <tr>
+   <td>脸部
+   </td>
+   <td>试图看上去像是用户的脸部
+   </td>
+   <td>高分辨率照片、乳胶（或其他高质量）面罩
+   </td>
+  </tr>
+  <tr>
+   <td>语音
+   </td>
+   <td>试图听起来像是用户的声音
+   </td>
+   <td>录音
+   </td>
+  </tr>
+  <tr>
+   <td>虹膜
+   </td>
+   <td>不适用
+   </td>
+   <td>高分辨率照片 + 隐形眼镜
+   </td>
+  </tr>
+</tbody></table>
+
+<p>
+<strong>表格 1. 攻击示例</strong>
+</p>
+
+<p>
+要了解有关测量不同生物识别模式 SAR 和 IAR 的方法的建议和更多详情，请参阅<a href="#test-methods">测试方法</a>。
+</p>
+
+<h3 id="strong-weak-unlocks">安全系数高与低的解锁模式</h3>
+
+<p>
+同时考虑三个接受率（FAR、IAR 和 SAR）的解锁模式被视为安全系数高的解锁模式。在不存在冒名攻击的情况下，我们只考虑 FAR 和 SAR。
+</p>
+
+<p>
+要了解安全系数低的解锁模式的应对措施，请参阅 <a href="/compatibility/android-cdd">Android 兼容性定义文档</a> (CDD)。
+</p>
+
+<h2 id="test-methods">测试方法</h2>
+
+<p>
+我们将在此部分介绍有关测量生物识别解锁模式 SAR 和 IAR 的测试设置的注意事项，并提供关于这些测试设置的建议。有关这些指标的含义及其作用的更多信息，请参阅<a href="#metrics">指标</a>。
+</p>
+
+<h3 id="common-considerations">常见注意事项</h3>
+
+<p>
+尽管不同模式需要不同的测试设置，但有一些常见的注意事项适用于所有这些模式。
+</p>
+
+<h4 id="test-hw">测试实际硬件</h4>
+
+<p>
+如果生物识别模型是在理想条件下测试的，并且测试硬件与实际所用的移动设备不同，则采集的 SAR/IAR 指标可能会不准确。例如，使用多个麦克风在无回音室中校准的语音解锁模型，当在嘈杂环境中使用单个麦克风时，行为会明显不同。为了获得准确的指标值，应在安装了相关硬件的实际设备上进行测试，或至少使用相同硬件并以其在设备上的实际应用方式进行测试。
+</p>
+
+<h4 id="known-attacks">使用已知的攻击</h4>
+
+<p>
+目前采用的大多数生物识别模式都被成功欺骗过，并且相应的攻击方法也已公开。下面简要介绍出现已知攻击的模式对应的测试设置。建议尽可能使用此处列出的设置。
+</p>
+
+<h4 id="anticipate-attacks">预测新的攻击</h4>
+
+<p>
+对于进行了新的重大改进的模式，测试设置文档可能不包含合适的设置，并且可能不存在已知的公开攻击。在发现新攻击后，现有模式还可能需要调整测试设置。在这两种情况下，您都需要配置合理的测试设置。请使用此页面底部的<a href="https://issuetracker.google.com/issues/new?component=191476" class="external">网站反馈</a>链接告诉我们您是否已设置可添加的合理机制。
+</p>
+
+<h3 id="setups-for-different-modalities">针对不同模式的设置</h3>
+
+<h4 id="fingerprint">指纹</h4>
+
+<table>
+  <tbody><tr>
+   <td><strong>IAR</strong>
+   </td>
+   <td>不需要。
+   </td>
+  </tr>
+  <tr>
+   <td><strong>SAR</strong>
+   </td>
+   <td>
+   <ul>
+<li>使用目标指纹的模具创建虚假指纹。</li>
+<li>测量结果的精确度与指纹模具的质量密切相关。牙科中使用的硅是一个不错的选择。</li>
+<li>测试设置应测量通过模具创建的虚假指纹成功解锁设备的概率。</li>
+   </ul>
+   </td>
+  </tr>
+</tbody></table>
+
+<h4 id="face-and-iris">脸部和虹膜</h4>
+
+<table>
+  <tbody><tr>
+   <td><strong>IAR</strong>
+   </td>
+   <td>下限将由 SAR 捕获，因此不需要单独测量该指标。
+   </td>
+  </tr>
+  <tr>
+   <td><strong>SAR</strong>
+   </td>
+   <td>
+   <ul>
+<li>使用目标的脸部照片进行测试。对于虹膜，需要放大脸部以模仿用户使用该功能的常规距离。</li>
+<li>照片应具有高分辨率，否则会产生误导性结果。</li>
+<li>照片的展现方式不应使其被识别出是图片。例如：
+ <ul>
+ <li>图片边界不应包含在内</li>
+ <li>如果照片显示在手机上，则手机屏幕/边框不应可见</li>
+ <li>如果有人拿着照片，手部不应可见</li>
+ </ul>
+ </li>
+<li>对于直角来说，照片应填满传感器，使其他物体不可见。</li>
+<li>当样本（脸部/虹膜/照片）与相机呈锐角时（模仿用户将手机握在正前方并朝向脸部的用例），脸部和虹膜模型的宽容度通常更高。以该角度进行测试有助于确定您的模型是否易受欺骗。</li>
+<li>测试设置应测量通过脸部或虹膜图片成功解锁设备的概率。</li>
+</ul>
+
+ </td>
+ </tr>
+</tbody></table>
+
+<h4 id="voice">语音</h4>
+
+<table>
+  <tbody><tr>
+   <td><strong>IAR</strong>
+   </td>
+   <td>
+   <ul>
+<li>通过参与者听到阳性样本后尝试模仿样本的方式进行测试。</li>
+<li>由不同性别、不同口音的参与者进行模型测试，以确保考虑某些语调/口音具有更高 FAR 的极端情况。</li>
+</ul>
+ </td>
+ </tr>
+ <tr>
+  <td><strong>SAR</strong>
+  </td>
+  <td>
+  <ul>
+<li>用目标声音的录音进行测试。</li>
+<li>录音必须质量较高，否则会产生误导性结果。</li>
+</ul>
+ </td>
+ </tr>
+</tbody></table>
+
+</body></html>
