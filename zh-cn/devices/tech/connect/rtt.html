@@ -1,0 +1,163 @@
+<html devsite><head>
+
+  <meta name="book_path" value="/_book.yaml"/>
+
+  <meta name="project_path" value="/_project.yaml"/>
+</head>
+<body>
+
+<!--
+  Copyright 2018 The Android Open Source Project
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+<h1 id="implementing_real_time_text" class="page-title">实现实时信息</h1>
+
+<p>本页介绍如何在 Android 9 中实现实时信息 (RTT)。RTT 这项功能面向失聪用户或听障用户提供，可替代文本电话 (TTY) 技术。借助此功能，设备可以使用同一电话号码进行语音通话和 RTT 通话，即时传输信息（信息是逐个字符输入的），支持拨打 911，并且向后兼容 TTY。</p>
+
+<p>在 RTT 通话中，来电者和接听者均能知晓自己正在进行 RTT 通话。建立连接后，双方都会进入 RTT 通话，此时信息输入和键盘将启用。信息在输入时将会显示，同时逐个字符发送。</p>
+
+<h2 id="examples_and_source">示例和源代码</h2>
+
+<p>AOSP 的 <a href="https://developer.android.com/reference/android/telecom/Call.RttCall">Call.RttCall</a> 和 <a href="https://developer.android.com/reference/android/telecom/Connection.RttTextStream">Connection.RttTextStream</a> 中提供框架组件。IMS/调制解调器组件是专有的，应由 IMS/调制解调器供应商提供。您还可以使用拨号器 RTT 的参考实现。</p>
+
+<p>RTT 的 AOSP 拨号器代码：</p>
+
+<ul>
+<li>通话中：<a href="https://android.googlesource.com/platform/packages/apps/Dialer/+/master/java/com/android/incallui/rtt">/java/com/android/incallui/rtt</a></li>
+<li>通话记录：<a href="https://android.googlesource.com/platform/packages/apps/Dialer/+/master/java/com/android/dialer/rtt">/java/com/android/dialer/rtt</a></li>
+</ul>
+
+<h2 id="implementation">实现</h2>
+
+<p>要实现 RTT，您应该与调制解调器/SoC 提供商合作，因为您需要用到支持 RTT 的调制解调器。您可以升级到 Android 9，也可以将一系列电话框架补丁程序向后移植到 Android 8.0 中。添加到 Android 8.0 AOSP 中的 API 将无法运行。</p>
+
+<p>此功能使用 AOSP 的 <code>android.telecom</code> 中的公共 API，以及 <code>android.telephony.ims</code> 中带 @SystemApis 标记的 API。所有界面都位于 <code>com.android.phone</code> 和 AOSP 拨号器中。</p>
+
+<p>要实现 RTT，请导入 AOSP 代码，并提供为 RTT 实现 IMS 端 @SystemApis 的 IMS 堆栈。这需要：</p>
+
+<ul>
+<li>通过 <code>ImsConfig#setProvisionedValue(RTT_SETTING_ENABLED)</code> 来开启/关闭 RTT</li>
+<li>通过 <code>ImsStreamMediaProfile#mRttMode</code> 来指示通话的 RTT 状态</li>
+<li><p>支持在 <code>ImsCallSession</code> 中使用以下方法：</p>
+
+<ul>
+<li><code>sendRttMessage</code></li>
+<li><code>sendRttModifyRequest</code></li>
+<li><code>sendRttModifyResponse</code></li>
+</ul></li>
+<li><p>支持在 <code>ImsCallSessionListener</code> 中调用以下方法：</p>
+
+<ul>
+<li><code>callSessionRttModifyRequestReceived</code></li>
+<li><code>callSessionRttModifyResponseReceived</code></li>
+<li><code>callSessionRttMessageReceived</code></li>
+</ul></li>
+</ul>
+
+<h2 id="customization">自定义</h2>
+
+<p>您可以启用或停用此功能，方法是使用 <code>packages/services/Telephony</code> 的设备配置叠加层中的设备配置 <code>config_support_rtt</code>，以及运营商配置文件中的运营商配置标记 <code>CarrierConfigManager.RTT_SUPPORTED_BOOL</code>。根据配置，该功能可通过“无障碍功能”设置提供，也可以不通过该设置提供。您可以使用设备配置来更改默认设置。默认情况下，该功能设置为关闭。</p>
+
+<h2 id="validation">验证</h2>
+
+<p>要验证 RTT 实现，请运行 CTS 测试，并执行拨号器 RTT 测试。</p>
+
+<h3 id="cts_testing">CTS 测试</h3>
+
+<p>CTS 测试 (<code>android.cts.telecom.RttOperationsTest</code>) 涵盖了实现的 AOSP 部分。对于实现的 IMS 堆栈部分，您必须提供自己的测试。</p>
+
+<h3 id="dialer_rtt_testing">拨号器 RTT 测试</h3>
+
+<table>
+<thead>
+<tr>
+<th><strong>场景说明</strong></th>
+<th><strong>界面模拟</strong></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><p>如果设备停用 RTT，则会显示一条有关 RTT 的横幅。系统会显示“了解详情”选项，该选项会定向到 Google 帮助中心文章页面，其中含有关于 RTT 的更多信息。</p>
+<p>系统显示包含号召性内容的横幅。</p></td>
+<td><p><img src="/devices/tech/connect/images/rtt-banner.png" width="250px" alt="RTT 横幅"/></p>
+
+</td>
+</tr>
+<tr>
+<td>在拨号器设置中，“设置”&gt;“无障碍功能”下显示“实时信息”屏幕，其中提供了用于启用“RTT 模式”的选项。系统会显示介绍该模式的描述性文本：“在通话期间收发文本消息，而不是说和听”。</td>
+<td><p><img src="/devices/tech/connect/images/rtt-accessibility.png" width="250px" alt="RTT 无障碍"/></p>
+
+</td>
+</tr>
+<tr>
+<td>默认情况下 RTT 处于启用状态时，<br />
+<ul>
+<li>在拨打电话时，系统显示标准的通话中拨号界面。</li>
+<li>建立通话连接后，系统显示 RTT 模式视图。如果接听用户未默认进入 RTT 模式，则在用户等待响应时，系统将显示一条表明已请求 RTT 模式的横幅。</li>
+</ul>
+</td>
+<td><p><img src="/devices/tech/connect/images/rtt-in-call-ui.png" width="250px" alt="RTT 通话中界面"/></p>
+
+</td>
+</tr>
+<tr>
+<td>如果设备停用了 RTT：<br />
+<ul>
+<li>来电屏幕显示标准接听器和标准通话标签。</li>
+</ul>
+</td>
+<td><p><img src="/devices/tech/connect/images/rtt-standard-call-ui.png" width="250px" alt="RTT 标准通话界面"/></p>
+
+</td>
+</tr>
+<tr>
+<td>如果设备上启用了 RTT 并且 RTT 默认设置为以 RTT 形式接听所有通话：<br />
+<ul>
+<li>来电屏幕显示 RTT 接听器和相关的通话标签。</li>
+<li>如果用户接听电话，则系统会加载 RTT 模式视图，同时启用键盘。</li>
+</ul>
+</td>
+<td><p><img src="/devices/tech/connect/images/rtt-mode-view.png" width="250px" alt="RTT 模式视图"/></p>
+
+</td>
+</tr>
+<tr>
+<td>RTT 的通话中界面提供了多个选项，以允许用户控制语音通话的状态以及获得 RTT 用法方面的一般性帮助。<br />
+<ul>
+<li>开启和关闭麦克风。</li>
+<li>开启和关闭扬声器。</li>
+<li>将音频路由到外部音频设备（如果有）。</li>
+</ul>
+</td>
+<td><p><img src="/devices/tech/connect/images/rtt-in-call-ui-options.png" width="250px" alt="RTT 通话中界面相关选项"/></p>
+
+</td>
+</tr>
+<tr>
+<td>在“通话详情”屏幕中，将显示 RTT 对话记录中的一小段内容。<br />
+<ul>
+<li>内容片段的长度不超过一行。如果 RTT 会话没有任何对话内容，则系统会显示一则表明未存储任何内容的通知。</li>
+<li>内容片段包含表示 RTT 通话的 RTT 图标。</li>
+<li>选择“查看全部”链接可显示包含 RTT 会话全文的完整对话视图。系统将显示时间戳。用户可以使用“返回”按钮返回“通话详情”屏幕。</li>
+</ul>
+</td>
+<td><p><img src="/devices/tech/connect/images/rtt-call-details.png" width="250px" alt="RTT 通话详情"/></p>
+
+</td>
+</tr>
+</tbody>
+</table>
+
+</body></html>

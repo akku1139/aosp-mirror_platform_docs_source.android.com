@@ -20,10 +20,10 @@
       limitations under the License.
   -->
 
-<p>以下资源提供了有关代码位置、工具、测试、许可和注意事项的详细信息。</p>
+<p>以下资源详细介绍了代码位置、工具、测试和许可信息。</p>
 
 <h2 id="query-api-code">可查询的代码位置</h2>
-<p>可查询的供应商接口对象的代码位于 <code><a href="https://android.googlesource.com/platform/system/libvintf/+/master#" class="external">system/libvintf</a></code>（请参见<a href="/devices/architecture/vintf/objects.html#queryable-api">可查询的 API</a>）。</p>
+<p>可查询的供应商接口对象的代码位于 <code><a href="https://android.googlesource.com/platform/system/libvintf/+/master#" class="external">system/libvintf</a></code>（请参阅<a href="/devices/architecture/vintf/objects.html#queryable-api">可查询的 API</a>）。</p>
 
 <h2 id="related-tools">工具</h2>
 <p>手写清单文件和兼容性矩阵可能很难。您可以使用以下工具来生成样板清单/兼容性矩阵，从其入手。</p>
@@ -37,8 +37,8 @@ adb shell su 0 /system/bin/lshal --init-vintf
 
 <p>请注意以下几点：</p>
 <ol>
-<li>如果既向 <code>hwservicemanager</code> 注册了某个软件包，又发现其作为直通 HAL，则将 <code>&lt;transport&gt;</code> 设置为 <code>hwbinder</code>。</li>
-<li>清单的末尾存在一个虚拟 <code>&lt;sepolicy&gt;<version>0.0</version>&lt;/sepolicy&gt;</code> 元素。它指明了该元素已被删除并将通过 <code>assemble_vintf</code> 将其注入（如下所述）。</li>
+<li>如果发现某个软件包既向 <code>hwservicemanager</code> 进行了注册，又发现其属于直通 HAL，则将 <code>&lt;transport&gt;</code> 设置为 <code>hwbinder</code>。</li>
+<li>没有任何 SELinux 版本写入清单中。建议通过 <code>assemble_vintf</code> 注入该元素（如下所述）。</li>
 <li>生成的 HAL 清单文件可能不准确。需要手动对比来更正设备清单与 <code>vendor.img</code> 实际提供的内容之间的不一致。</li>
 </ol>
 
@@ -54,32 +54,24 @@ adb shell su 0 /system/bin/lshal --init-vintf
 <h4><strong>示例：</strong>从框架清单文件生成<strong>设备兼容性矩阵</strong></h4>
 
 <pre class="devsite-terminal">
-assemble_vintf -m \
+assemble_vintf -m --hals-only \
     -i system/libhidl/manifest.xml \
     -o device/manufacturer/device_name/compatibility_matrix.xml
 </pre>
-<p>请注意以下几点：</p>
-<ul>
-<li>即使 <code>&lt;vndk&gt;</code> 条目在输出兼容性矩阵中，也应该将其删除，然后在构建时进行注入。</li>
-<li>所有 HAL 都设置为 <code>optional="true"</code>。</li>
-</ul>
+<p>请注意，所有 HAL 都设置为 <code>optional="true"</code>。</p>
 
 <h4><strong>示例：</strong>从设备清单文件生成骨架框架兼容性矩阵</h4>
 
 <pre class="devsite-terminal">
-BOARD_SEPOLICY_VERS=10000.0 assemble_vintf -m \
-    -i device/foo/bar/manifest.xml
+assemble_vintf -m --hals-only \
+    -i device/foo/bar/manifest.xml \
     -o path/to/place/output/compatibility_matrix.xml
 </pre>
-<p>请注意以下几点：</p>
-<ul>
-<li>即使 <code>&lt;sepolicy&gt;</code> 和 <code>&lt;avb&gt;</code> 在输出兼容性矩阵中，也应该将其删除，然后在构建时进行注入。</li>
-<li>所有 HAL 都设置为 <code>optional="true"</code>。</li>
-</ul>
+<p>请注意，所有 HAL 都设置为 <code>optional="true"</code>。</p>
 
 <h4><strong>示例：</strong>从变量生成 XML 文件</h4>
 
-<p>构建时，如果在 <code>device/manufacturer/device_name/BoardConfig.mk</code> 中定义了以下变量：</p>
+<p>编译时，如果在 <code>device/manufacturer/device_name/BoardConfig.mk</code> 中定义了以下变量：</p>
 
 <pre class="prettyprint">
 DEVICE_MANIFEST_FILE := \
@@ -88,38 +80,53 @@ DEVICE_MATRIX_FILE := \
     device/manufacturer/device_name/compatibility_matrix.xml
 </pre>
 
-<p>然后，执行以下命令（修改为省略实现详细信息）来生成所有 XML 文件：</p>
+<p>然后，执行以下命令（已在编译系统中修改为省略实现详细信息），以生成所有 XML 文件：</p>
 
 <pre class="prettyprint">
 # device manifest; only when DEVICE_MANIFEST_FILE is set
 BOARD_SEPOLICY_VERS=10000.0 assemble_vintf \
-    -i device/manufacturer/device_name/manifest.xml \
-    -o $(TARGET_OUT_VENDOR)/manifest.xml
+    $(addprefix,-i ,$(DEVICE_MANIFEST_FILE)) \
+    -o $(TARGET_OUT_VENDOR)/etc/vintf/manifest.xml
 
 # device compatibility matrix; only when DEVICE_MATRIX_FILE is set
 assemble_vintf \
-    -i device/manufacturer/device_name/compatibility_matrix.xml \
-    -o $(TARGET_OUT_VENDOR)/compatibility_matrix.xml
+    -i $(DEVICE_MATRIX_FILE) \
+    -o $(TARGET_OUT_VENDOR)/etc/vintf/compatibility_matrix.xml
 
 # framework manifest
 assemble_vintf
-    -i system/libhidl/manifest.xml \
+    $(addprefix,-i ,system/libhidl/manifest.xml $(DEVICE_FRAMEWORK_MANIFEST_FILE)) \
     -o $(TARGET_OUT)/manifest.xml \
-    -c $(TARGET_OUT_VENDOR)/compatibility_matrix.xml
+    -c $(TARGET_OUT_VENDOR)/etc/vintf/compatibility_matrix.xml
 
-# framework compatibility matrix
+# common framework compatibility matrix for each FCM version
 BOARD_SEPOLICY_VERS=$(BOARD_SEPOLICY_VERS) \
 POLICYVERS=$(POLICYVERS) \
 BOARD_AVB_VBMETA_VERSION=$(BOARD_AVB_VBMETA_VERSION)
 assemble_vintf \
-    -i hardware/interfaces/compatibility_matrix.xml \
-    -o $(TARGET_OUT)/compatibility_matrix.xml \
-    -c $(TARGET_OUT_VENDOR)/manifest.xml \
+    $(addprefix,-i ,\
+        hardware/interfaces/compatibility_matrices/compatibility_matrix.empty.xml \
+        $(DEVICE_FRAMEWORK_COMPATIBILITY_MATRIX_FILE)) \
+    -o $(TARGET_OUT)/etc/vintf/compatibility_matrix.empty.xml
+
+# framework compatibility matrices at each FCM version
+assemble_vintf
+    -i hardware/interfaces/compatibility_matrices/compatibility_matrix.{level}.xml \
+    -o $(TARGET_OUT)/etc/vintf/compatibility_matrix.{level}.xml \
+    --kernel=...
+
+# Final framework compatibility matrix to check with device manifest.
+# Each input matrix should have a unique "level" attribute.
+PRODUCT_ENFORCE_VINTF_MANIFEST=$(PRODUCT_ENFORCE_VINTF_MANIFEST) \
+assemble_vintf
+    -i $(TARGET_OUT)/etc/vintf/compatibility_matrix.*.xml
+    -o /tmp/compatibility_matrix.xml
+    -c $(TARGET_OUT_VENDOR)/manifest.xml
 </pre>
 
-<h4><strong>示例：</strong>从片段生成设备清单</h4>
+<h4 id="manifest-fragments"><strong>示例：</strong>从片段生成设备清单</h4>
 
-<p>多个设备清单片段可以在构建时捆绑。例如：</p>
+<p>多个设备清单片段可以在编译时捆绑。例如：</p>
 
 <pre class="prettyprint">
 &lt;!-- device/manufacturer/device_name/manifest_common.xml --&gt;
@@ -175,16 +182,5 @@ BOARD_SEPOLICY_VERS=10000.0 assemble_vintf \
 <li><code>libz</code> (external/zlib) 用于解压缩 <code>/proc/config.gz</code>。类似于 BSD 的许可证。</li>
 <li><code>libvintf</code> 项目使用 Apache 2.0 许可证（具有适当的 MODULE_LICENSE_APACHE2 和 NOTICE 文件）。</li>
 </ul>
-
-<h2 id="caveats">注意事项</h2>
-<p>您也可以通过查询 <code>hwservicemanager</code>（就像 <code>lshal</code> 一样）在运行时确定 HAL。但是：</p>
-<ul>
-<li><code>hwservicemanager</code> 不会列出直通服务。</li>
-<li>如果服务刚刚崩溃并正在重新启动，则可能会在查询结果中缺失。</li>
-<li>不适用于可热插拔服务。</li>
-<li><code>hwservicemanager</code> 在恢复模式下不可用（请参见下文）。</li>
-</ul>
-
-<p>在恢复模式下，用于检索供应商接口对象的 API 必须仍然可用，以允许设备再次对照兼容性矩阵检查供应商接口。</p>
 
 </body></html>

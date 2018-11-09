@@ -3,6 +3,7 @@
     <meta name="project_path" value="/_project.yaml"/>
     <meta name="book_path" value="/_book.yaml"/>
   </head>
+
   <body>
   <!--
       Copyright 2017 The Android Open Source Project
@@ -256,7 +257,7 @@ CONFIG_EMPTY=1   # mismatch; expects ""
 </li>
 </ul>
 
-<p>引导加载程序或 Android 操作系统可能包含 <code>libavb</code> 库的两个副本，每个副本具有不同的 MAJOR 版本，用于升级设备和启动设备。<em></em><em></em>在这种情况下，可以共享同一个未签名的系统映像，但最终签名的系统映像是不同的（具有不同的 <code>avb.vbmeta-version</code>）：</p>
+<p>引导加载程序或 Android 操作系统可能包含 <code>libavb</code> 库的两个副本，每个副本具有不同的 MAJOR 版本，用于升级设备和启动设备。<em></em><em></em>在这种情况下，可以共享同一个未签名的系统映像，但最终的签名系统映像则不同（它具有不同的 <code>avb.vbmeta-version</code>）：</p>
 
 <img src="../images/treble_vintf_avb_o_p.png"/>
 <figcaption><strong>图 1. </strong>AVB 版本匹配（<code>/system</code> 为 P，其他所有分区均为 O）。</figcaption>
@@ -295,6 +296,27 @@ ro.boot.vbmeta.avb_version       == 2.3 <font style="font-family: Roboto, Arial,
 ro.boot.avb_version              == 2.3 &amp;&amp;
 ro.boot.vbmeta.avb_version       == 2.1 <font style="font-family: Roboto, Arial, Helvetica, sans-serif; background-color: green; color: white"> match </font>
 </pre>
+
+<h3 id="avb-version-ota">在 OTA 期间匹配 AVB 版本</h3>
+<p>对于搭载 Android 9 或更低版本的设备，在 OTA 期间，系统会将框架兼容性矩阵中的 AVB 版本要求与设备上的当前 AVB 版本进行匹配。如果 AVB 版本在 OTA 期间进行主要版本升级（例如，从 0.0 升级到 1.0），则 OTA 中的检查不会反映 OTA 之后的兼容性。</p>
+<p>为了缓解这个问题，原始设备制造商 (OEM) 可以在 OTA 软件包 (<code>compatibility.zip</code>) 中放置一个假 AVB 版本来通过检查。为此，请执行以下操作：</p>
+<ol>
+<li>择优挑选以下 CL 并将其添加到 Android 9 源代码树中：
+<ul>
+  <li><a href="https://android-review.googlesource.com/732261" class="external">CL 732261</a></li>
+  <li><a href="https://android-review.googlesource.com/732262" class="external">CL 732262</a></li>
+</ul>
+</li>
+<li>为设备定义 <code>BOARD_OTA_FRAMEWORK_VBMETA_VERSION_OVERRIDE</code>。其值应该等于 OTA 之前的 AVB 版本，即设备启动时的 AVB 版本。</li>
+<li>重新构建 OTA 软件包。</li>
+</ol>
+<p>这些更改会自动将 <code>BOARD_OTA_FRAMEWORK_VBMETA_VERSION_OVERRIDE</code> 作为 <code>compatibility-matrix.avb.vbmeta-version</code> 放置在以下文件中：
+</p><ul>
+  <li>设备上的 <code>/system/compatibility_matrix.xml</code>（未在 Android 9 中使用）</li>
+  <li>OTA 软件包中 <code>compatibility.zip</code> 内的 <code>system_matrix.xml</code></li>
+</ul>
+这些更改不会影响其他框架兼容性矩阵，包括 <code>/system/etc/vintf/compatibility_matrix.xml</code>。在 OTA 之后，<code>/system/etc/vintf/compatibility_matrix.xml</code> 中的新值将用于进行兼容性检查。
+<p></p>
 
 <h2 id="vndk">VNDK 版本匹配</h2>
 <p>设备兼容性矩阵在 <code>compatibility-matrix.vendor-ndk.version</code> 中声明所需的 VNDK 版本。如果设备兼容性矩阵没有 <code>&lt;vendor-ndk&gt;</code> 标记，则系统不会实施任何要求，因此始终将其视为匹配项。</p>

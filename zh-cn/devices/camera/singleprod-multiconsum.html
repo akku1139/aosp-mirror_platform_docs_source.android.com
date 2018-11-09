@@ -1,0 +1,55 @@
+<html devsite><head>
+
+  <meta name="book_path" value="/_book.yaml"/>
+
+  <meta name="project_path" value="/_project.yaml"/>
+</head>
+<body>
+
+<!--
+  Copyright 2018 The Android Open Source Project
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+<h1 id="single_producer_multiple_consumer_camera_buffer_transport" class="page-title">“单个生产者-多个消费者”摄像头缓冲区传输</h1>
+
+<p>该功能引入了一组方法，当拍摄会话处于活动状态且摄像头流式传输正在进行时，摄像头客户端可通过该功能动态添加和移除输出 Surface。新的输出可以映射到用户选择的特定<a href="https://developer.android.com/reference/android/hardware/camera2/params/OutputConfiguration#enableSurfaceSharing()">共享摄像头</a>信息流。Surface 添加后，您可以随时将其移除。</p>
+
+<p>总的想法是，在多个输出 Surface 中共享与特定摄像头信息流关联的缓冲区。当缓冲区准备好在消费者端进行进一步处理时，内部引用计数器便开始跟踪缓冲区。当所有消费者完成各自的任务后，缓冲区便会离开队列，并可供摄像头使用。</p>
+
+<p><img src="/devices/camera/images/buffer-sharing.png" alt="缓冲区共享"/></p>
+
+<p><strong>图 1.</strong> 缓冲区共享</p>
+
+<p>图 1 描绘了一个示例场景：系统采用动态方式连接和分离由摄像头信息流 2 处理的缓冲区，并由摄像头服务内的专用共享输出流内部的信息流分流器组件对引用进行计数和管理。</p>
+
+<h2 id="examples_and_source">示例和源代码</h2>
+
+<p>可在 <a href="https://android.googlesource.com/platform/frameworks/av/+/master/services/camera/libcameraservice/device3/Camera3StreamSplitter.cpp"><code>Camera3StreamSplitter</code></a> 模块中找到该功能的核心实现，并可在面向开发者的参考资料中找到关于该功能的文档：</p>
+
+<ul>
+<li><a href="https://developer.android.com/reference/android/hardware/camera2/CameraCaptureSession.html#updateOutputConfiguration(android.hardware.camera2.params.OutputConfiguration)"><code>updateOutputConfiguration()</code></a></li>
+<li><a href="https://developer.android.com/reference/android/hardware/camera2/params/OutputConfiguration#addSurface(android.view.Surface)"><code>addSurface()</code></a></li>
+<li><a href="https://developer.android.com/reference/android/hardware/camera2/params/OutputConfiguration#removeSurface(android.view.Surface)"><code>removeSurface()</code></a></li>
+</ul>
+
+<h2 id="implementation">实现</h2>
+
+<p>摄像头 HAL 端不需要任何实现，因为该功能在框架端实现。</p>
+
+<h2 id="validation">验证</h2>
+
+<p>您的实现必须通过 <a href="https://android.googlesource.com/platform/cts/+/master/tests/camera/src/android/hardware/camera2/cts/MultiViewTest.java">MultiViewTest</a> 模块中以及本机 API 的<a href="https://android.googlesource.com/platform/cts/+/master/tests/camera/libctscamera2jni/native-camera-jni.cpp">本机 JNI 库</a>中涵盖该功能的 CTS 测试。</p>
+
+</body></html>

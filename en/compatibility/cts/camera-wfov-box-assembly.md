@@ -65,10 +65,10 @@ internal lighting system, and a plastic box that is laser cut from CAD drawings
 
 ### Required tools
 
-Before getting started, ensure you have downloaded the
-[technical drawings for the WFoV ITS-in-a-box](/compatibility/cts/wfov_its_box_assembly_2.6.zip),
-cut the plastic and vinyl pieces, purchased the hardware
-from the BOM, and have the following tools available:
+To get started, download the latest
+[technical drawings for the WFoV ITS-in-a-box](/compatibility/cts/wfov_its_box_assembly_2_7.zip),
+cut the plastic and vinyl pieces, purchase the hardware from the bill of
+materials (BOM), and gather these tools:
 
 +   Phillips head screwdriver
 +   Pliers
@@ -76,6 +76,8 @@ from the BOM, and have the following tools available:
 +   Scissors
 +   Water spray bottle
 +   X-acto knife
+
+Note: For more information on past versions, see [Revision history](#revision_history).
 
 ### Step 1: Apply colored vinyl
 
@@ -246,3 +248,38 @@ To assemble the WFoV ITS box:
     ![Assembled WFoV box](/compatibility/cts/images/wfov-assembled-box.png){: width="500"}
 
     **Figure 22.** Assembled WFoV box: rear view (left) and front view (right)
+
+### Revision history
+
+The following describes the changes made to the WFoV ITS-in-a-box.
+
+#### Revision 2.7
+
+- Switched light in the BOM (#16) to UL listed LED tape for better manufacturing
+  consistency.
+- Switched power supply in the BOM (#17) to the same source as #16.
+- Revised the tablet mount to be 35mm wider to match the tablet opening (page 4
+  on mechanical drawing)
+- Revised the front clamp hole spacing (distance) to align with the clamp slot
+  length (page 5 on mechanical drawing)
+- Reduced the front aperture circle diameter by 20mm to match the [RFoV
+  ITS-in-a-box (revision 1)](/compatibility/cts/camera-its-box-assembly) (page
+  5 on mechanical drawing)
+
+#### Revision 2.6 (released internally)
+
+- Made a correction to the mechanical drawing
+
+#### Revision 2.5
+
+- Simplified tablet holder to be similar to the phone mount
+- Used a sandblast finish instead of an anodized finish to reduce costs
+- Corrected specifications for LED lights on the BOM
+
+#### Revision 2.4
+
+- Switched from acrylic to ABS material to reduce shipping damage
+- Removed 3D printing elements and replaced them with laser-cut ABS to reduce
+  costs
+- Changed the box handles to use ABS instead of being a separate item to
+  purchase on the BOM

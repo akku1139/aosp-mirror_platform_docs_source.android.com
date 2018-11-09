@@ -1,0 +1,122 @@
+<html devsite><head>
+    <title>设备清单生成</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+
+  <body>
+  <!--
+      Copyright 2018 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>在开发和发布新设备时，供应商可以在设备清单 (DM) 中定义和声明目标 FCM 版本。升级旧设备的供应商映像时，供应商可以选择实现新的 HAL 版本并递增目标 FCM 版本。</p>
+
+<aside class="note"><strong>注意</strong>：有关本页中所用术语的详细信息，请参阅<a href="/devices/architecture/vintf/fcm#terminology">术语</a>。
+</aside>
+
+<h2 id="develop-new-devices">开发新设备</h2>
+<p>在为新设备定义设备目标 FCM 版本时：</p>
+
+<ol>
+<li>不要定义 <code>DEVICE_MANIFEST_FILE</code> 和 <code>PRODUCT_ENFORCE_VINTF_MANIFEST</code>。</li>
+<li>为目标 FCM 版本实现 HAL。</li>
+<li>编写正确的设备清单文件。</li>
+<li>将目标 FCM 版本写入设备清单文件。</li>
+<li>设置 <code>DEVICE_MANIFEST_FILE</code>。</li>
+<li>将 <code>PRODUCT_ENFORCE_VINTF_MANIFEST</code> 设置为 <code>true</code>。</li>
+</ol>
+
+<h2 id="release-new-devices">发布新设备</h2>
+<p>发布新设备时，需要确定设备的初始目标 FCM 版本，并在设备清单中通过顶级 <code>&lt;manifest&gt;</code> 元素中的“<code>target-level</code>”属性予以声明。</p>
+
+<p>例如，搭载 Android 9 的设备的目标 FCM 版本必须为 3（目前已提供更高版本）。您可通过以下命令在设备清单中予以声明：</p>
+
+<pre class="prettyprint">
+&lt;manifest version="1.0" type="device" target-level="3"&gt;
+    &lt;!-- ... --&gt;
+&lt;/manifest&gt;
+</pre>
+
+<h2 id="upgrade-vendor-image">升级供应商映像</h2>
+<p>升级旧设备的供应商映像时，供应商可以选择实现新的 HAL 版本并递增目标 FCM 版本。</p>
+
+<h3 id="upgrade-hals">升级 HAL</h3>
+<p>在供应商映像升级期间，供应商可以实现新的 HAL 版本，前提是 HAL 名称、接口名称和实例名称均相同。例如：</p>
+
+<ul>
+<li>Google Pixel 2 和 Pixel 2 XL 设备发布时目标 FCM 版本为 2，实现了所需的音频 2.0 HAL <code>android.hardware.audio@2.0::IDeviceFactory/default</code>。</li>
+<li>对于随 Android 9 发布的音频 4.0 HAL，Google Pixel 2 和 Pixel 2 XL 设备可以通过完整 OTA 升级至 4.0 HAL，其中实现了 <code>android.hardware.audio@4.0::IDeviceFactory/default</code>。</li>
+<li>尽管 <code>compatibility_matrix.2.xml</code> 仅指定了音频 2.0，但由于 Android 9 框架（FCM 版本为 3）认为音频 4.0 在功能方面可以替代音频 2.0 HAL，因此对采用目标 FCM 版本 2 的供应商映像的要求已放宽。
+</li>
+</ul>
+
+<p>简而言之，鉴于 <code>compatibility_matrix.2.xml</code> 需要音频 2.0，而 <code>compatibility_matrix.3.xml</code> 需要音频 4.0，应遵循以下要求：</p>
+
+<table>
+<thead>
+<tr>
+<th>FCM 版本（系统）</th>
+<th>目标 FCM 版本（供应商）</th>
+<th>要求</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>2 (8.1)</td>
+<td>2 (8.1)</td>
+<td>音频 2.0</td>
+</tr>
+<tr>
+<td>3 (9)</td>
+<td>2 (8.1)</td>
+<td>音频 2.0 或 4.0</td>
+</tr>
+<tr>
+<td>3 (9)</td>
+<td>3 (9)</td>
+<td>音频 4.0</td>
+</tr>
+</tbody>
+</table>
+
+<h3 id="upgrade=target-fcm">升级目标 FCM 版本</h3>
+
+<p>在供应商映像升级期间，供应商还可以递增目标 FCM 版本，以指定可与升级后的供应商映像配合使用的目标 FCM 版本。要达到设备的目标 FCM 版本，供应商需要：</p>
+
+<ol>
+<li>为目标 FCM 版本实现所有需要的新 HAL 版本。</li>
+<li>在设备清单文件中修改 HAL 版本。</li>
+<li>在设备清单文件中修改目标 FCM 版本。</li>
+<li>移除已弃用的 HAL 版本。</li>
+<li>对于搭载版本 9 或更低版本的设备，先择优挑选以下 CL，然后再生成 OTA 更新程序包：
+  <ul>
+    <li><a href="https://android-review.googlesource.com/722283">CL 722283</a></li>
+    <li><a href="https://android-review.googlesource.com/722284">CL 722284</a></li>
+    <li><a href="https://android-review.googlesource.com/722345">CL 722345</a></li>
+  </ul>
+</li>
+</ol>
+
+<p>例如，Google Pixel 和 Pixel XL 设备搭载的是 Android 7.0，因此它们的目标 FCM 版本一定至少是旧版。不过，<a href="https://android.googlesource.com/device/google/marlin/+/0a276ad8b98fde395ed99a4b303434800c07049e/manifest.xml#1" class="external">设备清单</a>中声明了目标 FCM 版本为 2，这是因为供应商映像已更新，以符合 <code>compatibility_matrix.2.xml</code>：</p>
+
+<pre class="prettyprint">
+&lt;manifest version="1.0" type="device" target-level="2"&gt;
+</pre>
+
+<p>如果供应商未实现所有需要的新 HAL 版本或未移除弃用的 HAL 版本，则无法升级目标 FCM 版本。</p>
+
+<p>例如，Google Pixel 2 和 Pixel 2 XL 设备采用的是目标 FCM 版本 2。虽然它们实现了 <code>compatibility_matrix.3.xml</code> 所需的一些 HAL（例如音频 4.0、health 2.0 等），但未移除在 FCM 版本 3 (Android 9) 中弃用的 <code>android.hardware.radio.deprecated@1.0</code>。因此，这些设备无法将目标 FCM 版本升级至 3。</p>
+
+</body></html>

@@ -1,5 +1,5 @@
 <html devsite><head>
-    <title>VINTF 对象数据</title>
+    <title>清单</title>
     <meta name="project_path" value="/_project.yaml"/>
     <meta name="book_path" value="/_book.yaml"/>
   </head>
@@ -20,18 +20,26 @@
       limitations under the License.
   -->
 
-<p>VINTF 对象会在<a href="#runtime-data">运行时</a>汇总来自<a href="#device-manifest-file">设备清单</a>和<a href="#framework-manifest-file">框架清单</a>文件 (XML) 以及设备本身的数据。这两个清单共用一种格式，不过并非所有元素都适用于两者（有关结构的详细信息，请参见<a href="#manifest-file-schema">清单文件结构</a>）。</p>
-
-<h2 id="device-manifest-file">设备清单文件</h2>
-<p>设备清单文件由设备提供。它在 Android 源代码树中位于 <code>device/${VENDOR}/${DEVICE}/manifest.xml</code>，在设备上位于 <code><a href="https://android.googlesource.com/platform/system/libhidl/+/master/vintfdata/manifest.xml" class="external">/vintfdata/manifest.xml</a></code>。
+<p>VINTF 对象会在系统<a href="#runtime-data">运行时</a>汇总<a href="#device-manifest-file">设备清单</a>和<a href="#framework-manifest-file">框架清单</a>文件 (XML) 中的数据以及设备本身的数据。这两个清单采用同一种格式，不过并非所有元素都适用于两者（有关架构方面的详细信息，请参阅<a href="#manifest-file-schema">清单文件架构</a>）。
 </p>
 
-<p>设备清单示例：</p>
+<h2 id="device-manifest-file">设备清单</h2>
+<p>设备清单（由设备提供）包含供应商清单和 ODM 清单：</p>
+
+<ul>
+<li>供应商清单会指定 SoC 通用的 HAL、VNDK 版本等信息。建议将其放置在 Android 源代码树的 <code>device/${VENDOR}/${DEVICE}/manifest.xml</code> 中，但可以使用多个片段文件。有关详情，请参阅<a href="/devices/architecture/vintf/resources.html#manifest-fragments">从片段生成设备清单</a>。
+</li>
+<li>ODM 清单会覆盖供应商清单，并列出产品专用的 HAL。</li>
+</ul>
+
+<p>此设置可让采用相同开发板的多个产品共用同一个供应商映像（用于提供通用 HAL），但具有不同的 ODM 映像（用于指定产品专用的 HAL）。</p>
+
+<p>供应商清单示例：</p>
 
 <pre class="prettyprint">
 &lt;?xml version="1.0" encoding="UTF-8"?&gt;
 &lt;!-- Comments, Legal notices, etc. here --&gt;
-&lt;manifest version="1.0" type="device"&gt;
+&lt;manifest version="1.0" type="device" target-level="1"&gt;
     &lt;hal&gt;
         &lt;name&gt;android.hardware.camera&lt;/name&gt;
         &lt;transport&gt;hwbinder&lt;/transport&gt;
@@ -61,6 +69,21 @@
             &lt;instance&gt;default&lt;/instance&gt;
         &lt;/interface&gt;
     &lt;/hal&gt;
+    &lt;hal&gt;
+        &lt;name&gt;android.hardware.drm&lt;/name&gt;
+        &lt;transport&gt;hwbinder&lt;/transport&gt;
+        &lt;version&gt;1.0&lt;/version&gt;
+        &lt;interface&gt;
+            &lt;name&gt;ICryptoFactory&lt;/name&gt;
+            &lt;instance&gt;default&lt;/instance&gt;
+        &lt;/interface&gt;
+        &lt;interface&gt;
+            &lt;name&gt;IDrmFactory&lt;/name&gt;
+            &lt;instance&gt;default&lt;/instance&gt;
+        &lt;/interface&gt;
+        &lt;fqname&gt;@1.1::ICryptoFactory/clearkey&lt;/fqname&gt;
+        &lt;fqname&gt;@1.1::IDrmFactory/clearkey&lt;/fqname&gt;
+    &lt;/hal&gt;
     &lt;hal format="native"&gt;
         &lt;name&gt;EGL&lt;/name&gt;
         &lt;version&gt;1.1&lt;/version&gt;
@@ -77,10 +100,44 @@
 &lt;/manifest&gt;
 </pre>
 
-<h2 id="framework-manifest-file">框架清单文件</h2>
-<p>框架清单文件由 Google 提供，是手动生成的文件。它在 Android 源代码树中位于 <code>system/libhidl/manifest.xml</code>，在设备上位于 <code>/system/manifest.xml</code>。</p>
+<p>ODM 清单示例：</p>
 
-<p>框架清单（由 Google 提供）示例：</p>
+<pre class="prettyprint">
+&lt;?xml version="1.0" encoding="UTF-8"?&gt;
+&lt;!-- Comments, Legal notices, etc. here --&gt;
+&lt;manifest version="1.0" type="device"&gt;
+    &lt;hal override="true"&gt;
+        &lt;name&gt;android.hardware.camera&lt;/name&gt;
+        &lt;transport&gt;hwbinder&lt;/transport&gt;
+        &lt;version&gt;3.5&lt;/version&gt;
+        &lt;interface&gt;
+            &lt;name&gt;ICameraProvider&lt;/name&gt;
+            &lt;instance&gt;legacy/0&lt;/instance&gt;
+        &lt;/interface&gt;
+    &lt;/hal&gt;
+    &lt;hal override="true"&gt;
+        &lt;name&gt;android.hardware.nfc&lt;/name&gt;
+        &lt;transport&gt;hwbinder&lt;/transport&gt;
+    &lt;/hal&gt;
+    &lt;hal&gt;
+        &lt;name&gt;android.hardware.power&lt;/name&gt;
+        &lt;transport&gt;hwbinder&lt;/transport&gt;
+        &lt;version&gt;1.1&lt;/version&gt;
+        &lt;interface&gt;
+            &lt;name&gt;IPower&lt;/name&gt;
+            &lt;instance&gt;default&lt;/instance&gt;
+        &lt;/interface&gt;
+    &lt;/hal&gt;
+&lt;/manifest&gt;
+</pre>
+
+有关详情，请参阅<a href="/devices/architecture/vintf/dm">制定设备清单</a>。
+
+<h2 id="framework-manifest-file">框架清单</h2>
+<p>框架清单文件（由 Google 提供）是手动生成的，位于 Android 源代码树的 <code><a href="https://android.googlesource.com/platform/system/libhidl/+/master/manifest.xml" class="external">/system/libhidl/manifest.xml</a></code> 中。
+</p>
+
+<p>框架清单示例：</p>
 
 <pre class="prettyprint">
 &lt;?xml version="1.0" encoding="UTF-8"?&gt;
@@ -122,23 +179,39 @@
             &lt;instance&gt;default&lt;/instance&gt;
         &lt;/interface&gt;
     &lt;/hal&gt;
+    &lt;vendor-ndk&gt;
+        &lt;version&gt;27&lt;/version&gt;
+    &lt;/vendor-ndk&gt;
+    &lt;system-sdk&gt;
+        &lt;version&gt;27&lt;/version&gt;
+    &lt;/system-sdk&gt;
 &lt;/manifest&gt;
 </pre>
 
-<h2 id="manifest-file-schema">清单文件结构</h2>
+<h2 id="manifest-file-schema">清单文件架构</h2>
+<p>这一部分介绍了下列 XML 标记的含义。Android 源代码树中的源文件中可以缺少某些“必需”的标记，这些标记可以在编译时由 <code><a href="/devices/architecture/vintf/resources.html#assemble_vintf">assemble_vintf</a></code> 写入。设备上的相应文件中必须有“必需”的标记。</p>
+
 <dl>
 <dt><code>?xml</code></dt>
-<dd>可选。只向 XML 解析器提供信息。</dd>
+<dd>选用。只向 XML 解析器提供信息。</dd>
 <dt><code>manifest.version</code></dt>
-<dd>必需。<strong>该</strong>清单的版本。描述清单中预期的元素。与 XML 版本无关。</dd>
+<dd>必需。<strong>该</strong>清单的元版本。描述该清单中应该存在的元素。与 XML 版本无关。</dd>
 <dt><code>manifest.type</code></dt>
 <dd>必需。该清单的类型。对于设备清单文件，其值为 <code>device</code>；对于框架清单文件，其值为 <code>framework</code>。</dd>
+<dt><code>manifest.target-level</code></dt>
+<dd>对于设备清单而言是必需的。用于指定相应设备清单要兼容的框架兼容性矩阵版本（FCM 版本），也称为设备的 Shipping FCM 版本。</dd>
 <dt><code>manifest.hal</code></dt>
-<dd>可选且可重复。单个 HAL（HIDL 或本机，如 GL），具体取决于 <code>format</code> 属性。</dd>
+<dd>选用且可重复。单个 HAL（HIDL 或本机，如 GL），具体取决于 <code>format</code> 属性。</dd>
 <dt><code>manifest.hal.format</code></dt>
-<dd>可选。值可以是以下几项之一：<ul>
+<dd>选用。值可以是以下几项之一：<ul>
  <li><code>hidl</code>：HIDL HAL。这是默认值。
  </li><li><code>native</code>：本机 HAL。</li>
+ </ul>
+</dd>
+<dt><code>manifest.hal.override</code></dt>
+<dd>选用。值可以是以下几项之一：<ul>
+ <li><code>true</code>：覆盖其他具有相同 <code>&lt;name&gt;</code> 和 Major 版本的 <code>&lt;hal&gt;</code> 元素。如果此 <code>&lt;hal&gt;</code> 元素中没有 <code>&lt;version&gt;</code> 和 <code>&lt;fqname&gt;</code>，则表示此 HAL 处于停用状态。</li>
+ <li><code>false</code>：不覆盖其他具有相同 <code>&lt;name&gt;</code> 和 Major 版本的 <code>&lt;hal&gt;</code> 元素。</li>
  </ul>
 </dd>
 <dt><code>manifest.hal.name</code></dt>
@@ -157,55 +230,34 @@
 <dd>对于 <code>passthrough</code> 是必需的，对于 <code>hwbinder</code> 不得存在。描述正在提供的直通服务的位数。值可以是以下几项之一：<ul>
  <li><code>32</code>：32 位模式</li>
  <li><code>64</code>：64 位模式</li>
- <li><code>32+64</code>：两者兼有</li>
+ <li><code>32+64</code>：两者</li>
  </ul>
 </dd>
 <dt><code>manifest.hal.version</code></dt>
-<dd>必需且可重复。清单中 <code>hal</code> 标记的版本。格式为 <code><var>MAJOR</var>.<var>MINOR</var></code>。有关示例，请参阅 <code>hardware/interfaces</code>、<code>vendor/${VENDOR}/interfaces</code>、<code>framework/hardware/interfaces</code> 或 <code>
+<dd>选用且可重复。清单中 <code>hal</code> 标记的版本。格式为 <code><var>MAJOR</var>.<var>MINOR</var></code>。有关示例，请参阅 <code>hardware/interfaces</code>、<code>vendor/${VENDOR}/interfaces</code>、<code>framework/hardware/interfaces</code> 或 <code>
 system/hardware/interfaces</code>。
 <br /><br />
-HIDL 和本机 HAL 可以使用多个版本字段，前提是它们代表<strong>不同的主要版本</strong>，并且提供的每个主要版本只有一个次要版本。例如，3.1 和 3.2 不能共存，但 1.0 和 3.4 可以共存。这适用于所有同名的 <code>hal</code> 元素。</dd>
+HIDL 和本机 HAL 可以使用多个版本字段，前提是它们代表<strong>不同的 Major 版本</strong>，并且提供的每个 Major 版本只有一个 Minor 版本。例如，3.1 和 3.2 不能共存，但 1.0 和 3.4 可以共存。这适用于所有同名的 <code>hal</code> 元素，除非 <code>override="true"</code>。</dd>
 <dt><code>manifest.hal.interface</code></dt>
-<dd>必需，可以在不重名的情况下进行重复使用。指明软件包中具有实例名称的接口。一个 <code>&lt;hal&gt;</code> 中可以有多个 <code>&lt;interface&gt;</code> 元素，但名称必须不同。</dd>
+<dd>必需，可以在不重名的情况下重复。指明软件包中具有实例名称的接口。一个 <code>&lt;hal&gt;</code> 中可以有多个 <code>&lt;interface&gt;</code> 元素，但名称必须不同。</dd>
 <dt><code>manifest.hal.interface.name</code></dt>
 <dd>必需。接口的名称。</dd>
 <dt><code>manifest.hal.interface.instance</code></dt>
 <dd>必需且可重复。接口的实例名称。一个接口可以有多个实例，但不能有重复的 <code>&lt;instance&gt;</code> 元素。</dd>
+<dt><code>manifest.hal.fqname</code></dt>
+<dd>选用且可重复。为名称是 <code>manifest.hal.name</code> 的 HAL 指定实例的另一种方法。格式为 <code>@<var>MAJOR</var>.<var>MINOR</var>::<var>INTERFACE</var>/<var>INSTANCE</var></code>。对于从 Android 8.0 升级的设备，它不能用于声明兼容性矩阵所需的实例。</dd>
 <dt><code>manifest.sepolicy</code></dt>
 <dd>必需。包含所有与 sepolicy 相关的条目。</dd>
 <dt><code>manifest.sepolicy.version</code></dt>
-<dd>对于设备清单是必需的。用于声明 sepolicy 版本。格式为 SDK_INT.PLAT_INT。<var></var><var></var></dd>
+<dd>对设备清单而言是必需的。用于声明 SELinux 版本。格式为 <code><var>SDK_INT</var>.<var>PLAT_INT</var></code>。</dd>
+<dt><code>manifest.vendor-ndk</code></dt>
+<dd>必需且可重复；对框架清单而言是必需的。不得出现在设备清单中。多个 <code>&lt;vendor-ndk&gt;</code> 条目必须具有不同的 <code>&lt;version&gt;</code>。用于描述框架提供的一组 VNDK 快照。</dd>
+<dt><code>manifest.vendor-ndk.version</code></dt>
+<dd>必需。一个正整数，表示 VNDK 快照的版本。</dd>
+<dt><code>manifest.vendor-ndk.library</code></dt>
+<dd>选用，可以在不重名的情况下重复。用于描述框架为此 VNDK 供应商快照提供的一组 VNDK 库。值是库的文件名，例如 <code>libjpeg.so</code>，包含前缀 <code>lib</code> 和后缀 <code>.so</code>。不允许添加路径组件。</dd>
+<dt><code>manifest.system-sdk.version</code></dt>
+<dd>选用，可以在不重名的情况下重复；仅供框架清单使用。用于描述框架为供应商应用提供的一组系统 SDK 版本。</dd>
 </dl>
-
-<h2 id="runtime-data">运行时数据</h2>
-<p>设备清单所需的某些信息只能在运行时收集。信息通过 <code>::android::vintf::VintfObject::GetRuntimeInfo()</code> 获得，其中包含以下内容：</p>
-
-<ul>
-<li>内核信息，包括：<ul>
- <li><code>/proc/config.gz</code>：压缩的完整内核配置，该信息需要在运行时读取并转换为可查询的对象。</li>
- <li><code>/proc/version</code>：通过 <code>uname()</code> 系统调用获得的信息。</li>
- <li><code>/proc/cpuinfo</code>：对于 32 位和 64 位计算机，格式可能会不同。</li>
- <li>policydb 版本
-  <ul>
-  <li><code>/sys/fs/selinux/policyvers</code>（假设 <code>selinuxfs</code> 装载在 <code>/sys/fs/selinux</code> 处）。</li>
-  <li>来自 <code>libselinux</code> 的 <code>security_policyvers()</code> API 可提供相同的信息。</li>
-  </ul>
-  </li>
-  </ul>
-</li><li>静态 libavb 版本，包括：
- <ul>
- <li>引导加载程序系统属性：<code>ro.boot.vbmeta.avb_version</code></li>
- <li>init/fs_mgr 系统属性：<code>ro.boot.avb_version</code></li>
- </ul>
-</li>
-</ul>
-
-<h2 id="queryable-api">可查询的 API</h2>
-<p>当 <code>hwservicemanager</code>、OTA 更新服务、CTS <code>DeviceInfo</code> 以及其他组件需要从 VINTF 对象中获取信息时，该对象是作为系统 API 存在的。</p>
-
-<ul>
-<li>C++ 可查询的 API 位于 <a href="https://android.googlesource.com/platform/system/libvintf/+/master/include/vintf/VintfObject.h" class="external"><code>android::vintf::VintfObject</code></a></li>
-<li>Java 可查询 API 位于 <a href="https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/os/VintfObject.java" class="external"><code>android.os.VintfObject</code></a>
-</li></ul>
 
 </body></html>

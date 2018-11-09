@@ -24,7 +24,7 @@
 本文介绍 Android 如何处理与平台 OTA 相关的政策兼容性问题，其中新平台 SELinux 设置可能与旧供应商 SELinux 设置有所不同。
 </p>
 <p>
-<em></em><em></em>基于 Treble 的 SELinux 政策设计考虑到平台和供应商政策之间的二进制文件区别；如果供应商分区生成依赖项（例如 <code>platform</code> &lt; <code>vendor</code> &lt; <code>oem</code>），则该方案会变得更加复杂。
+基于 Treble 的 SELinux 政策设计考虑到平台和供应商政策之间的二进制文件区别；如果供应商分区生成依赖项（例如 <code>platform</code> &lt; <code>vendor</code> &lt; <code>oem</code>），则该方案会变得更加复杂。<em></em><em></em>
 </p>
 <p>
 在 Android 8.0 及更高版本中，SELinux 全局政策划分为私有和公共组件。公共组件包含政策和相关基础架构，保证可用于平台版本。
@@ -140,7 +140,9 @@ AOSP SELinux 政策已经为平台与之交互的 <code>vendor</code> 分区部�
   </tr>
 </tbody></table>
 <aside class="note">
-  <strong>*</strong> 有关更多示例，请参阅 <a href="https://android.googlesource.com/platform/system/sepolicy/+/master/private/file_contexts" class="external"><code>system/sepolicy/private/file_contexts</code></a>。</aside>
+  <strong>*</strong> 有关更多示例，请参阅
+<a href="https://android.googlesource.com/platform/system/sepolicy/+/master/private/file_contexts" class="external">
+  <code>system/sepolicy/private/file_contexts</code></a>。</aside>
 
 <p>
 因此，您在 <code>vendor</code> 分区中标记额外的文件时，必须遵循特定规则（通过 <code>neverallows</code> 强制执行）：
@@ -163,21 +165,21 @@ AOSP SELinux 政策已经为平台与之交互的 <code>vendor</code> 分区部�
 <code>Debugfs</code> 可以在 <code>file_contexts</code> 和 <code>genfscon</code> 中进行标记。在 Android 7.0 中，平台和供应商都会标记 <code>debugfs</code>。
 </p>
 <p>
-<strong>建议</strong>：在短期内，只有供应商政策标记 <code>debugfs</code>。从长远来看，请移除 <code>debugfs</code>。
+<strong>建议</strong>：在短期内，只有供应商政策可以标记 <code>debugfs</code>。从长远来看，请移除 <code>debugfs</code>。
 </p>
 <h4 id="tracefs">Tracefs (/sys/kernel/debug/tracing)</h4>
 <p>
 <code>Tracefs</code> 可以在 <code>file_contexts</code> 和 <code>genfscon</code> 中进行标记。在 Android 7.0 中，只有平台标记 <code>tracefs</code>。
 </p>
 <p>
-<strong>建议</strong>：只有平台标记 <code>tracefs</code>。
+<strong>建议</strong>：只有平台可以标记 <code>tracefs</code>。
 </p>
 <h4 id="sysfs">Sysfs (/sys)</h4>
 <p>
 <code>/sys</code> 中的文件可以使用 <code>file_contexts</code> 和 <code>genfscon</code> 进行标记。在 Android 7.0 中，平台和供应商都使用 <code>file_contexts</code> 和 <code>genfscon</code> 来标记 <code>sysfs</code> 中的文件。
 </p>
 <p>
-<strong>建议</strong>：平台可以标记非设备特定的 <code>sysfs</code> 节点。否则，只有供应商可以标记文件。
+<strong>建议</strong>：平台可以标记非特定于设备的 <code>sysfs</code> 节点。否则，只有供应商可以标记文件。
 </p>
 <h4 id="tmpfs">tmpfs (/dev)</h4>
 <p>
@@ -248,7 +250,7 @@ Vendor: allow v_domain sysfs:class perm;</pre>
 </p>
 <p>
 以 <code>allow source_foo target_bar:<em>class
-perm</em>;</code> 形式导出的平台公共政策包含在供应商政策中。在<a href="/security/selinux/build">编译</a>（包括相应的版本）期间，它将转换为将放入设备供应商部分的政策（显示在转换后的通用中间语言 (CIL) 中）：
+perm</em>;</code> 形式导出的平台公共政策包含在供应商政策中。在<a href="/security/selinux/build">编译</a>（包括相应的版本）期间，它将转换为将放入设备供应商部分的政策（以转换后的通用中间语言 (CIL) 显示）：
 </p>
 <pre class="prettyprint"> (allow source_foo_vN target_bar_vN (class (perm)))</pre>
 <p>
@@ -257,7 +259,7 @@ perm</em>;</code> 形式导出的平台公共政策包含在供应商政策中�
 
 <h3 id="policy-diffs">政策差异</h3>
 <p>
-如果不在各版本差异中将属性映射到类型，那么通过向每种类型的末尾处添加 <code>_v<em>N</em></code> 来自动创建属性不起任何作用。Android 维护着属性版本之间的映射以及类型到这些属性的映射。这是在前面提到的包含语句的映射文件（例如 (CIL)）中完成的：
+如果不在各版本差异中将属性映射到类型，那么通过向每种类型的末尾添加 <code>_v<em>N</em></code> 来自动创建属性不起任何作用。Android 维护着属性版本之间的映射以及类型到这些属性的映射。这是在前面提到的包含语句的映射文件（例如 (CIL)）中完成的：
 </p>
 
 <pre class="prettyprint">(typeattributeset foo_vN (foo))</pre>
@@ -505,7 +507,7 @@ Android 9 包含以下与域相关的属性：
 建议：
 </p>
 <ul>
-<li>不受信任的应用应与系统服务通信，系统服务再与供应商 HIDL HAL 通信。例如，应用可以与 <code><a href="https://android.googlesource.com/platform/system/sepolicy/+/master/public/app.te#209" class="external">binderservicedomain</a></code> 通信，然后 <code>mediaserver</code>（这是 <code>binderservicedomain</code>）再与 <code><a href="https://android.googlesource.com/platform/system/sepolicy/+/master/private/mediaserver.te#6" class="external">hal_graphics_allocator</a></code> 通信。
+<li>不受信任的应用应与系统服务通信，系统服务再与供应商 HIDL HAL 通信。例如，应用可以与 <code><a href="https://android.googlesource.com/platform/system/sepolicy/+/master/public/app.te#209" class="external">binderservicedomain</a></code> 通信，然后 <code>mediaserver</code>（属于 <code>binderservicedomain</code>）再与 <code><a href="https://android.googlesource.com/platform/system/sepolicy/+/master/private/mediaserver.te#6" class="external">hal_graphics_allocator</a></code> 通信。
 
 <p><strong><em>或</em></strong></p></li>
 <li>需要直接访问 <code>vendor</code> HAL 的应用应具有各自的供应商定义的 sepolicy 域。</li>

@@ -1,0 +1,61 @@
+<html devsite><head>
+
+  <meta name="book_path" value="/_book.yaml"/>
+
+  <meta name="project_path" value="/_project.yaml"/>
+</head>
+<body>
+<!--
+  Copyright 2018 The Android Open Source Project
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+<h1 id="session_parameters" class="page-title">会话参数</h1>
+
+<p>在捕获会话初始化阶段，会话参数功能使相机客户端可以主动配置一部分成本高昂的请求参数（即会话参数），从而减少延迟。借助此功能，您的 HAL 实现会在流配置阶段（而不是第一个捕获请求期间）接收客户端参数，并且可以根据它们的值更高效地准备和构建内部流水线。</p>
+
+<h2 id="examples_and_source">示例和来源</h2>
+
+<p>参考会话参数实现已经是 <a href="https://android.googlesource.com/platform/hardware/qcom/camera/+/master/msm8998/QCamera2/HAL3/QCamera3HWI.cpp">CameraHal</a> 的一部分。此 HAL 使用旧版 Hal API。实现 Camera HIDL API 的<a href="https://source.android.com/devices/architecture/hal-types">绑定式</a> CameraHal 必须使用相应的 HIDL <a href="https://android.googlesource.com/platform/hardware/interfaces/+/master/camera/device/">sessionParams</a> 条目在流配置期间访问所有新的传入会话参数。</p>
+
+<p>相机客户端可以通过调用 <a href="https://developer.android.com/reference/android/hardware/camera2/CameraCharacteristics#getAvailableSessionKeys()"><code>getAvaiableSessionKeys()</code></a> 来查询所有受支持的会话参数的键，并最终通过 <a href="https://developer.android.com/reference/android/hardware/camera2/params/SessionConfiguration#setSessionParameters(android.hardware.camera2.CaptureRequest)"><code>setSessionParameters()</code></a> 设置它们的初始值。</p>
+
+<h2 id="implementation">实现</h2>
+
+<p>您的 CameraHal 实现必须在相应的静态相机元数据中填充 <a href="https://android.googlesource.com/platform/hardware/interfaces/+/master/camera/metadata/"><code>ANDROID_REQUEST_AVAILABLE_SESSION_KEYS</code></a>，并提供一部分 <a href="https://android.googlesource.com/platform/hardware/interfaces/+/master/camera/metadata/3.2/types.hal#1016"><code>ANDROID_REQUEST_AVAILABLE_REQUEST_KEYS</code></a>（其中包含难以按帧应用的键的列表，如果在捕获会话生命周期内修改这些键，则可能会导致意外延迟）。</p>
+
+<p>典型示例包括：需要耗费时间重新配置硬件或更改内部相机流水线的参数。控制会话参数仍然可以在捕获请求中发挥作用，不过，客户端应意识到并预料到其应用会出现延迟。</p>
+
+<p>框架会监控所有传入请求，如果它检测到会话参数值发生变化，则会在内部重新配置相机。然后，已传递到 CameraHal 的新流配置中会包含更新后的会话参数值（用于更高效地配置相机流水线）。</p>
+
+<h2 id="customization">自定义</h2>
+
+<p>您可以在 CameraHal 端填充的可用会话参数列表中定义标记。如果 CameraHal 将可用会话参数列表留空，则此功能无效。</p>
+
+<h2 id="validation">验证</h2>
+
+<p>CTS 提供以下用于测试会话参数的新用例：</p>
+
+<ul>
+<li><a href="https://android.googlesource.com/platform/cts/+/master/tests/camera/src/android/hardware/camera2/cts/CameraDeviceTest.java#795"><code>CameraDeviceTest#testSessionConfiguration</code></a></li>
+<li><a href="https://android.googlesource.com/platform/cts/+/master/tests/camera/src/android/hardware/camera2/cts/CameraDeviceTest.java#1038"><code>CameraDeviceTest#testCreateSessionWithParameters</code></a></li>
+<li><a href="https://android.googlesource.com/platform/cts/+/master/tests/camera/src/android/hardware/camera2/cts/CameraDeviceTest.java#870"><code>CameraDeviceTest#testSessionParametersStateLeak</code></a></li>
+<li><a href="https://android.googlesource.com/platform/cts/+/master/tests/camera/libctscamera2jni/native-camera-jni.cpp#2140"><code>NativeCameraDeviceTest#testCameraDevicePreviewWithSessionParameters</code></a></li>
+</ul>
+
+<p>通常，一旦某个参数成为会话键列表的一部分，其当前值就会添加到在流配置期间在 HAL 层传递的会话参数中。</p>
+
+<p>选择会话参数时请务必谨慎。不应频繁更改流配置之间的会话参数值（如果有的话）。如果参数频繁更改（例如出于捕获目的），其适用性会非常低；如果将此类参数添加到会话参数列表中，则可能会因内部重新配置过多而导致 CTS 问题。</p>
+
+</body></html>

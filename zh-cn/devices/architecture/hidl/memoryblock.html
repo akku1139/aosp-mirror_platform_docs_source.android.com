@@ -1,0 +1,230 @@
+<html devsite><head>
+
+  <meta name="book_path" value="/_book.yaml"/>
+
+  <meta name="project_path" value="/_project.yaml"/>
+</head>
+<body>
+
+<!--
+  Copyright 2018 The Android Open Source Project
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+<h1 id="hidl_memory_block" class="page-title">HIDL 内存块</h1>
+
+<p>HIDL MemoryBlock 是构建在 <code>hidl_memory</code>、<code>HIDL
+@1.0::IAllocator</code> 和 <code>HIDL @1.0::IMapper</code> 之上的抽象层，专为有多个内存块共用单个内存堆的 HIDL 服务而设计。</p>
+
+<h2 id="performance_improvements">性能提升</h2>
+
+<p>在应用中使用 MemoryBlock 可显著减少 <code>mmap</code>/<code>munmap</code> 数量和用户空间细分错误，从而提升性能。例如：</p>
+
+<ul>
+<li>对每个缓冲区分配使用一个 <code>hidl_memory</code>，则每次分配平均用时 238 us。</li>
+<li>使用 <code>MemoryBlock</code> 并共享单个 <code>hidl_memory</code>，则每次分配平均用时 2.82 us。</li>
+</ul>
+
+<h2 id="architecture">架构</h2>
+
+<p>HIDL MemoryBlock 架构包括一些有多个内存块共用单个内存堆的 HIDL 服务：</p>
+
+<p><img src="/devices/architecture/images/hidl_memoryblock_arch.png" alt="HIDL MemoryBlock"/></p>
+
+<p><strong>图 1.</strong> HIDL MemoryBlock 架构</p>
+
+<h2 id="normal_usage">常规用法</h2>
+
+<p>本部分提供了一个关于如何通过以下方式使用 MemoryBlock 的示例：先声明 HAL，然后实现 HAL。</p>
+
+<h3 id="declaring_the_hal">声明 HAL</h3>
+
+<p>对于以下示例 IFoo HAL：</p>
+<pre class="prettyprint"><code>import android.hidl.memory.block@1.0::MemoryBlock;
+
+interface IFoo {
+    getSome() generates(MemoryBlock block);
+    giveBack(MemoryBlock block);
+};
+</code></pre>
+<p><code>Android.bp</code> 如下所示：</p>
+<pre class="prettyprint"><code>hidl_interface {
+    ...
+    srcs: [
+        "IFoo.hal",
+    ],
+    interfaces: [
+        "android.hidl.memory.block@1.0",
+        ...
+};
+</code></pre>
+<h3 id="implementing_the_hal">实现 HAL</h3>
+
+<p>要实现示例 HAL，请执行以下操作：</p>
+
+<ol>
+<li><p>获取 <code>hidl_memory</code>（有关详情，请参阅 <a href="/devices/architecture/hidl-cpp/">HIDL C++</a>）。</p>
+<pre class="prettyprint"><code>#include &lt;android/hidl/allocator/1.0/IAllocator.h&gt;
+
+using ::android::hidl::allocator::V1_0::IAllocator;
+using ::android::hardware::hidl_memory;
+...
+  sp&lt;IAllocator&gt; allocator = IAllocator::getService("ashmem");
+  allocator-&gt;allocate(2048, [&amp;](bool success, const hidl_memory&amp; mem)
+  {
+        if (!success) { /* error */ }
+        // you can now use the hidl_memory object 'mem' or pass it
+  }));
+</code></pre></li>
+<li><p>使用获取的 <code>hidl_memory</code> 创建 <code>HidlMemoryDealer</code>：</p>
+<pre class="prettyprint"><code>#include &lt;hidlmemory/HidlMemoryDealer.h&gt;
+
+using ::android::hardware::HidlMemoryDealer
+/* The mem argument is acquired in the Step1, returned by the ashmemAllocator-&gt;allocate */
+sp&lt;HidlMemoryDealer&gt; memory_dealer = HidlMemoryDealer::getInstance(mem);
+</code></pre></li>
+<li><p>分配 <code>MemoryBlock</code>（使用 HIDL 定义的结构体）。</p>
+
+<p>示例 <code>MemoryBlock</code>：</p>
+<pre class="prettyprint"><code>struct MemoryBlock {
+IMemoryToken token;
+uint64_t size;
+uint64_t offset;
+};
+</code></pre>
+<p>使用 <code>MemoryDealer</code> 分配 <code>MemoryBlock</code> 的示例：</p>
+<pre class="prettyprint"><code>#include &lt;android/hidl/memory/block/1.0/types.h&gt;
+
+using ::android::hidl::memory::block::V1_0::MemoryBlock;
+
+Return&lt;void&gt; Foo::getSome(getSome_cb _hidl_cb) {
+    MemoryBlock block = memory_dealer-&gt;allocate(1024);
+    if(HidlMemoryDealer::isOk(block)){
+        _hidl_cb(block);
+    ...
+</code></pre></li>
+<li><p>解除 <code>MemoryBlock</code> 分配：</p>
+<pre class="prettyprint"><code>Return&lt;void&gt; Foo::giveBack(const MemoryBlock&amp; block) {
+    memory_dealer-&gt;deallocate(block.offset);
+...
+</code></pre></li>
+<li><p>操控数据：</p>
+<pre class="prettyprint"><code>#include &lt;hidlmemory/mapping.h&gt;
+#include &lt;android/hidl/memory/1.0/IMemory.h&gt;
+
+using ::android::hidl::memory::V1_0::IMemory;
+
+sp&lt;IMemory&gt; memory = mapMemory(block);
+uint8_t* data =
+
+static_cast&lt;uint8_t*&gt;(static_cast&lt;void*&gt;(memory-&gt;getPointer()));
+</code></pre></li>
+<li><p>配置 <code>Android.bp</code>：</p>
+<pre class="prettyprint"><code>shared_libs: [
+        "android.hidl.memory@1.0",
+
+        "android.hidl.memory.block@1.0"
+
+        "android.hidl.memory.token@1.0",
+        "libhidlbase",
+        "libhidlmemory",
+</code></pre></li>
+<li><p>查看流程，确定是否需要 <code>lockMemory</code>。</p>
+
+<p>通常，MemoryBlock 使用引用计数来维护共享的 <code>hidl_memory</code>：当其中有 <code>MemoryBlock</code> 首次被映射时，系统会对该内存执行 <code>mmap()</code> 操作；如果没有任何内容引用该内存，则系统会对其执行 <code>munmap()</code> 操作。为确保始终映射 <code>hidl_memory</code>，您可以使用 <code>lockMemory</code>，这是一种 RAII 样式的对象，可使相应的 <code>hidl_memory</code> 在整个锁定生命周期内保持映射状态。示例：</p>
+<pre class="prettyprint"><code>#include &lt;hidlmemory/mapping.h&gt;
+
+sp&lt;RefBase&gt; lockMemory(const sp&lt;IMemoryToken&gt; key);
+</code></pre></li>
+</ol>
+
+<h2 id="extended_usage">扩展用法</h2>
+
+<p>本部分详细介绍了 <code>MemoryBlock</code> 的扩展用法。</p>
+
+<h3 id="using_reference_count_to_manage_memoryblock">使用引用计数来管理 Memoryblock</h3>
+
+<p>在大多数情况下，要使用 MemoryBlock，最高效的方法是明确分配/解除分配。不过，在复杂应用中，使用引用计数进行垃圾回收可能会更好。要获得 MemoryBlock 的引用计数，您可以将 MemoryBlock 与 binder 对象绑定，这有助于对引用进行计数，并在计数降至零时解除 MemoryBlock 分配。</p>
+
+<h3 id="declaring_the_hal_2">声明 HAL</h3>
+
+<p>声明 HAL 时，请描述包含 MemoryBlock 和 IBase 的 HIDL 结构体：</p>
+<pre class="prettyprint"><code>import android.hidl.memory.block@1.0::MemoryBlock;
+
+struct MemoryBlockAllocation {
+    MemoryBlock block;
+    IBase refcnt;
+};
+</code></pre>
+<p>使用 <code>MemoryBlockAllocation</code> 替换 <code>MemoryBlock</code> 并移除相应方法，以返回 <code>MemoryBlock</code>。该内存块将由引用计数功能通过 <code>MemoryBlockAllocation</code> 解除分配。示例：</p>
+<pre class="prettyprint"><code>interface IFoo {
+    allocateSome() generates(MemoryBlockAllocation allocation);
+};
+</code></pre>
+<h3 id="implementing_the_hal_2">实现 HAL</h3>
+
+<p>HAL 服务端实现示例：</p>
+<pre class="prettyprint"><code>class MemoryBlockRefCnt: public virtual IBase {
+   MemoryBlockRefCnt(uint64_t offset, sp&lt;MemoryDealer&gt; dealer)
+     : mOffset(offset), mDealer(dealer) {}
+   ~MemoryBlockRefCnt() {
+       mDealer-&gt;deallocate(mOffset);
+   }
+ private:
+   uint64_t mOffset;
+   sp&lt;MemoryDealer&gt; mDealer;
+};
+
+Return&lt;void&gt; Foo::allocateSome(allocateSome_cb _hidl_cb) {
+    MemoryBlockAllocation allocation;
+    allocation.block = memory_dealer-&gt;allocate(1024);
+    if(HidlMemoryDealer::isOk(block)){
+        allocation.refcnt= new MemoryBlockRefCnt(...);
+        _hidl_cb(allocation);
+</code></pre>
+<p>HAL 客户端实现示例：</p>
+<pre class="prettyprint"><code>ifoo-&gt;allocateSome([&amp;](const MemoryBlockAllocation&amp; allocation){
+    ...
+);
+</code></pre>
+<h3 id="attachingretrieving_metadata">附加/检索元数据</h3>
+
+<p>某些应用需要额外的数据才能与所分配的 <code>MemoryBlock</code> 绑定。您可以使用以下两种方法来附加/检索元数据：</p>
+
+<ul>
+<li><p>如果应用访问元数据的频率与访问内存块本身的频率相同，请附加元数据并以结构体的形式传递所有元数据。示例：</p>
+<pre class="prettyprint"><code>import android.hidl.memory.block@1.0::MemoryBlock;
+
+struct MemoryBlockWithMetaData{
+    MemoryBlock block;
+    MetaDataStruct metaData;
+};
+</code></pre></li>
+<li><p>如果应用访问元数据的频率远低于访问内存块的频率，则使用接口被动传递元数据会更加高效。示例：</p>
+<pre class="prettyprint"><code>import android.hidl.memory.block@1.0::MemoryBlock;
+
+struct MemoryBlockWithMetaData{
+    MemoryBlock block;
+    IMetaData metaData;
+};
+</code></pre>
+<p>接下来，使用 Memory Dealer 将元数据和 MemoryBlock 绑定在一起。示例：</p>
+<pre class="prettyprint"><code>MemoryBlockWithMetaData memory_block;
+memory_block.block = dealer-&gt;allocate(size);
+if(HidlMemoryDealer::isOk(block)){
+    memory_block.metaData = new MetaData(...);
+</code></pre></li>
+</ul>
+
+</body></html>

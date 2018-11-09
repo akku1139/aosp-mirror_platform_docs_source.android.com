@@ -24,12 +24,21 @@
 <a href="https://source.android.com/compatibility/android-cdd#11_updatable_software">Android 兼容性定义文档 (CDD) 可更新软件</a>要求设备实现 <a href="https://developer.android.com/reference/android/app/admin/SystemUpdatePolicy.html" class="external"><code>SystemUpdatePolicy</code></a> 类。<code>SystemUpdatePolicy</code> 可让设备所有者 (DO) 应用（如果存在）控制系统更新的安装。
     </p>
 
-    <p>
-Android 9 允许设备所有者推迟无线 (OTA) 更新最多 90 天，增强了设备所有者控制更新的能力。此功能专注于企业所有、单一用途 (COSU) 解决方案，可让所有者在重要时段（如节假日）暂停在设备上运行的操作系统版本。
-    </p>
+    <h2 id="notify-do">通知设备所有者</h2>
+
+      <p>
+无线下载 (OTA) 客户端必须使用系统 API 将传入的 OTA 更新通知给设备所有者应用。OTA 客户端还必须包含时间戳，记录何时 OTA 更新开始可用。OTA 客户端可以通过调用 <code>DevicePolicyManager.notifyPendingSystemUpdate(long updateReceivedTime, boolean isSecurityPatch)</code> 通知设备所有者应用。如果 OTA 客户端不知道更新是否为安全补丁程序，则可回退至使用 <code>DevicePolicyManager.notifyPendingSystemUpdate(long updateReceivedTime)</code>。
+      </p>
+
+      <p>
+如果当前没有可用的更新，OTA 客户端可通过将 <code>updateReceivedTime</code> 参数设置为 <code>-1</code> 来报告此情况。我们建议每当 OTA 客户端对 OTA 服务器进行轮询或向客户端推送 OTA 时都发送通知。您还可以在更多的时间节点发送通知。
+      </p>
 
     <h2 id="system-update-policy">系统更新政策</h2>
 
+      <p>
+Android 9 允许设备所有者将 OTA 更新最多推迟 90 天，增强了设备所有者<a href="https://developer.android.com/work/dpc/system-updates">控制更新</a>的能力。此功能主要适用于专用设备（之前称为 COSU）解决方案，可让所有者在重要时段（如节假日）暂停在设备上运行的操作系统版本。
+      </p>
       <p>
 为遵守 CDD 的要求，OTA 客户端必须实施行为政策。DO 可以设置下列政策，设备系统更新子系统必须遵守这些政策：</p>
 
@@ -45,12 +54,16 @@ Android 9 允许设备所有者推迟无线 (OTA) 更新最多 90 天，增强�
         </li>
       </ul>
 
+      <p>
+设备所有者还可以通过<a href="https://developer.android.com/work/dpc/system-updates#freeze-periods">设置冻结时段</a>（在 Android 9 或更高版本中），在重要时段（如节假日或其他繁忙时段）冻结操作系统版本。系统在冻结时段不会安装 OTA 更新。我们建议使用 <code>SystemUpdatePolicy.InstallationOption</code>（请参见下一节）；不过，OTA 客户端还可以通过调用 <a href="https://developer.android.com/reference/android/app/admin/SystemUpdatePolicy#getFreezePeriods()"><code>SystemUpdatePolicy.getFreezePeriods()</code></a> 了解设备是否处于冻结时段。
+      </p>
+
     <h2 id="implementing-installation-options">
 实现安装选项</h2>
 
       <p>
 Android 9 引入了专为系统更新客户端设计的 @SystemApi <code>SystemUpdatePolicy.InstallationOption</code>。
-        <code>SystemUpdatePolicy.InstallationOption</code> 会充当政策的封装容器类。根据当前系统更新政策，某个安装选项会告知客户端如何针对传入的系统更新执行操作，以及相应操作的有效时长。安装选项可以是下列项之一：</p>
+        <code>SystemUpdatePolicy.InstallationOption</code> 充当政策和冻结时段的封装容器类。根据当前系统更新政策或任何可能设定的冻结时段，安装选项会告知客户端如何针对传入的系统更新执行操作，以及相应操作的有效时长。安装选项可以是下列项之一：</p>
 
       <ul>
         <li>
@@ -65,7 +78,7 @@ Android 9 引入了专为系统更新客户端设计的 @SystemApi <code>SystemU
       </ul>
 
       <p>
-系统更新客户端可以使用 <code>SystemUpdatePolicy.getInstallationOptionAt(long <var>when</var>)</code> 查询 <code>SystemUpdatePolicy.InstallationOption</code>，其中“when”表示查询安装选项的时间（从公元纪年开始计算的毫秒数）。<var></var>系统更新客户端可以使用 <code>SystemUpdatePolicy.getInstallationOptionAt(long <var>when</var>)</code> 方法，在有效时间结束前针对返回的选项执行操作。在返回的选项失效后，客户端可以使用新的时间戳为最近的选项执行另一次查询。
+系统更新客户端可以查询 <code>SystemUpdatePolicy.InstallationOption</code>，方法是使用 <code>SystemUpdatePolicy.getInstallationOptionAt(long <var>when</var>)</code>，其中“when”表示查询安装选项的时间（从公元纪年开始计算的毫秒数）。<var></var>系统更新客户端可以使用 <code>SystemUpdatePolicy.getInstallationOptionAt(long <var>when</var>)</code> 方法，在有效时间结束前针对返回的选项执行操作。在返回的选项失效后，客户端可以使用新的时间戳为最近的选项执行另一次查询。
       </p>
 
     <p>
