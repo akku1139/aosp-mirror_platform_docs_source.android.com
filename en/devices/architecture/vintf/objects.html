@@ -4,6 +4,7 @@
     <meta name="project_path" value="/_project.yaml" />
     <meta name="book_path" value="/_book.yaml" />
   </head>
+  {% include "_versions.html" %}
   <body>
   <!--
       Copyright 2017 The Android Open Source Project
@@ -30,18 +31,54 @@ on the schema, see <a href="#manifest-file-schema">Manifest file schema</a>).
 
 <h2 id="device-manifest-file">Device manifest</h2>
 <p>The Device manifest (provided by the device) consists of the vendor manifest
-and the ODM manifest:</p>
+and the ODM manifest.</p>
 
 <ul>
 <li>The vendor manifest specifies HALs, VNDK versions, etc. common to an SoC. It
 is recommended to be placed in the Android source tree at
-<code>device/${VENDOR}/${DEVICE}/manifest.xml</code>, but multiple fragment
+<code>device/<var>VENDOR</var>/<var>DEVICE</var>/manifest.xml</code>, but multiple fragment
 files can be used. For details, see
 <a href="/devices/architecture/vintf/resources.html#manifest-fragments">Generate
 DM from fragments</a>.
 </li>
-<li>The ODM manifest overrides the vendor manifest and lists HALs specific to
-the product.</li>
+<li>The ODM manifest lists HALs specific to the product. VINTF Object loads the ODM manifest as
+  follows:
+  <ol>
+    <li>If <code><var>SKU</var></code> is defined (where <code><var>SKU</var></code> is the value of
+      the property <code>ro.boot.product.hardware.sku</code>),
+      <code>/odm/etc/vintf/manifest_<var>SKU</var>.xml</code>
+    </li>
+    <li><code>/odm/etc/vintf/manifest.xml</code></li>
+    <li>If <code><var>SKU</var></code> is defined,
+      <code>/odm/etc/manifest_<var>SKU</var>.xml</code></li>
+    <li><code>/odm/etc/manifest.xml</code></li>
+  </ol>
+</li>
+<li>VINTF Object loads the device manifest as follows:
+  <ol>
+    <li>If <code>/vendor/etc/vintf/manifest.xml</code> exists, combine the following:
+      <ol>
+        <li><code>/vendor/etc/vintf/manifest.xml</code></li>
+        <li>optional vendor manifest fragments</li>
+        <li>optional ODM manifest
+        <li>optional ODM manifest fragments</li>
+      </ol>
+    <li>If ODM manifest exists, combine ODM manifest with optional ODM manifest fragments.</li>
+    <li><code>/vendor/manfiest.xml</code> (legacy, no fragments)</li>
+  </ol>
+Note that:
+  <ul>
+    <li>On legacy devices, the legacy vendor manifest and ODM manifest are used. The
+      ODM manifest may completely override the legacy vendor manifest.</li>
+    <li>On devices launched with Android {{ androidPVersionNumber }}, the ODM manifest is combined
+      with vendor manifest.</li>
+    <li>When combining a list of manifests, manifests that appear later in the list may override
+      tags in manifests that appear earlier in the list, provided that the tags in the later
+      manifest has attribute <code>override="true"</code>. For example, ODM manifest may override
+      some <code>&lt;hal></code> tags from vendor manifest. See documentation for attribute
+      <code>override</code> below.</li>
+  </ul>
+</li>
 </ul>
 
 <p>This setup enables multiple products with the same board to share the same
@@ -120,6 +157,7 @@ specify product-specific HALs).</p>
 &lt;?xml version="1.0" encoding="UTF-8"?>
 &lt;!-- Comments, Legal notices, etc. here -->
 &lt;manifest version="1.0" type="device">
+    &lt;!-- camera 3.4 in vendor manifest is ignored -->
     &lt;hal override="true">
         &lt;name>android.hardware.camera&lt;/name>
         &lt;transport>hwbinder&lt;/transport>
@@ -129,6 +167,7 @@ specify product-specific HALs).</p>
             &lt;instance>legacy/0&lt;/instance>
         &lt;/interface>
     &lt;/hal>
+    &lt;!-- NFC is disabled -->
     &lt;hal override="true">
         &lt;name>android.hardware.nfc&lt;/name>
         &lt;transport>hwbinder&lt;/transport>

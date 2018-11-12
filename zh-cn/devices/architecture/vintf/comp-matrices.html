@@ -22,15 +22,15 @@
 
 <p>本部分介绍框架和设备兼容性矩阵以及<a href="#compatibility-matrix-schema">兼容性矩阵结构</a>。有关匹配规则，请参见<a href="/devices/architecture/vintf/match-rules.html">匹配规则</a>一文。</p>
 
-<h2 id="framework-compatibility-matrix">框架兼容性矩阵</h2>
-<p>框架兼容性矩阵说明了框架对运行它的设备的需求。矩阵文件与 Android 框架映像（位于 <code>system.img</code> 中）相关联。框架的兼容性矩阵的需求应通过设备清单来满足（在启动和 OTA 时需求是被强制执行的）。</p>
+<h2 id="framework-compatibility-matrix">框架兼容性矩阵 (FCM)</h2>
+<p>框架兼容性矩阵说明了框架对运行它的设备的要求。矩阵文件与 Android 框架映像（位于 <code>system.img</code> 中）相关联。FCM 的要求应通过设备清单来满足（在启动和 OTA 时要求是被强制执行的）。</p>
 
-<p>框架兼容性矩阵文件示例：</p>
+<p>示例 FCM 文件：</p>
 
 <pre class="prettyprint">
 &lt;?xml version="1.0" encoding="UTF-8"?&gt;
 &lt;!-- Comments, Legal notices, etc. here --&gt;
-&lt;compatibility-matrix version="1.0" type="framework"&gt;
+&lt;compatibility-matrix version="1.0" type="framework" level="3"&gt;
     &lt;hal&gt;
         &lt;name&gt;android.hardware.camera&lt;/name&gt;
         &lt;version&gt;1.0&lt;/version&gt;
@@ -38,6 +38,7 @@
         &lt;interface&gt;
             &lt;name&gt;ICameraProvider&lt;/name&gt;
             &lt;instance&gt;default&lt;/instance&gt;
+            &lt;regex-instance&gt;[a-z_]+/[0-9]+&lt;/regex-instance&gt;
         &lt;/interface&gt;
     &lt;/hal&gt;
     &lt;hal&gt;
@@ -62,6 +63,16 @@
         &lt;version&gt;1.1&lt;/version&gt;
     &lt;/hal&gt;
     &lt;kernel version="3.18.51"&gt;
+        &lt;!-- common configs --&gt;
+    &lt;/kernel&gt;
+    &lt;kernel version="3.18.51"&gt;
+        &lt;!-- arm specific configs --&gt;
+        &lt;condition&gt;
+            &lt;config&gt;
+                &lt;key&gt;CONFIG_ARM&lt;/key&gt;
+                &lt;value type="tristate"&gt;y&lt;/value&gt;
+            &lt;/config&gt;
+        &lt;condition&gt;
         &lt;config&gt;
             &lt;key&gt;CONFIG_A&lt;/key&gt;
             &lt;value type="string"&gt;&lt;/value&gt;
@@ -72,6 +83,7 @@
         &lt;/config&gt;
     &lt;/kernel&gt;
     &lt;kernel version="4.1.22"&gt;
+        &lt;!-- common configs --&gt;
         &lt;config&gt;
             &lt;key&gt;CONFIG_A&lt;/key&gt;
             &lt;value type="string"&gt;foo&lt;/value&gt;
@@ -97,10 +109,12 @@
 &lt;/compatibility-matrix&gt;
 </pre>
 
-<h2 id="device-compatibility-matrix">设备兼容性矩阵</h2>
-<p>设备兼容性矩阵说明了设备期望框架满足的一组需求（在启动和 OTA 时需求是被强制执行的）。
+<p>有关详情，请参阅 <a href="/devices/architecture/vintf/fcm">FCM 生命周期</a>。</p>
+
+<h2 id="device-compatibility-matrix">设备兼容性矩阵 (DCM)</h2>
+<p>设备兼容性矩阵说明了设备期望框架满足的一组要求（在启动和 OTA 时要求是被强制执行的）。
 </p>
-<p>设备兼容性矩阵文件示例：</p>
+<p>示例 DCM 文件：</p>
 
 <pre class="prettyprint">
 &lt;?xml version="1.0" encoding="UTF-8"?&gt;
@@ -138,19 +152,23 @@
             &lt;instance&gt;default&lt;/instance&gt;
         &lt;/interface&gt;
     &lt;/hal&gt;
-    &lt;xmlfile format="dtd" optional="false"&gt;
-        &lt;name&gt;sample_xml&lt;/name&gt;
-        &lt;version&gt;1.0&lt;/version&gt;
-    &lt;/xmlfile&gt;
+    &lt;vendor-ndk&gt;
+        &lt;version&gt;27&lt;/version&gt;
+    &lt;/vendor-ndk&gt;
+    &lt;system-sdk&gt;
+        &lt;version&gt;27&lt;/version&gt;
+    &lt;/system-sdk&gt;
 &lt;/compatibility-matrix&gt;
 </pre>
 
 <h2 id="compatibility-matrix-schema">兼容性矩阵结构</h2>
+<p>本部分介绍这些 XML 标记的含义。Android 源代码树中的源文件中可以缺少某些“必需”标记，这些标记会在编译时由 <code><a href="/devices/architecture/vintf/resources#assemble_vintf">assemble_vintf</a></code> 写入。设备上的相应文件中必须有“必需”标记。</p>
+
 <dl>
 <dt><code>?xml</code></dt>
 <dd>可选。它只向 XML 解析器提供信息。</dd>
 <dt><code>compatibility-matrix.version</code></dt>
-<dd>必需。该兼容性矩阵的版本。描述清单中预期的元素。与 XML 版本无关。</dd>
+<dd>必需。此兼容性矩阵的元版本。描述兼容性矩阵中预期的元素。与 XML 版本无关。</dd>
 <dt><code>compatibility-matrix.type</code></dt>
 <dd>必需。该兼容性矩阵的类型：
  <ul>
@@ -158,6 +176,8 @@
  <li><code>"framework"</code>：框架兼容性矩阵。</li>
  </ul>
 </dd>
+<dt><code>manifest.level</code></dt>
+<dd>框架兼容性矩阵的必需标记。指定此文件的框架兼容性矩阵版本（FCM 版本）。不应在设备对应的框架兼容性矩阵（即 <code>DEVICE_FRAMEWORK_COMPATIBILITY_MATRIX_FILE</code>）中声明。</dd>
 <dt><code>compatibility-matrix.hal</code></dt>
 <dd>可选且可重复。列出兼容性矩阵（框架或设备）的所有者要求存在的单个 HAL（HIDL 或本机）。HAL 条目通过 <code>&lt;name&gt;</code> 元素来区分，可以有多个同名的 HAL 条目（暗示“和”条件）。
 </dd>
@@ -169,7 +189,7 @@
  </ul>
 </dd>
 <dt><code>compatibility-matrix.hal.optional</code></dt>
-<dd>属性是可选的，默认值为 false。指明该 HAL 对兼容性矩阵（框架或设备）的所有者来说是否为可选。如果将 <code>&amp;ltp;hal&gt;</code> 条目标记为可选，则表示在存在的情况下所有者可以使用该 HAL，但并非是必须存在。</dd>
+<dd>属性是可选的，默认值为 false。指明该 HAL 对兼容性矩阵（框架或设备）的所有者来说是否为可选。如果将 <code>&lt;hal&gt;</code> 条目标记为可选，则表示在存在的情况下所有者可以使用该 HAL，但并非是必须存在。</dd>
 <dt><code>compatibility-matrix.hal.name</code></dt>
 <dd>必需。该 HAL 的完整软件包名称。示例：
  <ul>
@@ -185,8 +205,16 @@
 <dd>必需。接口的名称。</dd>
 <dt><code>compatibility-matrix.hal.interface.instance</code></dt>
 <dd>可选且可重复。该接口的必需实例的列表。</dd>
+<dt><code>compatibility-matrix.hal.interface.regex-instance</code></dt>
+<dd>可选且可重复。该接口上的必需实例名称模式的列表。使用<a href="http://man7.org/linux/man-pages/man7/regex.7.html" class="external">扩展正则表达式</a>格式。</dd>
+<dt><code>compatibility-matrix.kernel</code></dt>
+<dd>可选且可重复。指定框架在每个内核版本上必需的内核配置的列表。<br />
+可以存在具有同一 <code>&lt;version&gt;</code> 的多个 <code>&lt;kernel&gt;</code>，暗含着“and”（与）的关系。每个 <code>&lt;kernel&gt;</code> 都是需求的一个“片段”，相应需求只有在满足 <code>&lt;conditions&gt;</code> 时才会得到支持。</dd>
 <dt><code>compatibility-matrix.kernel.version</code></dt>
-<dd>必需。内核版本。格式为 <code>{version}.{major-revision}.{minor-revision}</code>。版本和主要修订版本必须完全匹配，次要修订版本定义框架期望的内核的最低 LTS 版本。</dd>
+<dd>必需。内核版本。格式为 <code><var>VERSION</var>.<var>MAJOR_REVISION</var>.<var>MINOR_REVISION</var></code>。版本和主要修订版本必须完全匹配。次要修订版本定义框架期望的内核的最低 LTS 版本。</dd>
+<dt><code>compatibility-matrix.kernel.condition</code></dt>
+<dd>可选。对于每个版本的第一个 <code>&lt;kernel&gt;</code>，必须不存在。指定了条件列表。只有满足条件时才会支持此 <code>&lt;kernel&gt;</code> 片段中声明的需求。
+</dd>
 <dt><code>compatibility-matrix.kernel.config</code></dt>
 <dd>可选且可重复。列出该内核版本必须匹配的 <code>CONFIG</code> 项。每个 <code>CONFIG</code> 项是一个键值对，配置项通过键来区分。</dd>
 <dt><code>compatibility-matrix.kernel.config.key</code></dt>
@@ -217,6 +245,14 @@
 <dd>必需。声明框架支持的 <code>policydb</code> 版本。</dd>
 <dt><code>compatibility-matrix.avb.vbmeta-version</code></dt>
 <dd>可选，仅供框架兼容性矩阵使用。声明用于对 <code>system.img</code> 签名的 <a href="/devices/architecture/vintf/match-rules.html#avb-version">AVB 版本</a>。</dd>
+<dt><code>compatibility-matrix.vendor-ndk</code></dt>
+<dd>可选，仅供设备兼容性矩阵使用。声明 VNDK 供应商快照的要求。如果缺失，则系统映像对 VNDK 没有要求。</dd>
+<dt><code>compatibility-matrix.vendor-ndk.version</code></dt>
+<dd>必需。正整数，用于声明供应商映像所需的 VNDK 版本。</dd>
+<dt><code>compatibility-matrix.vendor-ndk.library</code></dt>
+<dd>可选且可重复。声明供应商映像所需的一组 VNDK 库。与 <code>manifest.vendor-ndk.library</code> 语义相同。</dd>
+<dt><code>compatibility-matrix.system-sdk.version</code></dt>
+<dd>可选且可重复，仅供设备兼容性矩阵使用。声明供应商应用对 System SDK 版本的要求。如果缺失，则系统映像对系统 SDK 没有要求。</dd>
 </dl>
 
 </body></html>

@@ -31,21 +31,42 @@
       <a
          href="https://developer.android.com/reference/android/app/admin/SystemUpdatePolicy.html"
          class="external"><code>SystemUpdatePolicy</code></a>
-      class. <code>SystemUpdatePolicy</code> lets the Device Owner (DO) app, if
+      class. <code>SystemUpdatePolicy</code> lets the device owner (DO) app, if
       present, control the installation of system updates.
     </p>
 
-    <p>
-      Android {{ androidPVersionNumber }} enhances the ability for device
-      owners to control updates by allowing device owners to postpone
-      over-the-air (OTA) updates for up to 90 days. Focusing on
-      corporate-owned, single-use (COSU) solutions, this feature lets owners
-      pause the OS version running on devices over critical periods, such as
-      holidays.
-    </p>
+    <h2 id="notify-do">Notifying device owners</h2>
+
+      <p>
+        The over-the-air (OTA) client must notify device owner apps about
+        incoming OTA updates using a system API. The OTA client must also
+        include a timestamp recording when the OTA update first became
+        available. OTA clients can call
+        <code>DevicePolicyManager.notifyPendingSystemUpdate(long updateReceivedTime, boolean isSecurityPatch)</code>
+        to notify device owner apps. If the OTA client doesn’t know if an update
+        is a security patch, the OTA client can fall back to using
+        <code>DevicePolicyManager.notifyPendingSystemUpdate(long updateReceivedTime)</code>.
+      </p>
+
+      <p>
+        If an update isn’t currently available, the OTA client reports this by
+        setting the <code>updateReceivedTime</code> argument to <code>-1</code>.
+        We recommend sending notifications whenever the OTA client polls the
+        OTA server, or when an OTA is pushed to the client. You can also send
+        out notifications more frequently.
+      </p>
 
     <h2 id="system-update-policy">System update policy</h2>
 
+      <p>
+        Android {{ androidPVersionNumber }} enhances the ability for device
+        owners to
+        <a href="https://developer.android.com/work/dpc/system-updates">control
+        updates</a> by allowing device owners to postpone OTA updates for up to
+        90 days. Focusing on dedicated device (previously called COSU)
+        solutions, this feature lets owners pause the OS version running on
+        devices over critical periods, such as holidays.
+      </p>
       <p>
         To comply with the CDD, the OTA client must implement behavioral
         policies. The DO can set the following policies, which must be
@@ -70,6 +91,19 @@
         </li>
       </ul>
 
+      <p>
+        Device owners can also
+        <a href="https://developer.android.com/work/dpc/system-updates#freeze-periods">set
+        freeze periods</a> (in Android 9 or later) that freeze the OS version
+        over critical periods, such as holidays or other busy times. The system
+        doesn't install OTA updates during a freeze period. We recommend using
+        <code>SystemUpdatePolicy.InstallationOption</code> (see
+        following section), however the OTA client can also call
+        <a href="https://developer.android.com/reference/android/app/admin/SystemUpdatePolicy#getFreezePeriods()"><code>SystemUpdatePolicy.getFreezePeriods()</code></a>
+        to check if the device is in a freeze period.
+      </p>
+
+
     <h2 id="implementing-installation-options">
       Implementing installation options
     </h2>
@@ -79,10 +113,11 @@
         <code>SystemUpdatePolicy.InstallationOption</code>, that is designed
         for the system update clients.
         <code>SystemUpdatePolicy.InstallationOption</code> serves as a wrapper
-        class for the policies. An installation option tells clients how to act
-        on incoming system updates and how long that action is valid for, given
-        the current system update policy. An installation option can be one of
-        the following:
+        class for the policies and freeze periods. An installation option tells
+        clients how to act on incoming system updates and how long that action
+        is valid for, given the current system update policy or any freeze
+        period that might be set. An installation option can be one of the
+        following:
       </p>
 
       <ul>

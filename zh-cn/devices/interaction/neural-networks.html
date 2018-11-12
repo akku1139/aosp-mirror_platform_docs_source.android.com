@@ -1,0 +1,123 @@
+<html devsite><head>
+
+  <meta name="book_path" value="/_book.yaml"/>
+
+  <meta name="project_path" value="/_project.yaml"/>
+</head>
+<body>
+
+<!--
+  Copyright 2018 The Android Open Source Project
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+<h1 id="neural_networks_api_drivers" class="page-title">Neural Networks API 驱动程序</h1>
+
+<p>本文简要介绍了如何为 Android 9 实现 Neural Networks API 驱动程序。如需完整的详细信息，请参阅 HAL 定义文件 (<code>hardware/interfaces/neuralnetworks.</code>) 中的相关文档。您可以在 <code>frameworks/ml/nn/driver.</code> 中找到实用的代码，其中包括一个示例驱动程序。</p>
+
+<p>建议您先熟悉一下 <a href="https://developer.android.com/ndk/guides/neuralnetworks/" class="external">Neural Networks API 指南</a>，然后再阅读本文档。</p>
+
+<h2 id="changes_introduced_in_android">Android 9 中进行的更改</h2>
+
+<p>1.1 HAL 与 Android 8.1 中引入的 1.0 HAL 非常相似。前者包含以下 3 项明显变化：</p>
+
+<ul>
+<li><code>IDevice::prepareModel_1_1</code> 包含一个 <code>ExecutionPreference</code> 参数。驱动程序可以通过该参数了解应用是倾向于节约电量，还是将在快速连续调用中执行模型，从而调整其准备工作。</li>
+<li>增加了 9 个新运算：<code>BATCH_TO_SPACE_ND</code>、<code>DIV</code>、<code>MEAN</code>、<code>PAD</code>、<code>SPACE_TO_BATCH_ND</code>、<code>SQUEEZE</code>、<code>STRIDED_SLICE</code>、<code>SUB</code>、<code>TRANSPOSE</code>。</li>
+<li>通过将 <code>Model.relaxComputationFloat32toFloat16</code> 设为 <code>true</code>，应用可以指定可使用 16 位浮点范围和/或精度来运行 32 位浮点计算。<code>Capabilities</code> 结构体具有附加字段 <code>relaxedFloat32toFloat16Performance</code>，因此驱动程序可以向框架报告其放宽的性能。</li>
+</ul>
+
+<h2 id="overview">概览</h2>
+
+<p>神经网络 (NN) HAL 定义了各种加速器的抽象概念。这些加速器的驱动程序必须符合此 HAL。与从 Android 8.0 版本开始实现的所有驱动程序一样，接口在 HIDL 文件中指定。</p>
+
+<p>下面显示了框架和驱动程序之间的接口遵循的一般流程：</p>
+
+<p><img src="/devices/interaction/images/neural_networks_interface.png" alt="神经网络接口"/></p>
+
+<p><strong>图 1</strong>：神经网络流程</p>
+
+<h2 id="initialization">初始化</h2>
+
+<p>在进行初始化时，框架会向驱动程序查询其功能。比如加速器处理浮点和量化张量的速度有多快？加速器执行这些运算需要多少电量？框架会根据这些信息来确定在哪里执行模型。请参阅 <code>IDevice.hal</code> 中的 <code>IDevice::getCapabilities</code>。</p>
+
+<h2 id="request_compilation">编译请求</h2>
+
+<p>对于指定的应用请求，框架需要确定使用哪些加速器。</p>
+
+<p>在模型编译过程中，框架会通过调用 <code>IDevice::getSupportedOperations</code> 将模型发送到每个驱动程序。每个驱动程序都会返回一个布尔值数组，以指出支持模型的哪些运算。驱动程序可能会根据多种原因确定无法支持指定的运算，例如：</p>
+
+<ul>
+<li>不支持相应数据类型或运算；</li>
+<li>仅支持具有特定输入参数的运算，例如可以执行 3x3 和 5x5 卷积，但无法执行 7x7 卷积；</li>
+<li>内存限制导致无法处理大型图形或输入。</li>
+</ul>
+
+<p>框架会选择在可用处理器上运行模型的哪些部分，选择依据为处理器的性能特性以及应用指明的偏好，例如应用是倾向于速度还是能效。请参阅下面的“性能特性”部分。</p>
+
+<p>框架通过调用 <code>IDevice::prepareModel.</code> 指示每个所选驱动程序做好执行模型一部分的准备。 这会指示驱动程序编译请求。例如，驱动程序可以生成代码、创建重新排序的权重副本，等等。编译模型和执行请求之间可能会间隔很长时间，因此不应在此时分配宝贵的资源，如较大的设备内存区块。</p>
+
+<p>如有任何驱动程序在准备工作期间返回故障代码，框架都会在 CPU 上运行整个模型。一旦成功，系统将返回 <code>IPreparedModel</code> 句柄。</p>
+
+<p>驱动程序可能会希望将其编译结果缓存至持久性存储空间，以避免在每次启动应用时执行可能会非常冗长的编译步骤。目录 <code>frameworks/ml/nn/driver/cache</code> 中包含示例缓存代码。<code>nnCache</code> 子目录中包含持久性存储空间代码。驱动程序可以随意使用此实现或任何其他实现。如果缓存的项目不再有用，驱动程序会负责将其释放。</p>
+
+<h2 id="request_execution">执行请求</h2>
+
+<p>当应用要求框架执行请求时，框架会针对每个所选驱动程序调用 <code>IPreparedModel::execute</code>。传递到此函数的 <code>Request</code> 参数会列出执行请求所使用的输入和输出缓冲区。输入和输出缓冲区都会使用标准格式，请参阅“张量”部分。</p>
+
+<p>工作完成后，驱动程序会通过 <code>IExecutionCallback</code> 通知框架。</p>
+
+<p>对于涉及多个处理器的用户请求，框架负责预留中间内存，并按顺序执行对每个驱动程序的调用。</p>
+
+<p>可以在同一个 <code>IPreparedModel.</code> 上并行启动多个请求。驱动程序可以并行执行这些请求，也可以按顺序执行。</p>
+
+<p>此外，驱动程序还可能会被要求保留多个准备好的模型。例如，准备 m1，准备 m2，在 m1 上运行 r1，在 m2 上运行 r2，在 m1 上运行 r3，在 m2 上运行 r4，…删除 m1，删除 m2。</p>
+
+<p>为了避免首次执行速度缓慢（这可能会导致糟糕的用户体验，比如第一帧卡顿），建议驱动程序在编译阶段执行大部分初始化工作。首次执行时的初始化应仅限于过早执行会对系统运行状况产生负面影响的操作，例如预留较大的临时缓冲区或提高加速器的时钟频率。只能准备极少量并发模型的驱动程序也可能必须在首次执行时进行初始化。</p>
+
+<p>为了在快速连续执行时实现良好的性能，驱动程序可能需要保留临时缓冲区或提高时钟频率。我们建议创建一个监控线程，以便在经过固定的一段时间后仍未创建任何新请求时释放这些资源。</p>
+
+<p>当应用使用完准备的模型时，框架会释放对 <code>IPreparedModel</code> 对象的引用。过一会儿，<code>IPreparedModel</code> 对象将在创建它的驱动程序服务中被销毁。此时，在析构函数的实现中，可以重新获取模型专用的资源。</p>
+
+<h2 id="performance_characteristics">性能特性</h2>
+
+<p>为了确定如何将计算分配给可用的加速器，框架必须了解每个加速器的效率：加速器执行查询的速度以及加速器的能效。</p>
+
+<p>虽然可以通过在设备上运行示例工作负载来轻松测定性能，但耗电量较难测定。因此，对于加速器执行一些参考工作负载的速度和效率，在初始化时，驱动程序会提供标准化数据。</p>
+
+<p>这种方法并非万无一失。实际的运行时性能会受很多因素影响，比如数据类型、张量大小、运算符类型等等。</p>
+
+<p>在 Android 9 中，我们建议在确定驱动程序因应 <code>getCapabilities</code> 调用而必须返回的值<code>.</code>时，使用 MobileNets 量化数和 MobileNets 浮点数作为参考工作负载。应使用 MobileNets 浮点数模型来测定完整的 32 位浮点性能和放宽的 16 位浮点性能。</p>
+
+<p>谎报这些数据对驱动程序没有任何益处。这样做会导致框架无法做出理想的工作分配。在未来的版本中，这些数据可能需要由 VTS 进行验证。</p>
+
+<h2 id="cpu_usage">CPU 使用情况</h2>
+
+<p>驱动程序会使用 CPU 来设置计算。它们不应使用 CPU 来执行图计算，因为这可能会导致框架无法正确分配工作。驱动程序应仅向框架报告它无法处理的部分，并让框架处理其余部分。</p>
+
+<p>没有针对 CPU 的驱动程序。框架提供所有运算（OEM 运算除外）的基于 CPU 的实现。</p>
+
+<h2 id="testing">测试</h2>
+
+<p>Google 提供了一整套 VTS 测试。这些测试会试用每个 API，而且还会验证驱动程序支持的各个运算符是否都正常运行，并提供足够精确的结果。</p>
+
+<p>对于 Android 9，我们选择了以下临时精度要求：对于浮点数为 1e-5，对于量化数为差一。将来，我们希望根据对大量模型和实现的测试来制定更严格的精度要求。</p>
+
+<h2 id="security">安全</h2>
+
+<p>由于应用进程直接与驱动程序的进程通信，因此驱动程序代码必须验证所收到的调用的参数。此验证由 VTS 完成。有关验证代码，请参阅 <code>frameworks/ml/nn/include/ValidateHal.h</code>。</p>
+
+<p>此外，驱动程序应确保应用不会相互干扰，即使它们使用相同的加速器，也是如此。</p>
+
+</body></html>

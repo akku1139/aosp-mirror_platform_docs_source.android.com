@@ -1,9 +1,10 @@
 <html devsite><head>
-    <title>已更新的信息架构</title>
+    <title>信息架构</title>
     <meta name="project_path" value="/_project.yaml"/>
     <meta name="book_path" value="/_book.yaml"/>
   </head>
   <body>
+
   <!--
       Copyright 2017 The Android Open Source Project
 
@@ -21,7 +22,9 @@
   -->
 
 <p>
-Android 8.0 为“设置”应用引入了全新的信息架构。新信息架构的目标是简化设置的整理方式，便于用户快速查找自定义 Android 设备所需的设置。
+Android 8.0 为“设置”应用引入了全新的信息架构，以便简化设置组织方式，让用户更轻松地快速找到自定义 Android 设备所需的设置。
+
+Android 9 引入了一些改进，以提供更多设置功能并简化实现。
 </p>
 
 <h2 id="examples-and-source">示例和源代码</h2>
@@ -31,92 +34,83 @@ Android 8.0 为“设置”应用引入了全新的信息架构。新信息架�
 </p>
 
 <p>
-重要组件的文件路径如下所示：
+下面列出了重要组件的文件路径：
 </p>
 
-<h3 id="categorykey">CategoryKey</h3>
-
-<code>packages/SettingsLib/src/com/android/settingslib/drawer/CategoryKey.java</code>
-
-<h3 id="dashboardfragmentregistry">DashboardFragmentRegistry</h3>
-
-<code>packages/apps/Settings/src/com/android/settings/dashboard/DashboardFragmentRegistry.java</code>
-
-<h3 id="dashboardfragment">DashboardFragment</h3>
-
-<code>packages/apps/Settings/src/com/android/settings/dashboard/DashboardFragment.java</code>
-
-<h3 id="preferencecontrollers">AbstractPreferenceController 和 PreferenceController</h3>
-
-<code>frameworks/base/packages/SettingsLib/src/com/android/settingslib/core/AbstractPreferenceController.java</code>
-
-<code>packages/apps/Settings/src/com/android/settings/core/PreferenceController.java</code>
+<ul>
+<li><strong>CategoryKey</strong>：<code>packages/SettingsLib/src/com/android/settingslib/drawer/CategoryKey.java</code></li>
+<li><strong>DashboardFragmentRegistry</strong>：<code>packages/apps/Settings/src/com/android/settings/dashboard/DashboardFragmentRegistry.java</code></li>
+<li><strong>DashboardFragment</strong>：<code>packages/apps/Settings/src/com/android/settings/dashboard/DashboardFragment.java</code></li>
+<li><strong>AbstractPreferenceController</strong>：<code>frameworks/base/packages/SettingsLib/src/com/android/settingslib/core/AbstractPreferenceController.java
+</code></li>
+<li><strong>BasePreferenceController</strong>（已在 Android 9 中引入）：<code>packages/apps/Settings/src/com/android/settings/core/BasePreferenceController.java</code></li>
+</ul>
 
 <h2 id="implementation">实现</h2>
 
 <p>
-建议设备制造商调整现有的“设置”信息架构，并根据需要插入其他设置页面以适应合作伙伴的特定功能。将偏好设置从旧页面（实现为 SettingsPreferencePage）移到新页面（使用 DashboardFragment 实现）可能很复杂。旧页面的偏好设置在实现时可能没有创建 PreferenceController。
+建议设备制造商调整现有的“设置”信息架构，并根据需要插入其他设置页面以容纳合作伙伴专用功能。将偏好设置从旧版页面（作为 <code>SettingsPreferencePage</code> 实现的页面）移到新页面（使用 <code>DashboardFragment</code> 实现的页面）可能很复杂。旧版页面中的偏好设置在实现时很可能没有创建 <code>PreferenceController</code>。
 </p>
 
 <p>
-因此将偏好设置移到 DashboardFragment 中时，合作伙伴需要创建一个 PreferenceController，并且先将代码移到控制器中，然后在新的 DashboardFragment 中对偏好设置实例化。重构过程相当简单，因为大部分操作只是移动现有代码。
+因此，将偏好设置从旧版页面移到新页面时，您需要先创建一个 <code>PreferenceController</code>，并将代码移到该控制器中，然后才能在新的 <code>DashboardFragment</code> 中对其进行实例化。<code>PreferenceController</code> 所需的 API 会在其名称中加以说明并记录在 Javadoc 中。
 </p>
 
 <p>
-完成重构后，原始设备制造商 (OEM) 应提交带有测试的补丁程序 CL 以将其更改合并到上游。
+强烈建议为每个 <code>PreferenceController</code> 添加单元测试。如果更改要提交到 AOSP，则需要有单元测试。要详细了解如何编写基于 Robolectric 的测试，请参阅 readme 文件 <code>packages/apps/Settings/tests/robotests/README.md</code>。
 </p>
 
-<h3 id="plugin">插件样式信息架构</h3>
+<h3 id="plugin">插件式信息架构</h3>
 
 <p>
 每个设置项都作为偏好设置进行实现。可以轻松地将偏好设置从一个页面移到另一个页面。
 </p>
 
 <p>
-为了方便移动多个设置，Android O 引入了包含设置项的插件样式托管方片段。设置项被建模为插件样式控制器。因此，设置页面由单个托管方片段和多个设置控制器构成。
+为了更轻松地移动多个设置，Android 8.0 引入了包含设置项的插件式托管方片段。设置项被建模为插件式控制器。因此，设置页面由单个托管方片段和多个设置控制器构成。
 </p>
 
 <h3 id="dashboard-fragment">DashboardFragment</h3>
 
 <p>
-这是插件样式偏好设置控制器的托管方。该片段继承自 PreferenceFragment，并具有用于放大和更新静态偏好设置列表与动态偏好设置列表的钩子。
+<code>DashboardFragment</code> 是插件式偏好设置控制器的托管方。该片段继承自 <code>PreferenceFragment</code>，并具有用于扩大和更新静态偏好设置列表与动态偏好设置列表的钩子。
 </p>
 
 <h3 id="static-preferences">静态偏好设置</h3>
 
 <p>
-静态偏好设置列表在 XML 中使用<preference>
-标记定义。DashboardFragment 实现使用 getPreferenceScreenResId() 方法来定义哪个 XML 文件包含要显示的偏好设置静态列表。
-</preference></p>
+静态偏好设置列表在 XML 中使用 <code>&lt;Preference&gt;</code> 标记定义。<code>DashboardFragment</code> 实现使用 <code>getPreferenceScreenResId()</code> 方法定义哪个 XML 文件包含要显示的静态偏好设置列表。
+</p>
 
 <h3 id="dynamic-preferences">动态偏好设置</h3>
 
 <p>
-动态项表示具有 intent 的图块，会引向外部或内部 Activity。通常，intent 会引向不同的设置页面。例如，“设置”首页中的“Google”设置项就是一个动态项。动态项在 AndroidManifest 中定义（参见下文），并通过 FeatureProvider（定义为 DashboardFeatureProvider）加载。
+动态项表示具有 intent 的图块，会引向外部或内部 Activity。通常，intent 会引向不同的设置页面。例如，“设置”首页中的“Google”设置项就是一个动态项。动态项在 <code>AndroidManifest</code> 中定义（请参见下文），并通过 <code>FeatureProvider</code>（定义为 <code>
+DashboardFeatureProvider</code>）加载。
 </p>
 
 <p>
-请注意，动态设置的负载高于静态配置的设置，因此通常开发者应将设置实现为静态设置。但是，在以下任一情况下，动态设置非常有用：
+与静态配置的设置相比，动态设置更耗费资源，因此开发者通常应将设置实现为静态设置。不过在以下任一情况下，动态设置可能非常有用：
 </p>
 
 <ul>
 <li>设置未在“设置”应用中直接实现（例如，注入由 OEM/运营商应用实现的设置）。</li>
 <li>设置应显示在“设置”首页上。</li>
-<li>您已具有设置的 Activity，不想要实现额外的静态配置。</li>
+<li>您已有相应设置的 Activity，不想实现额外的静态配置。</li>
 </ul>
 
 <p>
-要将 Activity 配置为动态设置，您需要执行以下操作：
+要将 Activity 配置为动态设置，请执行以下操作：
 </p>
 
 <ul>
-<li>将该 Activity 标记为动态设置。为此，只需将 intent 过滤器添加到该 Activity 即可。</li>
-<li>告诉“设置”应用其所属的类别。该类别是在 <strong>CategoryKey</strong> 中定义的常量。</li>
-<li>可选：显示设置时，添加总结文本。</li>
+<li>向 Activity 添加 Intent 过滤器，将其标记为动态设置。</li>
+<li>将其所属的类别告诉“设置”应用。类别是一个常量，在 <code>CategoryKey</code> 中定义。</li>
+<li>选做：系统显示设置时，添加摘要文字。</li>
 </ul>
 
 <p>
-以下是从“设置”应用的 DisplaySettings 中摘取的示例。
+以下是从“设置”应用中提取的 <code>DisplaySettings</code> 示例。
 </p>
 
 <pre class="prettyprint">
@@ -137,25 +131,55 @@ Android 8.0 为“设置”应用引入了全新的信息架构。新信息架�
 </pre>
 
 <p>
-在呈现时，片段将请求在 AndroidManifest 中定义的静态 XML 和动态设置偏好设置列表。无论在哪个来源中加载设置，DashboardFragment 都通过 PreferenceController 管理每个设置的处理逻辑（参见下文）。<strong></strong>然后，它们将以混合列表的形式显示在界面上。
+在呈现时，片段会请求提供在 <code>AndroidManifest</code> 中定义的静态 XML 和动态设置中的偏好设置列表。无论 <code>PreferenceController</code> 是在 Java 代码中还是在 XML 中定义的，<code>DashboardFragment</code> 都通过 <code>PreferenceController</code> 管理每个设置的处理逻辑（请参见下文）。然后，它们将以混合列表的形式显示在界面中。
 </p>
 
 <h3 id="preference-controller">PreferenceController</h3>
 
+<p>如本部分所述，在 Android 9 中和在 Android 8.x 中实现 <code>PreferenceController</code> 有一些不同。</p>
+
+<h4>Android 9 版本中的 PreferenceController</h4>
+
+<p><code>PreferenceController</code> 包含与偏好设置进行交互所需的所有逻辑，包括显示、更新、编入搜索索引等。</p>
+
+<p><code>PreferenceController</code> 的接口被定义为 <code>BasePreferenceController</code>。例如，请参阅 <code>packages/apps/Settings/src/com/android/settings/core/
+BasePreferenceController.java</code> 中的代码</p>
+
+<p><code>BasePreferenceController</code> 有多个子类，每个子类都分别映射到“设置”应用默认支持的一个特定界面样式。例如，<code>TogglePreferenceController</code> 包含的某个 API 直接映射到用户应如何与基于切换开关的偏好设置界面进行交互。</p>
+
+<p><code>BasePreferenceController</code> 具有 <code>getAvailabilityStatus()</code>、<code>displayPreference()</code>、<code>handlePreferenceTreeClicked(),</code> 等 API。有关每个 API 的详细文档位于相应的接口类中。</p>
+
+<p>实现 <code>BasePreferenceController</code>（及其子类，例如 <code>TogglePreferenceController</code>）时的一个限制是，构造函数签名必须与以下一项匹配：</p>
+
+<ul>
+<li><code>public MyController(Context context, String key) {}</code></li>
+<li><code>public MyController(Context context) {}</code></li>
+</ul>
+
+<p>在为片段安装偏好设置时，信息中心会提供一种在显示之前附加 <code>PreferenceController</code> 的方法。在安装时，控制器会连接到片段，以便将来的所有相关事件均发送到控制器。</p>
+
+<code>DashboardFragment</code> 会在屏幕中保留 <code>PreferenceController</code> 的列表。在片段的 <code>onCreate()</code> 中，将为 <code>getAvailabilityStatus()</code> 方法调用所有控制器，如果它返回 true，则会调用 <code>displayPreference()</code> 来处理显示逻辑。
+<code>getAvailabilityStatus()</code> 也很重要，用于在搜索期间告诉“设置”框架哪些项可用。<p></p>
+
+<h4>Android 8.x 版本中的 PreferenceController</h4>
+
 <p>
-PreferenceController 包含与偏好设置互动的所有逻辑，包括显示/更新/编入搜索索引等。
+<code>PreferenceController</code> 包含与偏好设置进行交互所需的所有逻辑，包括显示、更新、编入搜索索引等。
 </p>
 
 <p>
-相应地，PreferenceController 的接口具有 isAvailable()、displayPreference()、handlePreferenceTreeClicked() 等的 API。有关每个 API 的详细文档可以在相应接口类中找到。
+与偏好设置交互相对应，<code>
+PreferenceController</code> 的接口具有 <code>isAvailable()</code>、<code>
+displayPreference()</code>、<code>handlePreferenceTreeClicked()</code> 等 API。有关每个 API 的详细文档位于相应的接口类中。
 </p>
 
 <p>
-在为片段安装偏好设置时，信息中心会提供一种在显示之前附加 PreferenceController 的方法。在安装时，控制器将连接到片段，以便将来的所有相关事件均发送到控制器。
+在为片段安装偏好设置时，信息中心会提供一种在显示之前附加 <code>PreferenceController</code> 的方法。在安装时，控制器会连接到片段，以便将来的所有相关事件均发送到控制器。
 </p>
 
 <p>
-DashboardFragment 将在屏幕中保留 PreferenceController 的列表。在片段的 onCreate() 中，将为 isAvailable() 方法调用所有控制器，如果其返回 true，将调用 displayPreference() 来处理显示逻辑。
+<code>DashboardFragment</code> 会在屏幕中保留 <code>PreferenceControllers
+</code> 的列表。在片段的 <code>onCreate()</code> 中，将为 <code>isAvailable()</code> 方法调用所有控制器，如果它返回 true，则会调用 <code>displayPreference()</code> 来处理显示逻辑。
 </p>
 
 <h2 id="using-dashboardfragment">使用 DashboardFragment</h2>
@@ -163,62 +187,99 @@ DashboardFragment 将在屏幕中保留 PreferenceController 的列表。在片�
 <h3 id="moving-preference">将偏好设置从页面 A 移到页面 B</h3>
 
 <p>
-如果偏好设置静态地列在原始页面的偏好设置 XML 文件中，请遵循下面的<strong>静态</strong>路径。否则，请遵循<strong>动态</strong>路径。
+如果偏好设置以静态方式列在原始页面的偏好设置 XML 文件中，请按照下面适用于您的 Android 版本的<strong>静态</strong>移动程序进行操作。否则，请按照适合您的 Android 版本的<strong>动态</strong>移动程序进行操作。
 </p>
 
-<h4 id="static-move">静态</h4>
+<h4 id="static-move-p">Android 9 中的静态移动</h4>
 
 <ol>
-<li>查找原始页面和目标页面的偏好设置 XML 文件。</li>您可以从页面的 getPreferenceScreenResId() 方法中找到此信息。
-<li>移除原始页面的 XML 中的偏好设置。</li>
+<li>查找原始页面和目标页面的偏好设置 XML 文件。您可以从页面的 <code>getPreferenceScreenResId()</code> 方法中找到此信息。</li>
+<li>从原始页面的 XML 中移除偏好设置。</li>
 <li>将偏好设置添加到目标页面的 XML 中。</li>
-<li>在原始页面的 Java 实现中移除此偏好设置的 PreferenceController。通常它在 getPreferenceController() 中。</li>
-<strong>注意</strong>：偏好设置可能没有 PreferenceController。
-<li>在目标页面的 getPreferenceController() 中实例化 PreferenceController。</li>
+<li>从原始页面的 Java 实现中移除该偏好设置的 <code>PreferenceController</code>。它通常位于 <code>createPreferenceControllers()</code> 中。控制器可能是在 XML 中直接声明的。
+<p><strong>注意</strong>：偏好设置可能没有 <code>PreferenceController</code>。</p></li>
+<li>在目标页面的 <code>createPreferenceControllers()</code> 中实例化 <code>PreferenceController</code>。如果 <code>PreferenceController</code> 是在旧版页面的 XML 中定义的，则还要在新页面的 XML 中定义它。</li>
 </ol>
 
-<h4 id="dynamic-move">动态</h4>
+<h4 id="dynamic-move">Android 9 中的动态移动</h4>
 
 <ol>
 <li>查找原始页面和目标页面托管的类别。您可以在 <code>DashboardFragmentRegistry</code> 中找到此信息。</li>
-<li>打开包含您需要移动的设置的 <code>AndroidManifest.xml</code> 文件，并找到表示此设置的 Activity 条目。</li>
-<li>更改该 Activity 的“com.android.settings.category”元数据值，将值设置为新页面的类别键。</li>
+<li>打开您需要移动的设置所在的 <code>AndroidManifest.xml</code> 文件，并找到代表此设置的 Activity 条目。</li>
+<li>将该 Activity 的 <code>com.android.settings.category</code> 元数据值设为新页面的类别键。</li>
+</ol>
+
+<h4 id="static-move-8">Android 8.x 版本中的静态移动</h4>
+
+<ol>
+<li>查找原始页面和目标页面的偏好设置 XML 文件。</li>
+您可以从页面的 <code>getPreferenceScreenResId()
+</code> 方法中找到此信息。
+<li>从原始页面的 XML 中移除偏好设置。</li>
+<li>将偏好设置添加到目标页面的 XML 中。</li>
+<li>在原始页面的 Java 实现中移除该偏好设置的 <code>PreferenceController</code>。它通常位于 <code>getPreferenceControllers()</code> 中。</li>
+<p><strong>注意</strong>：偏好设置可能没有 <code>PreferenceController</code>。</p>
+<li>在目标页面的 <code>getPreferenceControllers()</code> 中实例化 <code>PreferenceController</code>。</li>
+</ol>
+
+<h4 id="dynamic-move">Android 8.x 版本中的动态移动</h4>
+
+<ol>
+<li>查找原始页面和目标页面托管的类别。您可以在 <code>DashboardFragmentRegistry</code> 中找到此信息。</li>
+<li>打开您需要移动的设置所在的 <code>AndroidManifest.xml</code> 文件，并找到代表此设置的 Activity 条目。</li>
+<li>更改该 Activity 的 <code>com.android.settings.category</code> 元数据值，将值设为指向新页面的类别键。</li>
 </ol>
 
 <h3 id="creating-a-new-preference">在页面中创建新的偏好设置</h3>
 
 <p>
-如果偏好设置静态地列在原始页面的偏好设置 XML 文件中，请遵循下面的<strong>静态</strong>路径。否则，请遵循<strong>动态</strong>路径。
+如果偏好设置以静态方式列在原始页面的偏好设置 XML 文件中，请按照下面的<strong>静态</strong>程序进程操作。否则，请按照<strong>动态</strong>程序进行操作。
 </p>
 
-<h4 id="static-create">静态</h4>
+<h4 id="static-create">创建静态偏好设置</h4>
 
 <ol>
 <li>找到页面的偏好设置 XML 文件。您可以从页面的 getPreferenceScreenResId() 方法中找到此信息。</li>
-<li>在 XML 中添加一个新的偏好设置项。确保其具有独特的 android:key。</li>
-<li>在页面的 getPreferenceControllers() 方法中为此偏好设置实例化一个 PreferenceController。</li>如果该偏好设置已存在于其他地方，则表示其可能已具有 PreferenceController。您可以重新使用该 PreferenceController，无需构建新的 PreferenceController。
+<li>在 XML 中添加一个新的偏好设置项。确保它具有独一无二的 <code>android:key</code>。</li>
+<li>在页面的 <code>getPreferenceControllers()</code> 方法中为该偏好设置定义一个 <code>PreferenceController</code>。
+<ul>
+<li>在 Android 8.x 和 Android 9（选做）内，在页面的 <code>createPreferenceControllers()</code> 方法中为该偏好设置实例化一个 <code>PreferenceController</code>。
+
+<p>如果该偏好设置已存在于其他地方，则可能已具有针对它的 <code>PreferenceController</code>。您可以重复使用该 <code>PreferenceController</code>，而无需构建新的。</p>
+</li>
+<li>从 Android 9 开始，您可以选择在偏好设置旁的 XML 中声明 <code>PreferenceController</code>。例如：
+<pre class="prettyprint">
+&lt;Preference
+        android:key="reset_dashboard"
+        android:title="@string/reset_dashboard_title"
+        <b>settings:controller="com.android.settings.system.ResetPreferenceController"/&gt;</b>
+</pre>
+</li>
+</ul>
+</li>
 </ol>
 
-<h4 id="dynamic-create">动态</h4>
+<h4 id="dynamic-create">创建动态偏好设置</h4>
 
 <ol>
 <li>查找原始页面和目标页面托管的类别。您可以在 <code>DashboardFragmentRegistry</code> 中找到此信息。</li>
-<li>在 AndroidManifest 中创建一个新的 Activity，并添加必要的元数据来定义设置。将“com.android.settings.category”的元数据值设置为与第 1 步中定义的值相同。</li>
+<li>在 <code>AndroidManifest</code> 中创建一个新的 Activity。</li>
+<li>向新 Activity 添加必要的元数据，以定义设置。将 <code>com.android.settings.category</code> 的元数据值设为第 1 步中定义的相同值。</li>
 </ol>
 
-<h3 id="create-new-page">新建页面</h3>
+<h3 id="create-new-page">创建新页面</h3>
 <ol>
-<li>创建一个继承自 DashboardFragment 的新片段。</li>
+<li>创建一个继承自 <code>DashboardFragment</code> 的新片段。</li>
 <li>在 <code>DashboardFragmentRegistry</code> 中定义其类别。
 <p class="note"><strong>注意</strong>：此步骤是可选的。如果您在此页面中不需要任何动态偏好设置，则不需要提供类别键。</p></li>
-<li>遵循添加此页面所需设置的步骤进行操作。</li>
+<li>按照为此页面添加所需设置的步骤进行操作。要了解详情，请参阅<a href="#implementation">实现</a>部分。</li>
 </ol>
 
 <h2 id="validation">验证</h2>
 
 <ul>
-<li>在“设置”中运行 robolectric 测试，所有现有测试和新测试都应通过。
-</li><li>编译并安装“设置”，手动打开正在被修改的页面；该页面应立即更新。</li>
+<li>在“设置”部分运行 robolectric 测试。应通过所有现有测试和新测试。
+</li><li>编译并安装“设置”，然后手动打开正在修改的页面。该页面应立即更新。</li>
 </ul>
 
 </body></html>

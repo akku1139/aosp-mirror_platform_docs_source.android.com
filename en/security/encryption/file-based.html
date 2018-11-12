@@ -88,11 +88,11 @@ lifecycles regardless of whether or not they implement FBE. Although, without
 FBE, DE and CE storage will always be in the unlocked state.
 </p>
 <p>
-A complete implementation of file-based encryption on an Ext4 file system is
-provided in the Android Open Source Project (AOSP) and needs only be enabled on
-devices that meet the requirements. Manufacturers electing to use FBE may wish
-to explore ways of optimizing the feature based on the system on chip (SoC)
-used.
+A complete implementation of file-based encryption on the Ext4 and F2FS file
+systems is provided in the Android Open Source Project (AOSP) and needs only be
+enabled on devices that meet the requirements. Manufacturers electing to use FBE
+may wish to explore ways of optimizing the feature based on the system on chip
+(SoC) used.
 </p>
 <p>
 All the necessary packages in AOSP have been updated to be direct-boot aware.
@@ -114,10 +114,10 @@ vold (<a href="https://android.googlesource.com/platform/system/vold/">system/vo
 provides the functionality for managing storage devices and
 volumes on Android. The addition of FBE provides vold with several new commands
 to support key management for the CE and DE keys of multiple users. In addition
-to the core changes to use the <a href="#kernel-support">ext4 Encryption</a>
-capabilities in kernel many system packages including the lockscreen and the
-SystemUI have been modified to support the FBE and Direct Boot features. These
-include:
+to the core changes to use the <a href="#kernel-support">file-based
+encryption</a> capabilities in kernel, many system packages including the
+lockscreen and the SystemUI have been modified to support the FBE and Direct
+Boot features. These include:
 </p>
 
 <ul>
@@ -144,8 +144,9 @@ following dependencies:
 </p>
 
 <ul>
-<li><strong>Kernel Support</strong> for ext4 encryption (Kernel config option:
-EXT4_FS_ENCRYPTION)
+<li><strong>Kernel Support</strong> for Ext4 encryption or F2FS encryption
+(Kernel config option: <code>EXT4_FS_ENCRYPTION</code> or
+<code>F2FS_FS_ENCRYPTION</code>)
 <li><strong><a
 href="/security/keystore/index.html">Keymaster
 Support</a></strong> with a HAL version 1.0 or 2.0. There is no support for
@@ -183,65 +184,13 @@ Boot</a> developer documentation.
 </p>
 <h3 id="kernel-support">Kernel Support</h3>
 <p>
-The AOSP implementation of file-based encryption uses the ext4 encryption
-features in the Linux 4.4 kernel. The recommended solution is to use a kernel
-based on 4.4 or later. Ext4 encryption has also been backported to a 3.10 kernel
-in the Android common repositories and for the supported Nexus kernels.
+Kernel support for Ext4 and F2FS encryption is available in the Android common
+kernels, version 3.18 or higher.
 </p>
 <p>
-The android-3.10.y branch in the AOSP kernel/common git repository may
-provide a good starting point for device manufacturers that want to import this
-capability into their own device kernels. However, it is necessary to apply
-the most recent patches from the latest stable Linux kernel (currently <a
-href="https://git.kernel.org/cgit/linux/kernel/git/torvalds/linux.git/log/?id=refs/tags/v4.6">linux-4.6</a>)
-of the ext4 and jbd2 projects. The Nexus device kernels already include many of
-these patches.
-</p>
-<table>
-  <tr>
-   <th>Device</th>
-   <th>Kernel</th>
-  </tr>
-  <tr>
-   <td>Android Common
-   </td>
-   <td><strong>kernel/common</strong> android-3.10.y (<a
-href="https://android.googlesource.com/kernel/common/+/android-3.10.y">git</a>)
-   </td>
-  </tr>
-  <tr>
-   <td>Nexus 5X (bullhead)
-   </td>
-   <td><strong>kernel/msm</strong> android-msm-bullhead-3.10-n-preview-2 (<a
-href="https://android.googlesource.com/kernel/msm/+/android-msm-bullhead-3.10-n-preview-2">git</a>)
-   </td>
-  </tr>
-  <tr>
-   <td>Nexus 6P (angler)
-   </td>
-   <td><strong>kernel/msm</strong> android-msm-angler-3.10-n-preview-2 (<a
-href="https://android.googlesource.com/kernel/msm/+/android-msm-angler-3.10-n-preview-2">git</a>)
-   </td>
-  </tr>
-</table>
-<p>
-Note that each of these kernels uses a backport to 3.10. The ext4
-and jbd2 drivers from linux 3.18 were transplanted into existing kernels based
-on 3.10. Due to interdependencies between parts of the kernel, this backport
-breaks support for a number of features that are not used by Nexus devices.
-These include:
-</p>
-
-<ul>
-<li>The ext3 driver, although ext4 can still mount and use ext3 filesystems
-<li>Global File Sytem (GFS) Support
-<li>ACL support in ext4</li>
-</ul>
-
-<p>
-In addition to functional support for ext4 encryption, device manufacturers may
-also consider implementing cryptographic acceleration to speed up file-based
-encryption and improve the user experience.
+In addition to functional support for Ext4 or F2FS encryption, device
+manufacturers may also consider implementing cryptographic acceleration to speed
+up file-based encryption and improve the user experience.
 </p>
 <h3 id="enabling-file-based-encryption">Enabling file-based encryption</h3>
 <p>
@@ -285,18 +234,23 @@ effect, both CE and DE keys are 512-bit keys.
 
 <h3 id="encryption-policy">Encryption policy</h3>
 <p>
-Ext4 encryption applies the encryption policy at the directory level. When a
-device’s <code>userdata</code> partition is first created, the basic structures
-and policies are applied by the <code>init</code> scripts. These scripts will
-trigger the creation of the first user’s (user 0’s) CE and DE keys as well as
-define which directories are to be encrypted with these keys. When additional
-users and profiles are created, the necessary additional keys are generated and
-stored in the keystore; their credential and devices storage locations are
-created and the encryption policy links these keys to those directories.
+File-based encryption applies the encryption policy at the directory level. When
+a device’s <code>userdata</code> partition is first created, the basic
+structures and policies are applied by the <code>init</code> scripts. These
+scripts will trigger the creation of the first user’s (user 0’s) CE and DE keys
+as well as define which directories are to be encrypted with these keys. When
+additional users and profiles are created, the necessary additional keys are
+generated and stored in the keystore; their credential and devices storage
+locations are created and the encryption policy links these keys to those
+directories.
 </p>
 <p>
 In the current AOSP implementation, the encryption policy is hardcoded into this
 location:
+</p>
+<pre class="devsite-click-to-copy">/system/extras/libfscrypt/fscrypt_init_extensions.cpp</pre>
+<p>
+In Android P and earlier, the location was:
 </p>
 <pre class="devsite-click-to-copy">/system/extras/ext4_utils/ext4_crypt_init_extensions.cpp</pre>
 <p>
@@ -409,13 +363,19 @@ many
 CTS encryption tests</a>.
 </p>
 <p>
-Once the kernel builds for your board, also build for x86 and run under QEMU in
-order to test with <a
+After the kernel builds for your board, you should also build for x86
+and run under QEMU to test with <a
 hre="https://git.kernel.org/cgit/fs/ext2/xfstests-bld.git/plain/quick-start?h=META">
-xfstest</a> by using:
+kvm-xfstests</a>. For Ext4, use:
 </p>
 <pre class="devsite-terminal devsite-click-to-copy">
-kvm-xfstests -c encrypt -g auto
+kvm-xfstests -c ext4/encrypt -g auto
+</pre>
+<p>
+For F2FS, use:
+</p>
+<pre class="devsite-terminal devsite-click-to-copy">
+kvm-xfstests -c f2fs/encrypt -g auto
 </pre>
 <p>
 In addition, device manufacturers may perform these manual tests. On a device
