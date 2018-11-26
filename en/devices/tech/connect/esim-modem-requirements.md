@@ -24,22 +24,40 @@ removable eSIM 4FF card.
 
 ## General requirements
 
-These are the modem requirements for general eSIM support. The LPA needs the
-modem to support all of these requirements to function properly.
+These are the modem requirements for general eSIM support. The Local Profile
+Assistant (LPA) needs the modem to support all of these requirements to function
+properly.
 
 ### Handle the default boot profile correctly
 
 When there is no operational or test profile enabled on eSIM, the default boot
 profile is enabled. The modem shall recognize the eSIM with the default boot
-profile enabled as a valid SIM. The modem shall report card as valid to upper
-layers and shall not turn off the SIM power.
+profile enabled as a valid SIM, shall report the card as valid to upper layers,
+and shall not turn off the SIM power.
 
 ### Send terminal capabilities correctly
 
-When opening a logical channel to ISD-R, the modem shall send correct terminal
-capabilities to the eSIM. The terminal capability must encode support for eUICC
-capabilities: "Local Profile Management" and "Profile Download" per ETSI TS 102
-221.
+On power-up, the modem shall send correct terminal capabilities to the eSIM. The
+terminal capability shall encode support for eUICC capabilities: "Local Profile
+Management" and "Profile Download".
+
+See
+[ETSI TS 102 221 Section 11.1.19.2.4](https://www.etsi.org/deliver/etsi_ts/102200_102299/102221/15.00.00_60/ts_102221v150000p.pdf):
+“Additional Terminal capability indications related to eUICC". Bytes [1-3] shall
+be: ‘83 (Tag) ‘01’ (Length) ‘07’ (eUICC capabilities).
+
+### (Optional) Support eSIM OS OTA updates
+
+Note: As eSIM OS over-the-air (OTA) updates are not standardized, this depends
+on the vendor providing the eSIM OS.
+
+The modem shall support all requirements for eSIM OS OTA updates, for example
+switching to passthrough mode and keeping the eSIM powered on during the OTA
+update procedure.
+
+## HAL requirements
+
+These are API implementations that are required for general eSIM support.
 
 ### Implement setSimPower API in Radio HAL v1.1
 
@@ -55,37 +73,42 @@ API, which indicates whether a slot contains an eSIM.
 
 ### Implement getIccCardStatus API in IRadio HAL v1.2
 
-The modem shall provide the ATR and slot ID of the card status as specified in
-the
-[getIccCardStatus](/reference/hidl/android/hardware/radio/1.0/IRadio#getIccCardStatus)
-API. This API was first introduced in v1.0 and, in v1.2,
+The modem shall provide the Answer To Reset (ATR) and slot ID of the card status
+in the
+[getIccCardStatusResponse](https://source.android.com/reference/hidl/android/hardware/radio/1.0/IRadioResponse#geticccardstatusresponse)
+API. This API was introduced in v1.0 and, in v1.2,
 [CardStatus](https://android.googlesource.com/platform/hardware/interfaces/+/master/radio/1.2/types.hal#341){: .external}
 was changed to include
 [ATR](https://android.googlesource.com/platform/hardware/interfaces/+/master/radio/1.2/types.hal#351){: .external}.
 
-### (Optional) Support eSIM OS OTA
+### Set CardState:RESTRICTED on SIM lock (subsidy lock)
 
-As the eSIM OS OTA is not standardized, this depends on the vendor providing
-eSIM OS. The modem shall support all requirements for eSIM OS OTA, for example
-switching to passthrough mode and keeping the eSIM powered on during the OTA
-procedure.
+If the eSIM is SIM locked (subsidy locked), the modem shall set card state as
+[`CardState:RESTRICTED`](https://source.android.com/reference/hidl/android/hardware/radio/1.0/types#cardstate)
+in the
+[getIccCardStatusResponse](https://source.android.com/reference/hidl/android/hardware/radio/1.0/IRadioResponse#geticccardstatusresponse)
+API.
+
+### (Optional) Implement setSimSlotsMapping API in IRadioConfig HAL v1.0
+
+Note: Only required in device configurations that require slot switching, for
+example, where the device has one eSIM slot and one physical/removable SIM
+(pSIM) slot, and only one can be active at the same time.
+
+The modem shall support the
+[setSimSlotsMapping API](https://android.googlesource.com/platform/hardware/interfaces/+/master/radio/config/1.0/IRadioConfig.hal#81){: .external},
+which sets the mapping from physical slots to logical slots. The LPA uses this
+API to select the active SIM slot.
 
 ## Logging requirements
 
-These are general modem logging requirements to properly debug eSIM issues.
+These are general modem logging requirements for debugging eSIM issues.
 
-### Provide PC based tools to capture detailed modem logs
+### Log capture
 
-Logging shall capture all the OTA packets for Cellular RATs (4G, 3G, 2G) and IMS
-(SIP, RTP, RTCP, XCAP). ESP protected SIP packets shall be logged without ESP.
-OTA parser shall be compliant to 3GPP specs.
-
-Logging shall support capture IP packets on all network interfaces.
-
-Logging shall support capturing debug logs and protocol layer information
-including protocol layer states, radio power measurements, network cell
-information, packet TX/RX statistics, inter-layer messaging, inter-processor
-communication, SIM functionality & APDU logging, and RIL logging.
+Logging shall capture inter-processor communication, SIM functionality, Radio
+Interface Layer (RIL) logging, and application protocol data unit (APDU)
+logging.
 
 ### On-device logging
 

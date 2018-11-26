@@ -33,7 +33,7 @@ copy and adapt to your needs:
 [platform_testing/tests/example/jarhosttest/Android.bp](https://android.googlesource.com/platform/platform_testing/+/master/tests/example/jarhosttest/Android.bp)
 
 This corresponds to the actual test code found at:
-[platform_testing/tests/example/jarhosttest/test/android/test/example/helloworld/HelloWorldTest.java](platform_testing/+/master/tests/example/jarhosttest/test/android/test/example/helloworld/HelloWorldTest.java)
+[platform_testing/tests/example/jarhosttest/test/android/test/example/helloworld/HelloWorldTest.java](https://android.googlesource.com/platform/platform_testing/+/master/tests/example/jarhosttest/test/android/test/example/helloworld/HelloWorldTest.java)
 
 A snapshot of the Blueprint file is included here for convenience:
 
