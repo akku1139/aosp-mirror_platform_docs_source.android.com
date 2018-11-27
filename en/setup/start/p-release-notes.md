@@ -77,7 +77,7 @@ passing the unified device tree blob to the kernel.
 
 #### DTO Image Header Versioning
 
-This release inroduces a
+This release introduces a
 [new version field](/devices/architecture/dto/partitions) in the DTBO image header.
 
 #### DTBO Verification

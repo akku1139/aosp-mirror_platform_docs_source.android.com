@@ -26,8 +26,8 @@ Android 设备包含若干个分区，这些分区在启动过程中发挥不同
 </p>
 <ul>
 <li><strong>boot</strong>：<code>boot</code> 分区包含通过 <code>mkbootimg</code> 组合在一起的内核映像和 RAM 磁盘。为了直接刷写内核而不刷写新的 boot 分区，可以使用虚拟分区：<ul>
- <li><strong>kernel</strong>：<code>kernel</code> 虚拟分区会通过将新映像写入旧磁盘来仅覆盖内核（zImage、zImage-dtb 和 Image.gz-dtb）。为此，它会确定 eMMC 中现有内核映像的起始位置并将新内核映像复制到该位置。请记住，新内核映像可能会大于现有内核映像。引导加载程序可以通过移动其后的任何数据来腾出空间或放弃出错的操作。如果提供的开发内核不兼容，则可能需要使用相关的内核模块更新 dtb 分区（如果存在）、vendor 分区或 system 分区。
- </li><li><strong>ramdisk</strong>：<code>ramdisk</code> 虚拟分区会通过将新映像写入旧磁盘来仅覆盖 RAM 磁盘。为此，它会确定 eMMC 中现有 <code>ramdisk.img</code> 的起始位置并将新 RAM 磁盘映像复制到该位置。请记住，新 RAM 磁盘映像可能会大于现有 RAM 磁盘映像。引导加载程序可以通过移动其后的任何数据来腾出空间或放弃出错的操作。</li></ul>
+ <li><strong>kernel</strong>：<code>kernel</code> 虚拟分区会将新映像写入旧磁盘，以便仅覆盖内核（zImage、zImage-dtb 和 Image.gz-dtb）。为此，它会确定 eMMC 中现有内核映像的起始位置并将新内核映像复制到该位置。请记住，新内核映像可能会大于现有内核映像。引导加载程序可以通过移动其后的任何数据来腾出空间或放弃出错的操作。如果提供的开发内核不兼容，则可能需要使用相关的内核模块更新 dtb 分区（如果存在）、vendor 分区或 system 分区。
+ </li><li><strong>ramdisk</strong>：<code>ramdisk</code> 虚拟分区会将新映像写入旧磁盘，以便仅覆盖 RAM 磁盘。为此，它会确定 eMMC 中现有 <code>ramdisk.img</code> 的起始位置并将新 RAM 磁盘映像复制到该位置。请记住，新 RAM 磁盘映像可能会大于现有 RAM 磁盘映像。引导加载程序可以通过移动其后的任何数据来腾出空间或放弃出错的操作。</li></ul>
 </li><li><strong>system</strong>：<code>system</code> 分区主要包含 Android 框架。
 </li><li><strong>recovery</strong>：<code>recovery</code> 分区会存储在 OTA 过程中启动的恢复映像。如果设备支持 <a href="/devices/tech/ota/ab/">A/B 更新</a>，则恢复映像可以是启动映像中包含的 RAM 磁盘，而不是单独的映像。
 </li><li><strong>cache</strong>：<code>cache</code> 分区会存储临时数据，如果设备使用 A/B 更新，则该分区是可选的。cache 分区不需要可从引导加载程序写入，而只需要可清空。大小取决于设备类型和 userdata 分区的可用空间。目前，50MB 至 100MB 应该没问题。
@@ -35,12 +35,12 @@ Android 设备包含若干个分区，这些分区在启动过程中发挥不同
 </li><li><strong>userdata</strong>：<code>userdata</code> 分区包含用户安装的应用和数据，包括自定义数据。
 </li><li><strong>metadata</strong>：当设备已加密且存储空间为 16MB 或更大时，便会使用 <code>metadata</code> 分区。
 </li><li><strong>vendor</strong>：<code>vendor</code> 分区包含所有不可分发给 Android 开源项目 (AOSP) 的二进制文件。如果没有专有信息，则可以省略此分区。
-</li><li><strong>radio</strong>：<code>radio</code> 分区包含无线装置映像。只有包含无线装置且在专用分区中包含特定于无线装置的软件的设备需要此分区。
+</li><li><strong>radio</strong>：<code>radio</code> 分区包含无线装置映像。只有包含无线装置且在专用分区中包含无线装置专用软件的设备才需要此分区。
 </li><li><strong>tos</strong>：<code>tos</code> 分区会存储 Trusty 操作系统的二进制映像，且仅在设备包含 Trusty 时使用。</li>
 </ul>
 <h2 id="flow">流程</h2>
 <p>
-引导加载程序的运行方式如下：
+引导加载程序的运作方式如下：
 </p><ol>
 <li>首先加载引导加载程序。
 </li><li>引导加载程序初始化内存。
@@ -72,7 +72,7 @@ RAM 磁盘应包含适合作为 rootfs 装载的根文件系统。RAM 磁盘映�
 您可以在以下位置找到 <code>mkbootimg</code> 实现：<code><a href="https://android.googlesource.com/platform/system/core/+/master/mkbootimg">system/core/mkbootimg</a></code>
 </p>
 <p>
-引导加载程序会读取由 mkbootimg 生成的 <code><a href="https://android.googlesource.com/platform/system/core/+/master/mkbootimg/bootimg.h">bootimg.h</a></code> 标头文件，并更新内核标头以使其包含正在被刷写的 RAM 磁盘的正确位置和大小、内核基址、命令行参数等。然后，引导加载程序会将启动映像中指定的命令行附加到引导加载程序生成的命令行的末尾。
+引导加载程序会读取由 mkbootimg 生成的 <code><a href="https://android.googlesource.com/platform/system/core/+/master/mkbootimg/bootimg.h">bootimg.h</a></code> 标头文件，并更新内核标头，使其包含正在被刷写的 RAM 磁盘的正确位置和大小、内核基址、命令行参数等。然后，引导加载程序会将启动映像中指定的命令行附加到引导加载程序生成的命令行的末尾。
 
 </p><h3 id="file-system-images-system-userdata-recovery">文件系统映像（系统、用户数据和恢复映像）</h3>
 <h4 id="sparse-image-format">YAFFS2 映像格式</h4>
@@ -88,7 +88,7 @@ RAM 磁盘应包含适合作为 rootfs 装载的根文件系统。RAM 磁盘映�
 </p>
 <h4 id="sparse-image-format">稀疏映像格式</h4>
 <p>
-应支持稀疏映像格式。“ext4 压缩映像”文档和 <code><a href="https://android.googlesource.com/platform/system/core/+/master/libsparse/sparse_format.h">system/core/libsparse/sparse_format.h</a></code> 对这种格式进行了说明，该格式的实现位置为：<code><a href="https://android.googlesource.com/platform/system/core/+/master/libsparse/sparse_read.cpp">system/core/libsparse/sparse_read.cpp</a></code>。
+稀疏映像格式应受支持。“ext4 压缩映像”文档和 <code><a href="https://android.googlesource.com/platform/system/core/+/master/libsparse/sparse_format.h">system/core/libsparse/sparse_format.h</a></code> 对这种格式进行了说明，该格式的实现位置为：<code><a href="https://android.googlesource.com/platform/system/core/+/master/libsparse/sparse_read.cpp">system/core/libsparse/sparse_read.cpp</a></code>。
 </p>
 <p>
 如果使用基于块的存储设备，则应支持 ext4 或 f2fs。要快速传输并刷写大型空 ext4 文件系统 (userdata)，应以稀疏格式存储映像，映像中包含有关文件系统的哪些区域可以保留不写的信息。文件格式由 <code>mke2fs</code> 实用程序编写，该实用程序还用于创建文件格式由引导加载程序读取和刷写的映像。有关属性，请参见下面几部分：
