@@ -1,5 +1,5 @@
 <html devsite><head>
-    <title>Ambient 权能</title>
+    <title>实现 Ambient 权能</title>
     <meta name="project_path" value="/_project.yaml"/>
     <meta name="book_path" value="/_book.yaml"/>
   </head>
@@ -21,35 +21,16 @@
   -->
 
     <p>
-借助此类权能，Linux 进程可以舍弃大多数类似于 root 的权限，同时保留执行其权能所需的权限。此类权能的原始实现使得经过 fork + exec 处理的进程无法继承权能，除非正在执行的文件已配置文件权能。而文件权能又会带来安全风险，这是因为任何进程只要执行具有文件权能的文件，则一律会获得这些权能。
+借助此类权能，Linux 进程可以舍弃大多数类似于 root 的权限，同时保留执行其权能所需的权限。此类权能的原始实现使得经过 fork + exec 处理的进程无法继承权能，除非正在执行的文件已配置文件权能。而文件权能会带来安全风险，这是因为任何进程只要执行具有文件权能的文件，则一律会获得这些权能。
     </p>
-    <p>Ambient 权能允许 init 所启动的系统服务在其 <code>.rc</code> 文件中配置各项权能，从而将其配置放入单个文件中，而不必将权能配置单独放入 <code>fs_config.c</code> 文件中。这意味着，对于 init 所启动的任何服务，您都可以使用与此服务相关联的 <code>.rc</code> 文件为此服务配置权能。
+    <p>
+Ambient 权能允许系统服务在其 <code>.rc</code> 文件中配置各项权能，从而将其所有配置放入单个文件中，而不必将权能配置单独放入 <code>fs_config.c</code> 文件中。
     </p>
-    <p>Ambient 权能是为 init 所启动的服务设置权能的首选机制（此方法可将服务配置的所有方面保存在单个 <code>.rc</code> 文件中）。我们建议您使用 Ambient 权能，而不是在 <code>config.fs</code> 文件中<a href="/devices/tech/config/filesystem#configuring-the-caps-section">使用 caps 部分配置文件系统权能</a>。
-    </p>
-    <p>在为<strong>并非 init 所启动</strong>的服务设置权能时，请继续使用 <code>fs_config.c</code> 来配置文件系统权能。
-    </p>
-
-    <h2 id="enabling-ambient-capabilities">启用 Ambient 权能</h2>
-    <p>要为给定服务启用 Ambient 权能，请在 init 中使用 <code>capabilities</code> 关键字。要详细了解当前的 init 语言，请参阅 <a href="https://android.googlesource.com/platform/system/core/+/master/init/README.md">init README.md</a>。
-    </p>
-    <p>例如，要为 AOSP 服务 <code>wificond</code> 启用 Ambient 权能，则 <code>wificond</code> 服务的 <a href="https://android.googlesource.com/platform/system/connectivity/wificond/+/master/wificond.rc">.rc 文件</a>需要设置相应的用户和群组，并利用 <code>capabilities</code> 关键字为此服务提供指定的权能：</p>
-
-<pre class="prettyprint">
-service wificond /system/bin/wificond
-    class main
-    user wifi
-    group wifi net_raw net_admin
-    capabilities NET_RAW NET_ADMIN
-</pre>
-
     <h2 id="reference-implementation">参考实现</h2>
     <p>
 参考实现是 Android 通用内核 <a href="https://android.googlesource.com/kernel/common/">https://android.googlesource.com/kernel/common/</a>
     </p>
     <h2 id="required-patches">必需的补丁程序</h2>
-    <aside class="note"><strong>注意</strong>：我们已弃用并移除 Android 内核 3.10 (android-3.10) 和 3.14 (android-3.14)。</aside>
-
     <p>
 必需的补丁程序已反向移植到所有相关的 Android 通用内核分支。
     </p>
@@ -58,7 +39,15 @@ service wificond /system/bin/wificond
 
 </p>
     <ul>
-    <li>android-3.18：
+    <li>android-3.10 分支：
+    <ul>
+      <li><a href="https://android.googlesource.com/kernel/common/+/bdcd4484f1b399dfcb2fd7dd82b6869b2b6b60cd">https://android.googlesource.com/kernel/common/+/bdcd4484f1b399dfcb2fd7dd82b6869b2b6b60cd</a>
+    </li></ul>
+    </li><li>android-3.14 分支：
+    <ul>
+      <li><a href="https://android.googlesource.com/kernel/common/+/5440f16f1296ca05f33dfde51e8bb7ad48699640">https://android.googlesource.com/kernel/common/+/5440f16f1296ca05f33dfde51e8bb7ad48699640</a>
+    </li></ul>
+    </li><li>android-3.18：
     <ul>
       <li><a href="https://android.googlesource.com/kernel/common/+/d6a9a74487e86b528c44965f871de75671b6adb0">https://android.googlesource.com/kernel/common/+/d6a9a74487e86b528c44965f871de75671b6adb0</a>
     </li></ul>
@@ -72,7 +61,15 @@ service wificond /system/bin/wificond
 一个小的安全修复程序 <a href="https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/commit/?id=b7f76ea2ef6739ee484a165ffbac98deb855d3d3">https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/commit/?id=b7f76ea2ef6739ee484a165ffbac98deb855d3d3</a> 已反向移植到：</p>
 
     <ul>
-    <li>android-3.18：
+      <li>android-3.10 分支：
+    <ul>
+        <li><a href="https://android.googlesource.com/kernel/common/+/ef89def080c52eb7ea6a9455eb32b1b05867133b">https://android.googlesource.com/kernel/common/+/ef89def080c52eb7ea6a9455eb32b1b05867133b</a>
+      </li></ul>
+    </li><li>android-3.14 分支：
+    <ul>
+      <li><a href="https://android.googlesource.com/kernel/common/+/f75626b3092fad4e0bd8f2aed06947352781eb77">https://android.googlesource.com/kernel/common/+/f75626b3092fad4e0bd8f2aed06947352781eb77</a>
+    </li></ul>
+    </li><li>android-3.18：
     <ul>
       <li><a href="https://android.googlesource.com/kernel/common/+/7bc0ef844a537ebb786ba0574932bd65751818c6">https://android.googlesource.com/kernel/common/+/7bc0ef844a537ebb786ba0574932bd65751818c6</a>
     </li></ul>
@@ -81,6 +78,17 @@ service wificond /system/bin/wificond
      <li><a href="https://android.googlesource.com/kernel/common/+/dda568cc40d855bde2dfa9c04a7a1628c80b7f63">https://android.googlesource.com/kernel/common/+/dda568cc40d855bde2dfa9c04a7a1628c80b7f63</a></li>
     </ul>
     </li></ul>
+
+    <p>
+版本低于 3.18 的内核所需的内存泄漏修复程序 <a href="https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/commit/?id=6d6f3328422a3bc56b0d8dd026a5de845d2abfa7">https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/commit/?id=6d6f3328422a3bc56b0d8dd026a5de845d2abfa7</a> 已反向移植到：
+</p>
+
+    <ul>
+    <li>android-3.10 分支：
+    <ul>
+      <li><a href="https://android.googlesource.com/kernel/common/+/900e52782988ee11a1cb7d600e9edea48fc70f0f">https://android.googlesource.com/kernel/common/+/900e52782988ee11a1cb7d600e9edea48fc70f0f</a></li>
+    </ul>
+  </li></ul>
 
     <h2 id="validation">验证</h2>
     <p>
