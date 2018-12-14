@@ -19,10 +19,16 @@ Book: /_book.yaml
   limitations under the License.
 -->
 
-# Test Types and Guidelines
+# Test Development Workflow
 
 To integrate tests into a platform continuous testing service, they should meet
-the following guidelines.
+the guidelines on this page and follow this recommended flow.
+
+1.  Use the [Soong build system](https://android.googlesource.com/platform/build/soong/)
+    for [Simple Test Configuration](blueprints).
+1.  Employ [Test Mapping](test-mapping) to easily create pre- and post-submit
+    test rules directly in the Android source tree.
+1.  Run tests locally using [Atest](atest).
 
 ## Test types
 

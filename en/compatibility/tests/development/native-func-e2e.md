@@ -173,7 +173,7 @@ arguments to supply the test class.
 ## Build and test locally
 
 For the most common use cases, employ
-[Atest](https://android.googlesource.com/platform/tools/tradefederation/+/master/atest/README.md).
+[Atest](/compatibility/tests/development/atest).
 
 For more complex cases requiring heavier customization, follow the
 [instrumentation instructions](instrumentation.md).

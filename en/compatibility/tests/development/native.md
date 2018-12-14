@@ -51,9 +51,7 @@ incremental or full build), e.g.:
    ```shell
    make hwui_unit_tests -j
    ```
-1.  Use
-    [Atest](https://android.googlesource.com/platform/tools/tradefederation/+/master/atest/README.md)
-    to run the test locally:
+1.  Use [Atest](/compatibility/tests/development/atest) to run the test locally:
 
     ```
     atest hwui_unit_tests

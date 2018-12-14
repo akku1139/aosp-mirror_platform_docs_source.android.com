@@ -172,7 +172,7 @@ applet with the following application identifiers (AIDs):
         </tr>
         <tr>
         <td>0x00F30E06</td>
-        <td>0x6282</td>
+        <td>0x6286</td>
         <td>No</td>
         </tr>
         <tr>
@@ -252,7 +252,7 @@ applet with the following application identifiers (AIDs):
         </tr>
         <tr>
         <td>0x00F30E0A01AA</td>
-        <td>0x6282</td>
+        <td>0x6286</td>
         <td>No</td>
         </tr>
         <tr>
@@ -332,7 +332,7 @@ applet with the following application identifiers (AIDs):
         </tr>
         <tr>
         <td>0x00F30E0800</td>
-        <td>0x6282</td>
+        <td>0x6286</td>
         <td>Yes</td>
         </tr>
         <tr>
@@ -412,7 +412,7 @@ applet with the following application identifiers (AIDs):
         </tr>
         <tr>
         <td>0x00F30E0C01AA00</td>
-        <td>0x6282</td>
+        <td>0x6286</td>
         <td>Yes*</td>
         </tr>
         <tr>
@@ -467,12 +467,12 @@ applet with the following application identifiers (AIDs):
         <tr>
         <td>0x00C27FFF00</td>
         <td>0x9000</td>
-        <td>2048</td>
+        <td>32767</td>
         </tr>
         <tr>
         <td>0x00CF080000</td>
         <td>0x9000</td>
-        <td>32767</td>
+        <td>2048</td>
         </tr>
         <tr>
         <td>0x94C2080000</td>
@@ -482,9 +482,9 @@ applet with the following application identifiers (AIDs):
         </tbody>
         </table>
       </li>
-      <li>The applet should return success status word <code>0x9000</code> for
-      the given
-        APDU: 0x00F40000</li>
+      <li>The applet should return the value of P2 received in the SELECT
+      command + the success status word (i.e <code>0x009000</code>) for the given
+      APDU: 0x00F4000000</li>
     </ol>
   <li>A000000476416E64726F696443545332
     <ol>
@@ -526,6 +526,9 @@ Create an instance of the applet under these AIDs:
 -   0xA000000476416E64726F69644354534D
 -   0xA000000476416E64726F69644354534E
 -   0xA000000476416E64726F69644354534F
+
+When selected, any of these AIDs should return a select response greater than
+2 bytes that are correctly formatted using BER and TLV.
 
 ### `CtsSecureElementAccessControlTestCases1`
 
@@ -768,7 +771,7 @@ Run installation command for each applet.
 
 Command to install applet
 
-<code>80E60C00300C6F6D617069636172646C65740B<var>module_AID</var>10<var>AID</var>010002C90000</code><br>
+<code>80E60C00300C6F6D617069636172646C65740B<var>module_AID</var>10<var>AID</var>01000EEF0AA008810101A5038201C0C9000000</code><br>
 **Module_AID**: 6F 6D 61 70 69 4A 53 52 31 37 37  
 **AID:** A000000476416E64726F696443545331
 
@@ -778,7 +781,7 @@ Command to install applet
 
 ##### AccessControl tests (template using PKCS#15 structure)
 
-<code>80E60C003C0C6F6D617069636172646C65740B<var>module_AID</var>10<var>AID</var>01000EEF0AA008810101A5038201C0C90000</code><br>
+<code>80E60C003C0C6F6D617069636172646C65740B<var>module_AID</var>10<var>AID</var>01000EEF0AA008810101A5038201C0C9000000</code><br>
 **Module_AID**: 6F 6D 61 70 69 4A 53 52 31 37 37
 
 **AIDs:**

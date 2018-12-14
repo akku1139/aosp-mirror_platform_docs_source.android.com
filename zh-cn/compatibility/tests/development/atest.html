@@ -1,0 +1,450 @@
+<html devsite><head>
+
+  <meta name="book_path" value="/_book.yaml"/>
+
+  <meta name="project_path" value="/_project.yaml"/>
+</head>
+<body>
+
+<!--
+  Copyright 2018 The Android Open Source Project
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+<h1 id="atest" class="page-title">Atest</h1>
+
+<p>Atest 是一个命令行工具，用户可以使用这种工具在本地编译、安装并运行 Android 测试。本文介绍了如何使用 Atest 运行 Android 测试。</p>
+
+<p>要了解如何编写测试，请参阅 <a href="https://android.googlesource.com/platform/platform_testing/+/master/docs/index.md" class="external">Android 平台测试</a>。在编写测试的编译脚本文件 (<code>Android.mk</code>) 时，请包含变量 <code>LOCAL_COMPATIBILITY_SUITE</code>。建议使用 <code>device-test</code> 作为默认值。</p>
+
+<p>要详细了解 Atest 的总体结构，请参阅 <a href="https://android.googlesource.com/platform/tools/tradefederation/+/master/atest/docs/atest_structure.md" class="external">Atest 开发者指南</a>。要了解如何向 Atest 添加功能，请参阅 <a href="https://android.googlesource.com/platform/tools/tradefederation/+/master/atest/docs/developer_workflow.md" class="external">Atest 开发者工作流程</a>。</p>
+
+<h2 id="setting_up_your_environment">设置您的环境</h2>
+
+<p>要运行 Atest，您必须设置环境。</p>
+
+<h3 id="1_run_envsetupsh">1. 运行 envsetup.sh</h3>
+
+<p>从 Android 源代码检出的根目录处，运行：</p>
+
+<pre>
+<code class="devsite-terminal">source build/envsetup.sh</code>
+</pre>
+
+<h3 id="2_run_lunch">2. 运行 lunch</h3>
+
+<p>运行 <code>$ lunch</code> 命令以显示受支持设备菜单。找到相应设备并运行该命令。</p>
+
+<p>例如，如果您已连接 ARM 设备，请运行以下命令：</p>
+
+<pre>
+<code class="devsite-terminal">lunch aosp_arm64-eng</code>
+</pre>
+
+<p>这会设置运行 Atest 所需的各种环境变量，并将 Atest 命令添加到您的 <code>$PATH</code>。</p>
+
+<h2 id="basic_usage">基本用法</h2>
+
+<p>Atest 命令采用以下形式：</p>
+
+<pre>
+<code class="devsite-terminal">atest [<var>optional-arguments</var>] <var>test-to-run</var></code>
+</pre>
+
+<h3 id="optional_arguments">可选参数</h3>
+
+<p>您可以在 Atest 命令中使用以下可选参数。</p>
+
+<table>
+<thead>
+<tr>
+<th style="text-align: center">选项</th>
+<th style="text-align: left">长选项</th>
+<th>说明</th>
+</tr>
+</thead>
+
+<tbody>
+<tr>
+<td style="text-align: center"><code>-b</code></td>
+<td style="text-align: left"><code>--build</code></td>
+<td>构建测试目标。</td>
+</tr>
+<tr>
+<td style="text-align: center"><code>-i</code>
+</td>
+<td style="text-align: left"><code>--install</code>
+</td>
+<td>在设备上安装测试软件工件 (APK)。</td>
+</tr>
+<tr>
+<td style="text-align: center"><code>-t</code></td>
+<td style="text-align: left"><code>--test</code></td>
+<td>运行测试。</td>
+</tr>
+<tr>
+<td style="text-align: center"><code>-s</code>
+</td>
+<td style="text-align: left"><code>--serial</code>
+</td>
+<td>在指定设备上运行测试。一次可以测试一台设备。</td>
+</tr>
+<tr>
+<td style="text-align: center"><code>-d</code></td>
+<td style="text-align: left"><code>--disable-teardown</code></td>
+<td>停用测试拆解和清理。</td>
+</tr>
+<tr>
+<td style="text-align: center"><c>
+</c></td>
+<td style="text-align: left"><code>--info</code>
+</td>
+<td>显示指定目标的相关信息并退出。</td>
+</tr>
+<tr>
+<td style="text-align: center"><c></c></td>
+<td style="text-align: left"><code>--dry-run</code></td>
+<td>--info 的同义词。</td>
+</tr>
+<tr>
+<td style="text-align: center"><code>-m</code>
+</td>
+<td style="text-align: left"><code>--rebuild-module-info</code>
+</td>
+<td>强制重建 module-info.json 文件。</td>
+</tr>
+<tr>
+<td style="text-align: center"><code>-w</code>
+</td>
+<td style="text-align: left"><code>--wait-for-debugger</code>
+</td>
+<td>在执行之前等待调试程序。仅用于插桩测试。</td>
+</tr>
+<tr>
+<td style="text-align: center"><code>-v</code></td>
+<td style="text-align: left"><code>--verbose</code></td>
+<td>显示 DEBUG 级别日志记录。</td>
+</tr>
+<tr>
+<td style="text-align: center"><c>
+</c></td>
+<td style="text-align: left"><code>--generate-baseline</code>
+</td>
+<td>生成基准指标，默认情况下运行 5 次迭代。</td>
+</tr>
+<tr>
+<td style="text-align: center"><c>
+</c></td>
+<td style="text-align: left"><code>--generate-new-metrics</code>
+</td>
+<td>生成新指标，默认情况下运行 5 次迭代。</td>
+</tr>
+<tr>
+<td style="text-align: center"><c></c></td>
+<td style="text-align: left"><code>--detect-regression</code></td>
+<td>运行回归检测算法。</td>
+</tr>
+<tr>
+<td style="text-align: center"><c>
+</c></td>
+<td style="text-align: left"><code>--[CUSTOM_ARGS]</code>
+</td>
+<td>为测试运行器指定自定义参数。</td>
+</tr>
+<tr>
+<td style="text-align: center"><code>-a</code>
+</td>
+<td style="text-align: left"><code>--all-abi</code>
+</td>
+<td>针对所有可用的设备架构运行测试。</td>
+</tr>
+<tr>
+<td style="text-align: center"><code>-h</code></td>
+<td style="text-align: left"><code>--help</code></td>
+<td>显示帮助消息并退出。</td>
+</tr>
+<tr>
+<td style="text-align: center"><c>
+
+</c></td>
+<td style="text-align: left"><code>--host</code>
+
+</td>
+<td>在没有设备的情况下在主机上完全运行测试。<br />（注意：使用 --host 运行需要设备的主机测试将失败）。</td>
+</tr>
+</tbody>
+</table>
+
+<p>要详细了解 <code>-b</code>、<code>-i</code> 和 <code>-t</code>，请参阅<a href="#specifying_steps_build_install_or_run">指定步骤：编译、安装或运行</a>。</p>
+
+<h3 id="tests_to_run">要运行的测试</h3>
+
+<p>您可以使用 test-to-run 运行一个或多个测试。<var></var>要运行多个测试，请使用空格将各测试引用分隔开。例如：</p>
+
+<pre>
+<code class="devsite-terminal">atest <var>test-to-run-1</var> <var>test-to-run-2</var></code>
+</pre>
+
+<p>以下是一些示例：</p>
+
+<pre>
+<code class="devsite-terminal">atest FrameworksServicesTests</code>
+<code class="devsite-terminal">atest example/reboot</code>
+<code class="devsite-terminal">atest FrameworksServicesTests CtsJankDeviceTestCases</code>
+<code class="devsite-terminal">atest FrameworksServicesTests:ScreenDecorWindowTests</code>
+</pre>
+
+<p>要详细了解如何引用测试，请参阅<a href="#identifying_tests">标识测试</a>。</p>
+
+<h2 id="identifying_tests">标识测试</h2>
+
+<p>您可以使用测试的模块名称、Module:Class、类名称、TF 集成测试、文件路径或软件包名称来指定 test-to-run 参数。<var></var></p>
+
+<h3 id="module_name">模块名称</h3>
+
+<p>要运行整个测试模块，请使用其模块名称。请输入该模块在该测试的 <code>Android.mk</code> 或 <code>Android.bp</code> 文件中的 <code>LOCAL_MODULE</code> 或 <code>LOCAL_PACKAGE_NAME</code> 变量中的显示名称。</p>
+<aside class="note"><strong>注意</strong>：<span>使用 <strong>TF 集成测试</strong>运行直接集成到 TradeFed 中的非模块测试。</span></aside>
+<p>示例：</p>
+
+<pre>
+<code class="devsite-terminal">atest FrameworksServicesTests</code>
+<code class="devsite-terminal">atest CtsJankDeviceTestCases</code>
+</pre>
+
+<h3 id="moduleclass">Module:Class</h3>
+
+<p>要运行模块内的单个类，请使用 <strong>Module:Class</strong>。<strong>Module</strong> 如<a href="#module_name">模块名称</a>中所述。<strong>Class</strong> 是 <code>.java</code> 文件中测试类的名称，可以是完全限定的类名，也可以是基本名称。</p>
+
+<p>示例：</p>
+
+<pre>
+<code class="devsite-terminal">atest FrameworksServicesTests:ScreenDecorWindowTests</code>
+<code class="devsite-terminal">atest FrameworksServicesTests:com.android.server.wm.ScreenDecorWindowTests</code>
+<code class="devsite-terminal">atest CtsJankDeviceTestCases:CtsDeviceJankUi</code>
+</pre>
+
+<h3 id="class_name">类名称</h3>
+
+<p>要在不明确声明模块名称的情况下运行单个类，请使用类名称。</p>
+
+<p>示例：</p>
+
+<pre>
+<code class="devsite-terminal">atest ScreenDecorWindowTests</code>
+<code class="devsite-terminal">atest CtsDeviceJankUi</code>
+</pre>
+
+<p>建议尽可能使用 <strong>Module:Class</strong> 引用，因为如果没有声明任何模块，Atest 将需要更多时间来搜索完整源代码树以查找可能的匹配项。</p>
+
+<p>示例（从最快到最慢排序）：</p>
+
+<pre>
+<code class="devsite-terminal">atest FrameworksServicesTests:com.android.server.wm.ScreenDecorWindowTests</code>
+<code class="devsite-terminal">atest FrameworksServicesTests:ScreenDecorWindowTests</code>
+<code class="devsite-terminal">atest ScreenDecorWindowTests</code>
+</pre>
+
+<h3 id="tf_integration_test">TF 集成测试</h3>
+
+<p>要运行直接集成到 TradeFed（非模块）中的测试，请输入 <code>tradefed.sh list configs</code> 命令的输出中显示的名称。例如：</p>
+
+<p>要运行 <a href="https://android.googlesource.com/platform/tools/tradefederation/contrib/+/master/res/config/example/reboot.xml" class="external"><code>reboot.xml</code> 测试</a>，请使用以下命令：</p>
+
+<pre>
+<code class="devsite-terminal">atest example/reboot</code>
+</pre>
+
+<p>要运行 <a href="https://android.googlesource.com/platform/tools/tradefederation/+/master/res/config/native-benchmark.xml" class="external"><code>native-benchmark.xml</code> 测试</a>，请使用以下命令：</p>
+
+<pre>
+<code class="devsite-terminal">atest native-benchmark</code>
+</pre>
+
+<h3 id="file_path">文件路径</h3>
+
+<p>通过输入相应测试文件或目录的路径，您既可以运行基于模块的测试，也可以运行基于集成的测试。您还可以通过指定单个类的 Java 文件的路径来运行该类。同时支持相对路径和绝对路径。</p>
+
+<p>示例：通过路径运行 <code>CtsJankDeviceTestCases</code> 模块的两种方法</p>
+
+<ol>
+<li><p>从 android repo-root 运行模块：<var></var></p>
+
+<pre>
+<code class="devsite-terminal">atest cts/tests/jank</code>
+</pre></li>
+<li><p>从 android <var>repo-root</var>/cts/tests/jank 运行：</p>
+
+<pre>
+<code class="devsite-terminal">atest .</code>
+</pre></li>
+</ol>
+
+<p>示例：通过路径运行 <code>CtsJankDeviceTestCases</code> 模块内的特定类。从 android repo-root 运行：<var></var></p>
+
+<pre>
+<code class="devsite-terminal">atest cts/tests/jank/src/android/jank/cts/ui/CtsDeviceJankUi.java</code>
+</pre>
+
+<p>示例：通过路径运行集成测试。从 android repo-root 运行：<var></var></p>
+
+<pre>
+<code class="devsite-terminal">atest tools/tradefederation/contrib/res/config/example/reboot.xml</code>
+</pre>
+
+<h3 id="package_name">软件包名称</h3>
+
+<p>Atest 支持按软件包名搜索测试。</p>
+
+<p>示例：</p>
+
+<pre>
+<code class="devsite-terminal">atest com.android.server.wm</code>
+<code class="devsite-terminal">atest android.jank.cts</code>
+</pre>
+
+<h2 id="specifying_steps_build_install_or_run">指定步骤：编译、安装或运行</h2>
+
+<p>您可以使用 <code>-b</code>、<code>-i</code> 和 <code>-t</code> 选项指定要运行的步骤。如果未指定选项，则运行所有步骤。</p>
+<aside class="note"><strong>注意</strong>：<span>您可以单独运行 <code>-b</code> 和 <code>-t</code>，但 <code>-i</code> 需要运行 <code>-t</code>。</span></aside>
+<ul>
+<li>仅限编译目标：<code>atest -b <var>test-to-run</var></code></li>
+<li>仅限运行测试：<code>atest -t <var>test-to-run</var></code></li>
+<li>安装 apk 并运行测试：<code>atest -it <var>test-to-run</var></code></li>
+<li>编译并运行，但不安装：<code>atest -bt
+<var>test-to-run</var></code></li>
+</ul>
+
+<p>Atest 可以强制测试跳过清理/拆解步骤。许多测试（例如 CTS）会在运行完测试后清理设备，因此如果没有 <code>--disable-teardown</code> 参数，尝试使用 <code>-t</code> 重新运行测试将失败。请在使用 <code>-t</code> 之前先使用 <code>-d</code> 跳过测试清理步骤以便进行循环测试。</p>
+
+<pre>
+<code class="devsite-terminal">atest -d <var>test-to-run</var></code>
+<code class="devsite-terminal">atest -t <var>test-to-run</var></code>
+</pre>
+<aside class="note"><strong>注意</strong>：<span><code>-t</code> 会同时禁止对设备进行 <strong>setup/install</strong> 和 <strong>teardown/cleanup</strong>，因此您可以使用 <code>atest -t
+<var>test-to-run</var></code> 重新运行测试任意次数。</span></aside>
+<h2 id="running_specific_methods">运行特定方法</h2>
+
+<p>您可以运行测试类中的特定方法。虽然需要构建整个模块，但这么做可以缩短运行测试所需的时间。要运行特定方法，请使用任何受支持的类标识法（Module:Class、文件路径等）来标识类，并附加相应方法的名称。</p>
+
+<pre>
+<code class="devsite-terminal">atest <var>reference-to-class</var>#<var>method1</var></code>
+</pre>
+
+<p>您可以使用逗号指定多个方法。</p>
+
+<pre>
+<code class="devsite-terminal">atest <var>reference-to-class</var>#<var>method1</var>,<var>method2</var>,<var>method3</var></code>
+</pre>
+
+<p>示例：</p>
+
+<pre>
+<code class="devsite-terminal">atest com.android.server.wm.ScreenDecorWindowTests#testMultipleDecors</code>
+<code class="devsite-terminal">atest FrameworksServicesTests:ScreenDecorWindowTests#testFlagChange,testRemoval</code>
+</pre>
+
+<p>以下两个示例展示了用于运行单个方法 <code>testFlagChange</code> 的首选方式。之所以首选这些示例而不是只使用类名称，是因为指定模块或 Java 文件位置可以让 Atest 更快地找到测试：</p>
+
+<ol>
+<li><p>使用 Module:Class</p>
+
+<pre>
+<code class="devsite-terminal">atest FrameworksServicesTests:ScreenDecorWindowTests#testFlagChange</code>
+</pre></li>
+<li><p>从 android repo-root 运行：<var></var></p>
+
+<pre>
+<code class="devsite-terminal">atest frameworks/base/services/tests/servicestests/src/com/android/server/wm/ScreenDecorWindowTests.java#testFlagChange</code>
+</pre></li>
+</ol>
+
+<p>可以从不同的类和模块运行多个方法：</p>
+
+<pre>
+<code class="devsite-terminal">atest FrameworksServicesTests:ScreenDecorWindowTests#testFlagChange,testRemoval ScreenDecorWindowTests#testMultipleDecors</code>
+</pre>
+
+<h2 id="running_multiple_classes">运行多个类</h2>
+
+<p>要运行多个类，请使用空格将这些类分隔开，如同运行多个测试。Atest 可有效地构建和运行类，因此指定模块中的一部分类可以提高性能（与运行整个模块相比）。</p>
+
+<p>示例：</p>
+
+<ul>
+<li><p>同一模块中的两个类：</p>
+
+<pre>
+<code class="devsite-terminal">atest FrameworksServicesTests:ScreenDecorWindowTests FrameworksServicesTests:DimmerTests</code>
+</pre></li>
+<li><p>不同模块中的两个类：</p>
+
+<pre>
+<code class="devsite-terminal">atest FrameworksServicesTests:ScreenDecorWindowTests CtsJankDeviceTestCases:CtsDeviceJankUi</code>
+</pre></li>
+</ul>
+
+<h2 id="running_native_tests">运行原生测试</h2>
+
+<p>Atest 可以运行原生测试。</p>
+
+<p>示例：</p>
+
+<ul>
+<li><p>输入测试：</p>
+
+<pre>
+<code class="devsite-terminal">atest -a libinput_tests inputflinger_tests</code>
+</pre></li>
+</ul>
+
+<p>使用 <code>-a</code> 可针对所有可用的设备架构（在此示例中为 armeabi-v7a（ARM 32 位）和 arm64-v8a（ARM 64 位））运行测试。</p>
+
+<h2 id="detecting_metrics_regression">检测指标回归</h2>
+
+<p>您可以生成打补丁前指标或打补丁后指标，而无需运行回归检测。您可以指定迭代次数，但默认值为 5。</p>
+
+<p>示例：</p>
+
+<pre>
+<code class="devsite-terminal">atest <var>test-to-run</var> --generate-baseline <var>[optional-iteration]</var></code>
+<code class="devsite-terminal">atest <var>test-to-run</var> --generate-new-metrics <var>[optional-iteration]</var></code>
+</pre>
+
+<p>可以通过三种方法运行本地回归检测：</p>
+
+<ol>
+<li><p>生成基准（打补丁前）指标并将其放在文件夹中。Atest 按照指定的迭代次数运行测试，生成打补丁后指标，并将这些指标与现有指标进行比较。</p>
+
+<p>例如：</p>
+
+<pre>
+<code class="devsite-terminal">atest <var>test-to-run</var> --detect-regression <var>/path/to/baseline</var> --generate-new-metrics <var>[optional-iteration]</var></code>
+</pre></li>
+<li><p>使用包含以前生成的打补丁后指标的文件夹，Atest 会运行测试并进行 n 次迭代，生成一组新的打补丁前指标，并将这些指标与所提供的那些指标进行比较。<em></em></p>
+<aside class="note"><strong>注意</strong>：<span>开发者需要将设备/测试还原为打补丁前状态以生成基准指标。</span></aside>
+<p>例如：</p>
+
+<pre>
+<code class="devsite-terminal">atest <var>test-to-run</var> --detect-regression <var>/path/to/new</var> --generate-baseline <var>[optional-iteration]</var></code>
+</pre></li>
+<li><p>使用同时包含打补丁前指标和打补丁后指标的两个文件夹，Atest 会运行回归检测算法而不进行任何测试。</p>
+
+<p>例如：</p>
+
+<pre>
+<code class="devsite-terminal">atest --detect-regression <var>/path/to/baseline</var> <var>/path/to/new</var></code>
+</pre></li>
+</ol>
+
+</body></html>
