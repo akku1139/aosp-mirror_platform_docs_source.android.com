@@ -91,8 +91,7 @@ and APIs to manipulate the application process under test.
 
 1. Run the tests:
    *  The simplest solution is to use
-      [Atest](https://android.googlesource.com/platform/tools/tradefederation/+/master/atest/README.md){: .external}
-      like so:
+   [Atest](/compatibility/tests/development/atest) like so:
 
       ```
       atest FrameworksCoreTests

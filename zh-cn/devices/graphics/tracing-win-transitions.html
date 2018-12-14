@@ -1,0 +1,120 @@
+<html devsite><head>
+    <title>跟踪窗口转换</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2018 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+  <p>WinScope 可帮助您跟踪窗口转换，并提供了用于在转换期间和转换后记录和分析窗口管理器状态和 Surface Flinger 状态的基础架构和工具。WinScope 将所有相关的系统服务状态记录在一个跟踪文件中，您可以使用该文件重现并逐步查看转换。
+
+  </p>
+
+  <h2 id="capture_trace">记录跟踪情况</h2>
+  <p>您可以在运行 userdebug 或 eng 版本的设备上通过快捷设置或 ADB 记录跟踪情况。
+  </p>
+
+  <h3 id="capture_trace_quick_settings">通过快捷设置</h3>
+  <ol>
+    <li><a href="https://developer.android.com/studio/debug/dev-options#enable" class="external">启用开发者选项</a></li>
+    <li>依次转到<b>开发者选项</b> -&gt; <b>快捷设置开发者图块</b></li>
+    <li>启用 Winscope 跟踪</li>
+    <li>打开快捷设置</li>
+    <li>点按 <b>Winscope 跟踪</b>以启用跟踪</li>
+    <li>在设备上执行窗口转换</li>
+    <li>窗口转换完成后，请打开快捷设置，然后点按 <b>Winscope 跟踪</b>以停用跟踪
+    </li>
+  </ol>
+  <p>跟踪记录会被写入 <code>/data/misc/wmtrace/wm_trace.pb</code> 和 <code>/data/misc/wmtrace/layers_trace.pb</code>，同时还会包含在所有错误报告中。
+  </p>
+
+  <h3 id="capture_trace_quick_adb">通过 ADB</h3>
+  <h4 id="capture_trace_quick_adb_wm">窗口管理器跟踪记录</h4>
+  <ol>
+    <li>启用跟踪
+      <pre class="devsite-terminal devsite-click-to-copy">adb shell cmd window tracing start</pre>
+    </li>
+    <li>停用跟踪
+      <pre class="devsite-terminal devsite-click-to-copy">adb shell cmd window tracing stop</pre>
+    </li>
+    <li>抓取跟踪文件
+      <pre class="devsite-terminal devsite-click-to-copy">adb pull /data/misc/wmtrace/wm_trace.pb wm_trace.pb</pre>
+    </li>
+  </ol>
+  <h4 id="capture_trace_quick_adb_sf">Surface Flinger 跟踪记录</h4>
+  <ol>
+    <li>启用跟踪
+      <pre class="devsite-terminal devsite-click-to-copy">adb shell su root service call SurfaceFlinger 1025 i32 1</pre>
+    </li>
+    <li>停用跟踪
+      <pre class="devsite-terminal devsite-click-to-copy">adb shell su root service call SurfaceFlinger 1025 i32 0</pre>
+    </li>
+    <li>抓取跟踪文件
+      <pre class="devsite-terminal devsite-click-to-copy">adb pull /data/misc/wmtrace/layers_trace.pb layers_trace.pb</pre>
+    </li>
+  </ol>
+
+  <h3 id="capture_trace_gen_state">生成状态转储文件</h3>
+  <p></p><p>WinScope 可以从错误报告读取窗口管理器和 Surface Flinger 当前状态的快照。错误报告将状态信息以单独的 Proto 文件的形式存储在 <code>proto</code> 文件夹中。要使用 ADB 生成状态转储文件，请运行以下命令。</p>
+    <h4 id="window_manager_dump">窗口管理器</h4>
+    <pre class="devsite-terminal devsite-click-to-copy">adb exec-out dumpsys window --proto &gt; window_dump.pb</pre>
+    <h4 id="surface_flinger_dump">Surface Flinger</h4>
+    <pre class="devsite-terminal devsite-click-to-copy">adb exec-out dumpsys SurfaceFlinger --proto &gt; sf_dump.pb</pre>
+  <p></p>
+
+  <h2 id="analyze_traces">分析跟踪记录</h2>
+  <p>要分析跟踪文件，请使用 WinScope 网络应用。您可以在源代码的基础上编译此应用，也可以从预编译目录中打开此应用。
+  </p>
+  <ol>
+    <li>从 Android 源代码代码库中下载预编译的软件工件
+      <pre class="devsite-terminal devsite-click-to-copy">curl 'https://android.googlesource.com/platform/prebuilts/misc/+/master/common/winscope/winscope.html?format=TEXT' | base64 -d &gt; winscope.html</pre>
+    </li>
+    <li>在网络浏览器打开已下载的软件工件</li>
+    <li>打开 WinScope 后，点击<b>打开文件</b>以加载跟踪文件</li>
+  </ol>
+
+  <h3 id="using_winscope">使用 WinScope</h3>
+  <p>在 WinScope 中打开跟踪文件后，您便可以通过多种方式对该文件进行分析。</p>
+  <img src="images/winscope_screenshot.png" alt="WinScope 屏幕截图"/>
+  <p><em>时间轴</em></p>
+  <p>您可以使用箭头键或点击各个条目以浏览时间轴。</p>
+  <p><em>屏幕</em></p>
+  <p>您可以在屏幕上直观地查看每个可见窗口。点击屏幕上的某个窗口即可选择层次结构中相应的源窗口。</p>
+  <p><em>层次结构</em></p>
+  <p>您可以通过层次结构查看系统已知的每个窗口。有些窗口不包含缓冲区，它们存在的目的在于为其子项设置政策。可见窗口均标有 <code>V</code> 图标。
+  </p>
+  <p><em>属性</em></p>
+  <p>您可以在属性中查看在层次结构中所选条目的状态信息。</p>
+
+  <h2 id="winscope_dev">开发 WinScope</h2>
+  <p>
+    您启用跟踪后，窗口管理器和 Surface Flinger 会记录每个兴趣点的当前状态，并将状态信息保存在文件中。<code>frameworks/base/core/proto/android/server/windowmanagertrace.proto</code> 和 <code>frameworks/native/services/surfaceflinger/layerproto/layerstrace.proto</code> 包含其内部状态的 Proto 定义。
+  </p>
+  <h3 id="winscope_dev_checkout">检查代码和设置环境</h3>
+    <ol>
+      <li>安装 <a href="https://yarnpkg.com" class="external">Yarn</a>（一个 JS 软件包管理器）</li>
+      <li><a href="/setup/build/downloading.html">下载 Android 源代码</a></li>
+      <li>前往 <code>development/tools/winscope</code></li>
+      <li>运行<pre class="devsite-terminal devsite-click-to-copy">yarn install</pre></li>
+    </ol>
+  <h3 id="winscope_dev_build">编译和测试更改</h3>
+    <ol>
+      <li>前往 <code>development/tools/winscope</code></li>
+      <li>运行<pre class="devsite-terminal devsite-click-to-copy">yarn run dev</pre></li>
+    </ol>
+
+</body></html>

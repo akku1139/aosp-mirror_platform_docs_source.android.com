@@ -44,7 +44,7 @@ Make solution.
 
 ### Atest
 
-[Atest](https://android.googlesource.com/platform/tools/tradefederation/+/master/atest/README.md){: .external}
+[Atest](/compatibility/tests/development/atest)
 is a command line tool that allows users to build, install and run Android tests
 locally. It is the recommended standard for initial testing of your feature.
 

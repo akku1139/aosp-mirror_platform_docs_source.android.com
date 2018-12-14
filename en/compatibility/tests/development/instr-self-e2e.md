@@ -95,8 +95,8 @@ manifest file. If you name the file as `AndroidManifest.xml` and provide it next
 to `Android.mk` for your test tmodule, it will get included automatically by the
 `BUILD_PACKAGE` core makefile.
 
-Before proceeding further, it's highly recommended to go through the external
-[documentation on manifest file](https://developer.android.com/guide/topics/manifest/manifest-intro.html)
+Before proceeding further, it's highly recommended to go through the
+[App Manifest Overview](https://developer.android.com/guide/topics/manifest/manifest-intro.html){: .external}
 first.
 
 This gives an overview of basic components of a manifest file and their
@@ -191,12 +191,12 @@ sufficient. See [Simple Test Configuration](blueprints.md) for details.
 Important: The instructions in this section are needed only for CTS tests or those
 that require special setup, such as disabling Bluetooth or collecting sample data.
 All other cases can be covered through the
-[Simple Test Configuration](blueprints.md). See the
-[Complex Test Configuration](compatibility/tests/development/test-config) for
+[Simple Test Configuration](blueprints). See the
+[Complex Test Configuration](test-config) for
 more details applicable to this section.
 
 For these more complex cases, you also need to write a test configuration
-file for Android's test harness, [Trade Federation](https://source.android.com/devices/tech/test_infra/tradefed/).
+file for Android's test harness, [Trade Federation](/devices/tech/test_infra/tradefed/).
 
 The test configuration can specify special device setup options and default
 arguments to supply the test class. See the example at
@@ -324,7 +324,7 @@ Instrumentation instrumentation = InstrumentationRegistry.getInstrumentation()
 ## Build and test locally
 
 For the most common use cases, employ
-[Atest](https://android.googlesource.com/platform/tools/tradefederation/+/master/atest/README.md).
+[Atest](/compatibility/tests/development/atest).
 
 For more complex cases requiring heavier customization, follow the
 [instrumentation instructions](instrumentation.md).

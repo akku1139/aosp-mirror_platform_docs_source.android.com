@@ -271,9 +271,8 @@ provide more Settings functionality and easier implementation.
 
 ### Atest
 
-[Atest](https://android.googlesource.com/platform/tools/tradefederation/+/master/atest/README.md){: .external}
-is a new command line tool that allows users to build, install and run Android
-tests locally.
+[Atest](/compatibility/tests/development/atest) is a new command line tool that
+allows users to build, install and run Android tests locally, greatly speeding test re-runs without requiring knowledge of Trade Federation test harness command line options.
 
 ### Compatibility Test Suite (CTS)
 
@@ -769,7 +768,7 @@ vehicle HAL interface.
 
 When working with new Global Navigation Satellite System (GNSS) HALs (v1.1+),
 the Android Framework will monitor Android Settings. Partners can change the
-Settings from Google Play Services or other system updatees. These settings
+Settings from Google Play Services or other system updates. These settings
 tell the GNSS HAL if certain GNSS satellites should not be used. This can be
 useful in case of persistent GNSS satellite or constellation errors, or to
 react more rapidly to GNSS HAL implementation issues that may occur when

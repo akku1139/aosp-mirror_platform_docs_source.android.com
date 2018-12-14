@@ -46,7 +46,7 @@ hiding their implementation details within their linker namespaces.</p>
 
 <p>For example, <code>/system/lib[64]/libcutils.so</code> and
 <code>/system/lib[64]/vndk-sp-${VER}/libcutils.so</code> are two shared
-libraries. These two libraries may have different symbols. They will be loaded
+libraries. These two libraries may have different symbols. They are loaded
 into different linker namespaces so that framework modules can depend on
 <code>/system/lib[64]/libcutils.so</code> and SP-HAL shared libraries can
 depend on <code>/system/lib[64]/vndk-sp-${VER}/libcutils.so</code>.</p>
@@ -55,7 +55,7 @@ depend on <code>/system/lib[64]/vndk-sp-${VER}/libcutils.so</code>.</p>
 public libraries that is exported by a linker namespace and imported into
 many linker namespaces. The dependencies of
 <code>/system/lib[64]/libc.so</code>, such as <code>libnetd_client.so</code>,
-will be loaded into the namespace in which <code>/system/lib[64]/libc.so</code>
+is loaded into the namespace in which <code>/system/lib[64]/libc.so</code>
 resides. Other namespaces won't have accesses to those dependencies. This
 mechanism encapsulates the implementation details while providing the public
 interfaces.</p>
@@ -69,10 +69,10 @@ interfaces.</p>
 <p>The dynamic linker is responsible for loading the shared libraries specified
 in <code>DT_NEEDED</code> entries or the shared libraries specified by the
 argument of <code>dlopen()</code> or <code>android_dlopen_ext()</code>. In both
-cases, the dynamic linker will find the linker namespace where the caller
+cases, the dynamic linker finds the linker namespace where the caller
 resides and try to load the dependencies into the same linker namespace. If
 the dynamic linker cannot load the shared library into the specified linker
-namespace, it will ask the <em>linked linker namespace</em> for exported shared
+namespace, it asks the <em>linked linker namespace</em> for exported shared
 libraries.</p>
 
 
@@ -86,130 +86,408 @@ configuration file looks like:</p>
 
 <pre class="prettyprint">
 dir.system = /system/bin
+dir.system = /system/xbin
 dir.vendor = /vendor/bin
 
 [system]
-additional.namespaces = sphal
+additional.namespaces = sphal,vndk
 
 namespace.default.isolated = true
-namespace.default.search.paths = /system/${LIB}:/vendor/${LIB}
-namespace.default.permitted.paths = /system/${LIB}:/vendor/${LIB}
+namespace.default.search.paths = /system/${LIB}
+namespace.default.permitted.paths = /system/${LIB}/hw
+namespace.default.asan.search.paths = /data/asan/system/${LIB}:/system/${LIB}
+namespace.default.asan.permitted.paths = /data/asan/system/${LIB}/hw:/system/${LIB}/hw
 
 namespace.sphal.isolated = true
 namespace.sphal.visible = true
-namespace.sphal.search.paths = /vendor/${LIB}
-namespace.sphal.permitted.paths = /vendor/${LIB}
-namespace.sphal.links = default
+namespace.sphal.search.paths = /odm/${LIB}:/vendor/${LIB}
+namespace.sphal.permitted.paths = /odm/${LIB}:/vendor/${LIB}
+namespace.sphal.asan.search.paths  = /data/asan/odm/${LIB}:/odm/${LIB}
+namespace.sphal.asan.search.paths += /data/asan/vendor/${LIB}:/vendor/${LIB}
+namespace.sphal.asan.permitted.paths  = /data/asan/odm/${LIB}:/odm/${LIB}
+namespace.sphal.asan.permitted.paths += /data/asan/vendor/${LIB}:/vendor/${LIB}
+namespace.sphal.links = default,vndk
 namespace.sphal.link.default.shared_libs = libc.so:libm.so
+namespace.sphal.link.vndk.shared_libs = libbase.so:libcutils.so
+
+namespace.vndk.isolated = true
+namespace.vndk.search.paths = /system/${LIB}/vndk-sp-29
+namespace.vndk.permitted.paths = /system/${LIB}/vndk-sp-29
+namespace.vndk.links = default
+namespace.vndk.link.default.shared_libs = libc.so:libm.so
 
 [vendor]
 namespace.default.isolated = false
 namespace.default.search.paths = /vendor/${LIB}:/system/${LIB}
-namespace.default.permitted.paths = /vendor/${LIB}:/system/${LIB}
 </pre>
 
-<p>First, there are several <code>dir.${section}</code> properties at the
-beginning of <code>ld.config.txt</code>:</p>
+<p>The configuration file includes:</p>
 
-<pre class="prettyprint">
-dir.${section} = /path/to/bin/directory
-</pre>
+<ul>
+ <li>Several directory-section mapping properties at the beginning for the
+  dynamic linker to select the effective section.</li>
 
-<p>These properties decide which set of rules will be applied to the process.
-For example, if a <em>main executable</em> resides in <code>/system/bin</code>,
-the rules in the <code>[system]</code> section are applied. Similarly, if a
-<em>main executable</em> resides in <code>/vendor/bin</code>, the rules in the
-<code>[vendor]</code> section are applied.</p>
+ <li>
+  Several linker namespaces configuration sections:
 
-<p>Second, for each section, in addition to the <code>default</code> linker
-namespace, <code>addition.namespaces</code> specifies the extra linker
-namespaces (separated by comma) that will be created by the dynamic
-linker:</p>
+  <ul>
+   <li>Each section contains several namespaces (graph vertices) and several
+   fallback links between namespaces (graph arcs).</li>
 
-<pre class="prettyprint">
-additional.namespaces = namespace1,namespace2,namespace3
-</pre>
+   <li>Each namespace has its own isolation, search paths, permitted paths,
+   and visibility settings.</li>
+  </ul>
+ </li>
+</ul>
 
-<p>In the example above, the dynamic linker creates two linker namespaces
-(<code>default</code> and <code>sphal</code>) for the executables in
-<code>/system/bin</code>.</p>
+<p>The tables below describe the meaning of each property in detail.</p>
 
-<p>Third, for each linker namespace, following properties can be configured:</p>
 
-<pre class="prettyprint">
-namespace.${name}.search.paths = /path1/${LIB}:/path2/${LIB}
-namespace.${name}.permitted.paths = /path1:/path2
-namespace.${name}.isolated = true|false
-namespace.${name}.links = namespace1,namespace2
-namespace.${name}.link.${other}.shared_libs = lib1.so:lib2.so
-namespace.${name}.link.${other}.allow_all_shared_libs = true
-namespace.${name}.visible = true|false
-</pre>
 
-<p><code>namespace.${name}.search.paths</code> denotes the directories that
-will be prepended to the library name. Directories are separated by colons.
-<code>${LIB}</code> is a special placeholder. If the process is running a
-32-bit executable, <code>${LIB}</code> is substituted by
-<code>lib</code>. Similarly, if the process is running a 64-bit executable,
-<code>${LIB}</code> is substituted by <code>lib64</code>.</p>
+<h3 id="directory-section-mapping-property">Directory-section mapping property</h3>
 
-<p>In the example above, if a 64-bit executable in <code>/system/bin</code>
-links with <code>libexample.so</code>, the dynamic linker searches for
-<code>/system/lib64/libexample.so</code> first. If
-<code>/system/lib64/libexample.so</code> is not available, the dynamic
-linker searches for <code>/vendor/lib64/libexample.so</code>.</p>
+<table>
+ <tr>
+  <th>Property</th>
+  <th>Description</th>
+  <th>Example</th>
+ </tr>
 
-<p>If <code>namespace.${name}.isolated</code> is <code>true</code>, the
-dynamic linker loads only the shared libraries in the directories specified
-in <code>namespace.${name}.search.paths</code> or the shared libraries under
-the directories specified in
-<code>namespace.${name}.permitted.paths</code>.</p>
+ <tr>
+  <td><p><code>dir.<var>name</var></code></p></td>
 
-<p>In the example above, a shared library that is loaded in the
-<code>sphal</code> linker namespace won't be able to link to shared libraries
-in <code>/system/lib[64]</code> because <code>namespace.sphal.isolated</code>
-is <code>true</code> and <code>/system/lib[64]</code> is in neither
-<code>namespace.sphal.permitted.paths</code> nor
-<code>namespace.sphal.search.paths</code>.</p>
+  <td>
+   <p>A path to a directory that the <code>[<var>name</var>]</code> section
+   applies to.</p>
 
-<p><code>namespace.${name}.links</code> specifies a comma-separated list of
-linker namespaces that the <code>${name}</code> linker namespace links to.</p>
+   <p>Each property maps the executables under the directory to a linker
+   namespaces configuration section. There might be two (or more) properties
+   with the same <code><var>name</var></code> but point to different
+   directories.</p>
+  </td>
 
-<p>In the example above, <code>namespace.sphal.links</code> specifies that the
-<code>sphal</code> linker namespace links to the <code>default</code> linker
-namespace.</p>
+  <td>
+   <p>
+    <code>dir.system = /system/bin</code><br/>
+    <code>dir.system = /system/xbin</code><br/>
+    <code>dir.vendor = /vendor/bin</code><br/>
+   </p>
 
-<p><code>namespace.${name}.link.${other}.shared_libs</code> specifies the
-shared library names (separated by colons) that may utilize the fallback link.
-If a shared library can't be loaded into the <code>${name}</code> linker
-namespace and its name is in
-<code>namespace.${name}.link.${other}.shared_libs</code>, the dynamic linker
-will try to import the library from the <code>${other}</code> linker
-namespace.</p>
+   <p>This indicates that the configuration specified in the
+   <code>[system]</code> section applies to the executables that are loaded
+   from either <code>/system/bin</code> or <code>/system/xbin</code>.</p>
 
-<p>In the example above, <code>namespace.sphal.link.default.shared_libs</code>
-specifies that <code>libc.so</code> and <code>libm.so</code> may be exported by
-the <code>default</code> linker namespace. If a shared library loaded in the
-<code>sphal</code> linker namespace links to <code>libc.so</code> and the
-dynamic linker cannot find <code>libc.so</code> in
-<code>/vendor/lib[64]</code>, the dynamic linker will walk through the
-fallback link and find the <code>libc.so</code> exported by the
-<code>default</code> linker namespace.</p>
+   <p>The configuration specified in the <code>[vendor]</code> section applies
+   to the executables that are loaded from <code>/vendor/bin</code>.</p>
+  </td>
+ </tr>
+</table>
 
-<p>If <code>namespace.${name}.link.${other}.allow_all_shared_libs</code> is
-<code>true</code>, all shared library names may utilize the fallback link. If
-a shared library can't be loaded into the <code>${name}</code> linker
-namespace, the dynamic linker will try to import the library from the
-<code>${other}</code> linker namespace.</p>
 
-<p>If <code>namespace.${name}.visible</code> is <code>true</code>, the
-program will be able to obtain a linker namespace handle, which can be passed
-to <code>android_dlopen_ext()</code> later.</p>
 
-<p>In the example above, the <code>namespace.sphal.visible</code> is
-<code>true</code> so that <code>android_load_sphal_library()</code> can
-explicitly ask the dynamic linker to load a shared library in the
-<code>sphal</code> linker namespace.</p>
+<h3 id="relation-properties">Relation properties</h3>
+
+<table>
+ <tr>
+  <th>Property</th>
+  <th>Description</th>
+  <th>Example</th>
+ </tr>
+
+ <tr>
+  <td><code>additional.<wbr/>namespaces</code></td>
+
+  <td>
+   <p>A comma-separated list of additional namespaces (in addition to the
+   <code>default</code> namespace) for the section.</p>
+  </td>
+
+  <td>
+   <p><code>additional.<wbr/>namespaces = sphal,<wbr/>vndk</code></p>
+
+   <p>This indicates there are three namespaces (<code>default</code>,
+   <code>sphal</code>, and <code>vndk</code>) in the <code>[system]</code>
+   configuration.</p>
+  </td>
+ </tr>
+
+ <tr>
+  <td><code>namespace.<wbr/><var>name</var>.<wbr/>links</code></td>
+
+  <td>
+   <p>A comma-separated list of fallback namespaces.</p>
+
+   <p>If a shared library cannot be found in the current namespace, the dynamic
+   linker tries to load the shared library from the fallback namespaces. The
+   namespace specified at the beginning of the list has higher priority.</p>
+
+   <aside class="note">Note: Fallback namespaces are not transitive. For
+   example, namespace <em>A</em> links to namespace <em>B</em> and namespace
+   <em>B</em> links to namespace <em>C</em>. If the dynamic linker can not
+   find the library in namespace <em>A</em>, it ONLY searches namespace
+   <em>B</em>. It doesn't search namespace <em>C</em>.</aside>
+  </td>
+
+  <td>
+   <p><code>namespace.<wbr/>sphal.<wbr/>links = default,<wbr/>vndk</code></p>
+
+   <p>If a shared library or an executable requests a shared library that
+   cannot be loaded into the <code>sphal</code> namespace, the dynamic linker
+   tries to load the shared library from the <code>default</code>
+   namespace.</p>
+
+   <p>And then, if the shared library cannot be loaded from the
+   <code>default</code> namespace either, the dynamic linker tries to load the
+   shared library from the <code>vndk</code> namespace.</p>
+
+   <p>Finally, if all attempts fail, the dynamic linker returns an error.</p>
+  </td>
+ </tr>
+
+ <tr>
+  <td><code>namespace.<wbr/><var>name</var>.<wbr/>link.<wbr/><var>other</var>.<wbr/>shared_libs</code></td>
+
+  <td>
+   <p>A colon-separated list of shared libraries that can be searched in the
+   <code>other</code> namespaces when those libraries cannot be found in the
+   <code>name</code> namespace.</p>
+
+   <p>This property cannot be used with
+   <code>namespace.<wbr/><var>name</var>.<wbr/>link.<wbr/><var>other</var>.<wbr/>allow_all_shared_libs</code>.</p>
+
+   <aside class="note"><p>Note: This property shares the same underlying
+   implementation with
+   <a href="/devices/tech/config/namespaces_libraries">public.libraries.txt</a>
+   files. Both mechanisms control the imported shared libraries by specifying a
+   link with a library name filter.</p>
+
+   <p>The difference is that <code>ld.config.txt</code> is loaded by the
+   dynamic linker and all namespaces are created when a program starts. On the
+   contrary, <code>libnativeloader</code> creates a linker namespace when the
+   Zygote process is forked and specialized for an application. The namespace
+   for the application native libraries has a link that only allows the library
+   names specified in <code>public.libraries.txt</code>.</p></aside>
+  </td>
+
+  <td>
+   <p><code>namespace.<wbr/>sphal.<wbr/>link.<wbr/>default.<wbr/>shared_libs = libc.so:<wbr/>libm.so</code></p>
+
+   <p>This indicates that the fallback link only accepts <code>libc.so</code>
+   or <code>libm.so</code> as the requested library name. The dynamic linker
+   ignores the fallback link from <code>sphal</code> to
+   <code>default</code> namespace if the requested library name is not
+   <code>libc.so</code> nor <code>libm.so</code>.</p>
+  </td>
+ </tr>
+
+ <tr>
+  <td><code>namespace.<wbr/><var>name</var>.<wbr/>link.<wbr/><var>other</var>.<wbr/>allow_all_shared_libs</code></td>
+
+  <td>
+   <p>A boolean value that indicates whether all shared libraries can be
+   searched in the <code><var>other</var></code> namespace when those libraries cannot
+   be found in the <code><var>name</var></code> namespace.</p>
+
+   <p>This property cannot be used with
+   <code>namespace.<wbr/><var>name</var>.<wbr/>link.<wbr/><var>other</var>.<wbr/>shared_libs</code>.</p>
+  </td>
+
+  <td>
+   <p><code>namespace.<wbr/>vndk.<wbr/>link.<wbr/>sphal.<wbr/>allow_all_shared_libs = true</code></p>
+
+   <p>This indicates all library names can walk through the fallback link
+   from <code>vndk</code> to <code>sphal</code> namespace.</p>
+  </td>
+ </tr>
+</table>
+
+
+
+<h3 id="namespace-properties">Namespace properties</h3>
+
+<table>
+ <tr>
+  <th>Property</th>
+  <th>Description</th>
+  <th>Example</th>
+ </tr>
+
+ <tr>
+  <td><code>namespace.<wbr/><var>name</var>.<wbr/>isolated</code></td>
+
+  <td>
+   <p>A boolean value that indicates whether the dynamic linker should check
+   where the shared library resides.</p>
+
+   <p>If <code>isolated</code> is <code>true</code>, only the shared libraries
+   that are <em>in</em> one of the <code>search.paths</code> directories
+   (excluding sub-directories) or are <em>under</em> one of the
+   <code>permitted.paths</code> directories (including sub-directories) can be
+   loaded.</p>
+
+   <p>If <code>isolated</code> is <code>false</code> (default), the dynamic
+   linker doesn't check the path of shared libraries.</p>
+  </td>
+
+  <td>
+   <p><code>namespace.<wbr/>sphal.<wbr/>isolated = true</code></p>
+
+   <p>This indicates that only the shared libraries in
+   <code>search.paths</code> or under <code>permitted.paths</code> can be
+   loaded into the <code>sphal</code> namespace.</p>
+  </td>
+ </tr>
+
+ <tr>
+  <td><code>namespace.<wbr/><var>name</var>.<wbr/>search.paths</code></td>
+
+  <td>
+   <p>A colon-separated list of directories to search for shared
+   libraries.</p>
+
+   <p>The directories specified in <code>search.paths</code> are prepended
+   to the requested library name if function calls to <code>dlopen()</code> or
+   <code>DT_NEEDED</code> entries do not specify the full path. The directory
+   specified at the beginning of the list has higher priority.</p>
+
+   <p>When <code>isolated</code> is <code>true</code>, shared libraries that
+   are <em>in</em> one of the <code>search.paths</code> directories (excluding
+   sub-directories) can be loaded regardless the <code>permitted.paths</code>
+   property.</p>
+
+   <p>For example, if <code>search.paths</code> is
+   <code>/system/${LIB}</code> and <code>permitted.paths</code> is empty,
+   <code>/system/${LIB}/libc.so</code> can be loaded but
+   <code>/system/${LIB}/vndk/libutils.so</code> cannot be loaded.</p>
+
+   <aside class="note">Note: <code>${LIB}</code> is a built-in
+   placeholder. It is replaced by <code>lib</code> for 32-bit processes and
+   <code>lib64</code> for 64-bit processes.</aside>
+  </td>
+
+  <td>
+   <p><code>namespace.<wbr/>default.<wbr/>search.paths = /system/${LIB}</code></p>
+
+   <p>This indicates that the dynamic linker searches
+   <code>/system/${LIB}</code> for shared libraries.</p>
+  </td>
+ </tr>
+
+ <tr>
+  <td><code>namespace.<wbr/><var>name</var>.<wbr/>asan.search.paths</code></td>
+
+  <td>
+   <p>A colon-separated list of directories to search for shared libraries when
+   <a href="/devices/tech/debug/asan">Address Sanitizer</a> is enabled.</p>
+
+   <p><code>namespace.<wbr/><var>name</var>.<wbr/>search.paths</code> is
+   ignored when <a href="/devices/tech/debug/asan">Address Sanitizer</a> is
+   enabled.</p>
+  </td>
+
+  <td>
+   <p><code>namespace.<wbr/>default.<wbr/>asan.search.paths = /data/asan/system/${LIB}:<wbr/>/system/${LIB}</code></p>
+
+   <p>This indicates that when
+   <a href="/devices/tech/debug/asan">Address Sanitizer</a> is enabled the
+   dynamic linker searches <code>/data/asan/system/${LIB}</code> first and
+   then searches <code>/system/${LIB}</code>.</p>
+  </td>
+ </tr>
+
+ <tr>
+  <td><code>namespace.<wbr/><var>name</var>.<wbr/>permitted.paths</code></td>
+
+  <td>
+   <p>A colon-separated list of directories (including sub-directories) where
+   the dynamic linker can load the shared libraries (in addition to
+   <code>search.paths</code>) when <code>isolated</code> is
+   <code>true</code>.</p>
+
+   <p>The shared libraries that are under the sub-directories of
+   <code>permitted.paths</code> can be loaded too. For example, if
+   <code>permitted.paths</code> is <code>/system/${LIB}</code>,
+   both <code>/system/${LIB}/libc.so</code> and
+   <code>/system/${LIB}/vndk/libutils.so</code> can be loaded.</p>
+
+   <p>If <code>isolated</code> is <code>false</code>,
+   <code>permitted.paths</code> are ignored and a warning is emitted.</p>
+
+   <aside class="note">Note: <code>permitted.paths</code> are NOT
+   prepended to the requested library names when the dynamic linker is
+   searching for a shared library. Its main purpose is to allow programers to
+   load shared libraries into an isolated namespace by specifying the full path
+   of the shared library.</aside>
+  </td>
+
+  <td>
+   <p><code>namespace.<wbr/>default.<wbr/>permitted.paths = /system/${LIB}/hw</code></p>
+
+   <p>This indicates that the shared libraries under
+   <code>/system/${LIB}/hw</code> can be loaded into the isolated
+   <code>default</code> namespace.</p>
+
+   <p>For example, without <code>permitted.paths</code>,
+   <code>libaudiohal.so</code> won't be able to load
+   <code>/system/${LIB}/hw/audio.a2dp.default.so</code> into the
+   <code>default</code> namespace.</p>
+  </td>
+ </tr>
+
+ <tr>
+  <td><code>namespace.<wbr/><var>name</var>.<wbr/>asan.permitted.paths</code></td>
+
+  <td>
+   <p>A colon-separated list of directories where the dynamic linker can load
+   the shared libraries when <a href="/devices/tech/debug/asan">Address
+   Sanitizer</a> is enabled.</p>
+
+   <p><code>namespace.<wbr/><var>name</var>.<wbr/>permitted.paths</code> is
+   ignored when <a href="/devices/tech/debug/asan">Address Sanitizer</a> is
+   enabled.</p>
+  </td>
+
+  <td>
+   <p><code>namespace.<wbr/>default.<wbr/>asan.permitted.paths = /data/asan/system/${LIB}/hw:<wbr/>/system/${LIB}/hw</code></p>
+
+   <p>This indicates that when
+   <a href="/devices/tech/debug/asan">Address Sanitizer</a> is enabled shared
+   libraries under <code>/data/asan/system/${LIB}/hw</code> or
+   <code>/system/${LIB}/hw</code> can be loaded to the isolated
+   <code>default</code> namespace.</p>
+  </td>
+ </tr>
+
+ <tr>
+  <td><code>namespace.<wbr/><var>name</var>.<wbr/>visible</code></td>
+
+  <td>
+   <p>A boolean value that indicates whether the program (other than
+   <code>libc</code>) can obtain a linker namespace handle with
+   <code>android_get_exported_namespace()</code> and open a shared library in
+   the linker namespace by passing the handle to
+   <code>android_dlopen_ext()</code>.</p>
+
+   <p>If <code>visible</code> is <code>true</code>,
+   <code>android_get_exported_namespace()</code> always returns the handle if
+   the namespace exists.</p>
+
+   <p>If <code>visible</code> is <code>false</code> (default),
+   <code>android_get_exported_namespace()</code> always returns
+   <code>NULL</code> regardless the presence of the namespace. Shared libraries
+   can only be loaded into this namespace if (1) they are requested by another
+   linker namespace that has a fallback link to this namespace or (2) they are
+   requested by other shared libraries or executables in this namespace.</p>
+  </td>
+
+  <td>
+   <p><code>namespace.<wbr/>sphal.<wbr/>visible = true</code></p>
+
+   <p>This indicates that <code>android_get_exported_namespace("sphal")</code>
+   can return a valid linker namespace handle.</p>
+  </td>
+ </tr>
+</table>
 
 
 
@@ -217,11 +495,11 @@ explicitly ask the dynamic linker to load a shared library in the
 
 <h2 id="linker-namespace-isolation">Linker namespace isolation</h2>
 
-<p>There are three configurations in
+<p>There are three configuration files in
 <code>${android-src}/system/core/rootdir/etc</code>. Depending on the value of
 <code>PRODUCT_TREBLE_LINKER_NAMESPACES</code>, <code>BOARD_VNDK_VERSION</code>,
 and <code>BOARD_VNDK_RUNTIME_DISABLE</code> in <code>BoardConfig.mk</code>,
-different configurations will be selected:</p>
+different configurations are selected:</p>
 
 <table>
  <tr>
@@ -282,7 +560,7 @@ BOARD_VNDK_RUNTIME_DISABLE := true
 
 <p>If <code>BOARD_VNDK_RUNTIME_DISABLE</code> is <code>true</code>,
 <code>${android-src}/system/core/rootdir/etc/ld.config.vndk_lite.txt</code>
-will be installed.</p>
+is installed.</p>
 
 
 
@@ -436,7 +714,7 @@ processes, which is excerpted from the <code>[system]</code> section in
    <code>/product/app</code><br/>
    <code>/product/priv-app</code><br/>
    <code>/data</code><br/>
-   <code>/mnt/expand
+   <code>/mnt/expand</code>
   </td>
  </tr>
 

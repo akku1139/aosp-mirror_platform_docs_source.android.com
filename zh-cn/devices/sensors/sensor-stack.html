@@ -25,7 +25,7 @@
 <p class="img-caption"><strong>图 1. </strong> Android 传感器堆栈层级以及各自的所有者</p>
 
 <h2 id="sdk">SDK</h2>
-<p>应用通过 <a href="http://developer.android.com/reference/android/hardware/SensorManager.html">Sensors SDK（软件开发套件）API</a> 访问传感器。SDK 包含用以列示可用传感器和注册到传感器的函数。</p>
+<p>应用通过 <a href="http://developer.android.com/reference/android/hardware/SensorManager.html">Sensors SDK（软件开发套件）API</a> 访问传感器。SDK 包含用以列出可用传感器和注册到传感器的函数。</p>
 <p>在注册到传感器时，应用可指定自己的首选采样率和延迟要求。</p>
 <ul>
   <li>例如，应用可注册到默认加速度计，以 100Hz 的频率请求事件，并允许事件报告有 1 秒延迟。</li>
@@ -33,25 +33,25 @@
 </ul>
 <p>请参阅<a href="index.html#targeted_at_developers">开发者文档</a>，详细了解 SDK。</p>
 <h2 id="framework">框架</h2>
-<p>框架负责将多个应用关联到 <a href="hal-interface.html">HAL</a>。HAL 本身是单一客户端。如果框架级别没有发生这种多路复用，则在任何指定时间内只有一个应用可以访问各个传感器。</p>
+<p>框架负责将多个应用关联到 <a href="hal-interface.html">HAL</a>。HAL 本身是单一客户端。如果框架级别没有发生这种多路复用，则在任何指定时间内每个传感器都只能被一个应用访问。</p>
 <ul>
   <li>当第一个应用注册到传感器时，框架会向 HAL 发送请求以激活传感器。</li>
   <li>当其他应用注册到相同的传感器时，框架会考虑每个应用的要求，并将更新的已请求参数发送到 HAL。<ul>
       <li><a href="hal-interface.html#sampling_period_ns">采样率</a>将是请求的采样率的最大值，这意味着一些应用接收事件的频率会高于所请求的频率。</li>
-      <li><a href="hal-interface.html#max_report_latency_ns">最大报告延迟</a>将是请求的延迟的最小值。如果某个应用以 0 为最大报告延迟请求传感器，则所有应用将以连续模式从该传感器接收事件，即使某些应用以非零值的最大报告延迟请求传感器也是如此。有关详情，请参阅<a href="batching.html">批处理</a>。</li>
+      <li><a href="hal-interface.html#max_report_latency_ns">最大报告延迟</a>将是请求的延迟的最小值。如果某个应用的最大报告延迟是 0，若它请求传感器，则所有应用将以连续模式从该传感器接收事件，即使某些应用请求传感器时的最大报告延迟不是 0 也是如此。有关详情，请参阅<a href="batching.html">批处理</a>。</li>
     </ul>
   </li>
   <li>当注册到某个传感器的最后一个应用取消注册之后，框架会向 HAL 发送请求以停用该传感器，从而避免不必要的功耗。</li>
 </ul>
 <h3 id="impact_of_multiplexing">多路复用的影响</h3>
-<p>在框架中实现多路复用层的这一需求解释了一些设计决策。</p>
+<p>在框架中实现多路复用层的这一需求说明了一些设计决策的原因。</p>
 <ul>
-  <li>当应用请求特定采样率时，不能保证事件不会以更快的频率到达。如果另一个应用以更快的频率请求同一传感器，则第一个应用也将以较快频率接收事件。</li>
+  <li>当应用请求特定采样率时，不能保证事件不会以更快的频率到达。如果另一个应用以更快的频率请求同一传感器，则第一个应用也将以那个快的频率来接收事件。</li>
   <li>请求的最大报告延迟同样无法得到保证：应用可能以比请求的延迟短的多的延迟接收事件。</li>
   <li>除了采样率和最大报告延迟之外，应用还无法配置传感器参数。
     <ul>
       <li>例如，假设某个物理传感器可同时在“高精确度”和“低电耗”模式下运行。</li>
-      <li>这两种模式中只有一种可以在 Android 设备上使用，因为否则一个应用可能请求高精确度模式，而另一个可能请求低电耗模式；框架根本无法同时满足这两个应用的要求。框架必须始终能够满足所有客户端的需要，因此同时使用两种模式是不可行的。</li>
+      <li>这两种模式中只有一种可以在 Android 设备上使用，因为若非如此，一个应用可能请求高精确度模式，而另一个可能请求低电耗模式，而框架根本无法同时满足这两个应用的要求。框架必须始终能够满足所有客户端的需要，因此同时使用两种模式是不可行的。</li>
     </ul>
   </li>
   <li>没有将数据从应用向下发送至传感器或其驱动程序的机制。这样可以确保某个应用无法修改传感器的行为，从而不会对其他应用造成破坏。</li>
@@ -73,7 +73,7 @@
 <p>接口由 Android 和 AOSP 贡献者定义，并由设备制造商提供实现。</p>
 <p>传感器 HAL 接口位于 <code>hardware/libhardware/include/hardware</code> 中。有关详情，请参阅 <a href="https://android.googlesource.com/platform/hardware/libhardware/+/master/include/hardware/sensors.h">sensors.h</a>。</p>
 <h3 id="release_cycle">版本周期</h3>
-<p>HAL 实现通过设置 <code>your_poll_device.common.version</code> 指定实现的 HAL 接口版本。现有 HAL 接口版本在 sensors.h 中定义，相应功能与这些版本绑定在一起。</p>
+<p>HAL 实现通过设置 <code>your_poll_device.common.version</code> 指定实现的 HAL 接口版本。现有的 HAL 接口版本在 sensors.h 中有所定义，相应功能与这些版本绑定在一起。</p>
 <p>Android 框架目前支持版本 1.0 和 1.3，不过版本 1.0 很快将不再受支持。本文档介绍了版本 1.3（所有设备均应升级到该版本）的行为。要详细了解如何升级到版本 1.3，请参阅 <a href="versioning.html">HAL 版本弃用</a>。</p>
 <h2 id="kernel_driver">内核驱动程序</h2>
 <p>传感器驱动程序可与物理设备进行交互。在某些情况下，HAL 实现和驱动程序是同一软件实体。在其他情况下，硬件集成者会要求传感器芯片制造商提供相应驱动程序，但是它们是用于编写 HAL 实现的驱动程序。</p>

@@ -23,7 +23,7 @@
 <p>想要实现 A/B 系统更新的原始设备制造商 (OEM) 和 SoC 供应商必须确保其引导加载程序实现 boot_control HAL，并将<a href="#kernel">正确的参数</a>传递到内核。</p>
 
 <h2 id="bootcontrol">实现启动控件 HAL</h2>
-<p>支持 A/B 更新的引导加载程序必须在 <code><a href="https://android.googlesource.com/platform/hardware/libhardware/+/master/include/hardware/boot_control.h" class="external">hardware/libhardware/include/hardware/boot_control.h</a></code> 中实现 <code>boot_control</code> HAL。您可以使用 <code><a href="https://android.googlesource.com/platform/system/extras/+/master/bootctl/" class="external">system/extras/bootctl</a></code> 实用工具和 <code><a href="https://android.googlesource.com/platform/system/extras/+/refs/heads/master/tests/bootloader/" class="external">system/extras/tests/bootloader/</a></code> 来测试实现。
+<p>支持 A/B 更新的引导加载程序必须在 <code><a href="https://android.googlesource.com/platform/hardware/libhardware/+/master/include/hardware/boot_control.h" class="external">hardware/libhardware/include/hardware/boot_control.h</a></code> 中实现 <code>boot_control</code> HAL。您可以使用 <code><a href="https://android.googlesource.com/platform/system/extras/+/master/bootctl/" class="external">system/extras/bootctl</a></code> 实用工具和 <code><a href="https://android.googlesource.com/platform/system/extras/+/refs/heads/master/tests/bootloader/" class="external">system/extras/tests/bootloader/</a></code> 来测试此类实现。
 </p>
 
 <p>您还必须实现状态机，如下所示：</p>
@@ -42,7 +42,7 @@
 <li>确保内核命令行参数包含中以下额外参数：
 <pre class="devsite-click-to-copy">
 <code class="devsite-terminal">skip_initramfs rootwait ro init=/init root="/dev/dm-0 dm=system none ro,0 1 android-verity &lt;public-key-id&gt; &lt;path-to-system-partition&gt;"</code></pre>
-其中 <code>&lt;public-key-id&gt;</code> 值是用于验证 verity 表签名的公钥 ID（有关详情，请参阅 <a href="/security/verifiedboot/dm-verity.html">dm-verity</a>）。</li>
+... 其中 <code>&lt;public-key-id&gt;</code> 值是验证 verity 表签名时使用的公钥的 ID（有关详情，请参阅 <a href="/security/verifiedboot/dm-verity.html">dm-verity</a>）。</li>
 <li>将包含公钥的 .X509 证书添加到系统密钥环：
  <ol>
  <li>将设置为 <code>.der</code> 格式的 .X509 证书复制到 <code>kernel</code> 的根目录。如果 .X509 证书的格式为 <code>.pem</code> 文件，请使用以下 <code>openssl</code> 命令将证书格式从 <code>.pem</code> 转换为 <code>.der</code>：
@@ -122,7 +122,7 @@ A/B 化的所有分区都应按以下方法命名（插槽始终被命名为 <co
 
 <h3 id="fstab">Fstab</h3>
 
-<p><code>slotselect</code> 参数<strong>必须</strong>位于进行 A/B 更新的分区对应的行中。例如：</p>
+<p><code>slotselect</code> 参数<strong>必须</strong>位于已进行 A/B 更新的分区对应的行中。例如：</p>
 
 <pre class="devsite-click-to-copy">
 &lt;path-to-block-device&gt;/vendor  /vendor  ext4  ro
@@ -135,23 +135,23 @@ wait,verify=&lt;path-to-block-device&gt;/metadata,slotselect
 
 <p>应通过特定的设备树 (DT) 节点 (<code>/firmware/android/slot_suffix</code>) 或 <code>androidboot.slot_suffix</code> 命令行参数传递当前插槽后缀。</p>
 
-<p>默认情况下，fastboot 只会闪存 A/B 设备上的插槽 <code>a</code>，并将当前插槽设置为 <code>a</code>。如果更新软件包还包含插槽 <code>b</code> 的映像，则 fastboot 也会闪存这些映像。可用选项包括：</p>
+<p>默认情况下，fastboot 会刷写 A/B 设备上的当前插槽。如果更新软件包还包含其他非当前插槽的映像，则 fastboot 也会刷写这些映像。可用选项包括：</p>
 
 <ul>
-<li><code>--slot</code>。提示 fastboot 使用插槽 <code>b</code>，而非插槽 <code>a</code>。</li>
-<li><code>--set-active</code>。将插槽设置为活动插槽。</li>
-<li><code>fastboot --help</code>。获取有关命令的详细信息。</li>
+  <li><code>--slot <var>SLOT</var></code>：替换默认行为，并提示 fastboot 刷写以参数形式传入的插槽。</li>
+  <li><code>--set-active [<var>SLOT</var>]</code>：将指定插槽设为活动插槽。如果未指定可选参数，则将当前插槽设为活动插槽。</li>
+<li><code>fastboot --help</code>：获取有关命令的详细信息。</li>
 </ul>
 
 <p>如果引导加载程序实现 fastboot，则应该支持命令 <code>set_active &lt;slot&gt;</code>，该命令将当前活动插槽设置为指定插槽（此外，还必须清除该插槽的不可启动标记，并将重试计数重置为默认值）。引导加载程序还应支持以下变量：</p>
 
 <ul>
-<li><code>has-slot:&lt;partition-base-name-without-suffix&gt;</code>。如果指定分区支持插槽，则返回“yes”，否则返回“no”。</li>
-<li><code>current-slot</code>。返回接下来将从中启动的插槽后缀。</li>
-<li><code>slot-count</code>。返回一个表示可用插槽数量的整数。目前支持两个插槽，因此该值为 <code>2</code>。</li>
-<li><code>slot-successful:&lt;slot-suffix&gt;</code>。如果指定插槽已标记为成功启动，则返回“yes”，否则返回“no”。</li>
-<li><code>slot-unbootable:&lt;slot-suffix&gt;</code>。如果指定插槽已标记为不可启动，则返回“yes”，否则返回“no”。</li>
-<li><code>slot-retry-count<slot suffix></slot></code>。启动指定插槽的剩余重试次数。</li>
+<li><code>has-slot:&lt;partition-base-name-without-suffix&gt;</code>：如果指定分区支持插槽，则返回“yes”，否则返回“no”。</li>
+<li><code>current-slot</code>：返回接下来将从中启动的插槽后缀。</li>
+<li><code>slot-count</code>：返回一个表示可用插槽数量的整数。目前支持两个插槽，因此该值为 <code>2</code>。</li>
+<li><code>slot-successful:&lt;slot-suffix&gt;</code>：如果指定插槽已标记为成功启动，则返回“yes”，否则返回“no”。</li>
+<li><code>slot-unbootable:&lt;slot-suffix&gt;</code>：如果指定插槽已标记为不可启动，则返回“yes”，否则返回“no”。</li>
+<li><code>slot-retry-count<slot suffix></slot></code>：启动指定插槽的剩余重试次数。</li>
 </ul>
 
 <p>要查看所有变量，请运行 <code class="devsite-terminal devsite-click-to-copy">fastboot getvar all</code>。

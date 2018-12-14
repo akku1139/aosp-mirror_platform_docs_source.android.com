@@ -506,18 +506,19 @@ $(call add-clean-step, rm -rf $(TARGET_OUT_VENDOR)/lib/libvndk.so)
 </p>
 
 <ul>
-  <li>core variant (e.g. <code>/system/lib[64]/libexample.so</code>)</li>
-  <li>vendor variant (e.g.
+  <li>Core variant (e.g. <code>/system/lib[64]/libexample.so</code>)</li>
+  <li>Vendor variant (e.g.
   <code>/system/lib[64]/vndk[-sp]-${VER}/libexample.so</code>)</li>
   <li>VNDK extension (e.g. <code>/vendor/lib[64]/vndk[-sp]/libexample.so</code>)
   </li>
 </ul>
 
+
 <h4 id="conditional-cflags">Conditional compiler flags</h4>
 
 <p>
   The Android build system defines <code>__ANDROID_VNDK__</code> for vendor
-  variants (including VNDK extensions) by default. You may guard the code
+  variants and VNDK extensions by default. You may guard the code
   with the C preprocessor guards:
 </p>
 
@@ -537,15 +538,18 @@ void vndk_only() { }
   In addition to <code>__ANDROID_VNDK__</code>, different <code>cflags</code> or
   <code>cppflags</code> may be specified in <code>Android.bp</code>. The
   <code>cflags</code> or <code>cppflags</code> specified in
-  <code>target.vendor</code> is specific to the vendor variant. For example, the
-  following code example is the <code>Android.bp</code> module definition for
+  <code>target.vendor</code> is specific to the vendor variant.
+</p>
+
+<p>
+  For example, the following <code>Android.bp</code> defines
   <code>libexample</code> and <code>libexample_ext</code>:
 </p>
 
 <pre class="prettyprint">
 cc_library {
     name: "libexample",
-    srcs: ["example.c"],
+    srcs: ["src/example.c"],
     vendor_available: true,
     vndk: {
         enabled: true,
@@ -559,7 +563,7 @@ cc_library {
 
 cc_library {
     name: "libexample_ext",
-    srcs: ["example.c"],
+    srcs: ["src/example.c"],
     vendor: true,
     vndk: {
         enabled: true,
@@ -573,7 +577,7 @@ cc_library {
 </pre>
 
 <p>
-  Code listing of <code>example.c</code>:
+  And this is the code listing of <code>src/example.c</code>:
 </p>
 
 <pre class="prettyprint">
@@ -593,7 +597,8 @@ void vndk_ext() { }
 </pre>
 
 <p>
-  Exported symbols for each variant:
+  According to these two files, the build system generates shared libraries
+  with following exported symbols:
 </p>
 
 <table>
@@ -618,19 +623,34 @@ void vndk_ext() { }
  </tr>
 </table>
 
+
+<h4 id="exported-symbols">Requirements on the exported symbols</h4>
+
 <p>
-  The VNDK ABI compliance checker compares the ABI of VNDK and VNDK
-  extensions to the ABI dumps under <code>prebuilts/abi-dumps/vndk</code>:
+  The <a href="/devices/architecture/vndk/abi-stability">VNDK ABI checker</a>
+  compares the ABI of <em>VNDK vendor variants</em> and
+  <em>VNDK extensions</em> to the reference ABI dumps under
+  <code>prebuilts/abi-dumps/vndk</code>.
 </p>
 
 <ul>
-  <li>Symbols exported by original VNDK shared libraries must be identical to
-  (not the supersets of) the symbols defined in ABI dumps.</li>
-  <li>Symbols exported by VNDK extensions must be supersets of the symbols
-  defined in ABI dumps.</li>
+  <li>Symbols exported by <em>VNDK vendor variants</em> (e.g.
+  <code>/system/lib[64]/vndk-${VER}/libexample.so</code>) must be identical
+  to (not the supersets of) the symbols defined in ABI dumps.</li>
+
+  <li>Symbols exported by <em>VNDK extensions</em> (e.g.
+  <code>/vendor/lib[64]/vndk/libexample.so</code>) must be supersets of the
+  symbols defined in ABI dumps.</li>
 </ul>
 
-<h4 id="excluding">Excluding source files or shared libs</h4>
+<p>
+  If <em>VNDK vendor variants</em> or <em>VNDK extensions</em> fail to follow
+  the requirements above, VNDK ABI checker emits build errors and stops the
+  build.
+</p>
+
+
+<h4 id="excluding">Excluding source files or shared libraries from vendor variants</h4>
 
 <p>
   To exclude source files from the vendor variant, add them to the
@@ -641,7 +661,7 @@ void vndk_ext() { }
 
 <pre class="prettyprint">
 cc_library {
-    name: "libcond_exclude_example",
+    name: "libexample_cond_exclude",
     srcs: ["fwk.c", "both.c"],
     shared_libs: ["libfwk_only", "libboth"],
     target: {
@@ -654,16 +674,167 @@ cc_library {
 </pre>
 
 <p>
-  In this example, the core variant of <code>libcond_exclude_example</code>
+  In this example, the core variant of <code>libexample_cond_exclude</code>
   includes the code from <code>fwk.c</code> and <code>both.c</code> and depends
   on the shared libraries <code>libfwk_only</code> and <code>libboth</code>. The
-  vendor variant of <code>libcond_exclude_example</code> includes only the code
+  vendor variant of <code>libexample_cond_exclude</code> includes only the code
   from <code>both.c</code> because <code>fwk.c</code> is excluded by the
   <code>exclude_srcs</code> property. Similarly,
-  <code>libcond_exclude_example</code> depends only on the shared library
+  <code>libexample_cond_exclude</code> depends only on the shared library
   <code>libboth</code> because <code>libfwk_only</code> is excluded by the
   <code>exclude_shared_libs</code> property.
 </p>
+
+<h4 id="export-headers-from-vndk-extension">Export headers from VNDK extensions</h4>
+
+<p>
+  A VNDK extension may add new classes or new functions to a VNDK shared
+  library. It is suggested to keep those declarations in independent headers
+  and avoid changing the existing headers.
+</p>
+
+<p>
+  For example, a new header file
+  <code>include-ext/example/ext/feature_name.h</code> is created for the VNDK
+  extension <code>libexample_ext</code>:
+</p>
+
+<ul>
+  <li>Android.bp</li>
+  <li><strong>include-ext/example/ext/feature_name.h</strong></li>
+  <li>include/example/example.h</li>
+  <li>src/example.c</li>
+  <li><strong>src/ext/feature_name.c</strong></li>
+</ul>
+
+<p>
+  In the following <code>Android.bp</code>, <code>libexample</code> exports
+  only <code>include</code>, whereas <code>libexample_ext</code> exports both
+  <code>include</code> and <code>include-ext</code>. This ensures
+  <code>feature_name.h</code> won't be incorrectly included by the users of
+  <code>libexample</code>:
+</p>
+
+<pre class="prettyprint">
+cc_library {
+    name: "libexample",
+    srcs: ["src/example.c"],
+    export_include_dirs: ["include"],
+    vendor_available: true,
+    vndk: {
+        enabled: true,
+    },
+}
+
+cc_library {
+    name: "libexample_ext",
+    srcs: [
+        "src/example.c",
+        "src/ext/feature_name.c",
+    ],
+    export_include_dirs: [
+        "include",
+        "include-ext",
+    ],
+    vendor: true,
+    vndk: {
+        enabled: true,
+        extends: "libexample",
+    },
+}
+</pre>
+
+<p>
+  If separating extensions to independent header files is not feasible, an
+  alternative is to add <code>#ifdef</code> guards. However, make sure that all
+  VNDK extension users add the define flags. You may define
+  <code>cc_defaults</code> to add define flags to <code>cflags</code> and link
+  shared libraries with <code>shared_libs</code>.
+</p>
+
+<p>
+  For example, to add a new member function <code>Example2::get_b()</code> to
+  the VNDK extension <code>libexample2_ext</code>, you must modify the existing
+  header file and add a <code>#ifdef</code> guard:
+</p>
+
+<pre class="prettyprint">
+#ifndef LIBEXAMPLE2_EXAMPLE_H_
+#define LIBEXAMPLE2_EXAMPLE_H_
+
+class Example2 {
+ public:
+  Example2();
+
+  void get_a();
+
+#ifdef LIBEXAMPLE2_ENABLE_VNDK_EXT
+  void get_b();
+#endif
+
+ private:
+  void *impl_;
+};
+
+#endif  // LIBEXAMPLE2_EXAMPLE_H_
+</pre>
+
+<p>
+  A <code>cc_defaults</code> named <code>libexample2_ext_defaults</code> is
+  defined for the users of <code>libexample2_ext</code>:
+</p>
+
+<pre class="prettyprint">
+cc_library {
+    name: "libexample2",
+    srcs: ["src/example2.cpp"],
+    export_include_dirs: ["include"],
+    vendor_available: true,
+    vndk: {
+        enabled: true,
+    },
+}
+
+cc_library {
+    name: "libexample2_ext",
+    srcs: ["src/example2.cpp"],
+    export_include_dirs: ["include"],
+    vendor: true,
+    vndk: {
+        enabled: true,
+        extends: "libexample2",
+    },
+    cflags: [
+        "-DLIBEXAMPLE2_ENABLE_VNDK_EXT=1",
+    ],
+}
+
+cc_defaults {
+    name: "libexample2_ext_defaults",
+    shared_libs: [
+        "libexample2_ext",
+    ],
+    cflags: [
+        "-DLIBEXAMPLE2_ENABLE_VNDK_EXT=1",
+    ],
+}
+</pre>
+
+<p>
+  The users of <code>libexample2_ext</code> may simply include
+  <code>libexample2_ext_defaults</code> in their <code>defaults</code>
+  property:
+</p>
+
+<pre class="prettyprint">
+cc_binary {
+    name: "example2_user_executable",
+    defaults: ["libexample2_ext_defaults"],
+    vendor: true,
+}
+</pre>
+
+
 
 <h3 id="product-packages">Product packages</h3>
 

@@ -363,8 +363,8 @@ support is disabled.
 
 To implement the LUI, you must provide an activity for the following actions:
 
-+   `android.telephony.euicc.action.MANAGE_EMBEDDED_SUBSCRIPTIONS`
-+   `android.telephony.euicc.action.PROVISION_EMBEDDED_SUBSCRIPTION`
++   `android.service.euicc.action.MANAGE_EMBEDDED_SUBSCRIPTIONS`
++   `android.service.euicc.action.PROVISION_EMBEDDED_SUBSCRIPTION`
 
 As with the service, each activity must require the
 `android.permission.BIND_EUICC_SERVICE` system permission. Each should have an
@@ -380,10 +380,8 @@ For example:
           android:exported="true"
           android:permission="android.permission.BIND_EUICC_SERVICE">
     <intent-filter android:priority="100">
-        <action android:name=
-             "android.telephony.euicc.action.MANAGE_EMBEDDED_SUBSCRIPTIONS" />
-        <action android:name=
-             "android.telephony.euicc.action.PROVISION_EMBEDDED_SUBSCRIPTION" />
+        <action android:name="android.service.euicc.action.MANAGE_EMBEDDED_SUBSCRIPTIONS" />
+        <action android:name="android.service.euicc.action.PROVISION_EMBEDDED_SUBSCRIPTION" />
         <category android:name="android.intent.category.DEFAULT" />
         <category android:name="android.service.euicc.category.EUICC_UI" />
     </intent-filter>

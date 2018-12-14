@@ -1,0 +1,181 @@
+<html devsite><head>
+
+  <meta name="book_path" value="/_book.yaml"/>
+
+  <meta name="project_path" value="/_project.yaml"/>
+</head>
+<body>
+
+<!--
+  Copyright 2018 The Android Open Source Project
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+<h1 id="instrumentation_targeting_an_application_a_complete_example" class="page-title">针对应用的插桩：完整的示例</h1>
+
+<p>如果您不熟悉 Android 平台开发，那么您可能会发现，这个从头开始添加全新插桩测试的完整示例很有用，可以帮助了解所涉及的典型工作流。</p>
+
+<p>请注意，本指南假定您已掌握平台源代码树工作流的一些相关知识。如果没有，请参阅 https://source.android.com/source/requirements。本文介绍的示例是编写新的插桩测试，其中目标软件包设置为其自己的测试应用软件包。如果您不熟悉相关概念，请仔细阅读<a href="../development/index.md">平台测试简介</a>。</p>
+
+<p>本指南使用以下测试作为示例：</p>
+
+<ul>
+<li>frameworks/base/packages/Shell/tests</li>
+</ul>
+
+<p>建议您先浏览代码以获得粗略的印象，然后再继续。</p>
+
+<h2 id="deciding_on_a_source_location">确定源代码所在的位置</h2>
+
+<p>由于此插桩测试将针对应用，因此惯例是将测试源代码放在平台源代码树中组件源代码根目录下的 <code>tests</code> 目录中。</p>
+
+<p>有关源代码所在位置的更多说明，请参阅<a href="instr-self-e2e.md">自插桩测试的端到端示例</a>。</p>
+
+<h2 id="blueprints">Blueprint</h2>
+
+<p>每个新的测试模块都必须具有 Blueprint Soong 配置文件，以使用模块元数据、编译时依赖项和打包指令来指引编译系统。详情请参阅 <a href="blueprints.md">Soong 和 Blueprint</a>。</p>
+
+<h2 id="manifest_file">清单文件</h2>
+
+<p>就像常规应用一样，每个插桩测试模块都需要一个清单文件。如果您将该文件命名为 <code>AndroidManifest.xml</code> 并在 <code>Android.mk</code> 旁边为测试 tmodule 提供该文件，则 <code>BUILD_PACKAGE</code> 核心 makefile 将自动包含该文件。</p>
+
+<p>在继续深入阅读以下内容之前，强烈建议您先查阅<a href="https://developer.android.com/guide/topics/manifest/manifest-intro.html">有关清单文件的外部文档</a>。</p>
+
+<p>此文档概述了清单文件的基本组成部分及其功能。</p>
+
+<p>要获得示例 gerrit 更改的最新版清单文件，请访问：https://android.googlesource.com/platform/frameworks/base/+/master/packages/Shell/tests/AndroidManifest.xml</p>
+
+<p>为方便起见，下面附上快照：</p>
+<pre class="prettyprint lang-xml"><code>&lt;manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.android.shell.tests"&gt;
+
+    &lt;application&gt;
+        &lt;uses-library android:name="android.test.runner" /&gt;
+
+        &lt;activity
+            android:name="com.android.shell.ActionSendMultipleConsumerActivity"
+            android:label="ActionSendMultipleConsumer"
+            android:theme="@android:style/Theme.NoDisplay"
+            android:noHistory="true"
+            android:excludeFromRecents="true"&gt;
+            &lt;intent-filter&gt;
+                &lt;action android:name="android.intent.action.SEND_MULTIPLE" /&gt;
+                &lt;category android:name="android.intent.category.DEFAULT" /&gt;
+                &lt;data android:mimeType="*/*" /&gt;
+            &lt;/intent-filter&gt;
+        &lt;/activity&gt;
+    &lt;/application&gt;
+
+    &lt;instrumentation android:name="android.support.test.runner.AndroidJUnitRunner"
+        android:targetPackage="com.android.shell"
+        android:label="Tests for Shell" /&gt;
+
+&lt;/manifest&gt;
+</code></pre>
+<p>关于清单文件的一些说明：</p>
+<pre class="prettyprint lang-xml"><code>&lt;manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.android.shell.tests"&gt;
+</code></pre>
+<p><code>package</code> 属性是应用软件包名称：它是 Android 应用框架用来标识应用（在此上下文中即您的测试应用）的唯一标识符。系统中的每个用户只能安装一个采用该软件包名称的应用。</p>
+
+<p>由于这是一个测试应用软件包，独立于接受测试的应用软件包，因此必须使用不同的软件包名称：一个常见的惯例是添加后缀 <code>.test</code>。</p>
+
+<p>此外，此 <code>package</code> 属性与 <a href="https://developer.android.com/reference/android/content/ComponentName.html#getPackageName()"><code>ComponentName#getPackageName()</code></a> 返回的属性相同，而且也与用来通过 <code>adb shell</code> 与各种 <code>pm</code> 子命令进行交互的属性相同。</p>
+
+<p>另请注意，虽然该软件包名称通常与 Java 软件包名称的样式相同，但是实际上两者之间没有什么关系。换句话说，您的应用（或测试）软件包可能包含具有任何软件包名称的类，但另一方面，您可以选择保持简洁性，使应用或测试中的顶级 Java 软件包名称与应用软件包名称完全相同。</p>
+<pre class="prettyprint lang-xml"><code>&lt;uses-library android:name="android.test.runner" /&gt;
+</code></pre>
+<p>所有插桩测试都必须采用此设置，因为相关的类打包在一个单独的框架 jar 库文件中，因此在应用框架调用测试软件包时，需要额外的类路径条目。</p>
+<pre class="prettyprint lang-xml"><code>android:targetPackage="com.android.shell"
+</code></pre>
+<p>上述代码将插桩的目标软件包设置为 <code>com.android.shell.tests</code>。通过 <code>am instrument</code> 命令调用插桩时，框架将重启 <code>com.android.shell.tests</code> 进程，并将插桩代码注入该进程以执行测试。这也意味着，测试代码可以访问在接受测试的应用中运行的所有类实例，并且或许能够操纵状态，具体取决于公开的测试钩子。</p>
+
+<h2 id="test_configuration_file">测试配置文件</h2>
+
+<p>为了简化测试执行过程，您还需要为 Android 的自动化测试框架 <a href="https://source.android.com/devices/tech/test_infra/tradefed/">Trade Federation</a> 编写测试配置文件。</p>
+
+<p>测试配置可以指定特殊的设备设置选项和默认参数来提供测试类。</p>
+
+<p>要获得示例 gerrit 更改的最新版配置文件，请访问：https://android.googlesource.com/platform/frameworks/base/+/master/packages/Shell/tests/AndroidTest.xml</p>
+
+<p>为方便起见，下面附上快照：</p>
+<pre class="prettyprint lang-xml"><code>&lt;configuration description="Runs Tests for Shell."&gt;
+    &lt;target_preparer class="com.android.tradefed.targetprep.TestAppInstallSetup"&gt;
+        &lt;option name="test-file-name" value="ShellTests.apk" /&gt;
+    &lt;/target_preparer&gt;
+
+    &lt;option name="test-suite-tag" value="apct" /&gt;
+    &lt;option name="test-tag" value="ShellTests" /&gt;
+    &lt;test class="com.android.tradefed.testtype.AndroidJUnitTest" &gt;
+        &lt;option name="package" value="com.android.shell.tests" /&gt;
+        &lt;option name="runner" value="android.support.test.runner.AndroidJUnitRunner" /&gt;
+    &lt;/test&gt;
+&lt;/configuration&gt;
+</code></pre>
+<p>关于测试配置文件的一些说明：</p>
+<pre class="prettyprint lang-xml"><code>&lt;target_preparer class="com.android.tradefed.targetprep.TestAppInstallSetup"&gt;
+  &lt;option name="test-file-name" value="ShellTests.apk"/&gt;
+&lt;/target_preparer&gt;
+</code></pre>
+<p>上述代码告知 Trade Federation 使用指定的 target_preparer 将 ShellTests.apk 安装到目标设备上。Trade Federation 中有许多目标准备器可供开发者使用，这些目标准备器可用于确保在测试执行之前正确地设置设备。</p>
+<pre class="prettyprint lang-xml"><code>&lt;test class="com.android.tradefed.testtype.AndroidJUnitTest"&gt;
+  &lt;option name="package" value="com.android.shell.tests"/&gt;
+  &lt;option name="runner" value="android.support.test.runner.AndroidJUnitRunner"/&gt;
+&lt;/test&gt;
+</code></pre>
+<p>上述代码指定要用于执行测试的 Trade Federation 测试类，并传入设备上要执行的软件包，以及测试运行器框架（在本例中为 JUnit）。</p>
+
+<p>有关测试模块配置的更多信息，请参阅<a href="test-config.md">此处</a>。</p>
+
+<h2 id="junit4_features">JUnit4 功能</h2>
+
+<p>通过使用 <code>android-support-test</code> 库作为测试运行器，可以采用新的 JUnit4 样式测试类，并且示例 gerrit 更改包含 JUnit4 功能的一些非常基本的用法。</p>
+
+<p>要获得示例 gerrit 更改的最新源代码，请访问：frameworks/base/packages/Shell/tests/src/com/android/shell/BugreportReceiverTest.javast.java</p>
+
+<p>虽然测试模式通常特定于组件团队，但有一些普遍有用的使用模式。</p>
+<pre class="prettyprint lang-java"><code>@SmallTest
+@RunWith(AndroidJUnit4.class)
+public final class FeatureFactoryImplTest {
+</code></pre>
+<p>JUnit4 的一个显著区别是，不再需要从通用测试基类继承测试，而是在普通 Java 类中编写测试并使用注解来指示某些测试设置和约束。在本例中，我们指示此类应作为 Android JUnit4 测试运行。</p>
+
+<p><code>@SmallTest</code> 注解指定了整个测试类的测试大小：添加到此测试类中的所有测试方法都继承此测试大小注解。测试前类设置、测试后拆解和测试后类拆解：类似于 JUnit4 中的 <code>setUp</code> 和 <code>tearDown</code> 方法。
+<code>Test</code> 注解用于对实际测试进行注解。</p>
+<aside class="special"><strong>重要提示</strong>：<span>测试方法本身带有 <code>@Test</code> 注解；请注意，对于要通过 APCT 执行的测试，它们必须带有测试大小注解。此类注解可以在方法作用域或类作用域内应用。</span></aside><pre class="prettyprint lang-java"><code>    @Before
+    public void setup() {
+    ...
+    @Test
+    public void testGetProvider_shouldCacheProvider() {
+    ...
+</code></pre>
+<p>JUnit4 在方法上使用 <code>@Before</code> 注解来执行测试前设置。还有用于执行测试后拆解的 <code>@After</code>，不过在本例中未使用。同样，JUnit4 可以在方法上使用 <code>@BeforeClass</code> 和 <code>@AfterClass</code> 注解，以便在执行测试类中的所有测试之前执行设置，并在执行测试类中的所有测试之后执行拆解。请注意，类作用域的设置和拆解方法必须是静态方法。</p>
+
+<p>对于测试方法，与早期版本的 JUnit 不同，它们不再需要使方法名称以 <code>test</code> 开头，而是每种方法都必须带有 <code>@Test</code> 注解。像往常一样，测试方法必须公开、不声明任何返回值、不接受任何参数，并且可能会抛出异常。</p>
+<pre class="prettyprint lang-java"><code>        Context context = InstrumentationRegistry.getTargetContext();
+</code></pre>
+<p>因为 JUnit4 测试不再需要通用基类，所以不再需要采用基类方法通过 <code>getContext()</code> 或 <code>getTargetContext()</code> 来获取 <code>Context</code> 实例，新的测试运行器会通过 <a href="https://developer.android.com/reference/android/support/test/InstrumentationRegistry.html"><code>InstrumentationRegistry</code></a>（用于存储插桩框架创建的上下文和环境设置）管理这些实例。通过此类，您还可以调用：</p>
+
+<ul>
+<li><code>getInstrumentation()</code>：<code>Instrumentation</code> 类的实例</li>
+<li><code>getArguments()</code>：通过 <code>-e &lt;key&gt; &lt;value&gt;</code> 传递给 <code>am instrument</code> 的命令行参数</li>
+</ul>
+
+<h2 id="build_and_test_locally">在本地编译和测试</h2>
+
+<p>对于最常见的用例，请使用 <a href="https://android.googlesource.com/platform/tools/tradefederation/+/master/atest/README.md">Atest</a>。</p>
+
+<p>对于更为复杂的用例，如果需要更繁琐的自定义，请遵循<a href="instrumentation.md">插桩说明</a>。</p>
+
+</body></html>

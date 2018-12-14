@@ -1,0 +1,187 @@
+<html devsite><head>
+
+  <meta name="book_path" value="/_book.yaml"/>
+
+  <meta name="project_path" value="/_project.yaml"/>
+</head>
+<body>
+
+<!--
+  Copyright 2018 The Android Open Source Project
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+<h1 id="self-instrumenting_tests_a_complete_example" class="page-title">自插桩测试：完整的示例</h1>
+
+<p>如果您不熟悉 Android 平台开发，那么您可能会发现，这个从头开始添加全新插桩测试的完整示例很有用，可以帮助了解所涉及的典型工作流。</p>
+
+<p>请注意，本指南假定您已掌握平台源代码树工作流的一些相关知识。如果没有，请参阅 https://source.android.com/source/requirements。本文介绍的示例是编写新的插桩测试，其中目标软件包设置为其自己的测试应用软件包。如果您不熟悉相关概念，请仔细阅读<a href="/compatibility/tests/">平台测试概述</a>。</p>
+
+<p>本指南使用以下测试作为示例：</p>
+
+<ul>
+<li><a href="https://android.googlesource.com/platform/platform_testing/+/master/tests/example/instrumentation/">Hello World 插桩测试</a></li>
+</ul>
+
+<p>建议您先浏览代码以获得粗略的印象，然后再继续。</p>
+
+<h2 id="deciding_on_a_source_location">确定源代码所在的位置</h2>
+
+<p>通常，您的团队已有既定的放置模式，在既定的位置检入代码，并且在既定的位置添加测试。大多数团队拥有单个 git 代码库，或与其他团队共享一个代码库，但有一个包含组件源代码的专用子目录。</p>
+
+<p>假设组件源代码的根位置是在 <code>&lt;component source
+root&gt;</code>，大多数组件在该位置下具有 <code>src</code> 和 <code>tests</code> 文件夹，以及一些其他文件（如 <code>Android.mk</code>，或拆分为额外的 <code>.mk</code> 文件）、清单文件 <code>AndroidManifest.xml</code>，以及测试配置文件“AndroidTest.xml”。</p>
+
+<p>由于您要添加全新的测试，因此或许需要在组件 <code>src</code> 旁边创建 <code>tests</code> 目录，并为其填充内容。</p>
+
+<p>在某些情况下，您的团队可能会在 <code>tests</code> 下设置更深的目录结构，因为需要将不同的测试套件打包到单独的 apk 中。在这种情况下，您需要在 <code>tests</code> 下创建一个新的子目录。</p>
+
+<p>不管是什么样的结构，您最终都需要在 <code>tests</code> 目录或新建子目录中添加文件，并且文件应类似于示例 gerrit 更改中的 <code>instrumentation</code> 目录中的文件。下面几部分将进一步详细说明各个文件。</p>
+
+<h2 id="blueprints">Blueprint</h2>
+
+<p>每个新的测试模块都必须具有 Blueprint Soong 配置文件，以使用模块元数据、编译时依赖项和打包指令来指引编译系统。详情请参阅 <a href="blueprints.md">Soong 和 Blueprint</a>。</p>
+
+<h2 id="manifest_file">清单文件</h2>
+
+<p>就像常规应用一样，每个插桩测试模块都需要一个清单文件。如果您将该文件命名为 <code>AndroidManifest.xml</code> 并在 <code>Android.mk</code> 旁边为测试 tmodule 提供该文件，则 <code>BUILD_PACKAGE</code> 核心 makefile 将自动包含该文件。</p>
+
+<p>在继续深入阅读以下内容之前，强烈建议您先查阅<a href="https://developer.android.com/guide/topics/manifest/manifest-intro.html">有关清单文件的外部文档</a>。</p>
+
+<p>此文档概述了清单文件的基本组成部分及其功能。有关示例，请参阅 <a href="https://android.googlesource.com/platform/platform_testing/+/master/tests/example/instrumentation/AndroidManifest.xml">platform_testing/tests/example/instrumentation/AndroidManifest.xml</a>。</p>
+
+<p>为方便起见，下面附上快照：</p>
+<pre class="prettyprint lang-xml"><code>&lt;manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="android.test.example.helloworld"
+
+    &lt;uses-sdk android:minSdkVersion="21" android:targetSdkVersion="21" /&gt;
+
+    &lt;application&gt;
+        &lt;uses-library android:name="android.test.runner" /&gt;
+    &lt;/application&gt;
+
+    &lt;instrumentation android:name="android.support.test.runner.AndroidJUnitRunner"
+                     android:targetPackage="android.test.example.helloworld"
+                     android:label="Hello World Test"/&gt;
+
+&lt;/manifest&gt;
+</code></pre>
+<p>关于清单文件的一些说明：</p>
+<pre class="prettyprint lang-xml"><code>&lt;manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="android.test.example.helloworld"
+</code></pre>
+<p><code>package</code> 属性是应用软件包名称：它是 Android 应用框架用来标识应用（在此上下文中即您的测试应用）的唯一标识符。系统中的每个用户只能安装一个采用该软件包名称的应用。</p>
+
+<p>此外，此 <code>package</code> 属性与 <a href="https://developer.android.com/reference/android/content/ComponentName.html#getPackageName()"><code>ComponentName#getPackageName()</code></a> 返回的属性相同，而且也与用来通过 <code>adb shell</code> 与各种 <code>pm</code> 子命令进行交互的属性相同。</p>
+
+<p>另请注意，虽然该软件包名称通常与 Java 软件包名称的样式相同，但是实际上两者之间没有什么关系。换句话说，您的应用（或测试）软件包可能包含具有任何软件包名称的类，但另一方面，您可以选择保持简洁性，使应用或测试中的顶级 Java 软件包名称与应用软件包名称完全相同。</p>
+<pre class="prettyprint lang-xml"><code>android:sharedUserId="android.uid.system"
+</code></pre>
+<p>此代码声明在安装时，应该为此 apk 授予与核心平台相同的用户 ID，即运行时身份。请注意，这取决于是否使用与核心平台相同的证书为 apk 签名（请参阅上一部分中的 <code>LOCAL_CERTIFICATE</code>），不过它们是不同的概念：</p>
+
+<ul>
+<li>某些权限或 API 受签名保护，这需要相同的签名证书</li>
+<li>某些权限或 API 需要调用者的 <code>system</code> 用户身份，如果调用软件包与核心平台本身不同，则需要该软件包与 <code>system</code> 共享用户 ID</li>
+</ul>
+<pre class="prettyprint lang-xml"><code>&lt;uses-library android:name="android.test.runner" /&gt;
+</code></pre>
+<p>所有插桩测试都必须采用此设置，因为相关的类打包在一个单独的框架 jar 库文件中，因此在应用框架调用测试软件包时，需要额外的类路径条目。</p>
+<pre class="prettyprint lang-xml"><code>android:targetPackage="android.test.example.helloworld"
+</code></pre>
+<p>您可能已经注意到，上述代码声明的 <code>targetPackage</code> 与此文件的 <code>manifest</code> 标记中声明的 <code>package</code> 属性相同。如<a href="../basics/index.md">测试基础知识</a>中所述，此类插桩测试通常用于测试框架 API，所以除了它们本身之外，拥有特定的目标应用软件包并不是很有意义。</p>
+
+<h2 id="test_configuration_file">测试配置文件</h2>
+<aside class="special"><strong>重要提示</strong>：<span>只有 CTS 测试或需要特殊设置（如停用蓝牙或收集示例数据）的测试需要遵循本部分中的说明。其他所有用例均可通过使用 <a href="https://android.googlesource.com/platform/tools/tradefederation/+/master/atest/README.md">Atest</a> 来涵盖。</span></aside>
+<p>对于这些更复杂的用例，您还需要为 Android 的自动化测试框架 <a href="https://source.android.com/devices/tech/test_infra/tradefed/">Trade Federation</a> 编写测试配置文件。</p>
+
+<p>测试配置可以指定特殊的设备设置选项和默认参数来提供测试类。有关示例，请参阅 <a href="/platform_testing/+/master/tests/example/instrumentation/AndroidTest.xml">/platform_testing/tests/example/instrumentation/AndroidTest.xml</a>。</p>
+
+<p>为方便起见，下面附上快照：</p>
+<pre class="prettyprint lang-xml"><code>&lt;configuration description="Runs sample instrumentation test."&gt;
+  &lt;target_preparer class="com.android.tradefed.targetprep.TestFilePushSetup"/&gt;
+  &lt;target_preparer class="com.android.tradefed.targetprep.TestAppInstallSetup"&gt;
+    &lt;option name="test-file-name" value="HelloWorldTests.apk"/&gt;
+  &lt;/target_preparer&gt;
+  &lt;target_preparer class="com.android.tradefed.targetprep.PushFilePreparer"/&gt;
+  &lt;target_preparer class="com.android.tradefed.targetprep.RunCommandTargetPreparer"/&gt;
+  &lt;option name="test-suite-tag" value="apct"/&gt;
+  &lt;option name="test-tag" value="SampleInstrumentationTest"/&gt;
+
+  &lt;test class="com.android.tradefed.testtype.AndroidJUnitTest"&gt;
+    &lt;option name="package" value="android.test.example.helloworld"/&gt;
+    &lt;option name="runner" value="android.support.test.runner.AndroidJUnitRunner"/&gt;
+  &lt;/test&gt;
+&lt;/configuration&gt;
+</code></pre>
+<p>关于测试配置文件的一些说明：</p>
+<pre class="prettyprint lang-xml"><code>&lt;target_preparer class="com.android.tradefed.targetprep.TestAppInstallSetup"&gt;
+  &lt;option name="test-file-name" value="HelloWorldTests.apk"/&gt;
+&lt;/target_preparer&gt;
+</code></pre>
+<p>上述代码告知 Trade Federation 使用指定的 target_preparer 将 HelloWorldTests.apk 安装到目标设备上。Trade Federation 中有许多目标准备器可供开发者使用，这些目标准备器可用于确保在测试执行之前正确地设置设备。</p>
+<pre class="prettyprint lang-xml"><code>&lt;test class="com.android.tradefed.testtype.AndroidJUnitTest"&gt;
+  &lt;option name="package" value="android.test.example.helloworld"/&gt;
+  &lt;option name="runner" value="android.support.test.runner.AndroidJUnitRunner"/&gt;
+&lt;/test&gt;
+</code></pre>
+<p>上述代码指定要用于执行测试的 Trade Federation 测试类，并传入设备上要执行的软件包，以及测试运行器框架（在本例中为 JUnit）。</p>
+
+<p>有关测试模块配置的更多信息，请参阅<a href="test-config.md">此处</a>。</p>
+
+<h2 id="junit4_features">JUnit4 功能</h2>
+
+<p>通过使用 <code>android-support-test</code> 库作为测试运行器，可以采用新的 JUnit4 样式测试类，并且示例 gerrit 更改包含 JUnit4 功能的一些非常基本的用法。有关示例，请参阅 <a href="https://android.googlesource.com/platform/platform_testing/+/master/tests/example/instrumentation/src/android/test/example/helloworld/HelloWorldTest.java">/platform_testing/tests/example/instrumentation/src/android/test/example/helloworld/HelloWorldTest.java</a>。</p>
+
+<p>虽然测试模式通常特定于组件团队，但有一些普遍有用的使用模式。</p>
+<pre class="prettyprint lang-java"><code>@RunWith(JUnit4.class)
+public class HelloWorldTest {
+</code></pre>
+<p>JUnit4 的一个显著区别是，不再需要从通用测试基类继承测试，而是在普通 Java 类中编写测试并使用注解来指示某些测试设置和约束。在本例中，我们指示此类应作为 JUnit4 测试运行。</p>
+<pre class="prettyprint lang-java"><code>    @BeforeClass
+    public static void beforeClass() {
+    ...
+    @AfterClass
+    public static void afterClass() {
+    ...
+    @Before
+    public void before() {
+    ...
+    @After
+    public void after() {
+    ...
+    @Test
+    @SmallTest
+    public void testHelloWorld() {
+    ...
+</code></pre>
+<p>JUnit4 在方法上使用 <code>@Before</code> 和 <code>@After</code> 注解来执行测试前设置和测试后拆解。同样，JUnit4 可以在方法上使用 <code>@BeforeClass</code> 和 <code>@AfterClass</code> 注解，以便在执行测试类中的所有测试之前执行设置，并在执行测试类中的所有测试之后执行拆解。请注意，类作用域的设置和拆解方法必须是静态方法。对于测试方法，与早期版本的 JUnit 不同，它们不再需要使方法名称以 <code>test</code> 开头，而是每种方法都必须带有 <code>@Test</code> 注解。像往常一样，测试方法必须公开、不声明任何返回值、不接受任何参数，并且可能会抛出异常。</p>
+
+<p><strong>重要提示</strong>：测试方法本身带有 <code>@Test</code> 注解；请注意，对于要通过 APCT 执行的测试，它们必须带有测试大小注解：在本例中，将 <code>testHelloWorld</code> 方法注解为 <code>@SmallTest</code>。该注解可以在方法作用域或类作用域内应用。</p>
+
+<h2 id="accessing_instrumentation">访问 <code>instrumentation</code></h2>
+
+<p>虽然在基本的 Hello World 示例中未涉及，但是有一种相当普遍的情况是，Android 测试需要访问 <code>Instrumentation</code> 实例：这是核心 API 接口，可提供对应用上下文、Activity 生命周期相关测试 API 等内容的访问权限。</p>
+
+<p>因为 JUnit4 测试不再需要通用基类，所以不再需要通过 <code>InstrumentationTestCase#getInstrumentation()</code> 获取 <code>Instrumentation</code> 实例，新的测试运行器会通过 <a href="https://developer.android.com/reference/android/support/test/InstrumentationRegistry.html"><code>InstrumentationRegistry</code></a>（用于存储插桩框架创建的上下文和环境设置）管理该实例。</p>
+
+<p>要访问 <code>Instrumentation</code> 类的实例，只需在 <code>InstrumentationRegistry</code> 类上调用静态方法 <code>getInstrumentation()</code>：</p>
+<pre class="prettyprint lang-java"><code>Instrumentation instrumentation = InstrumentationRegistry.getInstrumentation()
+</code></pre>
+<h2 id="build_and_test_locally">在本地编译和测试：</h2>
+
+<p>对于最常见的用例，请使用 <a href="https://android.googlesource.com/platform/tools/tradefederation/+/master/atest/README.md">Atest</a>。</p>
+
+<p>对于更为复杂的用例，如果需要更繁琐的自定义，请遵循<a href="instrumentation.md">插桩说明</a>。</p>
+
+</body></html>
