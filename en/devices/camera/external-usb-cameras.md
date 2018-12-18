@@ -189,7 +189,8 @@ implementation
 
 ## Validation
 
-Devices with external camera support must pass camera CTS. The external USB
+Devices with external camera support must pass
+[camera CTS](/compatibility/cts/camera-hal#cts_tests). The external USB
 webcam must remain plugged in the specific device during the entire test run,
 otherwise some test cases will fail.
 
