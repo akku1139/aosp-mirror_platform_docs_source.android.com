@@ -1,0 +1,234 @@
+<html devsite>
+  <head>
+    <title>App Security Best Practices</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2018 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          //www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+  <p>This section contains recommendations to ensure the security of apps on
+    Android devices.</p>
+
+<h2 id="source-code-review">Source code review</h2>
+
+<p>Source code review can detect a broad range of security issues, including
+  those identified in this document. Android strongly encourages both manual
+  and automated source code review.</p>
+
+<ul>
+  <li>Follow comprehensive security guidance when conducting reviews to ensure
+    coverage. Utilize relevant internal or external standards to ensure
+    consistent and complete reviews.</li>
+  <li>Run a linter, such as the
+    <a href="https://developer.android.com/studio/write/lint"
+       class="external">Android Studio linter</a>, on all app code using the
+    Android SDK and correct any identified issues.</li>
+  <li>Analyze native code using an automated tool that can detect memory
+    management issues, such as buffer overflows and off-by-one errors.</li>
+  <li>The Android build system supports many of the LLVM sanitizers, such as
+    <a href="/devices/tech/debug/asan">AddressSanitizer</a> and
+    <a href="/devices/tech/debug/sanitizers#undefinedbehaviorsanitizer">UndefinedBehaviorSanitizer</a>,
+    which can be used for runtime analysis of memory-related issues. Combined
+    with fuzzing, supported in Android through
+    <a href="/devices/tech/debug/libfuzzer">libFuzzer</a>, sanitizers can
+    uncover unusual edge cases requiring further investigation.</li>
+  <li>A knowledgeable security assessor should review higher risk code, such as
+    crypto, payment processing, and PII processing.</li>
+</ul>
+
+<h2 id="automated-testing">Automated testing</h2>
+
+<p>Automated testing can help detect a broad range of security issues and
+  should be performed regularly.</p>
+
+<ul>
+  <li>Run the latest version of <a href="/compatibility/cts/">CTS</a> regularly
+    throughout the development process to detect problems early and reduce time
+    to correction. Android uses CTS as part of continuous integration in our
+    automated build process, which builds multiple times per day.</li>
+  <li>Automate security testing of interfaces, including testing with malformed
+    inputs (fuzz testing). Android's build system supports
+    <a href="/devices/tech/debug/libfuzzer">libFuzzer</a> for writing fuzz
+    tests.</li>
+</ul>
+
+<h2 id="vulnerability-scanning">Vulnerability scanning</h2>
+
+<p>Vulnerability scanning can help ensure that pre-installed apps are free of
+  known security vulnerabilities. Advanced detection can reduce the time and
+  cost required with addressing these vulnerabilities and preventing risk to
+  users and devices.</p>
+
+<ul>
+  <li>Scan all pre-installed apps using an industry-recognized app
+    vulnerability scanning tool and address detected vulnerabilities.</li>
+</ul>
+
+
+<h2 id="phas">Potentially Harmful Applications</h2>
+
+<p>It is important to ensure that no pre-installed apps on your device are
+  accidental
+  <a href="/security/reports/Google_Android_Security_PHA_classifications.pdf">Potentially
+    Harmful Applications</a> (PHAs). You are responsible for the behavior of
+  all apps that are included on your devices.</p>
+
+<h3 id="hostile-downloaders">Hostile downloaders</h3>
+
+<p>Hostile downloaders are apps that are not directly considered harmful but
+  instead download other potentially harmful apps.</p>
+
+<ul>
+  <li>Ensure there is user disclosure for all pre-installed apps that use the
+    <code>INSTALL_PACKAGES</code> permission.</li>
+  <li>Ensure that the developer is contractually obligated not to install any
+    apps as UID 0.</li>
+  <li>Evaluate permissions declared in the manifest of all apps to
+    be installed through the developer's network.</li>
+  <li>Ensure that the developer is contractually obligated to scan all download
+    URLs of auto-updater and installer apps with
+    <a href="https://developers.google.com/safe-browsing/"
+       class="external">Google Safe Browsing API</a> before serving apps to
+    the device.</li>
+  <li>Starting with Android 9, require all developers to use
+    <code>UPDATE_PACKAGES</code> permission instead of the
+    <code>INSTALL_PACKAGES</code> permission. When combined with
+    <code>INSTALL_SELF_UPDATES</code>, using <code>UPDATE_PACKAGES</code>
+    allows privileged apps to be granted finely scoped install privileges based
+    on their intended usage instead of the more broad
+    <code>INSTALL_PACKAGES</code> permission.</li>
+</ul>
+
+
+<h3 id="cryptomining">Cryptomining</h3>
+
+<p>Cryptomining apps are those that attempt to leverage a device's hardware or
+  cloud-based computing to generate currency in the form of "coins", typically
+  by way of blockchain technology. If you intend to offer this service as an
+  alternate form of currency or in exchange for services, ensure you request
+  the user's permission before leveraging the device's hardware to run this
+  service, including explicit consent that this will impact battery runtime.</p>
+
+<h3 id="imposter-apps">Impostor apps</h3>
+
+<p>Impostor apps are defined as ones that attempt to disguise themselves as a
+  well known app, such as YouTube or Facebook.</p>
+
+<ul>
+  <li>Prior to device launch, scan all pre-loaded apps for vulnerabilities.</li>
+</ul>
+
+
+<h2 id="app-permissions">App permissions</h2>
+
+<p>Excessive permissions for pre-installed apps can create a security
+  risk. Restrict pre-installed apps to the minimum necessary permissions and
+  ensure they don't have access to unnecessary permissions or privileges.</p>
+
+<ul>
+  <li>Do not grant unnecessary permissions or privileges to pre-installed apps.
+    Thoroughly review apps with system privileges as they may have very
+    sensitive permissions.</li>
+  <li>Ensure that all permissions requested are relevant and necessary for the
+    functionality of that specific app.</li>
+</ul>
+
+
+<h2 id="app-signing">App signing</h2>
+
+<p>App signatures play an important role in device security and are used for
+  permissions checks and software updates. When selecting a key to use for
+  signing apps, it is important to consider whether an app will be available
+  only on a single device or common across multiple devices.</p>
+
+<ul>
+  <li>Ensure that apps are not signed with a key that is publicly known, such
+    as the AOSP developer key.</li>
+  <li>Ensure that keys used to sign apps are managed in a manner consistent
+    with industry-standard practices for handling sensitive keys, including an
+    hardware security module (HSM) that provides limited, auditable access.</li>
+  <li>Ensure that apps are not signed with the platform key. Doing so gives an
+    app access to platform signature permissions, which are very powerful and
+    only intended to be used by components of the operating system. System apps
+    should use privileged permissions.</li>
+  <li>Ensure that apps with the same package name are not signed with different
+    keys. This often occurs when creating an app for different devices,
+    especially when using the platform key. If the app is device-independent,
+    use the same key across devices. If the app is device-specific, create
+    unique package names per device and key.</li>
+</ul>
+
+<h2 id="isolating-apps-and-processes">Isolating apps and processes</h2>
+
+    <p>The Android <a href="/security/app-sandbox">sandboxing model</a>
+      provides extra security around apps and processes when used correctly.</p>
+
+<h3 id="isolating-root-processes">Isolating root processes</h3>
+
+<p>Root processes are the most frequent target of privilege escalation attacks;
+  reducing the number of root processes reduces risk of privilege escalation.</p>
+
+<ul>
+  <li>Ensure that devices run the minimum necessary code as root. Where
+    possible, use a regular Android process rather than a root process. If a
+    process must run as root on a device, document the process in an AOSP
+    feature request so it can be publicly reviewed.</li>
+  <li>Where possible, root code should be isolated from untrusted data and
+    accessed via interprocess communication (IPC). For example, reduce root
+    functionality to a small Service accessible via Binder and expose the
+    Service with signature permission to an app with low or no privileges to
+    handle network traffic.</li>
+  <li>Root processes must not listen on a network socket.</li>
+  <li>Root processes must not include a general-purpose runtime, such as a Java
+    VM).</li>
+</ul>
+
+<h3 id="isolating-system-apps">Isolating system apps</h3>
+
+<p>In general, pre-installed apps should not run with the shared system unique
+  identifier (UID). If it is necessary for an app to use the shared UID of
+  system or another privileged service (e.g., phone), the app should not export
+  any services, broadcast receivers, or content providers that can be accessed
+  by third-party apps installed by users.</p>
+
+<ul>
+  <li>Ensure devices run the minimum necessary code as system. Where possible,
+    use an Android process with its own UID rather than reusing the system UID.</li>
+  <li>Where possible, system code should be isolated from untrusted data and
+    expose IPC only to other trusted processes.</li>
+  <li>System processes must not listen on a network socket. This is a CTS
+    requirement.</li>
+</ul>
+
+<h3 id="isolating-processes">Isolating processes</h3>
+
+<p>The Android Application Sandbox provides apps with an expectation of
+  isolation from other processes on the system, including root processes and
+  debuggers. Unless debugging is specifically enabled by the app and the user,
+  no app should violate that expectation.</p>
+
+<ul>
+  <li>Ensure root processes do not access data within individual app data
+    folders, unless using a documented Android debugging method.</li>
+  <li>Ensure root processes do not access memory of apps, unless using a
+    documented Android debugging method.</li>
+  <li>Ensure devices do not include any app that accesses data or memory of
+    other apps or processes.</li>
+</ul>
+  </body>
+</html>

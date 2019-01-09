@@ -44,7 +44,7 @@
 
 <h3 id="euiccmanager">EuiccManager</h3>
 
-<p><code>EuiccManager</code> 是应用与 LPA 交互的主入口点。这包括可下载、删除及切换到运营商所拥有的订阅的运营商应用。此外，这还包括 LUI 系统应用，该应用可提供用于管理所有嵌入式订阅的中心位置/界面，且可以是与提供 <code>EuiccService</code> 的应用不同的应用。<em></em></p>
+<p><code>EuiccManager</code> 是应用与 LPA 交互的主入口点。这包括可下载、删除及切换到运营商所拥有的订阅的运营商应用。此外，这还包括 LUI 系统应用，该应用可提供用于管理所有嵌入式订阅的中心位置/界面，而且可以不同于提供 <code>EuiccService</code> 的应用。<em></em></p>
 
 <p>要使用公共 API，运营商应用必须先通过 <code>Context#getSystemService</code> 获取 <code>EuiccManager</code> 的实例：</p>
 <pre class="prettyprint"><code>EuiccManager mgr = (EuiccManager) context.getSystemService(Context.EUICC_SERVICE);
@@ -132,7 +132,7 @@ mgr.switchToSubscription(1 /* subscriptionId */, callbackIntent);
 
 <p>有时，系统无法完成 eSIM 操作，但用户可以直接解决由此导致的错误。例如，如果配置文件元数据提示需要运营商确认码，则 <code>downloadSubscription</code> 可能会失败。<em></em>或者，如果运营商应用具备目标配置文件的运营商权限（即运营商拥有该配置文件），但它不具备当前所启用配置文件的运营商权限（因此需要征得用户的同意），<code>switchToSubscription</code> 可能也会失败。</p>
 
-<p>在这些情况下，调用程序使用 <code>EuiccManager#EMBEDDED_SUBSCRIPTION_RESULT_RESOLVABLE_ERROR</code> 进行回调。回调 <code>Intent</code> 将包含内部 extra，以便在调用程序将其传递给 <a href="https://developer.android.com/reference/android/telephony/euicc/EuiccManager.html#startResolutionActivity(android.app.Activity,%20int,%20android.content.Intent,%20android.app.PendingIntent)" class="external"><code>EuiccManager#startResolutionActivity</code></a> 时，可以通过 LUI 请求解决问题。再次以确认码为例，<a href="https://developer.android.com/reference/android/telephony/euicc/EuiccManager.html#startResolutionActivity(android.app.Activity,%20int,%20android.content.Intent,%20android.app.PendingIntent)" class="external"><code>EuiccManager#startResolutionActivity</code></a> 会触发屏幕显示 LUI 来让用户输入确认码，输入完成后，下载操作即会恢复。这种方法使得运营商应用能够完全控制在何时显示该界面，同时也为 LPA/LUI 提供了一种扩展方法，用于在将来添加处理“用户可恢复问题”的新方法（无需客户端应用做出更改）。</p>
+<p>在这些情况下，调用程序使用 <code>EuiccManager#EMBEDDED_SUBSCRIPTION_RESULT_RESOLVABLE_ERROR</code> 进行回调。回调 <code>Intent</code> 将包含内部 extra，以便在调用程序将其传递给 <a href="https://developer.android.com/reference/android/telephony/euicc/EuiccManager.html#startResolutionActivity(android.app.Activity,%20int,%20android.content.Intent,%20android.app.PendingIntent)" class="external"><code>EuiccManager#startResolutionActivity</code></a> 时，可以通过 LUI 请求解决问题。再次以确认码为例，<a href="https://developer.android.com/reference/android/telephony/euicc/EuiccManager.html#startResolutionActivity(android.app.Activity,%20int,%20android.content.Intent,%20android.app.PendingIntent)" class="external"><code>EuiccManager#startResolutionActivity</code></a> 会触发 LUI 屏幕来让用户输入确认码，输入完成后，下载操作即会恢复。这种方法使得运营商应用能够完全控制在何时显示该界面，同时也为 LPA/LUI 提供了一种扩展方法，用于在将来添加处理“用户可恢复问题”的新方法（无需客户端应用做出更改）。</p>
 
 <p>Android 9 在 <a href="https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/service/euicc/EuiccService.java" class="external"><code>EuiccService</code></a> 中定义了 LUI 应处理的上述可修正的错误：</p>
 <pre class="prettyprint"><code>/**
@@ -225,8 +225,8 @@ public static final String ACTION_RESOLVE_CONFIRMATION_CODE =
 <p>要实现 LUI，您必须为以下操作提供操作组件：</p>
 
 <ul>
-<li><code>android.telephony.euicc.action.MANAGE_EMBEDDED_SUBSCRIPTIONS</code></li>
-<li><code>android.telephony.euicc.action.PROVISION_EMBEDDED_SUBSCRIPTION</code></li>
+<li><code>android.service.euicc.action.MANAGE_EMBEDDED_SUBSCRIPTIONS</code></li>
+<li><code>android.service.euicc.action.PROVISION_EMBEDDED_SUBSCRIPTION</code></li>
 </ul>
 
 <p>与服务一样，每个操作组件都必须获得 <code>android.permission.BIND_EUICC_SERVICE</code> 系统权限，而且都应当包含具有适当操作的 intent 过滤器、<code>android.service.euicc.category.EUICC_UI</code> 类别以及非零优先级。选择这些操作组件的实现与选择 <a href="https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/service/euicc/EuiccService.java" class="external"><code>EuiccService</code></a> 实现所使用的逻辑是类似的。例如：</p>
@@ -234,10 +234,8 @@ public static final String ACTION_RESOLVE_CONFIRMATION_CODE =
           android:exported="true"
           android:permission="android.permission.BIND_EUICC_SERVICE"&gt;
     &lt;intent-filter android:priority="100"&gt;
-        &lt;action android:name=
-             "android.telephony.euicc.action.MANAGE_EMBEDDED_SUBSCRIPTIONS" /&gt;
-        &lt;action android:name=
-             "android.telephony.euicc.action.PROVISION_EMBEDDED_SUBSCRIPTION" /&gt;
+        &lt;action android:name="android.service.euicc.action.MANAGE_EMBEDDED_SUBSCRIPTIONS" /&gt;
+        &lt;action android:name="android.service.euicc.action.PROVISION_EMBEDDED_SUBSCRIPTION" /&gt;
         &lt;category android:name="android.intent.category.DEFAULT" /&gt;
         &lt;category android:name="android.service.euicc.category.EUICC_UI" /&gt;
     &lt;/intent-filter&gt;

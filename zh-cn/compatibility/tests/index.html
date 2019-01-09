@@ -26,23 +26,23 @@
 
 <p>本内容面向 Android 平台开发者。在了解如何在 Android 平台上进行测试之前，请参阅 <a href="/devices/architecture">Android 平台架构</a>，大致了解相关的信息。</p>
 
-<h2 id="whats_new">新增内容</h2>
+<h2 id="whats_new">新变化</h2>
 
 <h3 id="test_development_workflow">测试开发工作流</h3>
 
 <p><a href="/compatibility/tests/development">测试开发工作流</a>小节现在包含介绍性材料，其中包括所有主要测试类型的端到端示例。</p>
 
-<h3 id="blueprints">Blueprint</h3>
+<h3 id="simple_test_configuration">简单的测试配置</h3>
 
-<p><a href="https://android.googlesource.com/platform/build/soong/">Soong 编译系统</a>在 Android 8.0 (Oreo) 中引入，在 Android Q 中实现了对 <code>android_test</code> 的支持，现在可在 Android 开源项目 (AOSP) master 分支中找到它。</p>
+<p><a href="https://android.googlesource.com/platform/build/soong/">Soong 编译系统</a>在 Android 8.0 (Oreo) 中引入，在 Android Q 中实现了对 <code>android_test</code> 的支持，现在可在 Android 开源项目 (AOSP) master 分支中找到它。Soong 基于 Blueprint 的配置比以前的 Make 解决方案简单得多。</p>
 
 <h3 id="atest">Atest</h3>
 
-<p><a href="https://android.googlesource.com/platform/tools/tradefederation/+/master/atest/README.md" class="external">Atest</a> 是一个命令行工具，用户可以使用这种工具在本地编译、安装并运行 Android 测试。建议采用此标准对您的功能进行初始测试。</p>
+<p><a href="/compatibility/tests/development/atest">Atest</a> 是一个命令行工具，用户可以使用该工具在本地编译、安装并运行 Android 测试。建议采用此标准对您的功能进行初始测试。</p>
 
 <h2 id="what_and_how_to_test">测试什么以及如何测试</h2>
 
-<p>平台测试通常与一个或多个 Android 系统服务或 HAL 层交互、执行受测对象的功能，并断言测试结果的正确性。</p>
+<p>平台测试通常与一个或多个 Android 系统服务或硬件抽象层 (HAL) 交互、执行受测对象的功能，并断言测试结果的正确性。</p>
 
 <p>因此，平台测试可以：</p>
 
@@ -53,68 +53,18 @@
 <li>私有 API（@hide 或受保护，软件包私有）</li>
 </ul></li>
 <li>直接通过原始 binder/IPC 代理调用 Android 系统服务</li>
-<li>通过低级 API 或 IPC 接口直接与 HAL 交互</li>
+<li>通过低级别 API 或 IPC 接口直接与 HAL 交互</li>
 </ol>
 
-<p>上面的类型 1 和 2 通常编写为<strong>插桩测试</strong>，而类型 3 通常使用 gtest 框架编写为<strong>原生测试</strong>。</p>
+<p>类型 1 和 2 通常编写为<a href="/compatibility/tests/development/instrumentation">插桩测试</a>，而类型 3 通常使用 <a href="https://github.com/google/googletest" class="external">gtest</a> 框架编写为<a href="/compatibility/tests/development/native">原生测试</a>。</p>
 
-<h2 id="instrumentation_tests_for_the_platform">平台的插桩测试</h2>
-
-<p>您可能已经阅读 <code>developer.android.com</code> 上的<a href="https://developer.android.com/studio/test/">测试应用</a>一文，不过，在平台测试中使用插桩测试的方式可能仍有一些差异。</p>
-
-<p>简言之，插桩测试提供了一种通过 <code>am instrument</code> 命令启动的特殊测试执行环境，其中目标应用进程会重启并使用基本的应用上下文进行初始化，并在应用进程虚拟机内启动插桩线程。您的测试代码在此插桩线程上开始执行，并附带一个 <code>Instrumentation</code> 实例，该实例可提供对应用上下文和 API 的访问权限，以操纵接受测试的应用进程。</p>
-
-<p>关于插桩的一些关键概念：</p>
+<p>如需了解详情，请参阅我们的端到端示例：</p>
 
 <ul>
-<li>插桩必须在应用软件包中声明，并在应用软件包清单的 <code>&lt;manifest&gt;</code> 标记下嵌套 <a href="https://developer.android.com/guide/topics/manifest/instrumentation-element.html"><code>&lt;instrumentation&gt;</code></a> 标记</li>
-<li>应用软件包清单在技术上可能包含多个 <code>&lt;instrumentation&gt;</code> 标记，不过它不常以这种方式使用</li>
-<li>每个 <code>&lt;instrumentation&gt;</code> 必须包含：<ul>
-<li><code>android:name</code> 属性：它应该是测试应用中包含的 <a href="https://developer.android.com/reference/android/app/Instrumentation.html"><code>Instrumentation</code></a> 的子类的名称，通常是正在使用的测试运行器，例如 <code>android.support.test.runner.AndroidJUnitRunner</code></li>
-<li>必须定义 <code>android:targetPackage</code> 属性。其值应该设置为接受测试的应用软件包</li>
-</ul></li>
+<li><a href="/compatibility/tests/development/instr-app-e2e.md">针对应用的插桩</a></li>
+<li><a href="/compatibility/tests/development/instr-self-e2e.md">自插桩测试</a></li>
+<li><a href="/compatibility/tests/development/native-func-e2e.md">原生测试</a></li>
 </ul>
-
-<p>对于平台测试，通常有两类插桩测试：</p>
-
-<h3 id="instrumentation_tests_targeting_applications">针对应用的插桩测试</h3>
-
-<p>此类插桩测试与针对常规 Android 应用的测试没有什么不同。值得注意的是，包含插桩的测试应用需要与其针对的应用使用相同的证书进行签名。</p>
-
-<p>要了解详情，请参阅我们的<a href="/compatibility/tests/development/instr-app-e2e.md">端到端示例</a>。</p>
-
-<h3 id="instrumentation_tests_targeting_themselves">针对本身的插桩测试</h3>
-
-<p>如前所述，当启动插桩时，会重启其目标软件包，并且会注入和启动插桩代码以执行测试。一种例外情况是，这里的目标软件包不能是 Android 应用框架本身，即软件包 <code>android</code>，因为这样做会导致出现一种矛盾情况：需要重启 Android 框架，而正是该框架支持系统功能，包括插桩本身。</p>
-
-<p>这意味着，插桩测试无法将本身注入到 Android 框架（也称为系统服务器）以执行测试。为了测试 Android 框架，测试代码只能调用公共 API Surface，或者通过平台源代码树中可用的 <a href="https://developer.android.com/guide/components/aidl.html">AIDL</a> 公开的 API Surface。对于此类测试，针对任何特定软件包都没有意义，因此，按照惯例会将此类插桩声明为针对其自己的测试应用软件包，如其自己的 <code>AndroidManifest.xml</code> 中的 <code>&lt;manifest&gt;</code> 标记所定义。</p>
-
-<p>根据要求，此类测试应用软件包还可以：</p>
-
-<ul>
-<li>捆绑测试所需的 Activity。</li>
-<li>与系统共享用户 ID。</li>
-<li>使用平台密钥进行签名。</li>
-<li>根据框架源代码而不是公共 SDK 进行编译。</li>
-</ul>
-
-<p>此类插桩测试有时称为自插桩。下面是采用平台源代码的此类插桩测试的一些示例：</p>
-<pre class="prettyprint"><code>frameworks/base/core/tests/coretests
-frameworks/base/services/tests/servicestests
-</code></pre>
-<p>要了解详情，请参阅我们的<a href="/compatibility/tests/development/instr-self-e2e.md">端到端示例</a>。</p>
-
-<h2 id="native_tests_for_the_platform">平台的原生测试</h2>
-
-<p>平台测试的原生测试通常会访问较低级别的 HAL，或者针对各种系统服务执行原始 IPC，因此测试方法通常与接受测试的服务密切相关，这超出了本文档的范畴。</p>
-
-<p>强烈建议使用 <a href="https://github.com/google/googletest">gtest</a> 框架编译原生测试，这是与持续测试基础架构集成的先决条件。</p>
-
-<p>下面是采用平台源代码的此类原生测试的一些示例：</p>
-<pre class="prettyprint"><code>frameworks/av/camera/tests
-frameworks/native/libs/gui/tests
-</code></pre>
-<p>要了解详情，请参阅我们的<a href="/compatibility/tests/development/native-func-e2e.md">端到端示例</a>。</p>
 
 <p>请熟悉以下工具，因为它们是在 Android 系统中进行测试所固有的工具。</p>
 
