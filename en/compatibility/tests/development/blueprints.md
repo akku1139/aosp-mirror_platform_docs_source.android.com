@@ -19,7 +19,7 @@ Book: /_book.yaml
   limitations under the License.
 -->
 
-# Simple Test Configuration
+# Simple Build Configuration
 
 Each new test module must have a configuration file to direct the build system
 with module metadata, compile-time dependencies and packaging instructions.
