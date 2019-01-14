@@ -19,77 +19,59 @@
       See the License for the specific language governing permissions and
       limitations under the License.
   -->
+<p>Trusty 是一种安全的操作系统 (OS)，可为 Android 提供可信执行环境 (TEE)。Trusty 操作系统与 Android 操作系统在同一处理器上运行，但 Trusty 通过硬件和软件与系统的其余组件隔离开来。Trusty 与 Android 彼此并行运行。Trusty 可以访问设备主处理器和内存的全部功能，但完全隔离。隔离可以保护 Trusty 免受用户安装的恶意应用以及可能在 Android 中发现的潜在漏洞的侵害。
+</p>
 
-<p>Trusty 是一组在移动设备上支持可信执行环境 (TEE) 的软件组件。</p>
+ <p>Trusty 与 ARM 和 Intel 处理器兼容。在 ARM 系统中，Trusty 使用 ARM 的 Trustzone™ 虚拟化主处理器，并创建安全的可信执行环境。使用 Intel 虚拟化技术的 Intel x86 平台也提供类似的支持。
+</p>
+
+<img style="display: block;margin-left: auto;margin-right: auto;" src="/security/images/trustyOverview_900w.png"/>
+<p class="img-caption">
+<strong>图 1</strong>. Trusty 概览图
+</p>
 
 <p>Trusty 包含以下组件：</p>
-
 <ul>
-  <li>一个在用于提供 TEE 的处理器上运行的操作系统（Trusty 操作系统）</li><li>适用于 Android 内核 (Linux) 的驱动程序，旨在促进与在 Trusty 操作系统下运行的应用之间的通信</li><li>一组适用于 Android 系统软件的库，旨在使用内核驱动程序促进与在 Trusty 操作系统中执行的可信应用之间的通信</li></ul>
+  <li>由 <a href="https://github.com/littlekernel/lk" class="external">Little Kernel</a> 衍生的小型操作系统内核</li>
+  <li>Linux 内核驱动程序，用于在安全环境和 Android 之间传输数据</li>
+  <li>Android <a href="https://android.googlesource.com/trusty/lib/" class="external">用户空间库</a>，用于通过内核驱动程序与可信应用（即安全任务/服务）通信</li>
+</ul>
 
-<p><strong>重要提示</strong>：Trusty 和 Trusty API 随时可能发生变化。</p>
+<p class="note"><strong>注意</strong>：Trusty 和 Trusty API 随时可能发生变化。如需了解 Trusty API，请参阅 <a href="/security/trusty/trusty-ref">API 参考</a>。</p>
 
-<p>如需关于 Trusty API 的信息，请参阅 <a href="/security/trusty/trusty-ref">API 参考</a>。</p>
+<h2 id="whyTrusty">为什么使用 Trusty？</h2>
 
-<h2 id="uses_examples">使用和示例</h2>
+<p>其他 TEE 操作系统历来都是由第三方供应商以二进制 Blob 的形式提供，或由内部开发。对系统芯片 (SoC) 供应商和 OEM 来说，开发内部 TEE 系统或从第三方获取 TEE 许可的成本可能很高。资金成本加上不可靠的第三方系统会导致 Android 生态系统不稳定。我们将 Trusty 作为一种可靠且免费的开源替代方案提供给合作伙伴，用于替代其可信执行环境。Trusty 可提供通过封闭源代码系统无法实现的透明性。
+</p>
 
-<p>所有 TEE 操作系统（不仅仅是 Trusty）均可用于 TEE 实现。</p>
+ <p>Android 支持各种 TEE 实现，因此您并非只能使用 Trusty。每一种 TEE 操作系统都会通过一种独特的方式部署可信应用。对试图确保应用能够在所有 Android 设备上正常运行的可信应用开发者来说，这种不统一性可能是一个问题。使用 Trusty 作为标准，可以帮助应用开发者轻松地创建和部署应用，而不用考虑有多个 TEE 系统的不统一性。借助 Trusty TEE，开发者和合作伙伴能够实现透明化、进行协作、检查代码并轻松地进行调试。可信应用的开发者可以集中利用各种常见的工具和 API，以降低引入安全漏洞的风险。这些开发者可以确信自己能够开发应用并让此应用在多个设备上重复使用，而不需要进一步进行开发。
+</p>
 
-<p>TEE 处理器通常是系统内的单独微处理器，或是主处理器的虚拟化实例。TEE 处理器与系统的其余部分之间使用由硬件支持的内存和 I/O 保护机制隔离开来。</p>
+<h2 id="application_services">应用和服务</h2>
 
-<p>TEE 处理器如今已成为移动设备的基本组成部分。这些设备上的主处理器会被视为“不可信”，它们无法访问制造商用于存储机密数据（例如，设备专用加密密钥）的特定 RAM、硬件寄存器和 Fuse 区域。在主处理器上运行的软件会将所有需要使用机密数据的操作委派给 TEE 处理器。</p>
+<p>Trusty 应用定义为二进制文件（可执行文件和资源文件）、二进制清单和加密签名的集合。在运行时，Trusty 应用在 Trusty 内核下以隔离进程的形式在非特权模式下运行。每个进程都会利用 TEE 处理器的内存管理单元功能在各自的虚拟内存沙盒中运行。硬件构建会改变 Trusty 遵循的确切过程，但是，举例来说，内核会使用由安全计时器驱动且按优先级进行调度的循环调度程序安排这些进程。所有 Trusty 应用均具有相同的优先级。
+</p>
 
-<p>在 Android 生态系统中，最广为人知的不可信主处理器示例是用于受保护内容的 <a href="/devices/drm.html">DRM 框架</a>。在 TEE 处理器上运行的软件可以访问解密受保护内容所需的设备专用密钥。主处理器只能看到已加密的内容，这样一来，就可以针对基于软件的攻击提供高级别的安全保障和保护。</p>
-
-<p>TEE 还有许多其他用法，例如移动支付、安全银行、全盘加密、多因素身份验证、设备重置保护、抗重放攻击的持久存储、无线显示（“投射”）受保护的内容、安全的 PIN 码和指纹处理，甚至还有恶意软件检测。</p>
-
-<p>Trusty 提供用于开发以下两类应用的 API：</p>
-
-<ul>
-  <li>在 TEE 处理器上运行的可信应用或服务</li><li>在主处理器上运行并使用可信应用提供的服务的普通/不可信应用</li></ul>
-
-<p>在主处理器上运行的软件可以使用 Trusty API 连接到可信应用并与它们交换任意消息，就像通过 IP 提供的网络服务一样。应用负责使用应用级协议确定这些消息的数据格式和语义。消息传递的可靠性由底层 Trusty 基础架构（采用在主处理器上运行的驱动程序的形式）来保证，并且通信完全是异步进行的。</p>
-
-<h2 id="trusted_applications_and_services">可信应用和服务</h2>
-
-<p>可信应用会以单独进程的形式在 Trusty 操作系统内核下运行。每个进程都会利用 TEE 处理器的 MMU 功能在各自的虚拟内存沙盒中运行。内核会使用由安全计时器驱动且按优先级进行调度的轮询调度程序安排这些进程。在最新版本的 Trusty 中，所有 Trusty 应用均具有相同的优先级。</p>
-
-<p>可以使用 C/C++（对 C++ 的支持有限）编写适用于 Trusty 操作系统的应用，此类应用可以访问小型的 C 库。<code>main()</code> 函数目前不接受任何参数。系统调用存根是作为该库的一部分在本机汇编代码中提供的，因此可按名称访问系统调用。</p>
-
-<h3 id="language_threading">语言和线程支持</h3>
-
-<p>所有 Trusty 应用均为单线程应用；目前不支持在 Trusty 用户空间中使用多线程。</p>
-
-<h3 id="application_structure">应用结构</h3>
-
-<p>Trusty 应用会在加载期间初始化一次，并且在 TEE 处理器重置之前，会一直保留在内存中。Trusty 目前不支持动态加载和取消加载应用。</p>
-
-<p>可信应用是作为<strong>事件驱动型服务器</strong>编写的，会等待其他应用或主处理器上运行的应用发出的命令。此外，可信应用也可以作为其他可信服务器应用的客户端。以下 API 部分中介绍的事件将由 Trusty 内核传送到可信应用。</p>
+<img style="display: block;margin-left: auto;margin-right: auto;" src="/security/images/trustyApps_900w.png"/>
+<p class="img-caption">
+<strong>图 2</strong>. Trusty 应用概览。</p>
 
 <h2 id="third-party_trusty_applications">第三方 Trusty 应用</h2>
 
-<p>目前，所有 Trusty 应用都是由一个开发方开发的，并封装了 Trusty 内核映像。整个映像会由引导加载程序在启动过程中进行签名并验证。该版本的 Trusty 中不支持第三方应用开发。</p>
+<p>目前，所有 Trusty 应用都是由一个开发方开发的，并用 Trusty 内核映像进行封装。整个映像都经过签名并在启动过程中由引导加载程序进行验证。目前，Trusty 不支持第三方应用开发。尽管 Trusty 支持开发新应用，但在开发新应用时务必要万分谨慎；每个新应用都会使系统可信计算基 (TCB) 的范围增大。可信应用可以访问设备机密数据，并且可以利用这些数据进行计算或数据转换。能够开发在 TEE 中运行的新应用为创新带来了多种可能性。不过，根据 TEE 的定义，如果这些应用没有附带某种形式的可信凭据，则无法分发。这种凭据通常采用数字签名的形式，即由应用运行时所在产品的用户信任的实体提供的数字签名。
+</p>
 
-<p>尽管 Trusty 操作系统支持开发新应用，但在开发新应用时务必要万分谨慎；每个新应用都会使系统可信计算基 (TCB) 的范围增大。可信应用可以访问设备机密数据，并且可以利用这些数据进行计算或数据转换。</p>
+<h2 id="uses_examples">用途和示例</h2>
 
-<p>能够开发在 TEE 中运行的新应用为进行创新提供了多种可能性。不过，根据 TEE 的定义，如果这些应用没有附带某种形式的证明其<strong>可信</strong>的凭据，则无法分发。这种凭据通常采用数字签名的形式，即由应用运行时所在产品的用户信任的实体提供的数字签名。</p>
+<p>可信执行环境正迅速成为移动设备领域的一项标准。用户的日常生活越来越依赖移动设备，安全需求也在不断增长。具有 TEE 的移动设备比没有 TEE 的设备更安全。</p>
 
-<h2 id="downloading_building">下载和编译 Trusty</h2>
+<p>在具有 TEE 实现的设备上，主处理器通常称为“不可信”处理器，这意味着它无法访问制造商用于存储机密数据（例如设备专用加密秘钥）的特定 RAM、硬件寄存器和一次写入 Fuse 区域。在主处理器上运行的软件会将所有需要使用机密数据的操作委派给 TEE 处理器。
+</p>
 
-<p>您可以通过以下网址找到 Android 开放源代码项目 (AOSP) 中的 Trusty 实现：<br />
-<a href="https://android-review.googlesource.com/#/admin/projects/?filter=trusty">https://android-review.googlesource.com/#/admin/projects/?filter=trusty</a></p>
+<p>在 Android 生态系统中，最广为人知的示例是受保护内容的 <a href="/devices/drm.html">DRM 框架</a>。在 TEE 处理器上运行的软件可以访问解密受保护内容所需的设备专用密钥。主处理器只能看到已加密的内容，这样一来，就可以针对软件类攻击提供高级别的安全保障和保护。
+</p>
 
-<p>要查看 AOSP 上的 Trusty 内核分支，请访问：<br />
-<a href="https://android.googlesource.com/kernel/common/+/android-trusty-3.10">https://android.googlesource.com/kernel/common/+/android-trusty-3.10</a><br />
-<a href="https://android.googlesource.com/kernel/common/+/android-trusty-3.18">https://android.googlesource.com/kernel/common/+/android-trusty-3.18</a></p>
-
-<p>要实现 Trusty，请运行以下命令（假设 Android 工具链已位于路径中）：</p>
-<pre class="devsite-click-to-copy">
-<code class="devsite-terminal">repo init -u https://android.googlesource.com/trusty/manifest</code>
-<code class="devsite-terminal">repo sync</code>
-<code class="devsite-terminal">make -j24 generic-arm64</code>
-</pre>
-
-<p>您可以从 <code>device/*/*/project/*</code> 中选择其他受支持的编译目标</p>
+<p>TEE 还有许多其他用途，例如移动支付、安全银行、多重身份验证、设备重置保护、抗重放攻击的持久存储、安全的 PIN 码和指纹处理，甚至包括恶意软件检测。
+</p>
 
 </body></html>

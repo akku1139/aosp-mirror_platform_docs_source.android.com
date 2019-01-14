@@ -16,7 +16,7 @@ Book: /_book.yaml
     limitations under the License.
 -->
 
-# Wide Field of View (WFoV) ITS-in-a-Box Assembly
+# Wide Field of View (WFoV) Box
 
 Android {{ androidPVersionNumber }} introduces ITS-in-a-box revision 2, an
 automated test system for both wide field of view (WFoV) and regular field of
