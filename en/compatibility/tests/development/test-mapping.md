@@ -89,6 +89,10 @@ Here is a sample TEST_MAPPING file:
           "include-annotation": "android.platform.test.annotations.RequiresDevice"
         }
       ]
+    },
+    {
+      "name" : "net_test_avrcp",
+      "host" : true
     }
   ],
   "postsubmit": [
@@ -119,6 +123,10 @@ can be set in the value of the `name` attribute. Note the **name** field cannot
 use class `name` or test method `name`. To narrow down the tests to run, you can
 use options such as `include-filter` here. See
 ([include-filter sample usage](https://android.googlesource.com/platform/frameworks/base/+/master/services/core/java/com/android/server/pm/dex/TEST_MAPPING#7)).
+
+The **host** setting of a test indicates whether the test is a deviceless test
+running on host or not. The default value is **false**, meaning the test
+requires a device to run.
 
 The `imports` attribute allows you to include tests in other TEST_MAPPING files
 without copying the content. Note that the TEST_MAPPING files in the parent
@@ -238,6 +246,17 @@ and its parent directories:
 
 <pre>
 <code class="devsite-terminal">atest [--test-mapping] [src_path]:postsubmit</code>
+</pre>
+
+### Running only tests that require no device
+
+You can use option **--host** for Atest to only run tests configured against the
+host that require no device. Without this option, Atest will run both tests, the
+ones requiring device and the ones running on host and require no device. The
+tests will be run in two seperate suites.
+
+<pre>
+<code class="devsite-terminal">atest [--test-mapping] --host</code>
 </pre>
 
 ### Identifying test groups

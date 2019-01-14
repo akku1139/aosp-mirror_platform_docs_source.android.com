@@ -32,7 +32,7 @@
 
 <p>另一方面，链接器命名空间机制可提供相应的灵活性，从而将由一个链接器命名空间导出的某些共享库用于另一个链接器命名空间。这些导出的共享库可能会成为对其他程序公开的应用编程接口，同时在其链接器命名空间中隐藏实现细节。</p>
 
-<p>例如，<code>/system/lib[64]/libcutils.so</code> 和 <code>/system/lib[64]/vndk-sp-${VER}/libcutils.so</code> 是两个共享库。这两个库可能有不同的符号。它们将加载到不同的链接器命名空间中，以便框架模块可以依赖于 <code>/system/lib[64]/libcutils.so</code>，而 SP-HAL 共享库则可以依赖于 <code>/system/lib[64]/vndk-sp-${VER}/libcutils.so</code>。</p>
+<p>例如，<code>/system/lib[64]/libcutils.so</code> 和 <code>/system/lib[64]/vndk-sp-${VER}/libcutils.so</code> 是两个共享库。这两个库可能有不同的符号。它们会加载到不同的链接器命名空间中，以便框架模块可以依赖于 <code>/system/lib[64]/libcutils.so</code>，而 SP-HAL 共享库则可以依赖于 <code>/system/lib[64]/vndk-sp-${VER}/libcutils.so</code>。</p>
 
 <p>另一方面，<code>/system/lib[64]/libc.so</code> 是由一个链接器命名空间导出而后又被导入到许多链接器命名空间中的公共库。<code>/system/lib[64]/libc.so</code> 的依赖项（例如 <code>libnetd_client.so</code>）将被加载到 <code>/system/lib[64]/libc.so</code> 所在的命名空间中。其他命名空间将无法访问这些依赖项。这种机制会在提供公共接口的同时封装实现细节。</p>
 
@@ -46,82 +46,295 @@
 
 <pre class="prettyprint">
 dir.system = /system/bin
+dir.system = /system/xbin
 dir.vendor = /vendor/bin
 
 [system]
-additional.namespaces = sphal
+additional.namespaces = sphal,vndk
 
 namespace.default.isolated = true
-namespace.default.search.paths = /system/${LIB}:/vendor/${LIB}
-namespace.default.permitted.paths = /system/${LIB}:/vendor/${LIB}
+namespace.default.search.paths = /system/${LIB}
+namespace.default.permitted.paths = /system/${LIB}/hw
+namespace.default.asan.search.paths = /data/asan/system/${LIB}:/system/${LIB}
+namespace.default.asan.permitted.paths = /data/asan/system/${LIB}/hw:/system/${LIB}/hw
 
 namespace.sphal.isolated = true
 namespace.sphal.visible = true
-namespace.sphal.search.paths = /vendor/${LIB}
-namespace.sphal.permitted.paths = /vendor/${LIB}
-namespace.sphal.links = default
+namespace.sphal.search.paths = /odm/${LIB}:/vendor/${LIB}
+namespace.sphal.permitted.paths = /odm/${LIB}:/vendor/${LIB}
+namespace.sphal.asan.search.paths  = /data/asan/odm/${LIB}:/odm/${LIB}
+namespace.sphal.asan.search.paths += /data/asan/vendor/${LIB}:/vendor/${LIB}
+namespace.sphal.asan.permitted.paths  = /data/asan/odm/${LIB}:/odm/${LIB}
+namespace.sphal.asan.permitted.paths += /data/asan/vendor/${LIB}:/vendor/${LIB}
+namespace.sphal.links = default,vndk
 namespace.sphal.link.default.shared_libs = libc.so:libm.so
+namespace.sphal.link.vndk.shared_libs = libbase.so:libcutils.so
+
+namespace.vndk.isolated = true
+namespace.vndk.search.paths = /system/${LIB}/vndk-sp-29
+namespace.vndk.permitted.paths = /system/${LIB}/vndk-sp-29
+namespace.vndk.links = default
+namespace.vndk.link.default.shared_libs = libc.so:libm.so
 
 [vendor]
 namespace.default.isolated = false
 namespace.default.search.paths = /vendor/${LIB}:/system/${LIB}
-namespace.default.permitted.paths = /vendor/${LIB}:/system/${LIB}
 </pre>
 
-<p>首先，<code>ld.config.txt</code> 的开头有几个 <code>dir.${section}</code> 属性：</p>
+<p>配置文件包含以下内容：</p>
 
-<pre class="prettyprint">
-dir.${section} = /path/to/bin/directory
-</pre>
+<ul>
+ <li>多个“目录-区段”映射属性（位于动态链接器的开头），用于选择有效的区段。</li>
 
-<p>这些属性决定了将应用于相应进程的一系列规则。例如，如果主可执行文件位于 <code>/system/bin</code> 中，则会应用 <code>[system]</code> 中的规则。<em></em>同样，如果主可执行文件位于 <code>/vendor/bin</code> 中，则会应用 <code>[vendor]</code> 中的规则。<em></em></p>
+ <li>多个链接器命名空间配置区段：<ul>
+   <li>每个区段都包含多个命名空间（圆形顶点）以及各命名空间之间的多个回退链接（图形弧）。</li>
 
-<p>其次，除了 <code>default</code> 链接器命名空间外，<code>addition.namespaces</code> 还为每个部分指定了将由动态链接器创建的额外链接器命名空间（用英文逗号分隔）：</p>
+   <li>每个命名空间都具有自己的隔离、搜索路径、允许的路径以及可见性设置。</li>
+  </ul>
+ </li>
+</ul>
 
-<pre class="prettyprint">
-additional.namespaces = namespace1,namespace2,namespace3
-</pre>
+<p>下表详细介绍了各属性的含义。</p>
 
-<p>在上述示例中，动态链接器为 <code>/system/bin</code> 中的可执行文件创建了两个链接器命名空间（<code>default</code> 和 <code>sphal</code>）。</p>
+<h3 id="directory-section-mapping-property">“目录-区段”映射属性</h3>
 
-<p>再次，对于每个链接器命名空间，可以配置以下属性：</p>
+<table>
+ <tbody><tr>
+  <th>属性</th>
+  <th>说明</th>
+  <th>示例</th>
+ </tr>
 
-<pre class="prettyprint">
-namespace.${name}.search.paths = /path1/${LIB}:/path2/${LIB}
-namespace.${name}.permitted.paths = /path1:/path2
-namespace.${name}.isolated = true|false
-namespace.${name}.links = namespace1,namespace2
-namespace.${name}.link.${other}.shared_libs = lib1.so:lib2.so
-namespace.${name}.link.${other}.allow_all_shared_libs = true
-namespace.${name}.visible = true|false
-</pre>
+ <tr>
+  <td><p><code>dir.<var>name</var></code></p></td>
 
-<p><code>namespace.${name}.search.paths</code> 表示将附加到库名称前面的目录。各目录之间用英文冒号隔开。
-<code>${LIB}</code> 是一个特殊的占位符。如果相应进程正在运行 32 位可执行文件，则 <code>${LIB}</code> 将被替换为 <code>lib</code>。同样，如果相应进程正在运行 64 位可执行文件，则 <code>${LIB}</code> 将被替换为 <code>lib64</code>。</p>
+  <td>
+   <p>指向 <code>[<var>name</var>]</code> 区段所应用到的目录的路径。</p>
 
-<p>在上述示例中，如果 <code>/system/bin</code> 中的 64 位可执行文件与 <code>libexample.so</code> 相关联，则动态链接器会首先搜索 <code>/system/lib64/libexample.so</code>。如果找不到 <code>/system/lib64/libexample.so</code>，则动态链接器会搜索 <code>/vendor/lib64/libexample.so</code>。</p>
+   <p>每个属性都会将目录下的可执行文件映射到链接器命名空间配置区段。可能会有 2 个（或多个）属性具有相同的 <code><var>name</var></code>，却指向不同的目录。</p>
+  </td>
 
-<p>如果 <code>namespace.${name}.isolated</code> 为 <code>true</code>，则动态链接器仅会加载 <code>namespace.${name}.search.paths</code> 中指定目录下的共享库，或 <code>namespace.${name}.permitted.paths</code> 中指定目录下的共享库。</p>
+  <td>
+   <p>
+    <code>dir.system = /system/bin</code><br />
+    <code>dir.system = /system/xbin</code><br />
+    <code>dir.vendor = /vendor/bin</code><br />
+   </p>
 
-<p>在上述示例中，在 <code>sphal</code> 链接器命名空间中加载的共享库将无法关联到 <code>/system/lib[64]</code> 中的共享库，因为 <code>namespace.sphal.isolated</code> 为 <code>true</code> 并且 <code>/system/lib[64]</code> 既不在 <code>namespace.sphal.permitted.paths</code> 中也不在 <code>namespace.sphal.search.paths</code> 中。</p>
+   <p>这表示在 <code>[system]</code> 区段中指定的配置适用于从 <code>/system/bin</code> 或 <code>/system/xbin</code> 加载的可执行文件。</p>
 
-<p><code>namespace.${name}.links</code> 指定了 <code>${name}</code> 链接器命名空间关联到的链接器命名空间列表（以英文逗号分隔）。</p>
+   <p>在 <code>[vendor]</code> 区段中指定的配置适用于从 <code>/vendor/bin</code> 加载的可执行文件。</p>
+  </td>
+ </tr>
+</tbody></table>
 
-<p>在上述示例中，<code>namespace.sphal.links</code> 指定 <code>sphal</code> 链接器命名空间关联到 <code>default</code> 链接器命名空间。</p>
+<h3 id="relation-properties">关系属性</h3>
 
-<p><code>namespace.${name}.link.${other}.shared_libs</code> 会指定可能会利用后备链接的共享库名称（用英文冒号分隔）。如果某个共享库无法加载到 <code>${name}</code> 链接器命名空间中，并且其名称位于 <code>namespace.${name}.link.${other}.shared_libs</code> 中，则动态链接器会尝试从 <code>${other}</code> 链接器命名空间导入该库。</p>
+<table>
+ <tbody><tr>
+  <th>属性</th>
+  <th>说明</th>
+  <th>示例</th>
+ </tr>
 
-<p>在上述示例中，<code>namespace.sphal.link.default.shared_libs</code> 指定 <code>libc.so</code> 和 <code>libm.so</code> 可以由 <code>default</code> 链接器命名空间导出。如果在 <code>sphal</code> 链接器命名空间中加载的共享库关联到 <code>libc.so</code>，并且动态链接器在 <code>/vendor/lib[64]</code> 中找不到 <code>libc.so</code>，则动态链接器会遍历后备链接，并查找由 <code>default</code> 链接器命名空间导出的 <code>libc.so</code>。</p>
+ <tr>
+  <td><code>additional.<wbr></wbr>namespaces</code></td>
 
-<p>如果 <code>namespace.${name}.link.${other}.allow_all_shared_libs</code> 为 <code>true</code>，则所有共享库名称均可以利用后备链接。如果某个共享库无法加载到 <code>${name}</code> 链接器命名空间中，则动态链接器会尝试从 <code>${other}</code> 链接器命名空间导入该库。</p>
+  <td>
+   <p>相应区段的其他命名空间的逗号分隔列表（<code>default</code> 命名空间除外）。</p>
+  </td>
 
-<p>如果 <code>namespace.${name}.visible</code> 为 <code>true</code>，该程序将能够获取链接器命名空间句柄，该句柄随后可传递到 <code>android_dlopen_ext()</code>。</p>
+  <td>
+   <p><code>additional.<wbr></wbr>namespaces = sphal,<wbr></wbr>vndk</code></p>
 
-<p>在上述示例中，<code>namespace.sphal.visible</code> 为 <code>true</code>，以便 <code>android_load_sphal_library()</code> 可以明确要求动态链接器加载 <code>sphal</code> 链接器命名空间中的共享库。</p>
+   <p>这表示 <code>[system]</code> 配置中有 3 个命名空间（<code>default</code>、<code>sphal</code> 和 <code>vndk</code>）。</p>
+  </td>
+ </tr>
+
+ <tr>
+  <td><code>namespace.<wbr></wbr><var>name</var>.<wbr></wbr>links</code></td>
+
+  <td>
+   <p>回退命名空间的逗号分隔列表。</p>
+
+   <p>如果在当前命名空间中找不到共享库，则动态链接器会尝试从回退命名空间加载共享库。在列表开头指定的命名空间优先级较高。</p>
+
+   <aside class="note">注意：回退命名空间没有传递特性。例如，命名空间 A 链接到命名空间 B，命名空间 B 链接到命名空间 C。如果动态链接器在命名空间 A 中找不到相应的库，则它仅会搜索命名空间 B，而不会搜索命名空间 C。<em></em><em></em><em></em><em></em><em></em><em></em><em></em></aside>
+  </td>
+
+  <td>
+   <p><code>namespace.<wbr></wbr>sphal.<wbr></wbr>links = default,<wbr></wbr>vndk</code></p>
+
+   <p>如果某个共享库或可执行文件请求另一个共享库，而后者无法加载到 <code>sphal</code> 命名空间，则动态链接器会尝试从 <code>default</code> 命名空间加载此共享库。</p>
+
+   <p>然后，如果此共享库也无法从 <code>default</code> 命名空间加载，则动态链接器会尝试从 <code>vndk</code> 命名空间加载此共享库。</p>
+
+   <p>最后，如果所有尝试都失败，则动态链接器会返回一个错误。</p>
+  </td>
+ </tr>
+
+ <tr>
+  <td><code>namespace.<wbr></wbr><var>name</var>.<wbr></wbr>link.<wbr></wbr><var>other</var>.<wbr></wbr>shared_libs</code></td>
+
+  <td>
+   <p>用冒号分隔的共享库列表（如果在 <code>name</code> 命名空间中找不到这些共享库，则可以在 <code>other</code> 命名空间中搜索）。</p>
+
+   <p>此属性无法与 <code>namespace.<wbr></wbr><var>name</var>.<wbr></wbr>link.<wbr></wbr><var>other</var>.<wbr></wbr>allow_all_shared_libs</code> 一起使用。</p>
+
+   <aside class="note"><p>注意：此属性与 <a href="/devices/tech/config/namespaces_libraries">public.libraries.txt</a> 文件在底层实现上是相同的。这两种机制都通过使用库名称过滤器指定链接的方式来控制导入的共享库。</p>
+
+   <p>不同之处在于，<code>ld.config.txt</code> 由动态链接器进行加载，并且所有命名空间都是在程序启动时创建的。相反，<code>libnativeloader</code> 会在 Zygote 进程针对某个应用进行分岔和专门化操作时创建链接器命名空间。应用原生库的命名空间具有一个仅允许使用在 <code>public.libraries.txt</code> 中指定的库名称的链接。</p></aside>
+  </td>
+
+  <td>
+   <p><code>namespace.<wbr></wbr>sphal.<wbr></wbr>link.<wbr></wbr>default.<wbr></wbr>shared_libs = libc.so:<wbr></wbr>libm.so</code></p>
+
+   <p>这表示回退链接仅接受 <code>libc.so</code> 或 <code>libm.so</code> 作为请求的库名称。如果请求的库名称不是 <code>libc.so</code> 或 <code>libm.so</code>，则动态链接器会忽略从 <code>sphal</code> 到 <code>default</code> 命名空间的回退链接。</p>
+  </td>
+ </tr>
+
+ <tr>
+  <td><code>namespace.<wbr></wbr><var>name</var>.<wbr></wbr>link.<wbr></wbr><var>other</var>.<wbr></wbr>allow_all_shared_libs</code></td>
+
+  <td>
+   <p>一个布尔值，用于指示在 <code><var>name</var></code> 命名空间中找不到共享库时，是否所有共享库都可以在 <code><var>other</var></code> 命名空间中搜索。</p>
+
+   <p>此属性无法与 <code>namespace.<wbr></wbr><var>name</var>.<wbr></wbr>link.<wbr></wbr><var>other</var>.<wbr></wbr>shared_libs</code> 一起使用。</p>
+  </td>
+
+  <td>
+   <p><code>namespace.<wbr></wbr>vndk.<wbr></wbr>link.<wbr></wbr>sphal.<wbr></wbr>allow_all_shared_libs = true</code></p>
+
+   <p>这表示所有库名称都可以遍历从 <code>vndk</code> 到 <code>sphal</code> 命名空间的回退链接。</p>
+  </td>
+ </tr>
+</tbody></table>
+
+<h3 id="namespace-properties">命名空间属性</h3>
+
+<table>
+ <tbody><tr>
+  <th>属性</th>
+  <th>说明</th>
+  <th>示例</th>
+ </tr>
+
+ <tr>
+  <td><code>namespace.<wbr></wbr><var>name</var>.<wbr></wbr>isolated</code></td>
+
+  <td>
+   <p>一个布尔值，用于指示动态链接器是否应该检查共享库在什么位置。</p>
+
+   <p>如果 <code>isolated</code> 为 <code>true</code>，则只有某个 <code>search.paths</code> 目录（不包含子目录）中或 <code>permitted.paths</code>（包含子目录）下的共享库才能加载。<em></em><em></em></p>
+
+   <p>如果 <code>isolated</code> 为 <code>false</code>，则动态链接器不会检查共享库的路径。</p>
+  </td>
+
+  <td>
+   <p><code>namespace.<wbr></wbr>sphal.<wbr></wbr>isolated = true</code></p>
+
+   <p>这表示只有 <code>search.paths</code> 中或 <code>permitted.paths</code> 下的共享库才能加载到 <code>sphal</code> 命名空间。</p>
+  </td>
+ </tr>
+
+ <tr>
+  <td><code>namespace.<wbr></wbr><var>name</var>.<wbr></wbr>search.paths</code></td>
+
+  <td>
+   <p>以冒号分隔的目录列表，用于搜索共享库。</p>
+
+   <p>如果函数调用 <code>dlopen()</code> 或 <code>DT_NEEDED</code> 条目时未指定完整路径，则在 <code>search.paths</code> 中指定的目录将附加到请求的库名称前面。在列表开头指定的目录优先级较高。</p>
+
+   <p>如果 <code>isolated</code> 为 <code>true</code>，则任一 <code>search.paths</code> 目录（不包含子目录）中的共享库都可以加载，无论 <code>permitted.paths</code> 属性如何设置。<em></em></p>
+
+   <p>例如，如果 <code>search.paths</code> 为 <code>/system/${LIB}</code>，并且 <code>permitted.paths</code> 为空，则 <code>/system/${LIB}/libc.so</code> 可以加载，但 <code>/system/${LIB}/vndk/libutils.so</code> 无法加载。</p>
+
+   <aside class="note">注意：<code>${LIB}</code> 是内置占位符。对于 32 位进程，此占位符将替换为 <code>lib</code>；对于 64 位进程，此占位符将替换为 <code>lib64</code>。</aside>
+  </td>
+
+  <td>
+   <p><code>namespace.<wbr></wbr>default.<wbr></wbr>search.paths = /system/${LIB}</code></p>
+
+   <p>这表示动态链接器会在 <code>/system/${LIB}</code> 中搜索共享库。</p>
+  </td>
+ </tr>
+
+ <tr>
+  <td><code>namespace.<wbr></wbr><var>name</var>.<wbr></wbr>asan.search.paths</code></td>
+
+  <td>
+   <p>以冒号分隔的目录列表，用于在启用 <a href="/devices/tech/debug/asan">Address Sanitizer</a> 后搜索共享库。</p>
+
+   <p>在启用 <a href="/devices/tech/debug/asan">Address Sanitizer</a> 后，系统会忽略 <code>namespace.<wbr></wbr><var>name</var>.<wbr></wbr>search.paths</code>。</p>
+  </td>
+
+  <td>
+   <p><code>namespace.<wbr></wbr>default.<wbr></wbr>asan.search.paths = /data/asan/system/${LIB}:<wbr></wbr>/system/${LIB}</code></p>
+
+   <p>这表示在启用 <a href="/devices/tech/debug/asan">Address Sanitizer</a> 后，动态链接器会先搜索 <code>/data/asan/system/${LIB}</code>，然后再搜索 <code>/system/${LIB}</code>。</p>
+  </td>
+ </tr>
+
+ <tr>
+  <td><code>namespace.<wbr></wbr><var>name</var>.<wbr></wbr>permitted.paths</code></td>
+
+  <td>
+   <p>以冒号分隔的目录列表（包含子目录），当 <code>isolated</code> 为 <code>true</code> 时，动态链接器可在其中加载共享库（除了 <code>search.paths</code> 以外）。</p>
+
+   <p><code>permitted.paths</code> 的子目录下的共享库也可以加载。例如，如果 <code>permitted.paths</code> 为 <code>/system/${LIB}</code>，则 <code>/system/${LIB}/libc.so</code> 和 <code>/system/${LIB}/vndk/libutils.so</code> 均可加载。</p>
+
+   <p>如果 <code>isolated</code> 为 <code>false</code>，则系统会忽略 <code>permitted.paths</code> 并发出相应警告。</p>
+
+   <aside class="note">注意：在动态链接器搜索共享库时，<code>permitted.paths</code> 不会附加到请求的库名称前面。其主要目的是让程序员能够通过指定共享库的完整路径将共享库加载到隔离的命名空间。</aside>
+  </td>
+
+  <td>
+   <p><code>namespace.<wbr></wbr>default.<wbr></wbr>permitted.paths = /system/${LIB}/hw</code></p>
+
+   <p>这表示 <code>/system/${LIB}/hw</code> 下的共享库可以加载到隔离的 <code>default</code> 命名空间。</p>
+
+   <p>例如，如果没有 <code>permitted.paths</code>，则 <code>libaudiohal.so</code> 无法将 <code>/system/${LIB}/hw/audio.a2dp.default.so</code> 加载到 <code>default</code> 命名空间。</p>
+  </td>
+ </tr>
+
+ <tr>
+  <td><code>namespace.<wbr></wbr><var>name</var>.<wbr></wbr>asan.permitted.paths</code></td>
+
+  <td>
+   <p>以冒号分隔的目录列表，在启用 <a href="/devices/tech/debug/asan">Address Sanitizer</a> 后，动态链接器可在其中加载共享库。</p>
+
+   <p>在启用 <a href="/devices/tech/debug/asan">Address Sanitizer</a> 后，系统会忽略 <code>namespace.<wbr></wbr><var>name</var>.<wbr></wbr>permitted.paths</code>。</p>
+  </td>
+
+  <td>
+   <p><code>namespace.<wbr></wbr>default.<wbr></wbr>asan.permitted.paths = /data/asan/system/${LIB}/hw:<wbr></wbr>/system/${LIB}/hw</code></p>
+
+   <p>这表示在启用 <a href="/devices/tech/debug/asan">Address Sanitizer</a> 后，<code>/data/asan/system/${LIB}/hw</code> 或 <code>/system/${LIB}/hw</code> 下的共享库可以加载到隔离的 <code>default</code> 命名空间。</p>
+  </td>
+ </tr>
+
+ <tr>
+  <td><code>namespace.<wbr></wbr><var>name</var>.<wbr></wbr>visible</code></td>
+
+  <td>
+   <p>一个布尔值，用于指示程序（不包括 <code>libc</code>）是否可以包含带有 <code>android_get_exported_namespace()</code> 的链接器命名空间句柄，以及通过将此句柄传递到 <code>android_dlopen_ext()</code> 打开链接器命名空间中的共享库。</p>
+
+   <p>如果 <code>visible</code> 为 <code>true</code>，则 <code>android_get_exported_namespace()</code> 在命名空间存在时始终返回此句柄。</p>
+
+   <p>如果 <code>visible</code> 为 <code>false</code>（默认值），则无论命名空间是否存在，<code>android_get_exported_namespace()</code> 始终返回 <code>NULL</code>。仅当符合以下条件时，共享库才能加载到此命名空间：(1) 具有指向此命名空间的回退链接的其他链接器命名空间请求这些共享库，或者 (2) 此命名空间中的其他共享库或可执行文件请求这些共享库。</p>
+  </td>
+
+  <td>
+   <p><code>namespace.<wbr></wbr>sphal.<wbr></wbr>visible = true</code></p>
+
+   <p>这表示 <code>android_get_exported_namespace("sphal")</code> 可以返回有效的链接器命名空间句柄。</p>
+  </td>
+ </tr>
+</tbody></table>
 
 <h2 id="linker-namespace-isolation">链接器命名空间隔离</h2>
 
-<p><code>${android-src}/system/core/rootdir/etc</code> 中有三种配置。系统会根据 <code>BoardConfig.mk</code> 中 <code>PRODUCT_TREBLE_LINKER_NAMESPACES</code>、<code>BOARD_VNDK_VERSION</code> 和 <code>BOARD_VNDK_RUNTIME_DISABLE</code> 的值选择不同的配置：</p>
+<p><code>${android-src}/system/core/rootdir/etc</code> 中有 3 个配置文件。系统会根据 <code>BoardConfig.mk</code> 中 <code>PRODUCT_TREBLE_LINKER_NAMESPACES</code>、<code>BOARD_VNDK_VERSION</code> 和 <code>BOARD_VNDK_RUNTIME_DISABLE</code> 的值选择不同的配置：</p>
 
 <table>
  <tbody><tr>
@@ -305,8 +518,8 @@ BOARD_VNDK_RUNTIME_DISABLE := true
    <code>/product/app</code><br />
    <code>/product/priv-app</code><br />
    <code>/data</code><br />
-   <code>/mnt/expand
-  </code></td>
+   <code>/mnt/expand</code>
+  </td>
  </tr>
 
  <tr>

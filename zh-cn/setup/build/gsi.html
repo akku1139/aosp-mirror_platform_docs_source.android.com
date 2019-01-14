@@ -21,16 +21,19 @@
       limitations under the License.
   -->
 
-<p>常规系统映像 (GSI) 是包含已针对 Android 设备调整配置的系统映像。这种映像被视为所有 Android 设备应该都能顺利运行且包含未经修改的 Android 开源项目 (AOSP) 代码的“纯 Android”实现。
+<p>常规系统映像 (GSI) 是指已针对 Android 设备调整配置的系统映像。GSI 包含未经修改的 Android 开源项目 (AOSP) 代码，任何运行 Android 8.1 及以上版本的 Android 设备都可以顺利运行这种代码，因此我们将 GSI 视为“纯 Android”实现。
 </p>
 
-<p>GSI 中的内容不依赖于供应商映像。为了验证 GSI 的独立性，Android 设备的系统映像会被替换为 GSI，然后通过<a href="/compatibility/vts/">供应商测试套件 (VTS)</a> 和<a href="/compatibility/cts/">兼容性测试套件 (CTS)</a> 进行全面测试。同样，您可以使用 GSI 替换自己的系统映像，以验证 Android 设备能够正确实现供应商接口。
+<p>GSI 合规性是 <a href="/compatibility/overview">Android 兼容性计划</a>的一部分。为确保运行最新版 Android 的设备能够正确实现供应商接口，我们将 Android 设备的系统映像替换为 GSI，然后使用<a href="/compatibility/vts/">供应商测试套件 (VTS)</a> 和<a href="/compatibility/cts/">兼容性测试套件 (CTS)</a> 对设备进行测试。
+</p>
+
+<aside class="note"><strong>注意</strong>：本文介绍的 GSI 内容面向的是 Android OEM 和 ROM 开发者；Android 应用开发者应该参考 <a href="https://developer.android.com/topic/generic-system-image/">developer.android.com</a>，了解面向开发者的 GSI 详细信息。
+</aside>
+
+<p>开始使用 GSI 之前，请先阅读下面几节内容，详细了解 <a href="#gsi-configuration-and-variances">GSI 配置</a>（和允许的差异）、<a href="#gsi-types">类型</a>（Android GSI 和旧版 GSI）以及<a href="#vendor-binaries-and-vndk-dependencies">供应商二进制文件和 VNDK 依赖项</a>。准备好使用 GSI 后，请为设备目标<a href="#building-gsis">下载并编译 GSI</a>，然后<a href="#flashing-gsis">将 GSI 刷写</a>到 Android 设备。
 </p>
 
 <h2 id="gsi-configuration-and-variances">GSI 配置和差异</h2>
-
-<p>GSI 的目标是为所有 Android 设备提供特定的通用配置，同时允许不同的供应商设备之间存在差异。当前的 GSI 基于 Android 9。
-</p>
 
 <p>当前的 GSI 具有以下配置：</p>
 
@@ -52,7 +55,7 @@
 
 <h2 id="gsi-types">GSI 类型</h2>
 
-<p>GSI 类型取决于设备搭载的 Android 版本。Android 9 支持以下 GSI：</p>
+<p>用于合规性测试的 GSI 取决于设备搭载的 Android 版本。Android 9 支持以下 GSI：</p>
 
 <table>
   <tbody><tr>
@@ -72,22 +75,18 @@
   </tr>
 </tbody></table>
 
-<aside class="note">
-  <strong>注意</strong>：要为某个设备确定合适的 GSI，请将此设备连接到工作站，然后运行 <code>adb shell getprop ro.product.first_api_level</code>。如果 API 级别为 28，则使用 Android GSI；如果 API 级别为 27，则使用旧版 GSI。如果没有系统属性，则说明此设备可能不受支持。
-</aside>
-
-<p>所有 GSI 都是从 Android 9 代码库编译的。是否支持旧版 GSI 取决于设备的供应商接口实现，并非所有搭载 Android 8.0 或 Android 8.1 的设备都能使用旧版 GSI。有关详情，请参阅<a href="#vendor-binaries-and-vndk-dependencies">供应商二进制文件和 VNDK 依赖项</a>。
+<p>所有 GSI 都是从 Android 9 代码库编译的。
 </p>
 
 <h3 id="changes-in-p-gsis">Android 9 GSI 变更</h3>
 
-<p>搭载 Android 9 的设备必须使用 Android 9 GSI，Android 9 GSI 与早期 GSI 相比存在以下主要变化：</p>
+<p>搭载 Android 9 的设备必须使用 Android 9 GSI 测试合规性，Android 9 GSI 与早期 GSI 相比存在以下主要变化：</p>
 
 <ul>
   <li><strong>合并 GSI 和模拟器</strong>。GSI 是根据模拟器产品（例如，<code>aosp_arm64</code>、<code>aosp_x86</code> 等）的系统映像编译的。</li>
   <li><strong>System-as-root</strong>。在以前的 Android 版本中，不支持 A/B 更新的设备可以在 <code>/system</code> 目录下装载系统映像。在 Android 9 中，系统映像的 root 作为设备的 root 装载。</li>
     <li><strong>64 位 binder 接口</strong>。在 Android 8.x 中，32 位 GSI 使用 32 位 binder 接口。Android 9 不支持 32 位 binder 接口，因此 32 位 GSI 和 64 位 GSI 都使用 64 位 binder 接口。</li>
-    <li><strong>强制执行 VNDK</strong>。在 Android 8.1 中，VNDK 是可选的。在 Android 9 中，VNDK 是强制性的，这意味着 <code>BOARD_VNDK_RUNTIME_DISABLE</code> <strong>不可</strong>设置 (<code>BOARD_VNDK_RUNTIME_DISABLE :=  # must not be set</code>)。</li>
+    <li><strong>强制执行 VNDK</strong>。在 Android 8.1 中，VNDK 是可选的。在 Android 9 中，VNDK 是强制性的，这意味着<strong>不能</strong>设置 <code>BOARD_VNDK_RUNTIME_DISABLE</code> (<code>BOARD_VNDK_RUNTIME_DISABLE :=  # must not be set</code>)。</li>
     <li><strong>兼容的系统属性</strong>。Android 9 支持对兼容的系统属性进行访问检查：<code>PRODUCT_COMPATIBLE_PROPERTY_OVERRIDE := true</code>。</li>
 </ul>
 
@@ -95,7 +94,7 @@
 
 <h3 id="changes-in-legacy-gsis">Android 9 旧版 GSI 变更</h3>
 
-<p>升级到 Android 9 的设备可以使用名称带后缀 <code>_ab</code> 或 <code>_a</code> 的旧版 GSI 产品（例如，<code>aosp_arm64_ab</code>、<code>aosp_x86_a</code>）。此 GSI 支持以下升级用例：</p>
+<p>升级到 Android 9 的设备可以使用名称带有 <code>_ab</code> 或 <code>_a</code> 后缀的旧版 GSI 产品（例如，<code>aosp_arm64_ab</code>、<code>aosp_x86_a</code>）测试合规性。此 GSI 支持以下升级用例：</p>
 
 <ul>
   <li>具有 Android 8.1 供应商接口实现的设备</li>
@@ -132,11 +131,11 @@
 <table>
   <tbody><tr>
    <th>用例</th>
-   <th>供应商二进制文件版本</th>
+   <th>供应商<br />二进制文件<br />版本</th>
    <th><code>BOARD_VNDK_VERSION</code></th>
    <th><code>BOARD_VNDK_RUNTIME_DISABLE</code></th>
-   <th>旧版 GSI 系统二进制文件版本</th>
-   <th>旧版 GSI 支持</th>
+   <th>旧版 GSI<br />系统二进制文件版本</th>
+   <th>旧版 GSI 支持情况</th>
   </tr>
   <tr>
    <td>0</td>
@@ -191,9 +190,7 @@
 <p>最常见的受支持用例是 2，其中旧版 GSI 支持运行 Android 8.1 且使用 <code>BOARD_VNDK_VERSION</code> 进行编译（而未通过设置 <code>BOARD_VNDK_RUNTIME_DISABLE</code> 进行编译，即，未停用运行时强制执行）的设备。
 </p>
 
-<p>两个不受支持的用例是 1.a 和 1.b，其中旧版 GSI 不支持运行 Android 8.1 且未使用 <code>BOARD_VNDK_VERSION</code> 或通过设置 <code>BOARD_VNDK_RUNTIME_DISABLE</code> 进行编译（即，运行时强制执行已停用）的设备。这些设备不受支持，因为它们的供应商二进制文件依赖于 Android 8.1 非 VNDK 共享库，这些库未包含在旧版 GSI 中。</p>
-
-<p>要使这些设备与旧版 GSI 兼容，供应商必须执行以下操作之一：</p>
+<p>两个不受支持的用例是 1.a 和 1.b，其中旧版 GSI 不支持运行 Android 8.1 且未使用 <code>BOARD_VNDK_VERSION</code> 或通过设置 <code>BOARD_VNDK_RUNTIME_DISABLE</code> 进行编译（即，运行时强制执行已停用）的设备。之所以不支持这些设备，是因为这些设备的供应商二进制文件依赖于 Android 8.1 非 VNDK 共享库，而旧版 GSI 中不包含这些库。要使这些设备与旧版 GSI 兼容，供应商必须执行以下操作之一：</p>
 
 <ul>
   <li>启用 <code>BOARD_VNDK_VERSION</code>，但未设置 <code>BOARD_VNDK_RUNTIME_DISABLE</code>（用例 2）<br /><br />或<br /><br /></li>
@@ -202,13 +199,13 @@
 
 <h2 id="building-gsis">编译 GSI</h2>
 
-<p>自 Android 9 开始，每个 Android 版本都在 AOSP 上拥有一个名为 <code><var>DESSERT</var>-gsi</code> 的 GSI 分支（例如，<code>pie-gsi</code> 是 Android 9 的 GSI 分支）。GSI 分支包含应用了所有<a href="/security/bulletin/">安全补丁程序</a>和 <a href="#contributing-to-a-gsi">GSI 补丁程序</a> 的 Android 内容。
+<p>从 Android 9 开始，每个 Android 版本都在 AOSP 上拥有一个名为 <code><var>DESSERT</var>-gsi</code> 的 GSI 分支（例如，<code>pie-gsi</code> 是 Android 9 的 GSI 分支）。GSI 分支包含应用了所有<a href="/security/bulletin/">安全补丁程序</a>和 <a href="#contributing-to-gsis">GSI 补丁程序</a>的 Android 内容。
 </p>
 
-<p>要编译 GSI，请从 GSI 分支进行<a href="/setup/build/downloading">下载</a>，然后<a href="/setup/build/building#choose-a-target">选择 GSI 编译目标</a>，从而设置 Android 源代码树。请根据以下编译目标表确定设备应使用哪个 GSI 版本。编译完成后，GSI 便会成为系统映像（例如 <code>system.img</code>）并显示在输出文件夹 <code>out/target/product/<strong>generic_arm64_ab</strong></code> 中。编译还会输出 <code>vbmeta.img</code>；对于使用 <a href="/security/verifiedboot/avb">Android 验证启动</a>的设备，您可以将其用于停用验证启动。
+<p>要编译 GSI，请从 GSI 分支进行<a href="/setup/build/downloading">下载</a>，然后<a href="/setup/build/building#choose-a-target">选择 GSI 编译目标</a>，从而设置 Android 源代码树。请根据以下编译目标表确定设备应使用哪个 GSI 版本。编译完成后，GSI 便会成为系统映像（例如 <code>system.img</code>）并显示在输出文件夹 <code>out/target/product/<strong>generic_arm64_ab</strong></code> 中。编译还会输出 <code>vbmeta.img</code>；您可以利用此映像在使用 <a href="/security/verifiedboot/avb">Android 验证启动</a>的设备上停用验证启动。
 </p><p>
 
-</p><p>示例：以下命令可在 GSI 分支 <code>pie-gsi</code> 上编译旧版 GSI 编译目标 <code>aosp_arm64_ab-userdebug</code>：</p>
+</p><p>例如，要在 GSI 分支 <code>pie-gsi</code> 上编译旧版 GSI 编译目标 <code>aosp_arm64_ab-userdebug</code>，请运行以下命令：</p>
 
 <pre class="prettyprint">
 $ repo init -u https://android.googlesource.com/platform/manifest -b pie-gsi
@@ -362,12 +359,12 @@ $ make -j4
 <em>**可以根据要求添加</em>
 
 <aside class="aside">
-  <strong>注意</strong>：在未来的 Android 版本中可能会移除这些编译目标。
+  <strong>注意：</strong>在未来的 Android 版本中可能会移除这些编译目标。
 </aside>
 
-<h2 id="flashing-gsis">刷写 GSI</h2>
+<h2 id="flashing-gsis">刷写 GSI 的要求</h2>
 
-<p>Android 设备可能具有不同的设计，因此不可能通过单个命令或单组指令将 GSI 刷写到特定设备上。请使用以下常规步骤作为指南：</p>
+<p>Android 设备可能具有不同的设计，因此不可能通过单个命令或单组指令将 GSI 刷写到特定设备上。您可以向 Android 设备的制造商索要详细的刷写说明，也可以参考以下常规步骤：</p>
 
 <ol>
   <li>确保设备具备以下条件：
@@ -375,9 +372,7 @@ $ make -j4
       <li>支持 HIDL-HAL 接口。</li>
       <li>用于解锁设备的方法（以便能够使用 <code>fastboot</code> 对其进行刷写）。</li>
       <li>用于停用验证启动的方法（例如 <a href="/security/verifiedboot/">vboot 1.0</a>、<a href="/security/verifiedboot/avb">AVB</a> 等）。</li>
-      <li>解锁设备，使其可通过 <code>fastboot</code> 进行刷写。</li>
-      <aside class="note">
-        <strong>注意</strong>：请通过 Android 源代码树来编译 <code>fastboot</code>，以确保您拥有其最新版本。</aside>
+      <li>解锁设备，使其可通过 <code>fastboot</code> 刷写。（为确保您拥有最新版本的 <code>fastboot</code>，请从 Android 源代码树进行编译。）</li>
     </ul>
   </li>
   <li>停用验证启动。</li>
@@ -386,7 +381,7 @@ $ make -j4
   <li>重新启动设备。</li>
 </ol>
 
-<p>例如，要将 GSI 刷写到 Pixel 2 设备，请执行以下操作：</p>
+<p>例如，要将 GSI 刷写到任何 Pixel 设备，请执行以下操作：</p>
 
 <ol>
   <li><a href="/setup/build/running#booting-into-fastboot-mode">启动到引导加载程序模式</a>，然后<a href="/setup/build/running#unlocking-the-bootloader">解锁引导加载程序</a>。</li>
