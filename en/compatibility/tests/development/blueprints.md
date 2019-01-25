@@ -19,7 +19,7 @@ Book: /_book.yaml
   limitations under the License.
 -->
 
-# Simple Test Configuration
+# Simple Build Configuration
 
 Each new test module must have a configuration file to direct the build system
 with module metadata, compile-time dependencies and packaging instructions.
@@ -31,8 +31,9 @@ branch.
 
 Soong uses Blueprint or `.bp` files, which are JSON-like simple declarative
 descriptions of modules to build. This format replaces the
-Make-based system used in previous releases. To accommodate custom testing or
-use the Android [Compatibility Test Suite](compatibility/cts) (CTS), follow the
+[Make-based system](https://developer.android.com/ndk/guides/android_mk){:
+.external} used in previous releases. To accommodate custom testing or use the
+Android [Compatibility Test Suite](compatibility/cts) (CTS), follow the
 [Complex Test Configuration](/compatibility/tests/development/test-config)
 instead.
 

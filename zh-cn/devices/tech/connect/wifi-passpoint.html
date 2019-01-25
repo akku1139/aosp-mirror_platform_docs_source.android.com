@@ -124,7 +124,7 @@ application/x-pkcs12
 <li><p><code>SIM</code>：对于 EAP-SIM、EAP-AKA 和 EAP-AKA' 是必需的。<code>EAPType</code> 字段必须设置为适当的 EAP 类型，而 <code>IMSI</code> 必须与进行配置时设备中已安装的 SIM 卡之一的 IMSI 相匹配。IMSI 字符串可以完全由十进制数字组成以强制执行完全对等匹配，也可以包含零个或更多个十进制数字，后跟星号 (*) 以将 IMSI 匹配要求放宽为仅匹配前缀。例如，IMSI 字符串 123* 将匹配 IMSI 以 123 开头的任何 SIM 卡。</p></li>
 </ul>
 
-<h1 id="example_profile_oma_dm_xml" class="page-title">示例配置文件 OMA-DM XML</h1>
+<h2 id="example_profile_oma-dm_xml">示例配置文件 OMA-DM XML</h2>
 <pre class="prettyprint lang-xml"><code>&lt;MgmtTree xmlns="syncml:dmddf1.2"&gt;
   &lt;VerDTD&gt;1.2&lt;/VerDTD&gt;
   &lt;Node&gt;
@@ -184,5 +184,76 @@ application/x-pkcs12
   &lt;/Node&gt;
 &lt;/MgmtTree&gt;
 </code></pre>
+<h2 id="auth_advisory">身份验证建议</h2>
+
+<p>搭载 Android 8.0 或更高版本且装有 Passpoint R1 EAP-SIM、EAP-AKA 或 EAP-AKA 配置文件的设备将无法自动连接到 Passpoint 网络。此问题会减少 WLAN 分流，从而对用户、运营商和服务造成影响。</p>
+
+<table>
+  <tbody><tr>
+   <th><strong>细分</strong>
+   </th>
+   <th><strong>影响</strong>
+   </th>
+   <th><strong>影响大小</strong>
+   </th>
+  </tr>
+  <tr>
+   <td>运营商和 Passpoint 服务提供商
+   </td>
+   <td>增加移动网络的负载。
+   </td>
+   <td>使用 Passpoint R1 的任何运营商。
+   </td>
+  </tr>
+  <tr>
+   <td>用户
+   </td>
+   <td>错过了自动连接到运营商 WLAN 接入点 (AP) 的机会，从而增加流量费用。
+   </td>
+   <td>在支持 Passpoint R1 的运营商网络上运行设备的任何用户。
+   </td>
+  </tr>
+</tbody></table>
+
+<h3 id="cause_of_failure">失败原因</h3>
+
+<p>Passpoint 会指定一种机制，将广告 (ANQP) 服务提供商与设备上安装的配置文件进行匹配。以下针对 EAP-SIM、EAP-AKA 和 EAP-AKA 的匹配规则是侧重于 EAP-SIM/AKA/AKA 失败的部分规则：</p>
+<pre class="prettyprint"><code>If the FQDN (Fully Qualified Domain Name) matches
+    then the service is a Home Service Provider.
+Else: If the PLMN ID (3GPP Network) matches
+    then the service is a Roaming Service Provider.
+</code></pre>
+<p>第二个条件在 Android 8.0 中进行了修改：</p>
+<pre class="prettyprint"><code>Else: If the PLMN ID (3GPP Network) matches AND the NAI Realm matches
+    then the service is a Roaming Service Provider.
+</code></pre>
+<p>此修改后的条件意味着系统检测不到任何与以前正常工作的服务提供商匹配的项目，因此 Passpoint 设备未自动连接。</p>
+
+<h3 id="workarounds">解决方法</h3>
+
+<p>要解决修改后的匹配条件存在的问题，运营商和服务提供商需要将 <code>NAI Realm</code> 添加到由 Passpoint AP 发布的信息中。</p>
+
+<p>推荐的解决方案是让网络服务提供商实施网络端解决方法，这种方法部署速度最快。设备端解决方法依赖于原始设备制造商 (OEM) 从 Android 开源项目 (AOSP) 获取变更列表 (CL)，然后更新在实际应用中的设备。</p>
+
+<h4 id="network_fix_for_carriers_and_passpoint_service_providers">针对运营商和 Passpoint 服务提供商的网络修复</h4>
+
+<p>网络端解决方法需要重新配置网络以添加 <code>NAI
+Realm</code> ANQP 元素（如下文所述）。Passpoint 规范不需要 <code>NAI Realm</code> ANQP 元素，但添加此属性符合 Passpoint 规范，因此符合规范的客户端实现应该不会发生中断。</p>
+
+<ol>
+<li>添加 <code>NAI Realm</code> ANQP 元素。</li>
+<li>设置 <code>NAI Realm</code> 子字段以匹配设备上安装所配置文件的 <code>Realm</code>。</li>
+</ol>
+
+<h4 id="deviceaosp_fix_for_oems">针对原始设备制造商 (OEM) 的设备/AOSP 修复</h4>
+
+<p>要实现设备端解决方法，原始设备制造商 (OEM) 需要选择补丁程序 CL <a href="https://android-review.googlesource.com/c/platform/frameworks/opt/net/wifi/+/718508">aosp/718508</a>。此补丁程序可以在以下系统版本上应用：</p>
+
+<ul>
+<li>Android 8.x</li>
+<li>Android 9</li>
+</ul>
+
+<p>挑选补丁程序后，原始设备制造商 (OEM) 需要更新在实际应用中的设备。</p>
 
 </body></html>

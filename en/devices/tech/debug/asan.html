@@ -21,55 +21,81 @@
       limitations under the License.
   -->
 
-
-
 <p>AddressSanitizer (ASan) is a fast compiler-based tool for detecting memory bugs
-in native code. It is comparable to Valgrind (Memcheck tool), but, unlike it,
-ASan:</p>
+in native code. Android supports both regular ASan and hardware-accelerated ASan (HWASan).
+HWAsan is based on memory tagging and is only available on AArch64 because it relies on
+the Top-Byte-Ignore feature.</p>
 
+<p>These tools detect:</p>
 <ul>
-  <li> + detects overflows on stack and global objects
-  <li> - does not detect uninitialized reads and memory leaks
-  <li> + is much faster (two-three times slowdown compared to Valgrind’s 20-100x)
-  <li> + has less memory overhead
+<li>Stack and heap buffer overflow/underflow.
+<li>Heap use after free.
+<li>Stack use outside scope.
+<li>Stack use after return (HWAsan only on Android).
+<li>Double free/wild free.
 </ul>
 
-<p>This document describes how to build and run parts of the Android platform with
-AddressSanitizer. If you are looking to build a standalone (i.e. SDK/NDK)
-application with AddressSanitizer, see the <a
-href="https://github.com/google/sanitizers/wiki/AddressSanitizerOnAndroid">AddressSanitizerOnAndroid</a>
-public project site instead.</p>
+<p>ASan runs on both 32-bit and 64-bit ARM, plus x86 and x86-64. ASan's CPU overhead
+is roughly 2x, code size overhead is between 50% and 2x, and a large memory overhead
+(dependent on your allocation patterns, but on the order of 2x).</p>
 
-<p>AddressSanitizer consists of a compiler (<code>external/clang</code>) and a runtime library
-(<code>external/compiler-rt/lib/asan</code>).</p>
+<p>HWASan has similar CPU and code size overheads, but a much smaller RAM overhead (15%).
+HWASan is non-deterministic. There are only 256 possible tag values, so there is a flat 0.4%
+probability of missing any bug. HWAsan does not have ASan's limited-size redzones for
+detecting overflows and limited-capacity quarantine for detecting use-after-free,
+so it does not matter to HWAsan how large the overflow is or how long ago the memory
+was deallocated. This makes HWASan better than ASan.</p>
 
-<p class="note"><strong>Note</strong>: Use the current master
-branch to gain access to the <a href="#sanitize_target">SANITIZE_TARGET</a>
-feature and the ability to build the entire Android platform with
-AddressSanitizer at once. Otherwise, you are limited to using
-<code>LOCAL_SANITIZE</code>.</p>
+<p>Valgrind's Memcheck tool is similar, but ASan also detects stack/global overflows
+in addition to heap overflows, and is much faster with less memory overhead. Conversely,
+Valgrind detects uninitialized reads and memory leaks that ASan does not.
+Valgrind may be useful for debugging apps but is not practical for the entire OS,
+which is why the Android team uses ASan instead.</p>
 
-<h2 id=building_with_clang>Building with Clang</h2>
+<p>This document describes how to build and run parts/all of the Android OS itself with
+AddressSanitizer. If you are building an SDK/NDK application with AddressSanitizer, see
+<a href="https://github.com/google/sanitizers/wiki/AddressSanitizerOnAndroid" class="external">AddressSanitizerOnAndroid</a>
+instead.</p>
 
-<p>As a first step to building an ASan-instrumented binary, make sure that your
-code builds with Clang. This is done by default on the master branch, so there should be nothing
-you need to do. If you believe that the module you'd like to test is being built with GCC,
-you can switch to Clang by adding <code>LOCAL_CLANG:=true</code>
-to the build rules. Clang may find bugs in your code that GCC missed.</p>
 
-<h2 id=building_executables_with_addresssanitizer>Building executables with AddressSanitizer</h2>
+<h2 id="using-hwasan">Using HWAsan</h2>
 
-<p>Add <code>LOCAL_SANITIZE:=address</code> to the build rule of the
-executable.</p>
+<p>As of December 2018 only Pixel 2 and Pixel 2 XL are supported. Supporting another device
+requires backporting several kernel patches. The Android team is working on getting those into
+the common kernel.
+You may also need to remove some optional extras to make room on your system partition for the
+larger libraries. See the <code>walleye_hwasan</code> target for an example.</p>
 
-<pre class="devsite-click-to-copy">
-LOCAL_SANITIZE:=address
+<p>Use the following commands to build the entire platform using HWASan:</p>
+
+<pre class="prettyprint">
+<code class="devsite-terminal">lunch walleye_hwasan-userdebug</code>
+<code class="devsite-terminal">make SANITIZE_TARGET=hwaddress</code>
 </pre>
+
+<p>Unlike ASan, with HWASan there's no need to build twice, incremental builds just work,
+there are no special flashing instructions or wiping, static executables are supported,
+and it's okay to skip sanitization of any library other than <code>libc</code>.
+There's also no requirement that if a library is sanitized, any executable that links
+to it must also be sanitized.
+
+<p>To skip sanitization of a module, use <code>LOCAL_NOSANITIZE := hwaddress</code> or
+<code>sanitize: { hwaddress: false }</code>.</p>
+
+<aside class="note">
+<strong>Note:</strong> Currently there is no support for sanitizing individual modules with HWASan. Use ASan to sanitize individual modules.
+</aside>
+
+<h2 id="sanitizing_individual_executables_with_asan">Sanitizing individual executables with ASan</h2>
+
+<p>Add <code>LOCAL_SANITIZE:=address</code> or <code>sanitize: { address: true } }</code> to
+the build rule for the executable. You can search the code for existing examples or to find
+the other available sanitizers.</p>
 
 <p>When a bug is detected, ASan prints a verbose report both to the standard
 output and to <code>logcat</code> and then crashes the process.</p>
 
-<h2 id=building_shared_libraries_with_addresssanitizer>Building shared libraries with AddressSanitizer</h2>
+<h2 id="sanitizing_shared_libraries_with_asan">Sanitizing shared libraries with ASan</h2>
 
 <p>Due to the way ASan works, a library built with ASan cannot be used by an
 executable that's built without ASan.</p>
@@ -151,7 +177,7 @@ script.
 <p>The second approach can provide more data (i.e. file:line locations) because of
 the availability of symbolized libraries on the host.</p>
 
-<h2 id=addresssanitizer_in_the_apps>AddressSanitizer in the apps</h2>
+<h2 id=addresssanitizer_in_the_apps>AddressSanitizer in apps</h2>
 
 <p>AddressSanitizer cannot see into Java code, but it can detect bugs in the JNI
 libraries. For that, you'll need to build the executable with ASan, which in
@@ -204,8 +230,8 @@ the log.</p>
 
 <h2 id=sanitize_target>SANITIZE_TARGET</h2>
 
-<p>The master branch has support for building the entire Android platform with
-AddressSanitizer at once.</p>
+<p>Since Android 7.0 Nougat, there is support for building the entire Android platform with
+ASan at once. (If you're building a release newer than Android 9.0 Pie, HWASan is a better choice.)</p>
 
 <p>Run the following commands in the same build tree.</p>
 
@@ -220,8 +246,6 @@ flashed to the device as well. Use the following command line:</p>
 <pre class="devsite-terminal devsite-click-to-copy">
 fastboot flash userdata && fastboot flashall
 </pre>
-
-<p>At the moment of this writing, modern Nexus and Pixel devices boot to the UI in this mode.</p>
 
 <p>This works by building two sets of shared libraries: normal in
 <code>/system/lib</code> (the first make invocation), ASan-instrumented in

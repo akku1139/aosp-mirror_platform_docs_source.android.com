@@ -81,7 +81,7 @@ getHardwareFeatures()
 <p><strong>版本</strong>：2</p>
 <p>该函数在 Keymaster 2 中引入，并在 Keymaster 3 中被弃用，因为这些信息已在系统属性文件中提供，制造商实现会在启动期间读取这些文件。</p>
 
-<p>配置 Keymaster。该方法在打开设备之后、使用设备之前被调用一次。它用于向 Keymaster 提供 <a href="/security/keystore/tags#os_version">KM_TAG_OS_VERSION</a> 和 <a href="/security/keystore/tags#os_patchlevel">KM_TAG_OS_PATCHLEVEL</a>。
+<p>配置 Keymaster。该方法在打开设备之后、使用设备之前被调用一次。可使用此方法向 Keymaster 提供 <a href="/security/keystore/tags#os_version">KM_TAG_OS_VERSION</a> 和 <a href="/security/keystore/tags#os_patchlevel">KM_TAG_OS_PATCHLEVEL</a>。
 在该方法被调用之前，所有其他方法会返回 <code>KM_ERROR_KEYMASTER_NOT_CONFIGURED</code>。该方法提供的值仅在每次启动时被 Keymaster 接受一次。之后的调用都会返回 <code>KM_ERROR_OK</code>，但不执行任何操作。</p>
 <p>
 如果 Keymaster 实现在安全的硬件中进行，且提供的操作系统版本和补丁程序级别的值与引导加载程序向安全硬件提供的值不匹配（或者引导加载程序未提供任何值），则该方法会返回 <code>KM_ERROR_INVALID_ARGUMENT</code>，所有其他方法仍然返回 <code>KM_ERROR_KEYMASTER_NOT_CONFIGURED</code>。</p>
@@ -146,8 +146,7 @@ keymaster_error_t (*configure)(const struct keymaster2_device* dev,
   <li><code>Tag::PADDING</code> 用于指定可以使用的填充模式。此参数仅与 ECB 和 CBC 模式相关。</li>
 </ul>
 
-<p>如果指定的是 GCM 分块模式，则提供 <a href="/security/keystore/tags#min_mac_length">Tag::MIN_MAC_LENGTH</a>。
-如果缺少此参数，该方法会返回 <code>ErrorCode::MISSING_MIN_MAC_LENGTH</code>。标记的值为 8 的倍数且介于 96 和 128 之间。</p>
+<p>如果指定的是 GCM 分块模式，则提供 <a href="/security/keystore/tags#min_mac_length">Tag::MIN_MAC_LENGTH</a>。如果缺少此参数，该方法会返回 <code>ErrorCode::MISSING_MIN_MAC_LENGTH</code>。该标记的值为 8 的倍数且介于 96 和 128 之间。</p>
 
 <h4 id="generate_key_hmac_keys">HMAC 密钥</h4>
 
@@ -163,13 +162,13 @@ keymaster_error_t (*configure)(const struct keymaster2_device* dev,
 <h4 id="key_characteristics">密钥特性</h4>
 
 <p>如果特性参数为非 NULL 值，<code>generateKey</code> 会返回新生成密钥的特性（相应划分到由硬件强制执行的列表和由软件强制执行的列表中）。
-要了解哪些特性会划分到哪个列表中，请参阅 <a href="#get_key_characteristics">getKeyCharacteristics</a>。返回的特性包含为生成密钥而指定的所有参数，<a href="/security/keystore/tags#application_id">Tag::APPLICATION_ID</a> 和 <a href="/security/keystore/tags#application_data">Tag::APPLICATION_DATA</a> 除外。如果这两个标记包含在密钥参数中，则将其从返回的特性中移除，以确保无法通过查看返回的密钥 Blob 找出这两个标记的值。不过，这两个标记以加密形式绑定到密钥 Blob，以便在使用相应密钥时，如果未提供正确的值，使用会失败。<a href="/security/keystore/tags#root_of_trust">Tag::ROOT_OF_TRUST</a> 同样会以加密形式绑定到相应密钥，但在生成或导入密钥期间可以不指定此标记，并且在任何情况下都不会返回此标记。</p>
+要了解哪些特性会划分到哪个列表中，请参阅 <a href="#get_key_characteristics">getKeyCharacteristics</a>。返回的特性包含为生成密钥而指定的所有参数，但 <a href="/security/keystore/tags#application_id">Tag::APPLICATION_ID</a> 和 <a href="/security/keystore/tags#application_data">Tag::APPLICATION_DATA</a> 除外。如果密钥参数中包含这两个标记，为确保无法通过查看返回的密钥 Blob 找到这两个标记的值，系统会将这两个标记从返回的特性中移除。不过，这两个标记以加密形式绑定到密钥 Blob，以便在使用相应密钥时，如果未提供正确的值，使用会失败。<a href="/security/keystore/tags#root_of_trust">Tag::ROOT_OF_TRUST</a> 同样会以加密形式绑定到相应密钥，但在生成或导入密钥期间可以不指定此标记，并且在任何情况下都不会返回此标记。</p>
 
-<p>除了收到的标记外，Trustlet 还会添加 <a href="/security/keystore/tags#origin">Tag::ORIGIN</a>（值为 <code>KeyOrigin::GENERATED</code>）；如果相应密钥可抗回滚，还要添加 <a href="/security/keystore/tags#rollback_resistant">Tag::ROLLBACK_RESISTANT</a>。</p>
+<p>除了收到的标记外，Trustlet 还会添加 <a href="/security/keystore/tags#origin">Tag::ORIGIN</a>（值为 <code>KeyOrigin::GENERATED</code>）；如果相应密钥可抗回滚，则还会添加 <a href="/security/keystore/tags#rollback_resistant">Tag::ROLLBACK_RESISTANT</a>。</p>
 
 <h4 id="rollback_resistance">抗回滚</h4>
 
-<p>抗回滚意味着，密钥在通过 <a href="#delete_key">deleteKey</a> 或 <a href="#delete_all_keys">deleteAllKeys</a> 删除后，安全硬件会保证它绝对无法再使用。不具抗回滚功能的实现通常会将生成或导入的密钥材料作为密钥 Blob（一种经过加密和身份验证的形式）返回给调用程序。当 Keystore 删除密钥 Blob 后，相应密钥将会消失，但之前已设法获取密钥材料的攻击者可能能够将相应密钥材料恢复到设备上。</p>
+<p>抗回滚意味着，在使用 <a href="#delete_key">deleteKey</a> 或 <a href="#delete_all_keys">deleteAllKeys</a> 删除密钥后，可以通过安全硬件保证绝对无法再使用该等密钥。不具抗回滚功能的实现通常会将生成或导入的密钥材料作为密钥 Blob（一种经过加密和身份验证的形式）返回给调用程序。当 Keystore 删除密钥 Blob 后，相应密钥将会消失，但之前已设法获取密钥材料的攻击者可能能够将相应密钥材料恢复到设备上。</p>
 
 <p>如果安全硬件保证被删除的密钥以后无法被恢复，那么相应密钥便可抗回滚。安全硬件通常是通过将额外的密钥元数据存储在攻击者无法操控的可信位置来做到这一点。在移动设备上，用于实现这一点的机制通常为 Replay Protected Memory Block (RPMB)。由于可创建的密钥数量基本上没有限制，而用于抗回滚的可信存储空间的大小则可能有限制，因此，该方法需要在即使无法为新密钥提供抗回滚功能的情况下同样取得成功。在这种情况下，不得将 <a href="/security/keystore/tags#rollback_resistant">Tag::ROLLBACK_RESISTANT</a> 添加到密钥特性中。</p>
 
@@ -190,7 +189,7 @@ keymaster_error_t (*configure)(const struct keymaster2_device* dev,
   <li><a href="/security/keystore/tags#algorithm">Tag::ALGORITHM</a>、<a href="/security/keystore/tags#key_size">Tag::KEY_SIZE</a> 和 <a href="/security/keystore/tags#rsa_public_exponent">Tag::RSA_PUBLIC_EXPONENT</a> 是密钥的固有属性。对于任何由硬件来保障安全的密钥，这些标记都将位于由硬件强制执行的列表中。</li>
   <li>由安全硬件支持的 <a href="/security/keystore/tags#digest">Tag::DIGEST</a> 值位于由硬件支持的列表中。不受支持的摘要则位于由软件支持的列表中。</li>
   <li><a href="/security/keystore/tags#padding">Tag::PADDING</a> 的值通常位于由硬件支持的列表中，除非存在这样一种可能性，某种特定的填充模式必须要由软件来执行，在这种情况下，这些值将位于由软件强制执行的列表中。如果 RSA 密钥允许使用不是由安全硬件支持的摘要算法进行 PSS 或 OAEP 填充，则存在这种可能性。</li>
-  <li><a href="/security/keystore/tags#user_secure_id">Tag::USER_SECURE_ID</a> 和 <a href="/security/keystore/tags#mac_length">Tag::USER_AUTH_TYPE</a> 仅在用户身份验证由硬件强制执行时，才由硬件强制执行。要让用户身份验证由硬件强制执行，Keymaster Trustlet 和相关的身份验证 Trustlet 都必须是安全的，且共用一个用于签署和验证身份验证令牌的 HMAC 密钥。要了解详情，请参阅<a href="/security/authentication/">身份验证</a>页面。</li>
+  <li><a href="/security/keystore/tags#user_secure_id">Tag::USER_SECURE_ID</a> 和 <a href="/security/keystore/tags#mac_length">Tag::USER_AUTH_TYPE</a> 仅在用户身份验证是由硬件强制执行时才会由硬件强制执行。要让用户身份验证由硬件强制执行，Keymaster Trustlet 和相关的身份验证 Trustlet 都必须是安全的，且共用一个用于签署和验证身份验证令牌的 HMAC 密钥。要了解详情，请参阅<a href="/security/authentication/">身份验证</a>页面。</li>
   <li><a href="/security/keystore/tags#active_datetime">Tag::ACTIVE_DATETIME</a>、<a href="/security/keystore/tags#origination_expire_datetime">Tag::ORIGINATION_EXPIRE_DATETIME</a> 和 <a href="/security/keystore/tags#usage_expire_datetime">Tag::USAGE_EXPIRE_DATETIME</a> 标记要求能够访问可验证的正确时钟。大多数安全硬件只能访问由非安全操作系统提供的时间信息，这意味着这些标记由软件强制执行。</li>
   <li>对于绑定到硬件的密钥，<a href="/security/keystore/tags#origin">Tag::ORIGIN</a> 始终位于硬件列表中。如果此标记出现在硬件列表中，更高的层级便可据此确定相应密钥是由硬件支持的。</li>
 </ul>
@@ -232,8 +231,7 @@ keymaster_error_t (*configure)(const struct keymaster2_device* dev,
 
 <h3 id="destroy_attestation_ids">destroyAttestationIds</h3>
 <p><strong>版本</strong>：3</p>
-<p>
-<code>destroyAttestationIds()</code> 方法用于永久停用新的<a href="/security/keystore/attestation#id-attestation">ID 认证</a>功能（该功能是可选功能，但我们强烈推荐）。如果 TEE 无法确保在调用此方法后永久停用相应的 ID 认证，则一定不得实现 ID 认证，在这种情况下，此方法不执行任何操作并返回 <code>ErrorCode::UNIMPLEMENTED</code>。如果支持 ID 认证，则需要实现此方法且必须永久停用未来尝试进行 ID 认证的所有操作。此方法的调用次数不受限制。如果已永久停用 ID 认证，则此方法不会执行任何操作并返回 <code>ErrorCode::OK</code>。</p>
+<p>可以使用 <code>destroyAttestationIds()</code> 方法永久停用新的 <a href="/security/keystore/attestation#id-attestation">ID 认证</a>功能。该功能是一项可选功能，但我们强烈建议您启用该功能。如果 TEE 无法确保在调用此方法后永久停用相应的 ID 认证，则一定不得实现 ID 认证，在这种情况下，此方法不执行任何操作并返回 <code>ErrorCode::UNIMPLEMENTED</code>。如果支持 ID 认证，则需要实现此方法且必须永久停用未来尝试进行 ID 认证的所有操作。此方法的调用次数不受限制。如果已永久停用 ID 认证，则此方法不会执行任何操作并返回 <code>ErrorCode::OK</code>。</p>
 <p>
 此方法只可能返回以下错误代码：<code>ErrorCode::UNIMPLEMENTED</code>（如果不支持 ID 认证）、<code>ErrorCode:OK</code>、<code>ErrorCode::KEYMASTER_NOT_CONFIGURED</code> 或指示无法与安全硬件通信的错误代码之一。
 </p>
@@ -242,7 +240,7 @@ keymaster_error_t (*configure)(const struct keymaster2_device* dev,
 
 <p><strong>版本</strong>：1、2、3</p>
 
-<p>使用指定的密钥和参数（视情况而定）针对指定的目的开始执行加密操作，并返回用于与 <a href="#update">update</a> 和 <a href="#finish">finish</a> 配合使用以完成操作的操作句柄。该操作句柄还会在经过身份验证的操作中用作“质询”令牌，并且对于此类操作，该操作句柄包含在身份验证令牌的 <code>challenge</code> 字段中。</p>
+<p>使用指定的密钥和参数（视情况而定）针对指定的目的开始执行加密操作，并返回用于与 <a href="#update">update</a> 和 <a href="#finish">finish</a> 配合使用来完成操作的操作句柄。该操作句柄还会在经过身份验证的操作中用作“质询”令牌，并且对于此类操作，该操作句柄包含在身份验证令牌的 <code>challenge</code> 字段中。</p>
 
 <p>Keymaster 实现支持至少 16 个并行操作。Keystore 最多使用 15 个，留一个给 vold 用于对密码进行加密。当 Keystore 有 15 个操作正在进行（已调用 <code>begin</code>，但尚未调用 <code>finish</code> 或 <code>abort</code>）时，如果 Keystore 收到开始第 16 个操作的请求，它会对最近使用最少的操作调用 <code>abort</code>，以便将进行中的操作减少到 14 个，然后再调用 <code>begin</code> 来开始执行新请求的操作。</p>
 
@@ -253,20 +251,20 @@ keymaster_error_t (*configure)(const struct keymaster2_device* dev,
 <p>在执行此方法期间，如果实现将以下密钥授权放入到了“由硬件强制执行的”特性中，并且相应操作不是公钥操作，那么这些密钥授权将由 Trustlet 来强制执行。即使不符合授权要求，也会允许公钥操作（即使用 RSA 或 EC 密钥进行的 <code>KeyPurpose::ENCRYPT</code> 和 <code>KeyPurpose::VERIFY</code>）成功完成。</p>
 
 <ul>
-  <li><a href="/security/keystore/tags#purpose">Tag::PURPOSE</a>：除非请求的操作是公钥操作，否则 <code>begin()</code> 调用中指定的目的必须与密钥授权中的某个目的一致。如果指定的目的不一致且操作并非公钥操作，则 <code>begin</code> 会返回 <code>ErrorCode::UNSUPPORTED_PURPOSE</code>。公钥操作是不对称加密或验证操作。</li>
+  <li><a href="/security/keystore/tags#purpose">Tag::PURPOSE</a>：除非请求的操作是公钥操作，否则在 <code>begin()</code> 调用中指定的目的必须与密钥授权中的某个目的一致。如果指定的目的不一致且操作并非公钥操作，则 <code>begin</code> 会返回 <code>ErrorCode::UNSUPPORTED_PURPOSE</code>。公钥操作是不对称加密或验证操作。</li>
   <li>只有可信 UTC 时间源可用时才能强制执行 <a href="/security/keystore/tags#active_datetime">Tag::ACTIVE_DATETIME</a>。如果当前日期和时间早于此标记的值，该方法会返回 <code>ErrorCode::KEY_NOT_YET_VALID</code>。</li>
   <li>只有可信 UTC 时间源可用时才能强制执行 <a href="/security/keystore/tags#origination_expire_datetime">Tag::ORIGINATION_EXPIRE_DATETIME</a>。如果当前日期和时间晚于此标记的值，并且目的是 <code>KeyPurpose::ENCRYPT</code> 或 <code>KeyPurpose::SIGN</code>，该方法会返回 <code>ErrorCode::KEY_EXPIRED</code>。</li>
   <li>只有可信 UTC 时间源可用时才能强制执行 <a href="/security/keystore/tags#usage_expire_datetime">Tag::USAGE_EXPIRE_DATETIME</a>。如果当前日期和时间晚于此标记的值，并且目的是 <code>KeyPurpose::DECRYPT</code> 或 <code>KeyPurpose::VERIFY</code>，该方法会返回 <code>ErrorCode::KEY_EXPIRED</code>。</li>
-  <li><a href="/security/keystore/tags#min_seconds_between_ops">Tag::MIN_SECONDS_BETWEEN_OPS</a> 会与指明相应密钥上次使用时间的可信相对计时器进行比较。如果上次使用时间加上此标记的值后小于当前时间，该方法会返回 <code>ErrorCode::KEY_RATE_LIMIT_EXCEEDED</code>。要查看重要的实现详情，请参阅<a href="/security/keystore/tags#min_seconds_between_ops">标记说明</a>。</li>
+  <li><a href="/security/keystore/tags#min_seconds_between_ops">Tag::MIN_SECONDS_BETWEEN_OPS</a> 会与指明相应密钥上次使用时间的可信相对计时器进行比较。如果上次使用时间加上此标记的值小于当前时间，该方法会返回 <code>ErrorCode::KEY_RATE_LIMIT_EXCEEDED</code>。要查看重要的实现详情，请参阅<a href="/security/keystore/tags#min_seconds_between_ops">标记说明</a>。</li>
   <li><a href="/security/keystore/tags#max_uses_per_boot">Tag::MAX_USES_PER_BOOT</a> 会与用于跟踪自系统启动以来相应密钥使用次数的安全计数器进行比较。如果之前的使用次数已超过此标记的值，该方法会返回 <code>ErrorCode::KEY_MAX_OPS_EXCEEDED</code>。</li>
-  <li>仅当相应密钥还有 <a href="/security/keystore/tags#auth_timeout">Tag::AUTH_TIMEOUT</a> 时，<a href="/security/keystore/tags#user_secure_id">Tag::USER_SECURE_ID</a>才会由此方法强制执行。如果相应密钥同时具有这两个标记，此方法必须在 <code>inParams</code> 中收到有效的 <a href="/security/keystore/tags#auth_token">Tag::AUTH_TOKEN</a>。要使身份验证令牌有效，必须满足以下所有条件：
+  <li>仅当相应密钥还具有 <a href="/security/keystore/tags#auth_timeout">Tag::AUTH_TIMEOUT</a> 时，此方法才会强制执行 <a href="/security/keystore/tags#user_secure_id">Tag::USER_SECURE_ID</a>。如果相应密钥同时具有这两个标记，此方法必须在 <code>inParams</code> 中收到有效的 <a href="/security/keystore/tags#auth_token">Tag::AUTH_TOKEN</a>。要使身份验证令牌有效，必须满足以下所有条件：
    <ul>
      <li>HMAC 字段可正确验证。</li>
      <li>相应密钥中有至少一个 <a href="/security/keystore/tags#user_secure_id">Tag::USER_SECURE_ID</a> 值与令牌中至少一个安全 ID 值一致。</li>
      <li>相应密钥具有与令牌中的身份验证类型一致的 <a href="/security/keystore/tags#mac_length">Tag::USER_AUTH_TYPE</a>。</li>
    </ul>
   <p>如果上述条件中有任何一个不满足，该方法就会返回 <code>ErrorCode::KEY_USER_NOT_AUTHENTICATED</code>。</p></li>
-  <li><a href="/security/keystore/tags#caller_nonce">Tag::CALLER_NONCE</a> 允许调用程序指定随机数或初始化矢量 (IV)。如果相应密钥没有此标记，但调用程序为此方法提供了 <a href="/security/keystore/tags#nonce">Tag::NONCE</a>，则返回 <code>ErrorCode::CALLER_NONCE_PROHIBITED</code>。</li>
+  <li><a href="/security/keystore/tags#caller_nonce">Tag::CALLER_NONCE</a> 允许调用程序指定随机数或初始化矢量 (IV)。如果相应密钥没有此标记，但调用程序向此方法提供了 <a href="/security/keystore/tags#nonce">Tag::NONCE</a>，则返回 <code>ErrorCode::CALLER_NONCE_PROHIBITED</code>。</li>
   <li><a href="/security/keystore/tags#bootloader_only">Tag::BOOTLOADER_ONLY</a> 用于指定相应密钥只能由引导加载程序使用。如果在引导加载程序执行完毕后调用此方法，并且提供的是仅限引导加载程序使用的密钥，则返回 <code>ErrorCode::INVALID_KEY_BLOB</code>。</li>
 </ul>
 
@@ -309,8 +307,8 @@ keymaster_error_t (*configure)(const struct keymaster2_device* dev,
 <p>如果分块模式是 <code>BlockMode::GCM</code> 或 <code>BlockMode::CTR</code>，那么指定的填充模式必须是 <code>PaddingMode::NONE</code>。如果分块模式是 <code>BlockMode::ECB</code> 或 <code>BlockMode::CBC</code>，那么指定的填充模式可以是 <code>PaddingMode::NONE</code> 或 <code>PaddingMode::PKCS7</code>。如果填充模式不符合这些条件，则返回 <code>ErrorCode::INCOMPATIBLE_PADDING_MODE</code>。</p>
 
 <p>如果分块模式是 <code>BlockMode::CBC</code>、<code>BlockMode::CTR</code> 或 <code>BlockMode::GCM</code>，则需要初始化矢量或随机数。
-在大多数情况下，调用程序都不应提供 IV 或随机数。在这种情况下，Keymaster 实现会生成一个随机 IV 或随机数，并通过 <code>outParams</code> 中的 <a href="/security/keystore/tags#nonce">Tag::NONCE</a> 将其返回。
-CBC 和 CTR IV 均为 16 个字节。GCM 随机数为 12 个字节。如果密钥授权包含 <a href="/security/keystore/tags#caller_nonce">Tag::CALLER_NONCE</a>，那么调用程序可以通过 <code>inParams</code> 中的 <a href="/security/keystore/tags#nonce">Tag::NONCE</a> 提供 IV/随机数。如果在 <a href="/security/keystore/tags#caller_nonce">Tag::CALLER_NONCE</a> 未获得授权时提供了随机数，则返回 <code>ErrorCode::CALLER_NONCE_PROHIBITED</code>。如果在 <a href="/security/keystore/tags#caller_nonce">Tag::CALLER_NONCE</a> 获得了授权的情况下未提供随机数，则生成一个随机 IV/随机数。</p>
+在大多数情况下，调用程序都不应提供 IV 或随机数。在这种情况下，Keymaster 实现会生成一个随机 IV 或随机数，并通过 <a href="/security/keystore/tags#nonce">outParams</a> 中的 <code>outParams</code> 将其返回。
+CBC 和 CTR IV 均为 16 个字节。GCM 随机数为 12 个字节。如果密钥授权包含 <a href="/security/keystore/tags#caller_nonce">Tag::CALLER_NONCE</a>，调用程序可能会通过 <code>inParams</code> 中的 <a href="/security/keystore/tags#nonce">Tag::NONCE</a> 提供 IV/随机数。如果在 <a href="/security/keystore/tags#caller_nonce">Tag::CALLER_NONCE</a> 未获得授权的情况下提供了随机数，则会返回 <code>ErrorCode::CALLER_NONCE_PROHIBITED</code>。如果在 <a href="/security/keystore/tags#caller_nonce">Tag::CALLER_NONCE</a> 获得授权的情况下未提供随机数，则会生成随机 IV/随机数。</p>
 
 <h4 id="begin_hmac_keys">HMAC 密钥</h4>
 
@@ -332,7 +330,7 @@ CBC 和 CTR IV 均为 16 个字节。GCM 随机数为 12 个字节。如果密�
 
 <h4 id="error_handling">错误处理</h4>
 
-<p>如果此方法返回除 <code>ErrorCode::OK</code> 之外的错误代码，那么相应操作会被中止，操作句柄也会变为无效。如果以后再将该句柄与此方法、<a href="#finish">finish</a> 或 <a href="#abort">abort</a> 配合使用，都会返回 <code>ErrorCode::INVALID_OPERATION_HANDLE</code>。</p>
+<p>如果此方法返回除 <code>ErrorCode::OK</code> 之外的错误代码，那么相应操作会被中止，操作句柄也会变为无效。如果以后再将该句柄与此方法、<a href="#finish">finish</a> 或 <a href="#abort">abort</a> 配合使用，则都会返回 <code>ErrorCode::INVALID_OPERATION_HANDLE</code>。</p>
 
 <h4 id="update_authorization_enforcement">密钥授权强制执行</h4>
 
@@ -344,7 +342,7 @@ CBC 和 CTR IV 均为 16 个字节。GCM 随机数为 12 个字节。如果密�
   <li>没有 <a href="/security/keystore/tags#auth_timeout">Tag::AUTH_TIMEOUT</a></li>
 </ul>
 
-<p>在这种情况下，密钥需要针对各项操作的授权，并且 update 方法会在 <code>inParams</code> 参数中收到 <a href="/security/keystore/tags#auth_token">Tag::AUTH_TOKEN</a>。HMAC 会验证该令牌有效且包含匹配的安全用户 ID，与密钥的 <a href="/security/keystore/tags#mac_length">Tag::USER_AUTH_TYPE</a> 匹配，并且包含质询字段中当前操作的操作句柄。如果不符合这些条件，则返回 <code>ErrorCode::KEY_USER_NOT_AUTHENTICATED</code>。</p>
+<p>在这种情况下，对于每一项操作，密钥都会要求提供授权，并且 update 方法会在 <code>inParams</code> 参数中收到 <a href="/security/keystore/tags#auth_token">Tag::AUTH_TOKEN</a>。HMAC 会验证该令牌有效且包含匹配的安全用户 ID，与密钥的 <a href="/security/keystore/tags#mac_length">Tag::USER_AUTH_TYPE</a> 匹配，并且包含质询字段中当前操作的操作句柄。如果不符合这些条件，则返回 <code>ErrorCode::KEY_USER_NOT_AUTHENTICATED</code>。</p>
 
 <p>调用程序会在每次调用 <a href="#update">update</a> 和 <a href="#finish">finish</a> 时提供身份验证令牌。实现只需对该令牌验证一次（如果它倾向于这么做）。</p>
 
@@ -361,7 +359,7 @@ CBC 和 CTR IV 均为 16 个字节。GCM 随机数为 12 个字节。如果密�
 
 <h4 id="update_aes_keys">AES 密钥</h4>
 
-<p>AES GCM 模式支持通过 <code>inParams</code> 参数中的 <a href="/security/keystore/tags#associated_data">Tag::ASSOCIATED_DATA</a> 标记提供的“相关身份验证数据”。
+<p>AES GCM 模式支持通过 <code>inParams</code> 参数的中的 <a href="/security/keystore/tags#associated_data">Tag::ASSOCIATED_DATA</a> 标记提供的“相关身份验证数据”。
 可以在重复调用（如果数据太大而无法在单个分块中发送，那么重复调用非常重要）中提供相关数据，但始终先于要加密或解密的数据提供。update 调用可以同时接收相关数据以及要加密/解密的数据，但后续 update 中不会包含相关数据。如果调用程序已在某次调用 update 时提供了要加密/解密的数据，若再次向 update 调用提供相关数据，则返回 <code>ErrorCode::INVALID_TAG</code>。</p>
 
 <p>对于 GCM 加密，此标记会通过 <a href="#finish">finish</a> 附加到密文中。在解密期间，向上一次 update 调用提供的数据的最后 <code>Tag::MAC_LENGTH</code> 个字节就是此标记。由于 <a href="#update">update</a> 的指定调用无法得知自己是否为最后一次调用，因此它会处理除标记长度之外的所有数据，并缓冲调用 <a href="#finish">finish</a> 期间可能用到的标记数据。</p>
@@ -370,11 +368,11 @@ CBC 和 CTR IV 均为 16 个字节。GCM 随机数为 12 个字节。如果密�
 
 <p><strong>版本</strong>：1、2、3</p>
 
-<p>用于完成通过 <a href="#begin">begin</a> 开始且正在进行的操作，负责处理通过 <a href="#update">update</a> 提供的所有尚未处理的数据。</p>
+<p>用于完成通过 <a href="#begin">begin</a> 开始且正在进行的操作，负责处理 <a href="#update">update</a> 所提供的所有尚未处理的数据。</p>
 
 <p>此方法是操作期间调用的最后一个方法，因此会返回所有处理后的数据。</p>
 
-<p>无论是成功完成还是返回错误，此方法都会结束相应操作，从而使收到的操作句柄无效。如果以后再将该句柄与此方法、<a href="#update">update</a> 或 <a href="#abort">abort</a> 配合使用，都会返回 <code>ErrorCode::INVALID_OPERATION_HANDLE</code>。</p>
+<p>无论是成功完成还是返回错误，此方法都会结束相应操作，从而使收到的操作句柄无效。如果以后再将该句柄与此方法、<a href="#update">update</a> 或 <a href="#abort">abort</a> 配合使用，则都会返回 <code>ErrorCode::INVALID_OPERATION_HANDLE</code>。</p>
 
 <p>签名操作将返回签名作为输出。验证操作将接受 <code>signature</code> 参数中的签名，并且不会返回任何输出。</p>
 
@@ -387,7 +385,7 @@ CBC 和 CTR IV 均为 16 个字节。GCM 随机数为 12 个字节。如果密�
   <li>没有 <a href="/security/keystore/tags#auth_timeout">Tag::AUTH_TIMEOUT</a></li>
 </ul>
 
-<p>在这种情况下，密钥需要针对各项操作的授权，并且 update 方法会在 <code>inParams</code> 参数中收到 <a href="/security/keystore/tags#auth_token">Tag::AUTH_TOKEN</a>。HMAC 会验证该令牌有效且包含匹配的安全用户 ID，与密钥的 <a href="/security/keystore/tags#mac_length">Tag::USER_AUTH_TYPE</a> 匹配，并且包含质询字段中当前操作的操作句柄。如果不符合这些条件，则返回 <code>ErrorCode::KEY_USER_NOT_AUTHENTICATED</code>。</p>
+<p>在这种情况下，对于每一项操作，密钥都会要求提供授权，并且 update 方法会在 <code>inParams</code> 参数中收到 <a href="/security/keystore/tags#auth_token">Tag::AUTH_TOKEN</a>。HMAC 会验证该令牌有效且包含匹配的安全用户 ID，与密钥的 <a href="/security/keystore/tags#mac_length">Tag::USER_AUTH_TYPE</a> 匹配，并且包含质询字段中当前操作的操作句柄。如果不符合这些条件，则返回 <code>ErrorCode::KEY_USER_NOT_AUTHENTICATED</code>。</p>
 
 <p>调用程序会在每次调用 <a href="#update">update</a> 和 <a href="#finish">finish</a> 时提供身份验证令牌。实现只需对该令牌验证一次（如果它倾向于这么做）。</p>
 
@@ -398,9 +396,8 @@ CBC 和 CTR IV 均为 16 个字节。GCM 随机数为 12 个字节。如果密�
 <ul>
   <li><code>PaddingMode::NONE</code>：对于非填充式签名和加密操作，如果收到的数据比密钥短，那么在签名/加密之前，在数据左侧填充零来补齐。如果数据与密钥一样长度，但数值较大，则返回 <code>ErrorCode::INVALID_ARGUMENT</code>。对于验证和解密操作，数据必须与密钥一样长。否则返回 <code>ErrorCode::INVALID_INPUT_LENGTH.</code></li>
   <li><code>PaddingMode::RSA_PSS</code>：对于 PSS 填充式签名操作，PSS 盐不得短于 20 个字节，并且是随机生成的。
-  盐可以更长；参考实现使用的是长度最大的盐。
-  调用 <a href="#begin">begin</a> 时在 <code>inputParams</code> 中使用 <a href="/security/keystore/tags#digest">Tag::DIGEST</a> 指定的摘要会用作 PSS 摘要算法，而 SHA1 会用作 MGF1 摘要算法。</li>
-  <li><code>PaddingMode::RSA_OAEP</code>：调用 <a href="#begin">begin</a> 时在 <code>inputParams</code> 中使用 <a href="/security/keystore/tags#digest">Tag::DIGEST</a> 指定的摘要会用作 OAEP 摘要算法，而 SHA1 会用作 MGF1 摘要算法。</li>
+  盐可以更长；参考实现使用的是长度最大的盐。调用 <a href="/security/keystore/tags#digest">begin</a> 时使用 <code>inputParams</code> 中的 <a href="#begin">Tag::DIGEST</a> 指定的摘要会用作 PSS 摘要算法，而 SHA1 会用作 MGF1 摘要算法。</li>
+  <li><code>PaddingMode::RSA_OAEP</code>：调用 <a href="/security/keystore/tags#digest">begin</a> 时使用 <code>inputParams</code> 中的 <a href="#begin">Tag::DIGEST</a> 指定的摘要会用作 OAEP 摘要算法，而 SHA1 会用作 MGF1 摘要算法。</li>
 </ul>
 
 <h4 id="finish_ecdsa_keys">ECDSA 密钥</h4>
@@ -414,14 +411,14 @@ CBC 和 CTR IV 均为 16 个字节。GCM 随机数为 12 个字节。如果密�
 <ul>
   <li><code>BlockMode::ECB</code> 或 <code>BlockMode::CBC</code>：如果填充模式是 <code>PaddingMode::NONE</code>，并且数据长度不是 AES 分块大小的倍数，则返回 <code>ErrorCode::INVALID_INPUT_LENGTH</code>。如果填充模式是 <code>PaddingMode::PKCS7</code>，则按照 PKCS#7 规范填充数据。
   请注意，PKCS#7 建议，如果数据长度是分块长度的倍数，则添加一个额外的填充分块。</li>
-  <li><code>BlockMode::GCM</code>：在加密期间，处理所有明文之后，会计算此标记（<a href="/security/keystore/tags#mac_length">Tag::MAC_LENGTH</a> 个字节）并将其附加到返回的密文。在解密期间，会将最后 <a href="/security/keystore/tags#mac_length">Tag::MAC_LENGTH</a> 个字节作为标记处理。如果标记验证失败，则返回 <code>ErrorCode::VERIFICATION_FAILED</code>。</li>
+  <li><code>BlockMode::GCM</code>：在加密期间，处理所有明文之后，会计算此标记（<a href="/security/keystore/tags#mac_length">Tag::MAC_LENGTH</a> 个字节）并将其附加到返回的密文中。在解密期间，会将最后 <a href="/security/keystore/tags#mac_length">Tag::MAC_LENGTH</a> 个字节作为标记处理。如果标记验证失败，则返回 <code>ErrorCode::VERIFICATION_FAILED</code>。</li>
 </ul>
 
 <h3 id="abort">abort</h3>
 
 <p><strong>版本</strong>：1、2、3</p>
 
-<p>用于中止正在进行的操作。在调用 abort 之后，如果后续再将收到的操作句柄与 <a href="#update">update</a>、<a href="#finish">finish</a> 或 <a href="#abort">abort</a> 配合使用，则返回 <code>ErrorCode::INVALID_OPERATION_HANDLE</code>。</p>
+<p>用于中止正在进行的操作。调用 abort 之后，如果后续再将收到的操作句柄与 <a href="#update">update</a>、<a href="#finish">finish</a> 或 <a href="#abort">abort</a> 配合使用，则返回 <code>ErrorCode::INVALID_OPERATION_HANDLE</code>。</p>
 
 <h3 id="get_supported_algorithms">get_supported_algorithms</h3>
 

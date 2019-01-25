@@ -22,8 +22,8 @@
   limitations under the License.
 -->
 
-<h1 id="test_module_configuration" class="page-title">测试模块配置</h1>
-<aside class="special"><strong>重要提示</strong>：<span>只有 CTS 测试或需要特殊设置（如停用蓝牙或收集示例数据）的测试需要遵循此页面上的说明。其他所有用例均可通过使用 <a href="https://android.googlesource.com/platform/tools/tradefederation/+/master/atest/README.md">Atest</a> 来涵盖。</span></aside>
+<h1 id="complex_test_configuration" class="page-title">复杂的测试配置</h1>
+<aside class="special"><strong>重要提示</strong>：<span>只有 Android <a href="compatibility/cts">兼容性测试套件</a> (CTS) 测试或需要特殊设置（如停用蓝牙或收集示例数据）的测试需要遵循此页面上的说明。其他所有用例均可通过使用 Blueprint 的基于 Soong 的<a href="blueprints.md">简单的测试配置</a>来涵盖，这些 Blueprint 能够自动处理以前手动执行的大部分配置操作。</span></aside>
 <p>某些测试模块可能需要执行在测试用例本身内无法执行的自定义设置和拆解步骤。典型的示例可能包括：</p>
 
 <ul>
@@ -34,13 +34,13 @@
 
 <p>过去，组件团队通常依靠编写主机端测试来执行此类任务，这需要了解 Trade Federation 自动化测试框架，并且通常会提高测试模块的复杂性。</p>
 
-<p>我们引入了测试模块配置的概念（借鉴于 CTS）来支持此类任务，只需几行配置即可完成上面列出的常见任务。为了获得最大的灵活性，您甚至可以实现自己的目标准备器（由 <a href="/reference/com/android/tradefed/targetprep/ITargetPreparer.html">ITargetPreparer</a> 或 <a href="/reference/com/android/tradefed/targetprep/ITargetCleaner.html">ITargetCleaner</a> 定义），并对其进行配置以在您自己的测试模块配置中使用。</p>
+<p>我们引入了测试模块配置的概念（借鉴于 CTS）来支持此类任务，只需几行配置即可完成上面列出的常见任务。为了达到最大的灵活性，您甚至可以实现自己的目标准备器（由 <a href="/reference/com/android/tradefed/targetprep/ITargetPreparer.html">ITargetPreparer</a> 或 <a href="/reference/com/android/tradefed/targetprep/ITargetCleaner.html">ITargetCleaner</a> 定义），并对其进行配置以在您自己的测试模块配置中使用。</p>
 
 <p>测试模块的测试模块配置是添加到顶级模块源文件夹的必需 XML 文件，名为“AndroidTest.xml”。该 XML 文件遵循 Trade Federation 自动化测试框架使用的配置文件的格式。目前，通过测试模块配置处理的主要标记是“target_preparer”和“test”标记。</p>
 
 <h2 id="target_preparers">目标准备器</h2>
 
-<p>顾名思义，“target_preparer”标记会定义目标准备器（请参阅 <a href="/reference/com/android/tradefed/targetprep/ITargetPreparer.html">ITargetPreparer</a>），该目标准备器提供了一种设置方法，在执行测试模块以进行测试之前会调用该方法；如果“target_preparer”标记中引用的类也实现 <a href="/reference/com/android/tradefed/targetprep/ITargetCleaner.html">ITargetCleaner</a>，则在测试模块完成后将调用其拆解方法。</p>
+<p>顾名思义，“target_preparer”标记会定义目标准备器（请参阅 <a href="/reference/com/android/tradefed/targetprep/ITargetPreparer.html">ITargetPreparer</a>），该目标准备器提供了一种设置方法，在执行测试模块以进行测试之前会调用该方法；如果“target_preparer”标记中引用的类也实现了 <a href="/reference/com/android/tradefed/targetprep/ITargetCleaner.html">ITargetCleaner</a>，则在测试模块完成后将调用其拆解方法。</p>
 
 <p>要使用内置的通用模块配置，请在测试模块的顶级文件夹中添加一个新文件“AndroidTest.xml”，并在该文件里填充以下内容：</p>
 <pre class="prettyprint lang-xml"><code>&lt;?xml version="1.0" encoding="utf-8"?&gt;
@@ -62,7 +62,9 @@
 <li>在测试模块完成之后，执行 shell 命令“settings put secure accessibility_enabled 0”</li>
 </ol>
 
-<p>在此特定示例中，分别在测试模块执行之前/之后启用/停用可访问性。通过一个简单的示例演示，可以详细介绍如何使用“option”标记。如上所示，该标记可以有两个属性：名称和值。名称属性指示选项的名称，并进一步分解成由冒号分隔的两部分：一部分是准备器的简称，另一部分是准备器提供的实际选项名称。值字段的确切目的取决于准备器如何定义选项：它可以是字符串、数字、布尔值，甚至是文件路径等等。在上面的示例中，名称“run-command:run-command”表示我们正在为由简称为“run-command”的目标准备器定义的选项“run-command”设置值；名称“run-command:teardown-command”表示我们正在为也是由简称为“run-command”的同一目标准备器定义的选项“teardown-command”设置值。下面总结了三个常见的目标准备器：</p>
+<p>在此特定示例中，分别在测试模块执行之前/之后启用/停用可访问性。通过一个简单的示例演示，可以详细介绍如何使用“option”标记。如上所示，该标记可以有两个属性：名称和值。名称属性指示选项的名称，并进一步分解成由冒号分隔的两部分：一部分是准备器的简称，另一部分是准备器提供的实际选项名称。</p>
+
+<p>值字段的确切用途取决于准备器如何定义选项：它可以是字符串、数字、布尔值，甚至可以是文件路径等等。在上面的示例中，名称“run-command:run-command”表示我们正在为由简称为“run-command”的目标准备器定义的选项“run-command”设置值；名称“run-command:teardown-command”表示我们正在为也是由简称为“run-command”的同一目标准备器定义的选项“teardown-command”设置值。下面总结了三个常见的目标准备器：</p>
 
 <ul>
 <li><p>类名：<a href="https://android.googlesource.com/platform/tools/tradefederation/+/master/src/com/android/tradefed/targetprep/PushFilePreparer.java">PushFilePreparer</a></p>
