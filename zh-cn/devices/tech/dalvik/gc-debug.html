@@ -22,7 +22,7 @@
 
 <p>本文档介绍如何调试 Android 运行时 (ART) 垃圾回收 (GC) 的正确性和性能问题，并解释了如何使用 GC 验证选项、确定 GC 验证失败的解决方案，以及测量并解决 GC 性能问题。</p>
 
-<p>有关处理 ART 的说明，请参阅 <a href="index.html">ART 和 Dalvik</a>、<a href="dex-format.html">Dalvik 可执行文件格式</a>以及此 <a href="index.html">ART 和 Dalvik</a> 部分的其他页面。有关验证应用行为的其他帮助信息，请参阅<a href="http://developer.android.com/guide/practices/verifying-apps-art.html">在 Android Runtime (ART) 上验证应用行为</a>。</p>
+<p>有关处理 ART 的说明，请参阅 <a href="index.html">ART 和 Dalvik</a>、<a href="dex-format.html">Dalvik 可执行文件格式</a>以及此 <a href="index.html">ART 和 Dalvik</a> 部分的其他页面。有关验证应用行为的其他帮助信息，请参阅<a href="http://developer.android.com/guide/practices/verifying-apps-art.html">通过 Android 运行时 (ART) 验证应用行为</a>。</p>
 
 <h2 id="art_gc_overview">ART GC 概述</h2>
 
@@ -36,8 +36,7 @@
 
 <ul>
   <li>与 Dalvik 相比，暂停次数从 2 次减少到 1 次。Dalvik 的第一次暂停主要是为了进行根标记，即在 ART 中进行并发标记，让线程标记自己的根，然后马上恢复运行。
-  </li><li>与 Dalvik 类似，ART GC 在清除过程开始之前也会暂停 1 次。
-两者在这方面的主要差异在于：在此暂停期间，某些 Dalvik 环节在 ART 中并发进行。这些环节包括 <code>java.lang.ref.Reference</code> 处理、系统弱清除（例如，jni 弱全局等）、重新标记非线程根和卡片预清理。在 ART 暂停期间仍进行的阶段包括扫描脏卡片以及重新标记线程根，这些操作有助于缩短暂停时间。
+  </li><li>与 Dalvik 类似，ART GC 在清除过程开始之前也会暂停 1 次。两者在这方面的主要差异在于：在此暂停期间，某些 Dalvik 环节在 ART 中并发进行。这些环节包括 <code>java.lang.ref.Reference</code> 处理、系统弱清除（例如，jni 弱全局等）、重新标记非线程根和卡片预清理。在 ART 暂停期间仍进行的阶段包括扫描脏卡片以及重新标记线程根，这些操作有助于缩短暂停时间。
   </li><li>相对于 Dalvik，ART GC 改进的最后一个方面是粘性 CMS 回收器增加了 GC 吞吐量。不同于普通的分代 GC，粘性 CMS 不移动。系统会将年轻对象保存在一个分配堆栈（基本上是 <code>java.lang.Object</code> 数组）中，而非为其设置一个专属区域。这样可以避免移动所需的对象以维持低暂停次数，但缺点是容易在堆栈中加入大量复杂对象图像而使堆栈变长。
 </li></ul>
 
@@ -209,7 +208,7 @@ adb shell setprop dalvik.vm.checkjni true
 adb shell setprop dalvik.vm.jniopts forcecopy
 </pre>
 
-<p>CheckJNI 应捕获错误的一个示例是超出从 <code>GetPrimitiveArrayCritical</code> 获取的数组末端的写入。该操作很可能会破坏 Java 堆。如果写入位于 CheckJNI 红色区域内，则在调用相应 <code>ReleasePrimitiveArrayCritical</code> 时，CheckJNI 将会捕获该问题。否则，写入将最终损坏 Java 堆中的一些随机对象，并可能会导致之后出现 GC 崩溃。<em></em>如果崩溃的内存是引用字段，则 GC 可能会捕获错误并输出“Tried to mark <ptr>not contained by any spaces</ptr>”这一错误消息。</p>
+<p>CheckJNI 应捕获错误的一个示例是超出从 <code>GetPrimitiveArrayCritical</code> 获取的数组末端的写入。该操作很可能会破坏 Java 堆。如果写入位于 CheckJNI 红色区域内，则在调用相应 <code>ReleasePrimitiveArrayCritical</code> 时，CheckJNI 将会捕获该问题。否则，写入将最终损坏 Java 堆中的一些随机对象，并可能会导致之后出现 GC 崩溃。如果崩溃的内存是引用字段，则 GC 可能会捕获错误并输出“<em></em>Tried to mark <ptr> not contained by any spaces</ptr>”这一错误消息。</p>
 
 <p>当 GC 尝试标记无法找到空间的对象时，就会发生此错误。在此检查失败后，GC 会遍历根，并尝试查看无效对象是否为根。结果共有两个选项：对象为根或非根。</p>
 

@@ -24,7 +24,7 @@
 本文介绍 Android 如何处理与平台 OTA 相关的政策兼容性问题，其中新平台 SELinux 设置可能与旧供应商 SELinux 设置有所不同。
 </p>
 <p>
-基于 Treble 的 SELinux 政策设计考虑到平台和供应商政策之间的二进制文件区别；如果供应商分区生成依赖项（例如 <code>platform</code> &lt; <code>vendor</code> &lt; <code>oem</code>），则该方案会变得更加复杂。<em></em><em></em>
+基于 Treble 的 SELinux 政策设计会考虑平台政策和供应商政策之间的二进制文件区别；如果供应商分区生成依赖项（例如 <code>platform</code> &lt; <code>vendor</code> &lt; <code>oem</code>），则架构会更加复杂。<em></em><em></em>
 </p>
 <p>
 在 Android 8.0 及更高版本中，SELinux 全局政策划分为私有和公共组件。公共组件包含政策和相关基础架构，保证可用于平台版本。
@@ -153,7 +153,7 @@ AOSP SELinux 政策已经为平台与之交互的 <code>vendor</code> 分区部�
 
 <h4 id="procfs">Procfs (/proc)</h4>
 <p>
-<code>/proc</code> 中的文件可以仅使用 <code>genfscon</code> 标签进行标记。在 Android 7.0 中，<a href="https://android.googlesource.com/platform/system/sepolicy/+/nougat-dr1-release/genfs_contexts" class="external">平台</a>和<a href="https://android.googlesource.com/device/google/marlin/+/nougat-dr1-release/sepolicy/genfs_contexts" class="external">供应商</a>政策都使用 <code>genfscon</code> 来标记 <code>procfs</code> 中的文件。
+<code>/proc</code> 中的文件可以仅使用 <code>genfscon</code> 标签进行标记。在 Android 7.0 中，<a href="https://android.googlesource.com/platform/system/sepolicy/+/nougat-dr1-release/genfs_contexts" class="external">平台</a>政策和<a href="https://android.googlesource.com/device/google/marlin/+/nougat-dr1-release/sepolicy/genfs_contexts" class="external">供应商</a>政策都使用 <code>genfscon</code> 来标记 <code>procfs</code> 中的文件。
 </p>
 <p>
 <strong>建议</strong>：只有平台政策标记 <code>/proc</code>。如果 <code>vendor</code> 进程需要访问 <code>/proc</code> 中当前使用默认标签 (<code>proc</code>) 标记的文件，则供应商政策不应明确标记它们，而应使用常规 <code>proc</code> 类型为供应商域添加规则。这样，平台更新可以适应通过 <code>procfs</code> 公开的未来内核接口，并根据需要进行明确标记。
@@ -177,7 +177,7 @@ AOSP SELinux 政策已经为平台与之交互的 <code>vendor</code> 分区部�
 <code>/sys</code> 中的文件可以使用 <code>file_contexts</code> 和 <code>genfscon</code> 进行标记。在 Android 7.0 中，平台和供应商都使用 <code>file_contexts</code> 和 <code>genfscon</code> 来标记 <code>sysfs</code> 中的文件。
 </p>
 <p>
-<strong>建议</strong>：平台可以标记非特定于设备的 <code>sysfs</code> 节点。否则，只有供应商可以标记文件。
+<strong>建议</strong>：平台可以标记不是针对特定设备的 <code>sysfs</code> 节点。否则，只有供应商可以标记文件。
 </p>
 <h4 id="tmpfs">tmpfs (/dev)</h4>
 <p>
@@ -241,10 +241,10 @@ Vendor: allow v_domain sysfs:class perm;</pre>
 
 <h3 id="policy-writability">政策可写性</h3>
 <p>
-为了实现无需了解具体版本变化即可制定政策的目标，Android 8.0 包含平台公共政策类型与其属性之间的映射。类型 <code>foo</code> 映射到属性 <code>foo_v<em>N</em></code>，其中 <code><em>N</em></code> 是目标版本 ，<code>vN</code> 对应于 <code>PLATFORM_SEPOLICY_VERSION</code> 编译变量，格式为 <code>MM.NN</code>（其中 <code>MM</code> 对应于平台 SDK 编号，<code>NN</code> 是平台 sepolicy 特定版本）。
+为了实现无需了解具体版本变化即可制定政策的目标，Android 8.0 包含平台公共政策类型与其属性之间的映射。类型 <code>foo</code> 映射到属性 <code>foo_v<em>N</em></code>，其中 <code><em>N</em></code> 是目标版本。<code>vN</code> 对应于 <code>PLATFORM_SEPOLICY_VERSION</code> 编译变量，格式为 <code>MM.NN</code>（其中 <code>MM</code> 对应于平台 SDK 编号，<code>NN</code> 是平台 sepolicy 特定版本）。
 </p>
 <p>
-公共政策中的属性未进行版本化，而是以 API 形式存在（可以据此构建平台和供应商政策，以使两个分区之间的接口保持稳定）。平台和供应商政策写入程序都可以像当前那样继续写入政策。
+公共政策中的属性未采用版本编号，而是以 API 形式存在（可以在上面构建平台和供应商政策，以使两个分区之间的接口保持稳定）。平台和供应商政策写入程序都可以像当前那样继续写入政策。
 </p>
 <p>
 以 <code>allow source_foo target_bar:<em>class
@@ -257,7 +257,7 @@ perm</em>;</code> 形式导出的平台公共政策包含在供应商政策中�
 
 <h3 id="policy-diffs">政策差异</h3>
 <p>
-如果不在各版本差异中将属性映射到类型，那么通过在每种类型的末尾添加 <code>_v<em>N</em></code> 来自动创建属性不起任何作用。Android 维护着属性版本之间的映射以及类型到这些属性的映射。这是在前面提到的包含语句的映射文件（例如 (CIL)）中完成的：
+如果不在各版本差异中将属性映射到类型，那么通过在每种类型的末尾添加 <code>_v<em>N</em></code> 来自动创建属性时，不会创建任何内容。Android 维护着属性版本之间的映射以及类型到这些属性的映射。这是在前面提到的包含语句的映射文件（例如 (CIL)）中完成的：
 </p>
 
 <pre class="prettyprint">(typeattributeset foo_vN (foo))</pre>
@@ -513,15 +513,15 @@ Android 9 包含以下与域相关的属性：
 
 <h3 id="file-attribute-tests">文件属性测试</h3>
 <p>
-Android 9 包含<a href="https://android.googlesource.com/platform/system/sepolicy/+/master/tests/sepolicy_tests.py" class="external">编译时测试</a>，可确保特定位置的所有文件都具有适当的属性（例如，<code>sysfs</code> 中的所有文件都具有所需的 <code>sysfs_type</code> 属性）。
+Android 9 包含一些<a href="https://android.googlesource.com/platform/system/sepolicy/+/master/tests/sepolicy_tests.py" class="external">编译时测试</a>，旨在确保特定位置的所有文件都具有适当的属性（例如，<code>sysfs</code> 中的所有文件都具有必需的 <code>sysfs_type</code> 属性）。
 </p>
 
 <h2 id="platform-public-policy">平台公共政策</h2>
 <p>
-平台公共政策是遵循 Android 8.0 架构模型的核心所在，而不是简单地将 v1 和 v2 中的平台政策结合起来。供应商可以看到平台政策的一部分（包含可用类型和属性以及关于这些类型和属性的规则），这部分随后会包含在供应商政策中（即 <code>vendor_sepolicy.cil</code>）。
+平台公共政策是遵循 Android 8.0 架构模型的核心所在，而不是简单地将 v1 和 v2 中的平台政策结合起来。供应商可以看到一部分平台政策（包含可用类型和属性以及关于这些类型和属性的规则），这部分政策随后会包含在供应商政策中（即 <code>vendor_sepolicy.cil</code>）。
 </p>
 <p>
-类型和规则会在供应商生成的政策中自动转换为 <code>attribute_v<em>N</em></code>，以便所有平台提供的类型都是版本化属性（但属性不是版本化属性）。平台负责将其提供的具体类型映射到适当的属性，以确保供应商政策继续有效，并将为特定版本提供的规则包括在内。将平台公共政策和供应商政策相结合可满足 Android 8.0 架构模型目标，即允许独立平台和供应商构建。
+类型和规则会在供应商生成的政策中自动转换为 <code>attribute_v<em>N</em></code>，以便所有由平台提供的类型都是带有版本编号的属性（但属性不带版本编号）。平台负责将其提供的具体类型映射到适当的属性，以确保供应商政策继续有效，并将为特定版本提供的规则包括在内。将平台公共政策和供应商政策相结合可满足 Android 8.0 架构模型目标，即允许独立平台和供应商构建。
 </p>
 
 <h3 id="mapping-to-attribute-chains">映射到属性链</h3>

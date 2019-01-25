@@ -22,7 +22,7 @@
 
 <h2 id="what_is_batching">什么是批处理？</h2>
 <p>“批处理”是指将传感器事件存储在硬件 FIFO 中，然后通过 <a href="hal-interface.html">HAL</a> 报告它们，而非立即进行报告。</p>
-<p>批处理不会唤醒 SoC 来接收每个事件，而会将事件分组到一起进行处理，从而节省大量电量。</p>
+<p>实施批处理，系统就不会唤醒 SoC 来接收每个事件，而会将事件分组到一起进行处理，从而节省大量电量。</p>
 <p>FIFO 越大，节省的电量也越多。实施批处理是一种以牺牲硬件内存来降低功耗的做法。</p>
 <p>当传感器配有硬件 FIFO (<code>sensor_t.fifoMaxEventCount &gt; 0</code>) 时，便会进行批处理，并且会出现以下两种情况之一：</p>
 <ul>
@@ -30,7 +30,7 @@
   <li>或 SoC 处于挂起模式且该传感器为非唤醒传感器，这意味着在等待 SoC 唤醒时必须存储事件。</li>
 </ul>
 <p>有关详情，请参阅 <a href="hal-interface.html#batch_sensor_flags_sampling_period_maximum_report_latency">HAL 批处理函数</a>一节。</p>
-<p>与批处理相对的是轮询操作，其中事件不经过缓冲而立即被报告。轮询操作对应于以下情况：</p>
+<p>与批处理相对的是连续操作，这时，事件不会经过缓冲，而是会被立即报告。连续操作对应于以下情况：</p>
 <ul>
   <li>当 <code>max_report_latency = 0</code> 且可将事件传递给应用时，这意味着：
     <ul>
@@ -67,7 +67,7 @@
 <p>当非唤醒 FIFO 存满时，它必须环绕并像环形缓冲区一样运作，覆盖较旧的事件：即新事件替换旧事件。
   在挂起模式下，<code>max_report_latency</code> 对非唤醒 FIFO 没有影响。</p>
 <p>当唤醒 FIFO 存满时，或者当其中一个唤醒传感器的 <code>max_report_latency</code> 已过时，硬件必须唤醒 SoC 并报告数据。</p>
-<p>在这两种情况下（唤醒和非唤醒），只要 SoC 退出挂起模式，即使一些传感器的 <code>max_report_latency</code> 未过，也会产生一个包含所有 FIFO 内容的批处理。这样可最大限度地降低 SoC 再次挂起而必须重新将其唤醒的风险。这进而可以最大限度地降低功耗。</p>
+<p>在这两种情况下（唤醒和非唤醒），只要 SoC 退出挂起模式，即使一些传感器的 <code>max_report_latency</code> 未过，也会产生一个包含所有 FIFO 内容的批处理。这样可最大限度地降低在 SoC 再次被挂起后却很快又要被唤醒的风险，进而最大限度地降低功耗。</p>
 <p>*不允许驱动程序将唤醒锁定暂停的一个明显例外情况是，在 <code>max_report_latency</code> 小于 1 秒的情况下启用处于<a href="report-modes.html#continuous">连续报告模式</a>的唤醒传感器。在此情况下，驱动程序可以持有唤醒锁，这是因为 SoC 在进入挂起模式前会被唤醒事件唤醒，因此没有机会进入挂起模式。</p>
 <h2 id="precautions_to_take_when_batching_wake-up_sensors">批处理唤醒传感器时的注意事项</h2>
 <p>根据设备不同，SoC 可能需要几毫秒才能完全退出挂起模式并开始刷新 FIFO。因此必须在 FIFO 中分配足够的头空间，才能让设备完全退出挂起状态，而不造成唤醒 FIFO 溢出。不得丢失任何事件，并且必须遵照 <code>max_report_latency</code>。</p>
@@ -75,7 +75,7 @@
 <p>采用 On-change 触发方式的传感器仅在测量值发生变化时才会生成事件。如果测量值在 SoC 处于挂起模式时发生变化，则应用预计会在 SoC 唤醒时立即收到事件。因此，如果采用 On-change 触发方式的<a href="suspend-mode.html#non-wake-up_sensors">非唤醒</a>传感器与其他传感器共用 FIFO，则在执行该传感器事件的批处理时，必须小心。每个采用 On-change 触发方式的传感器所生成的最后一个事件都必须保存在共享 FIFO 之外，使其永远不会被其他事件覆盖。当 SoC 唤醒时，在报告 FIFO 中的所有事件后，还必须报告最后一个采用 On-change 触发方式的传感器事件。</p>
 <p>以下是我们希望避免的情况：</p>
 <ol>
-  <li>应用同时注册到共用同一个 FIFO 的非唤醒计步器（采用 On-change 触发方式）和非唤醒加速度计（轮询模式）</li>
+  <li>应用同时注册到共用同一个 FIFO 的非唤醒计步器（采用 On-change 触发方式）和非唤醒加速度计（连续模式）</li>
   <li>应用收到一个计步器事件“step_count = 1000 步”</li>
   <li>SoC 转至挂起状态</li>
   <li>用户步行 20 步，导致计步器和加速度计事件交错存储，最后的计步器事件为“step_count = 1020 步”</li>
@@ -101,12 +101,12 @@
 <p>批处理此类数据，可在 SoC 处于挂起模式时执行行人航位推算。</p>
 <h3 id="high_value_medium_power_intermittent_activity_gesture_recognition">高值：中等功率间歇性动作/手势识别</h3>
 <p>目标批处理时间：3 秒</p>
-<p>带批处理的传感器：非唤醒加速度计（频率 50 Hz）</p>
-<p>批处理此类数据，可定期识别任意动作和手势，而无需在收集数据时保持 SoC 处于唤醒状态。</p>
+<p>待批处理的传感器：非唤醒加速度计（频率 50 Hz）</p>
+<p>批处理此类数据，可定期识别任意动作和手势，而无需在收集数据时让 SoC 保持唤醒状态。</p>
 <h3 id="medium_value_medium_power_continuous_activity_gesture_recognition">中等值：中等功率连续动作/手势识别</h3>
 <p>目标批处理时间：1 到 3 分钟</p>
 <p>待批处理的传感器：唤醒加速度计（频率 50Hz）</p>
-<p>批处理此类数据，可持续识别任意动作和手势，而无需在收集数据时保持 SoC 处于唤醒状态。</p>
+<p>批处理此类数据，可持续识别任意动作和手势，而无需在收集数据时让 SoC 保持唤醒状态。</p>
 <h3 id="medium-high_value_interrupt_load_reduction">中高值：减少中断负载</h3>
 <p>目标批处理时间：小于 1 秒</p>
 <p>待批处理的传感器：任意高频传感器（通常为非唤醒传感器）。</p>

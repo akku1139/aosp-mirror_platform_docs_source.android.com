@@ -91,7 +91,7 @@ application/x-x509-ca-cert
 </code>
 
 </td>
-<td>Optional for EAP-TLS and EAP-TTLS</td>
+<td>Required for EAP-TLS and EAP-TTLS</td>
 <td>A single X.509v3 base64-encoded certificate payload.</td>
 </tr>
 <tr>

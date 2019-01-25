@@ -25,10 +25,10 @@ To integrate tests into a platform continuous testing service, they should meet
 the guidelines on this page and follow this recommended flow.
 
 1.  Use the [Soong build system](https://android.googlesource.com/platform/build/soong/)
-    for [Simple Test Configuration](blueprints).
-1.  Employ [Test Mapping](test-mapping) to easily create pre- and post-submit
-    test rules directly in the Android source tree.
-1.  Run tests locally using [Atest](atest).
+    for [Simple Test Configuration](/compatibility/tests/development/blueprints).
+1.  Employ [Test Mapping](/compatibility/tests/development/test-mapping) to
+    easily create pre- and post-submit test rules directly in the Android source tree.
+1.  Run tests locally using [Atest](/compatibility/tests/development/atest).
 
 ## Test types
 

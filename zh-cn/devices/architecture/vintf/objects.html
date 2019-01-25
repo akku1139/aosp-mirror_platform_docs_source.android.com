@@ -3,6 +3,7 @@
     <meta name="project_path" value="/_project.yaml"/>
     <meta name="book_path" value="/_book.yaml"/>
   </head>
+
   <body>
   <!--
       Copyright 2017 The Android Open Source Project
@@ -24,12 +25,38 @@
 </p>
 
 <h2 id="device-manifest-file">设备清单</h2>
-<p>设备清单（由设备提供）包含供应商清单和 ODM 清单：</p>
+<p>设备清单（由设备提供）包含供应商清单和 ODM 清单。</p>
 
 <ul>
-<li>供应商清单会指定 SoC 通用的 HAL、VNDK 版本等信息。建议将其放置在 Android 源代码树的 <code>device/${VENDOR}/${DEVICE}/manifest.xml</code> 中，但可以使用多个片段文件。有关详情，请参阅<a href="/devices/architecture/vintf/resources.html#manifest-fragments">从片段生成设备清单</a>。
+<li>供应商清单会指定 SoC 通用的 HAL、VNDK 版本等信息。建议将其放置在 Android 源代码树的 <code>device/<var>VENDOR</var>/<var>DEVICE</var>/manifest.xml</code> 中，但可以使用多个片段文件。如需了解详情，请参阅<a href="/devices/architecture/vintf/resources.html#manifest-fragments">从片段生成设备清单</a>。
 </li>
-<li>ODM 清单会覆盖供应商清单，并列出产品专用的 HAL。</li>
+<li>ODM 清单列出了产品专用的 HAL。VINTF 对象会从以下文件加载 ODM 清单：
+  <ol>
+    <li><code>/odm/etc/vintf/manifest_<var>SKU</var>.xml</code>（如果定义了 <code><var>SKU</var></code>，其中 <code><var>SKU</var></code> 是属性 <code>ro.boot.product.hardware.sku</code> 的值）
+    </li>
+    <li><code>/odm/etc/vintf/manifest.xml</code></li>
+    <li><code>/odm/etc/manifest_<var>SKU</var>.xml</code>（如果定义了 <code><var>SKU</var></code>）</li>
+    <li><code>/odm/etc/manifest.xml</code></li>
+  </ol>
+</li>
+<li>VINTF 对象会按如下方式加载设备清单：
+  <ol>
+    <li>如果存在 <code>/vendor/etc/vintf/manifest.xml</code>，则合并以下内容：
+      <ol>
+        <li><code>/vendor/etc/vintf/manifest.xml</code></li>
+        <li>可选的供应商清单片段</li>
+        <li>可选的 ODM 清单</li><li>可选的 ODM 清单片段</li>
+      </ol>
+    </li><li>如果存在 ODM 清单，则将 ODM 清单与可选的 ODM 清单片段合并在一起。</li>
+    <li><code>/vendor/manfiest.xml</code>（旧版，无片段）</li>
+  </ol>
+请注意：
+  <ul>
+    <li>在旧版设备上，使用旧版供应商清单和 ODM 清单。ODM 清单可能会完全覆盖旧版供应商清单。</li>
+    <li>在搭载 Android 9 的设备上，ODM 清单会与供应商清单合并。</li>
+    <li>合并清单列表时，列表中后出现的清单可能会覆盖列表中先有清单中的标记，但前提是后出现的清单中的标记具有 <code>override="true"</code> 属性。例如，ODM 清单可能会覆盖供应商清单中的某些 <code>&lt;hal&gt;</code> 标记。请参阅下面的属性 <code>override</code> 文档。</li>
+  </ul>
+</li>
 </ul>
 
 <p>此设置可让采用相同开发板的多个产品共用同一个供应商映像（用于提供通用 HAL），但具有不同的 ODM 映像（用于指定产品专用的 HAL）。</p>
@@ -106,6 +133,7 @@
 &lt;?xml version="1.0" encoding="UTF-8"?&gt;
 &lt;!-- Comments, Legal notices, etc. here --&gt;
 &lt;manifest version="1.0" type="device"&gt;
+    &lt;!-- camera 3.4 in vendor manifest is ignored --&gt;
     &lt;hal override="true"&gt;
         &lt;name&gt;android.hardware.camera&lt;/name&gt;
         &lt;transport&gt;hwbinder&lt;/transport&gt;
@@ -115,6 +143,7 @@
             &lt;instance&gt;legacy/0&lt;/instance&gt;
         &lt;/interface&gt;
     &lt;/hal&gt;
+    &lt;!-- NFC is disabled --&gt;
     &lt;hal override="true"&gt;
         &lt;name&gt;android.hardware.nfc&lt;/name&gt;
         &lt;transport&gt;hwbinder&lt;/transport&gt;
@@ -189,7 +218,7 @@
 </pre>
 
 <h2 id="manifest-file-schema">清单文件架构</h2>
-<p>这一部分介绍了下列 XML 标记的含义。Android 源代码树中的源文件中可以缺少某些“必需”的标记，这些标记可以在编译时由 <code><a href="/devices/architecture/vintf/resources.html#assemble_vintf">assemble_vintf</a></code> 写入。设备上的相应文件中必须有“必需”的标记。</p>
+<p>本部分介绍这些 XML 标记的含义。Android 源代码树中的源文件中可能缺少某些“必需”标记，这些标记会在编译时由 <code><a href="/devices/architecture/vintf/resources.html#assemble_vintf">assemble_vintf</a></code> 写入。设备上的相应文件中必须有“必需”标记。</p>
 
 <dl>
 <dt><code>?xml</code></dt>
@@ -234,7 +263,7 @@
  </ul>
 </dd>
 <dt><code>manifest.hal.version</code></dt>
-<dd>选用且可重复。清单中 <code>hal</code> 标记的版本。格式为 <code><var>MAJOR</var>.<var>MINOR</var></code>。有关示例，请参阅 <code>hardware/interfaces</code>、<code>vendor/${VENDOR}/interfaces</code>、<code>framework/hardware/interfaces</code> 或 <code>
+<dd>选用且可重复。清单中 <code>hal</code> 标记的版本，格式为 <code><var>MAJOR</var>.<var>MINOR</var></code>。有关示例，请参阅 <code>hardware/interfaces</code>、<code>vendor/${VENDOR}/interfaces</code>、<code>framework/hardware/interfaces</code> 或 <code>
 system/hardware/interfaces</code>。
 <br /><br />
 HIDL 和本机 HAL 可以使用多个版本字段，前提是它们代表<strong>不同的 Major 版本</strong>，并且提供的每个 Major 版本只有一个 Minor 版本。例如，3.1 和 3.2 不能共存，但 1.0 和 3.4 可以共存。这适用于所有同名的 <code>hal</code> 元素，除非 <code>override="true"</code>。</dd>
