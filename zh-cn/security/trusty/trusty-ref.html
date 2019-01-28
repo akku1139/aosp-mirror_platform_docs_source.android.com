@@ -20,17 +20,27 @@
       limitations under the License.
   -->
 
-<p><a href="index.html">Trusty</a> API 描述了 Trusty 进程间通信 (IPC) 系统，包括与非安全域的通信。本页中提供了相关术语的定义以及关于 API 调用的参考内容。</p>
+<p>Trusty 提供用于开发以下两类应用/服务的 API：</p>
+    <ul>
+      <li>在 TEE 处理器上运行的可信应用或服务</li>
+      <li>在主处理器上运行并使用可信应用提供的服务的普通/不可信应用</li>
+    </ul>
+<p><a href="/security/index.html">Trusty</a> API 描述了 Trusty 进程间通信 (IPC) 系统，包括与非安全域的通信。在主处理器上运行的软件可以使用 Trusty API 连接到可信应用/服务并与它们交换任意消息，就像通过 IP 提供的网络服务一样。应用负责使用应用级协议确定这些消息的数据格式和语义。消息传递的可靠性由底层 Trusty 基础架构（采用在主处理器上运行的驱动程序的形式）来保证，并且通信完全是异步进行的。
+</p>
 
 <h2 id="ports_and_channels">端口和通道</h2>
 
-<p>Trusty 应用使用端口以具名路径的形式显示客户端连接到的服务端点。这可以提供一个非常简单且采用字符串形式的服务 ID 供客户端使用。端口采用反向 DNS 式命名惯例，例如 <code>com.google.servicename</code>。</p>
+<p>Trusty 应用使用端口以具名路径的形式显示客户端连接到的服务端点。这可以提供一个非常简单且采用字符串形式的服务 ID 供客户端使用。端口采用反向 DNS 式命名惯例，例如 <code>com.google.servicename</code>。
+</p>
 
-<p>当客户端连接到端口时，会收到一个用于与相应服务交互的通道。相应服务必须接受外来连接；并且在接受后，也会收到一个通道。实质上，端口会被用来查找服务，以便通过一对已连接的通道（即端口上的连接实例）进行通信。当客户端连接到端口时，客户端和服务器之间会建立一个对称的双向连接。借助这种全双工路径，客户端和服务器可以交换任意消息，直到任一方决定断开连接为止。</p>
+<p>当客户端连接到端口时，会收到一个用于与相应服务交互的通道。相应服务必须接受外来连接；并且在接受后，也会收到一个通道。实质上，端口会被用来查找服务，以便通过一对已连接的通道（即端口上的连接实例）进行通信。当客户端连接到端口时，客户端和服务器之间会建立一个对称的双向连接。借助这种全双工路径，客户端和服务器可以交换任意消息，直到任一方决定断开连接为止。
+</p>
 
-<p>只有安全端可信应用或 Trusty 内核模块可以创建端口。在非安全端（普通域）运行的应用只能连接到安全端发布的服务。</p>
+<p>只有安全端可信应用或 Trusty 内核模块可以创建端口。在非安全端（普通域）运行的应用只能连接到安全端发布的服务。
+</p>
 
-<p>可信应用可以同时是客户端和服务器，具体取决于相关要求。发布服务的可信应用（作为服务器）可能需要连接到其他服务（作为客户端）。</p>
+<p>可信应用可以同时是客户端和服务器，具体取决于相关要求。发布服务的可信应用（作为服务器）可能需要连接到其他服务（作为客户端）。
+</p>
 
 <h2 id="handle_api">Handle API</h2>
 
@@ -58,7 +68,7 @@ long set_cookie(uint32_t handle, void *cookie)
 
 <p>处理在句柄创建一段时间后发生的事件时，此调用非常有用。事件处理机制会将相应句柄及其 Cookie 返回给事件处理程序。</p>
 
-<p>通过使用 <code>wait()</code> 或 <code>wait_any()</code> 调用，可以等待句柄上发生事件。</p>
+<p>通过使用 <code>wait()</code> 调用，可以等待句柄上发生事件。</p>
 
 <h4 id="wait">wait()</h4>
 
@@ -76,21 +86,7 @@ long wait(uint32_t handle_id, uevent_t *event, unsigned long timeout_msecs)
 
 <p>[返回值]：如果在指定的超时间隔内发生了有效事件，则为 <code>NO_ERROR</code>；如果指定的超时时间已过，但未发生任何事件，则为 <code>ERR_TIMED_OUT</code>；如果是其他错误，则为 <code>&lt; 0</code></p>
 
-<h4 id="wait_any">wait_any()</h4>
-
-<p>用于在指定时间段内等待应用句柄表格中的任意句柄上发生任意事件。</p>
-
-<pre class="prettyprint">
-long wait_any(uevent_t *event, unsigned long timeout_msecs);
-</pre>
-
-<p>[输出] <code>event</code>：一个指针，指向表示相应句柄上所发生事件的结构</p>
-
-<p>[输入] <code>timeout_msecs</code>：超时值（以毫秒计）。-1 表示无限制超时</p>
-
-<p>[返回值]：如果在指定的超时间隔内发生了有效事件，则为 <code>NO_ERROR</code>；如果指定的超时时间已过，但未发生任何事件，则为 <code>ERR_TIMED_OUT</code>；如果是其他错误，则为 <code>&lt; 0</code></p>
-
-<p>如果操作成功了 (<code>retval == NO_ERROR</code>)，<code>wait()</code> 和 <code>wait_any()</code> 调用会在指定的 <code>uevent_t</code> 结构内填入与发生的事件相关的信息。</p>
+<p>如果操作成功了 (<code>retval == NO_ERROR</code>)，<code>wait()</code> 调用会在指定的 <code>uevent_t</code> 结构内填入与发生的事件相关的信息。</p>
 
 <pre class="prettyprint">
 typedef struct uevent {
@@ -177,7 +173,7 @@ uint32_t flags)
 
 <p>[返回值]：如果是非负数，则为所创建端口的句柄；如果是负数，则为具体错误</p>
 
-<p>然后，服务器会使用 <code>wait()</code> 或 <code>wait_any()</code> 调用轮询端口句柄列表，以查看是否有外来连接。收到连接请求（由 <code>uevent_t</code> 结构的 <code>event</code> 字段中设置的 <code>IPC_HANDLE_POLL_READY</code> 位来指明）时，服务器应调用 <code>accept()</code> 来完成连接建立过程，并创建一个通道（由另一个句柄表示），然后该通道即可被轮询，以查看是否有外来消息。</p>
+<p>然后，服务器会使用 <code>wait()</code> 调用轮询端口句柄列表，以查看是否有外来连接。收到连接请求（由 <code>uevent_t</code> 结构的 <code>event</code> 字段中设置的 <code>IPC_HANDLE_POLL_READY</code> 位来指明）时，服务器应调用 <code>accept()</code> 来完成连接建立过程，并创建一个通道（由另一个句柄表示），然后该通道即可被轮询，以查看是否有外来消息。</p>
 
 <h4 id="accept">accept()</h4>
 
@@ -226,7 +222,7 @@ IPC_CONNECT_ASYNC = 0x2,
 
 <p><code>IPC_CONNECT_WAIT_FOR_PORT</code> - 如果指定的端口在连接操作执行时没有立即存在，则强制 <code>connect()</code> 调用开始等待，而不是立即使连接失败。</p>
 
-<p><code>IPC_CONNECT_ASYNC</code> - 如果设置了此项，则会发起异步连接。在开始正常操作之前，应用必须先针对连接完成事件（由 <code>uevent_t</code> 结构的 event 字段中设置的 <code>IPC_HANDLE_POLL_READY</code> 位来指明）轮询是否有返回的句柄（通过调用 <code>wait()</code> 或 <code>wait_any()</code>）。</p>
+<p><code>IPC_CONNECT_ASYNC</code> - 如果设置了此项，则会发起异步连接。在开始正常操作之前，应用必须先针对连接完成事件（由 <code>uevent_t</code> 结构的 event 字段中设置的 <code>IPC_HANDLE_POLL_READY</code> 位来指明）轮询是否有返回的句柄（通过调用 <code>wait()</code>）。</p>
 
 <h2 id="messaging_api">Messaging API</h2>
 
@@ -274,7 +270,7 @@ long send_msg(uint32_t handle, ipc_msg_t *msg);
 
 <p>[返回值]：如果操作成功了，则为发送的字节总数；否则为表示错误的负数</p>
 
-<p>如果客户端（或服务器）尝试通过相应通道发送消息，但目标对端消息队列中没有空间，相应通道可能会进入所发消息被屏蔽的状态（对于简单的同步请求/回复协议，这种事情应该绝对不会发生，但在更复杂的情况下，则可能会发生）。如果返回 <code>ERR_NOT_ENOUGH_BUFFER</code> 错误代码，则表示相应通道进入了这种状态。在这种情况下，调用程序必须等待，直到对端通过以下方式释放其接收队列中的部分空间为止：检索处理情况并停用一些消息（由 <code>wait()</code> 或 <code>wait_any()</code> 调用返回的 <code>uevent_t</code> 结构的 <code>event</code> 字段中设置的 <code>IPC_HANDLE_POLL_SEND_UNBLOCKED</code> 位来指明）。</p>
+<p>如果客户端（或服务器）尝试通过相应通道发送消息，但目标对端消息队列中没有空间，相应通道可能会进入所发消息被屏蔽的状态（对于简单的同步请求/回复协议，这种事情应该绝对不会发生，但在更复杂的情况下，则可能会发生）。如果返回 <code>ERR_NOT_ENOUGH_BUFFER</code> 错误代码，则表示相应通道进入了这种状态。在这种情况下，调用程序必须等待，直到对端通过以下方式释放其接收队列中的部分空间为止：检索处理情况并停用一些消息（由 <code>wait()</code> 调用返回的 <code>uevent_t</code> 结构的 <code>event</code> 字段中设置的 <code>IPC_HANDLE_POLL_SEND_UNBLOCKED</code> 位来指明）。</p>
 
 <h4 id="get_msg">get_msg()</h4>
 
@@ -441,61 +437,57 @@ long nanosleep(uint32_t clock_id, uint32_t flags, uint64_t sleep_time)
 <p>以下示例应用展示了上述 API 的用法。该示例会创建一项“回传”服务，该服务可处理多个外来连接，并会将从位于安全端或非安全端的客户端收到的所有消息回传给调用程序。</p>
 
 <pre class="prettyprint">
-#include &lt;assert.h&gt;
-#include &lt;err.h&gt;
-#include &lt;stddef.h&gt;
-#include &lt;stdio.h&gt;
-#include &lt;stdlib.h&gt;
-#include &lt;string.h&gt;
-#include &lt;trusty_std.h&gt;
-
-#include &lt;app/echo/uuids.h&gt;
-
+#include &lt; stddef.h &gt;
+#include &lt; stdio.h &gt;
+#include &lt; stdlib.h &gt;
+#include &lt; string.h &gt;
+#include &lt; trusty_std.h &gt;
+#include &lt; app / echo / uuids.h &gt;
 #define LOG_TAG "echo_srv"
+#define TLOGE(fmt, ...)\
+fprintf(stderr, "%s: %d: "
+  fmt, LOG_TAG, __LINE__, ##__VA_ARGS__)
 
-#define TLOGE(fmt, ...) \
-    fprintf(stderr, "%s: %d: " fmt, LOG_TAG, __LINE__,  ## __VA_ARGS__)
+# define MAX_ECHO_MSG_SIZE 64
 
-#define MAX_ECHO_MSG_SIZE  64
-
-static const char *srv_name = "com.android.echo.srv.echo";
+static
+const char * srv_name = "com.android.echo.srv.echo";
 
 static uint8_t msg_buf[MAX_ECHO_MSG_SIZE];
 
 /*
  *  Message handler
  */
-static int handle_msg(handle_t chan)
-{
+static int handle_msg(handle_t chan) {
   int rc;
   iovec_t iov;
   ipc_msg_t msg;
   ipc_msg_info_t msg_inf;
 
   iov.base = msg_buf;
-  iov.len  = sizeof(msg_buf);
+  iov.len = sizeof(msg_buf);
 
   msg.num_iov = 1;
-  msg.iov = &amp;iov;
+  msg.iov = &amp; iov;
   msg.num_handles = 0;
-  msg.handles  = NULL;
+  msg.handles = NULL;
 
   /* get message info */
-  rc = get_msg(chan, &amp;msg_inf);
+  rc = get_msg(chan, &amp; msg_inf);
   if (rc == ERR_NO_MSG)
     return NO_ERROR; /* no new messages */
 
   if (rc != NO_ERROR) {
     TLOGE("failed (%d) to get_msg for chan (%d)\n",
-          rc, chan);
+      rc, chan);
     return rc;
   }
 
   /* read msg content */
-  rc = read_msg(chan, msg_inf.id, 0, &amp;msg);
+  rc = read_msg(chan, msg_inf.id, 0, &amp; msg);
   if (rc &lt; 0) {
     TLOGE("failed (%d) to read_msg for chan (%d)\n",
-          rc, chan);
+      rc, chan);
     return rc;
   }
 
@@ -503,18 +495,18 @@ static int handle_msg(handle_t chan)
   iov.len = (size_t) rc;
 
   /* send message back to the caller */
-  rc = send_msg(chan, &amp;msg);
+  rc = send_msg(chan, &amp; msg);
   if (rc &lt; 0) {
     TLOGE("failed (%d) to send_msg for chan (%d)\n",
-          rc, chan);
+      rc, chan);
     return rc;
   }
 
   /* retire message */
   rc = put_msg(chan, msg_inf.id);
-  if ( rc != NO_ERROR) {
+  if (rc != NO_ERROR) {
     TLOGE("failed (%d) to put_msg for chan (%d)\n",
-          rc, chan);
+      rc, chan);
     return rc;
   }
 
@@ -524,23 +516,22 @@ static int handle_msg(handle_t chan)
 /*
  *  Channel event handler
  */
-static void handle_channel_event(const uevent_t *ev)
-{
+static void handle_channel_event(const uevent_t * ev) {
   int rc;
 
-  if (ev-&gt;event &amp; IPC_HANDLE_POLL_MSG) {
-    rc = handle_msg(ev-&gt;handle);
+  if (ev - &gt; event &amp; IPC_HANDLE_POLL_MSG) {
+    rc = handle_msg(ev - &gt; handle);
     if (rc != NO_ERROR) {
       /* report an error and close channel */
       TLOGE("failed (%d) to handle event on channel %d\n",
-             rc, ev-&gt;handle);
-      close(ev-&gt;handle);
+        rc, ev - &gt; handle);
+      close(ev - &gt; handle);
     }
     return;
   }
-  if (ev-&gt;event &amp; IPC_HANDLE_POLL_HUP) {
+  if (ev - &gt; event &amp; IPC_HANDLE_POLL_HUP) {
     /* closed by peer. */
-    close(ev-&gt;handle);
+    close(ev - &gt; handle);
     return;
   }
 }
@@ -548,107 +539,83 @@ static void handle_channel_event(const uevent_t *ev)
 /*
  *  Port event handler
  */
-static void handle_port_event(const uevent_t *ev)
-{
-  uuid_t peer_uuid;
+static void handle_port_event(const uevent_t * ev) {
+    uuid_t peer_uuid;
 
-  if ((ev-&gt;event &amp; IPC_HANDLE_POLL_ERROR) ||
-      (ev-&gt;event &amp; IPC_HANDLE_POLL_HUP) ||
-      (ev-&gt;event &amp; IPC_HANDLE_POLL_MSG) ||
-      (ev-&gt;event &amp; IPC_HANDLE_POLL_SEND_UNBLOCKED)) {
-    /* should never happen with port handles */
-    TLOGE("error event (0x%x) for port (%d)\n",
-           ev-&gt;event, ev-&gt;handle);
-    abort();
-  }
-  if (ev-&gt;event &amp; IPC_HANDLE_POLL_READY) {
-    /* incoming connection: accept it */
-    int rc = accept(ev-&gt;handle, &amp;peer_uuid);
-    if (rc &lt; 0) {
-      TLOGE("failed (%d) to accept on port %d\n",
-             rc, ev-&gt;handle);
-      return;
-    }
-  }
-}
-
-/*
- *  Main application entry point
- */
-int main(void)
-{
-  int rc;
-  handle_t port;
-
-  /* Initialize service */
-  rc = port_create(srv_name, 1, MAX_ECHO_MSG_SIZE,
-       IPC_PORT_ALLOW_NS_CONNECT |
-       IPC_PORT_ALLOW_TA_CONNECT );
-  if (rc &lt; 0) {
-    TLOGE("Failed (%d) to create port %s\n",
-          rc, srv_name);
-    abort();
-  }
-  port = (handle_t)rc;
-
-  /* enter main event loop */
-  while (true) {
-    uevent_t ev;
-
-    ev.handle = INVALID_IPC_HANDLE;
-    ev.event  = 0;
-    ev.cookie = NULL;
-
-    /* wait forever */
-    rc = wait_any(&amp;ev, -1);
-    if (rc == NO_ERROR) {
-      /* got an event */
-      if (ev.handle == port) {
-        handle_port_event(&amp;ev);
-      } else {
-        handle_channel_event(&amp;ev);
-      }
-    } else {
-      TLOGE("wait_any returned (%d)\n", rc);
+    if ((ev - &gt; event &amp; IPC_HANDLE_POLL_ERROR) ||
+      (ev - &gt; event &amp; IPC_HANDLE_POLL_HUP) ||
+      (ev - &gt; event &amp; IPC_HANDLE_POLL_MSG) ||
+      (ev - &gt; event &amp; IPC_HANDLE_POLL_SEND_UNBLOCKED)) {
+      /* should never happen with port handles */
+      TLOGE("error event (0x%x) for port (%d)\n",
+        ev - &gt; event, ev - &gt; handle);
       abort();
     }
-  }
-  return 0;
-}
-</pre>
+    if (ev - &gt; event &amp; IPC_HANDLE_POLL_READY) {
+      /* incoming connection: accept it */
+      int rc = accept(ev - &gt; handle, &amp;peer_uuid);
+    if (ev - &gt; event &amp; IPC_HANDLE_POLL_READY) {
+      /* incoming connection: accept it */
+      int rc = accept(ev - &gt; handle, &amp;peer_uuid);
+      if (rc &lt; 0) {
+        TLOGE("failed (%d) to accept on port %d\n",
+          rc, ev - &gt; handle);
+        return;
+      }
+      handle_t chan = rc;
+      while (true){
+        struct uevent cev;
 
-<h2 id="example_of_a_trusted_application_client">可信应用客户端示例</h2>
-
-<p>以下代码段展示了如何使用 Trusty Messaging API 来实现“回传”服务（请参见上述代码）的客户端。<code>sync_connect()</code> 方法显示了如何在异步 <code>connect()</code> 调用之上实现设有超时的同步连接。</p>
-
-<pre class="prettyprint">
-/*
- *  Local wrapper on top of an async connect that provides a
- *  synchronous connect with timeout.
- */
-int sync_connect(const char *path, uint timeout)
-{
-  int rc;
-  uevent_t evt;
-  handle_t chan;
-
-  rc = connect(path, IPC_CONNECT_ASYNC | IPC_CONNECT_WAIT_FOR_PORT);
-  if (rc &gt;= 0) {
-    chan = (handle_t) rc;
-    rc = wait(chan, &amp;evt, timeout);
-    if (rc == 0) {
-      rc = ERR_BAD_STATE;
-      if (evt.handle == chan) {
-        if (evt.event &amp; IPC_HANDLE_POLL_READY)
-          return chan;
-        if (evt.event &amp; IPC_HANDLE_POLL_HUP)
-          rc = ERR_CHANNEL_CLOSED;
+        rc = wait(handle, &amp;cev, -1);
+        if (rc &lt; 0) {
+          TLOGE("wait returned (%d)\n", rc);
+          abort();
+        }
+        handle_channel_event(&amp;cev);
+        if (cev.event &amp; IPC_HANDLE_POLL_HUP) {
+          return;
+        }
       }
     }
-    close(chan);
-  }
-  return rc;
-}
+
+    /*
+     *  Main application entry point
+     */
+    int main(void) {
+      int rc;
+      handle_t port;
+
+      /* Initialize service */
+      rc = port_create(srv_name, 1, MAX_ECHO_MSG_SIZE,
+        IPC_PORT_ALLOW_NS_CONNECT |
+        IPC_PORT_ALLOW_TA_CONNECT);
+      if (rc &lt; 0) {
+        TLOGE("Failed (%d) to create port %s\n",
+          rc, srv_name);
+        abort();
+      }
+      port = (handle_t) rc;
+
+      /* enter main event loop */
+      while (true) {
+        uevent_t ev;
+
+        ev.handle = INVALID_IPC_HANDLE;
+        ev.event = 0;
+        ev.cookie = NULL;
+
+        /* wait forever */
+        rc = wait(port, &amp;ev, -1)
+        if (rc == NO_ERROR) {
+          /* got an event */
+          handle_port_event(&amp;ev);
+        } else {
+          TLOGE("wait returned (%d)\n", rc);
+          abort();
+        }
+      }
+      return 0;
+    }
 </pre>
 
 <p><code>run_end_to_end_msg_test()</code> 方法可向“回传”服务异步发送 10000 条消息并处理回复。</p>
