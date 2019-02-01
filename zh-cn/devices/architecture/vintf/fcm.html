@@ -1,0 +1,280 @@
+<<<<<<< HEAD   (b056d3 Update dalvikvm configuration docs for 7.1)
+=======
+<html devsite><head>
+    <title>FCM 生命周期</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+
+  <body>
+  <!--
+      Copyright 2018 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>Android 框架版本具有多个框架兼容性矩阵 (FCM)，每个矩阵对应一个可升级的目标 FCM 版本，用于定义框架可以使用哪些内容以及目标 FCM 版本要求。在 FCM 生命周期中，Android 会弃用并移除 HIDL HAL，然后修改 FCM 文件，以反映 <a href="#hal-version-status">HAL 版本</a>的状态。
+
+</p><p>要在自己的生态系统中启用仅针对框架的 OTA，扩展供应商接口的合作伙伴还应使用相同的方法弃用并移除 HIDL HAL。</p>
+
+<aside class="note"><strong>注意</strong>：要详细了解 HIDL HAL，请参阅<a href="/devices/architecture/vintf/comp-matrices">兼容性矩阵</a>、<a href="/devices/architecture/vintf/match-rules">匹配规则</a>和 <a href="/devices/architecture/hidl/versioning">HIDL HAL 版本编号</a>。</aside>
+
+<h2 id="terminology">术语</h2>
+
+<table>
+<tbody><tr>
+<th>框架兼容性矩阵 (FCM)</th>
+<td>一种 XML 文件，用于指定需要满足哪些框架要求才是合规的供应商实现。兼容性矩阵带有版本编号，对于每个框架版本，都会冻结一个新版本的兼容性矩阵。每个框架版本都包含多个 FCM。</td>
+</tr>
+<tr>
+<th>平台 FCM 版本 (S<sub>F</sub>)</th>
+<td>框架版本中所有 FCM 版本的集合。框架适用于所有符合其中一个 FCM 的供应商实现。</td>
+</tr>
+<tr>
+<th>FCM 版本 (F)</th>
+<td>在框架版本中，所有 FCM 中的最高版本。</td>
+</tr>
+<tr>
+<th>目标 FCM 版本 (V)</th>
+<td>供应商实现符合的目标 FCM 版本（S<sub>F</sub> 中的版本），已在设备清单中明确声明。必须针对已发布的 FCM 生成供应商实现，即使它可能在其设备清单中声明了更高的 HAL 版本，也是如此。</td>
+</tr>
+<tr>
+<th>HAL 版本</th>
+<td>HAL 版本采用 <code>foo@x.y</code> 格式，其中 <code>foo</code> 是 HAL 名称，<code>x.y</code> 是具体版本；例如 <code>nfc@1.0</code>、<code>keymaster@3.0</code>（本文档中省略了根前缀，例如 <code>android.hardware</code>。）</td>
+</tr>
+<tr>
+<th>设备清单</th>
+<td>一种 XML 文件，用于指定供应商映像提供了哪些 HAL 版本。设备清单的内容受设备的目标 FCM 版本限制，但可以列出与 V 对应的 FCM 相比更新的 HAL。</td>
+</tr>
+</tbody></table>
+
+<h2 id="develop-new-fcm">使用新 FCM 版本进行开发</h2>
+<p>Android 会针对每个框架版本递增 FCM 版本（如 Android 8、8.1 等）。在开发期间，会创建新的 <code>compatibility_matrix.current.xml</code> (<code>F</code>)，且不再更改现有的 <code>compatibility_matrix.f.xml</code>（其中 <code>f</code> &lt; <code>F</code>）。</p>
+
+<p>要开始使用新 FCM 版本 <code>F</code> 进行开发，请执行以下操作：</p>
+
+<ol>
+<li>将最新的 <code>compatibility_matrix.&lt;F-1&gt;.xml</code> 复制到 <code>compatibility_matrix.current.xml</code>。</li>
+<li>将文件中的 <code>level</code> 属性更新为 <code>F</code>。</li>
+<li>添加相应的编译规则，以便将此兼容性矩阵安装到设备。</li>
+</ol>
+
+<h2 id="introduce-new-hal">引入新 HAL</h2>
+<p>在开发期间，为使用当前有效 FCM 版本 <code>F</code> 的 Android 引入新 HAL（WLAN、NFC 等）时，请将相应 HAL 添加到 <code>compatibility_matrix.current.xml</code>，并采用以下 <code>optional</code> 设置：</p>
+
+<ul>
+<li><code>optional="false"</code>（如果搭载 <code>V = F</code> 的设备必须附带此 HAL），<br />
+<br />
+或者
+<br />
+</li>
+<li><code>optional="true"</code>（如果搭载 <code>V = F</code> 的设备可以不附带此 HAL）。</li>
+</ul>
+
+<p>例如，Android 8.1 引入了 <code>cas@1.0</code> 作为选用 HAL。搭载 Android 8.1 的设备无需实现此 HAL，因此将以下条目添加到了 <code>compatibility_matrix.current.xml</code>（Android 8.1 发布后已改名为 <code><a href="https://android.googlesource.com/platform/hardware/interfaces/+/241e5aba9ebfe85a9599b333f89be51905148f81/compatibility_matrices/compatibility_matrix.2.xml#74" class="external">compatibility_matrix.2.xml</a></code>）中：</p>
+
+<pre class="prettyprint">
+&lt;hal format="hidl" optional="true"&gt;
+    &lt;name&gt;android.hardware.cas&lt;/name&gt;
+    &lt;version&gt;1.0&lt;/version&gt;
+    &lt;interface&gt;
+        &lt;name&gt;IMediaCasService&lt;/name&gt;
+        &lt;instance&gt;default&lt;/instance&gt;
+    &lt;/interface&gt;
+&lt;/hal&gt;
+</pre>
+
+<h2 id="upgrade-hal-minor">升级 HAL (Minor)</h2>
+<p>开发期间，在当前有效 FCM 版本 <code>F</code> 下将 HAL 的 Minor 版本从 <code>x.z</code> 升级到 <code>x.(z+1)</code> 时，如果：</p>
+
+<ul>
+<li>搭载 <code>V = F</code> 的设备必须使用此版本，则 <code>compatibility_matrix.current.xml</code> 必须声明 <code>x.(z+1)</code> 和 <code>optional="false"</code>。</li>
+<li>搭载 <code>V = F</code> 的设备无需使用此版本，则 <code>compatibility_matrix.current.xml</code> 必须从 <code>compatibility_matrix.&lt;F-1&gt;.xml</code> 复制 <code>x.y-z</code> 和可选性，并将版本更改为 <code>x.w-(z+1)</code>（其中 <code>w &gt;= y</code>）。</li>
+</ul>
+
+<p>例如，Android 8.1 引入了 <code>broadcastradio@1.1</code> 作为 1.0 HAL 的 Minor 版本升级。对于搭载 Android 8.0 的设备，较旧版本 <code>broadcastradio@1.0</code> 是选用版本；对于搭载 Android 8.1 的设备，较新版本 <code>broadcastradio@1.1</code> 是选用版本。在 <code><a href="https://android.googlesource.com/platform/hardware/interfaces/+/241e5aba9ebfe85a9599b333f89be51905148f81/compatibility_matrices/compatibility_matrix.1.xml#58" class="external">compatibility_matrix.1.xml</a></code> 中：</p>
+
+<pre class="prettyprint">
+&lt;hal format="hidl" optional="true"&gt;
+    &lt;name&gt;android.hardware.broadcastradio&lt;/name&gt;
+    &lt;version&gt;1.0&lt;/version&gt;
+    &lt;interface&gt;
+        &lt;name&gt;IBroadcastRadioFactory&lt;/name&gt;
+        &lt;instance&gt;default&lt;/instance&gt;
+    &lt;/interface&gt;
+&lt;/hal&gt;
+</pre>
+
+<p>此条目复制到了 <code>compatibility_matrix.current.xml</code>（Android 8.1 发布后已改名为 <code><a href="https://android.googlesource.com/platform/hardware/interfaces/+/241e5aba9ebfe85a9599b333f89be51905148f81/compatibility_matrices/compatibility_matrix.2.xml#58">compatibility_matrix.2.xml</a></code>），并进行了以下修改：</p>
+
+<pre class="prettyprint">
+&lt;hal format="hidl" optional="true"&gt;
+    &lt;name&gt;android.hardware.broadcastradio&lt;/name&gt;
+    &lt;version&gt;1.0-1&lt;/version&gt;
+    &lt;interface&gt;
+        &lt;name&gt;IBroadcastRadioFactory&lt;/name&gt;
+        &lt;instance&gt;default&lt;/instance&gt;
+    &lt;/interface&gt;
+&lt;/hal&gt;
+</pre>
+
+<h2 id="upgrade-hal-major">升级 HAL (Major)</h2>
+<p>在开发期间，当 HAL 有在当前有效 FCM 版本 <code>F</code> 下的 Major 版本升级时，新的 Major 版本 <code>x.0</code> 会添加到 <code>compatibility_matrix.current.xml</code>，并会采用以下 <code>optional</code> 设置：</p>
+
+<ul>
+<li><code>optional="false"</code> 且仅包含版本 <code>x.0</code>（如果搭载 <code>V = F</code> 的设备必须附带 <code>x.0</code>）。</li>
+<li><code>optional="false"</code>，但与较旧的 Major 版本位于同一个 <code>&lt;hal&gt;</code> 标记中（如果搭载 <code>V = F</code> 的设备必须附带此 HAL，但可以附带较旧的 Major 版本）。</li>
+<li><code>optional="true"</code>（如果搭载 <code>V = F</code> 的设备无需附带此 HAL）。</li>
+</ul>
+
+<p>例如，Android 9 引入了 <code>health@2.0</code> 作为 1.0 HAL 的 Major 版本升级，并弃用了 1.0 HAL。对于搭载 Android 8.0 和 Android 8.1 的设备，较旧版本 <code>health@1.0</code> 是选用版本。搭载 Android 9 的设备不得提供已弃用的 1.0 HAL，必须改为提供新的 2.0 版本。在 <code><a href="https://android.googlesource.com/platform/hardware/interfaces/+/241e5aba9ebfe85a9599b333f89be51905148f81/compatibility_matrices/compatibility_matrix.legacy.xml#150" class="external">compatibility_matrix.legacy.xml</a></code>、<code><a href="https://android.googlesource.com/platform/hardware/interfaces/+/241e5aba9ebfe85a9599b333f89be51905148f81/compatibility_matrices/compatibility_matrix.1.xml#150" class="external">compatibility_matrix.1.xml</a></code> 和 <code><a href="https://android.googlesource.com/platform/hardware/interfaces/+/241e5aba9ebfe85a9599b333f89be51905148f81/compatibility_matrices/compatibility_matrix.2.xml#158" class="external">compatibility_matrix.2.xml</a></code> 中：</p>
+
+<pre class="prettyprint">
+&lt;hal format="hidl" optional="true"&gt;
+    &lt;name&gt;android.hardware.health&lt;/name&gt;
+    &lt;version&gt;1.0&lt;/version&gt;
+    &lt;interface&gt;
+        &lt;name&gt;IHealth&lt;/name&gt;
+        &lt;instance&gt;default&lt;/instance&gt;
+    &lt;/interface&gt;
+&lt;/hal&gt;
+</pre>
+
+<p>此条目复制到了 <code>compatibility_matrix.current.xml</code>（在 Android 9 版本中已改名为 <code>compatibility_matrix.3.xml</code>），并进行了以下修改：</p>
+
+<pre class="prettyprint">
+&lt;hal format="hidl" optional="false"&gt;
+    &lt;name&gt;android.hardware.health&lt;/name&gt;
+    &lt;version&gt;2.0&lt;/version&gt;
+    &lt;interface&gt;
+        &lt;name&gt;IHealth&lt;/name&gt;
+        &lt;instance&gt;default&lt;/instance&gt;
+    &lt;/interface&gt;
+&lt;/hal&gt;
+</pre>
+
+<p>限制条件：</p>
+<ul>
+<li>由于 2.0 HAL 在 <code>compatibility_matrix.3.xml</code> 中且 <code>optional="false"</code>，因此搭载 Android 9 的设备必须附带 2.0 HAL。</li>
+<li>由于 1.0 HAL 不在 <code>compatibility_matrix.3.xml</code> 中，因此搭载 Android 9 的设备不得提供 1.0 HAL（因为此 HAL 会被视为已弃用）。</li>
+<li>由于 1.0 HAL 作为选用 HAL 存在于 legacy/1/2.xml（Android 9 可以支持的较旧 FCM 版本）中，因此 Android 9 框架仍可以支持 1.0 HAL（不会被视为已移除的 HAL 版本）。</li>
+</ul>
+
+<h2 id="new-fcm-versions">新 FCM 版本</h2>
+<p>FCM 版本的发布过程是在 AOSP 发布时由 Google 单独完成的，包含以下步骤：</p>
+
+<ol>
+<li>将 <code>compatibility_matrix.current.xml</code> 改名为 <code>compatibility_matrix.F.xml</code>。</li>
+<li>确保该文件具有属性 <code>level="F"</code>。</li>
+<li>修改相应<a href="https://android.googlesource.com/platform/hardware/interfaces/+/2d8442c76270b2c32816d1dac56bbd536b0bf790/compatibility_matrices/Android.mk" class="external">编译规则</a>，以反映文件名更改。</li>
+<li>确保所有设备都已编译并启动。</li>
+<li><a href="https://android.googlesource.com/platform/test/vts-testcase/hal/+/95e09aca7711cace6184077debc556b05335a8b1/treble/vintf/vts_treble_vintf_test.cpp#87" class="external">更新 VTS 测试</a>，确保附带最新框架（基于 Shipping API 级别）的设备搭载的目标 FCM 版本 <code>V &gt;= F</code>。</li>
+<li>将文件发布到 AOSP。</li>
+</ol>
+
+<p>此文件一经改名并发布，便<strong>无法</strong>更改。例如，在 Android 9 开发期间，针对 <code>hardware/interfaces/compatibility_matrices/</code> <a href="https://android.googlesource.com/platform/hardware/interfaces/+/241e5aba9ebfe85a9599b333f89be51905148f81/compatibility_matrices/Android.mk" class="external">编译</a>了以下文件：</p>
+
+<ul>
+<li><code>compatibility_matrix.legacy.xml</code></li>
+<li><code>compatibility_matrix.1.xml</code></li>
+<li><code>compatibility_matrix.2.xml</code></li>
+<li><code>compatibility_matrix.current.xml</code></li>
+</ul>
+
+<p>Android 9 发布后，<code>compatibility_matrix.current.xml</code> 改名为 <code>compatibility_matrix.3.xml</code>，并针对 <code>hardware/interfaces/compatibility_matrices/</code> 编译了以下文件：</p>
+
+<ul>
+<li><code>compatibility_matrix.legacy.xml</code></li>
+<li><code>compatibility_matrix.1.xml</code></li>
+<li><code>compatibility_matrix.2.xml</code></li>
+<li><code>compatibility_matrix.3.xml</code></li>
+</ul>
+
+<p>
+<a href="https://android.googlesource.com/platform/test/vts-testcase/hal/+/95e09aca7711cace6184077debc556b05335a8b1/treble/vintf/vts_treble_vintf_test.cpp#435" class="external">VTS 测试</a>旨在确保搭载 Android 9 的设备的目标 FCM 版本 &gt;= 3。</p>
+
+<h2 id="hal-version-deprecation">HAL 版本弃用</h2>
+
+<p>是否弃用 HAL 版本由开发者决定（例如，是否弃用 AOSP HAL 由 Google 决定）。发布较高版本的 HAL（无论是 Minor 版本还是 Major 版本）时，可能需要做出此类决定。如果在 FCM 版本 <code>F</code> 下弃用指定 HAL <code>foo@x.y</code>，则意味着任何搭载目标 FCM 版本 <code>V = F</code> 或更高版本的设备都不得在 <code>x.y</code> 或任何低于 <code>x.y</code> 的版本下实现 <code>foo</code>。框架仍支持已弃用的 HAL 版本，以便升级设备。</p>
+
+<p>FCM 版本 <code>F</code> 发布后，如果目标 FCM 版本 <code>V = F</code> 对应的最新 FCM 中未明确声明 HAL 版本 <code>foo@x.y</code>，则该版本会被视为已弃用。对于搭载 <code>V</code> 的设备，以下条件之一为 true：</p>
+
+<ul>
+<li>框架需要较高版本（Major 版本或 Minor 版本）；</li>
+<li>框架不再需要该 HAL。</li>
+</ul>
+
+<p>例如，Android 9 引入了 <code>health@2.0</code> 作为 1.0 HAL 的 Major 版本升级。<code>health@1.0</code> 已从 <code>compatibility_matrix.3.xml</code> 中移除，但存在于 <code><a href="https://android.googlesource.com/platform/hardware/interfaces/+/241e5aba9ebfe85a9599b333f89be51905148f81/compatibility_matrices/compatibility_matrix.legacy.xml#150" class="external">compatibility_matrix.legacy.xml</a></code>、<code><a href="https://android.googlesource.com/platform/hardware/interfaces/+/241e5aba9ebfe85a9599b333f89be51905148f81/compatibility_matrices/compatibility_matrix.1.xml#150" class="external">compatibility_matrix.1.xml</a></code> 和 <code><a href="https://android.googlesource.com/platform/hardware/interfaces/+/241e5aba9ebfe85a9599b333f89be51905148f81/compatibility_matrices/compatibility_matrix.2.xml#158" class="external">compatibility_matrix.2.xml</a></code> 中。因此，<code>health@1.0</code> 会被视为已弃用。</p>
+
+<h2 id="removal-of-support">取消对目标 FCM 版本的支持</h2>
+<p>当搭载某个目标 FCM 版本 <code>V</code> 的有效设备数量降至特定阈值以下时，应将该目标 FCM 版本从下一个框架版本的 S<sub>F</sub> 集中移除，方法是从编译规则中移除 <code>compatibility_matrix.V.xml</code>（以便它不再安装在系统映像中），并删除用于实现或依赖于已移除功能的所有代码。如果设备搭载的目标 FCM 版本不在指定框架版本的 S<sub>F</sub> 之内，则无法升级到该版本。</p>
+
+<h2 id="hal-version-status">HAL 版本状态</h2>
+<p>下文介绍了 HAL 版本的可能状态（按时间先后顺序）。</p>
+
+<h3 id="hal-unreleased">未发布</h3>
+<p>如果 HAL 版本不在任何公开且冻结的兼容性矩阵中，则被视为未发布且可能正在开发中。这包括仅在 <code>compatibility_matrix.current.xml</code> 中的 HAL 版本。示例：</p>
+
+<ul>
+<li>在 Android 9 开发期间（在 <code>compatibiility_matrix.current.xml</code> 改名为 <code>compatibility_matrix.3.xml</code> 之前），<code>health@2.0</code> HAL 被视为未发布的 HAL。</li>
+<li><code>teleportation@1.0</code> HAL 不在任何已发布的兼容性矩阵中，也被视为未发布的 HAL。</li>
+</ul>
+
+<h3 id="hal-released-and-current">已发布且当前有效</h3>
+<p>如果 HAL 版本位于任何公开且冻结的兼容性矩阵中，则为已发布版本。例如，FCM 版本 3 冻结（当 <code>compatibiility_matrix.current.xml</code> 已改名为 <code>compatibility_matrix.3.xml</code> 时）并发布到 AOSP 后，<code>health@2.0</code> HAL 会被视为已发布且当前有效的 HAL 版本。
+</p>
+
+<p>如果 HAL 版本位于包含最高 FCM 版本的公开且冻结兼容性矩阵中（<code>compatibility_matrix.current.xml</code> 除外），则 HAL 版本为当前有效版本（即未弃用版本）。例如，如果现有 HAL 版本（例如，在 <code>nfc@1.0</code> 中引入的 <code><a href="https://android.googlesource.com/platform/hardware/interfaces/+/241e5aba9ebfe85a9599b333f89be51905148f81/compatibility_matrices/compatibility_matrix.legacy.xml#198" class="external">compatibility_matrix.legacy.xml</a></code>）继续存在于 <code>compatibility_matrix.3.xml</code> 中，则也会被视为已发布且当前有效的 HAL 版本。</p>
+
+<h3 id="hal-released-but-deprecated">已发布但已弃用</h3>
+<p>当且仅当存在以下情况时，HAL 版本会被视为已弃用：</p>
+
+<ul>
+<li>已发布；</li>
+<li>不在包含最高 FCM 版本的公开且冻结兼容性矩阵中；</li>
+<li>在框架仍支持的公开且冻结兼容性矩阵中。</li>
+</ul>
+
+<p>示例：</p>
+
+<ul>
+<li><code>health@1.0</code> HAL 在 <code><a href="https://android.googlesource.com/platform/hardware/interfaces/+/241e5aba9ebfe85a9599b333f89be51905148f81/compatibility_matrices/compatibility_matrix.legacy.xml#150" class="external">compatibility_matrix.legacy.xml</a></code>、<code><a href="https://android.googlesource.com/platform/hardware/interfaces/+/241e5aba9ebfe85a9599b333f89be51905148f81/compatibility_matrices/compatibility_matrix.1.xml#150" class="external">compatibility_matrix.1.xml</a></code> 和 <code><a href="https://android.googlesource.com/platform/hardware/interfaces/+/241e5aba9ebfe85a9599b333f89be51905148f81/compatibility_matrices/compatibility_matrix.2.xml#158" class="external">compatibility_matrix.2.xml</a></code> 中，但不在 <code>compatibility_matrix.3.xml</code> 中。因此，它在 Android 9 中被视为已弃用。</li>
+<li>电量 HAL 在 Android 9 中有 Minor 版本升级，但 <code>power@1.0</code> 仍在 <code>compatibility_matrix.3.xml</code> 中。
+<ul>
+<li><code>power@1.0</code> 在 <code><a href="https://android.googlesource.com/platform/hardware/interfaces/+/241e5aba9ebfe85a9599b333f89be51905148f81/compatibility_matrices/compatibility_matrix.legacy.xml#206" class="external">compatibility_matrix.legacy.xml</a></code>、<code><a href="https://android.googlesource.com/platform/hardware/interfaces/+/241e5aba9ebfe85a9599b333f89be51905148f81/compatibility_matrices/compatibility_matrix.1.xml#206" class="external">compatibility_matrix.1.xml</a></code> 和 <code><a href="https://android.googlesource.com/platform/hardware/interfaces/+/241e5aba9ebfe85a9599b333f89be51905148f81/compatibility_matrices/compatibility_matrix.2.xml#222" class="external">compatibility_matrix.2.xml</a></code> 中。</li>
+<li><code>compatibility_matrix.3.xml</code> 包含 <code>power@1.0-1</code>。</li>
+</ul>
+</li>
+</ul>
+
+<p>因此，在 Android 9 中，<code>power@1.0</code> 为当前有效版本，而<strong>不是</strong>已弃用版本。</p>
+
+<h3 id="hal-removed">已移除</h3>
+<p>当且仅当存在以下情况时，HAL 版本会被视为已移除：</p>
+
+<ul>
+<li>之前已发布；</li>
+<li>不在框架支持的任何公开且冻结兼容性矩阵中。</li>
+</ul>
+
+<p>不受框架支持的公开且冻结兼容性矩阵会保留在代码库中，以便指定已移除的 HAL 版本集，从而可以写入 VTS 测试，确保新设备上没有已移除的 HAL。
+</p>
+
+<h2>旧版 FCM</h2>
+<p>对于所有不支持 Treble 的设备，旧版目标 FCM 版本是一个特殊值。旧版 FCM <code>compatibility_matrix.legacy.xml</code> 列出了框架对旧版设备（即搭载 Android 8.0 之前版本的设备）的要求。
+</p>
+
+<p>如果版本为 <code>F</code> 的 FCM 具有此文件，则任何不支持 Treble 的设备均可升级到 <code>F</code>，但前提是其设备清单与此文件兼容。移除旧版 FCM 的程序与移除其他目标 FCM 版本对应的 FCM 的程序相同（在搭载 8.0 之前版本的有效设备数量降至特定阈值以下后移除）。</p>
+
+</body></html>
+>>>>>>> CHANGE (3fbb9e Docs: Changes to source.android.com)

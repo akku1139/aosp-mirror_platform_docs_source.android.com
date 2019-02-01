@@ -1,0 +1,756 @@
+<<<<<<< HEAD   (b056d3 Update dalvikvm configuration docs for 7.1)
+=======
+<html devsite>
+  <head>
+    <title>Power Management</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>Android 9 introduces a new state – <em>deep sleep</em> – into the power
+management state machine. To implement this state, Android 9 provides a new power management service
+and interface: <code>CarPowerManagementService</code> and <code>CarPowerManager</code>.</p>
+
+<p>State transitions are triggered by the Vehicle MCU (VMCU). To communicate with the VMCU,
+integrators must implement several components. Integrators are responsible for integrating
+with the VHAL and the kernel implementation. Integrators are also responsible for disabling wake
+sources and ensuring that shutdowns are not postponed indefinitely.</p>
+
+<h2 id=terms>Terminology</h2>
+
+<p>These terms are used throughout this document:</p>
+
+<table>
+<thead>
+<tr>
+<th>Term</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Application Processor (AP)</td>
+<td>Part of the System on Chip (SoC).</td>
+</tr>
+<tr>
+<td>Board Support Processor (BSP)</td>
+<td>All of the chip and hardware specific code
+necessary for the product to work. Typically provided by the SoC vendor and hardware
+manufacturer. This covers items such as device drivers, the PMIC sequencing code, and SoC
+bringup.</td>
+</tr>
+<tr>
+<td>CarPowerManager (CPM)</td>
+<td>Exposes an API for applications to register for power state changes.</td>
+</tr>
+<tr>
+<td>CarPowerManagementService (CPMS)</td>
+<td>Implements the car power state machine, interfaces with VHAL, and performs the final calls to <code>suspend()</code> and <code>shutdown()</code>.</td>
+</tr>
+<tr>
+<td>CarServiceHelperService</strong> (<strong>CSHS</strong>)</td>
+<td>Provides a hook into SystemServer for OK, provided that is the Car Service.</td>
+</tr>
+<tr>
+<td>General Purpose Input / Output (GPIO)</td>
+<td>A digital signal pin for general purpose use.</td>
+</tr>
+<tr>
+<td>Hibernate</td>
+<td>AKA <em>Suspend to Disk</em> (S2D/S4). The SoC is placed into S4 power mode (hibernate) and RAM
+content is written to non-volatile media (such as flash or disk) and the entire system is powered
+off. Android does <strong><em>not</em></strong> currently implement hibernate.</td>
+</tr>
+<tr>
+<td>Media Processor (MP)</td>
+<td>See System on Chip (SoC).</td>
+</tr>
+<tr>
+<td>Power Management Integrated Circuit (PMIC)</td>
+<td>Chip used to manage power requirements for the host system.</td>
+</tr>
+<tr>
+<td>System on a Chip (SoC)</td>
+<td>Main processor that runs Android, typically supplied by manufacturers such as Intel, Mediatek,
+Nvidia, Qualcomm, Renesas, and Texas Instruments.</td>
+</tr>
+<tr>
+<td>Suspend</td>
+<td>AKA <em>Suspend to RAM</em> (S2R or STR). The SoC is placed into S3 power mode and the CPU is
+powered off while RAM remains powered on.</td>
+</tr>
+<tr>
+<td>Vehicle HAL (VHAL)</td>
+<td>The Android API used to interface with the vehicle network. The Tier 1 partner or OEM is
+responsible for writing this module. The vehicle network can use any physical layer (such as CAN,
+LIN, MOST, and Ethernet). The VHAL abstracts this vehicle network to enable Android to interact with
+the vehicle.</td>
+</tr>
+<tr>
+<td>Vehicle Interface Processor (VIP)</td>
+<td>See Vehicle MCU.</td>
+</tr>
+<tr>
+<td>Vehicle MCU (VMCU)</td>
+<td>The microcontroller that provides the interface between the vehicle network and the SoC. The SoC
+communicates with the VMCU via USB, UART, SPI, and GPIO signals. </td>
+</tr>
+</tbody>
+</table>
+
+<h2 id=design>System design</h2>
+
+<p>This section describes how Android 9 represents the application processor's power state and which
+modules implement the power management system. This material also describes how these modules work
+together and how state transitions typically occur.</p>
+
+<h3 id=state>Car power state machine</h3>
+
+<p>Android 9 uses a <em>state machine</em> to represent the power state of the AP. This state machine
+provides these five states, as illustrated below:
+
+<p><img src="/devices/automotive/images/automotive_power_states.png"></p>
+
+<p><b>Figure 1</b>. Car power state machine</p>
+
+<p>The initial state of this state machine is OFF. This state can transition into two states,
+ON:DISP OFF and ON: FULL. Both states indicate the AP is on. The difference lies in the
+display's power state. ON: DISP OFF means that the AP is running and displays are turned off.
+When display turns on, the ON: DISP OFF state transitions into ON:FULL (and vice versa).</p>
+
+<p>The AP is turned off in two cases. In both cases, the state machine first changes state to
+SHUTDOWN PREPARE and then transitions to OFF or DEEP SLEEP:</p>
+
+<ul>
+<li>Power off.</li>
+<li>Suspended to RAM.</li>
+</ul>
+
+<p>When this power management state machine enters the DEEP SLEEP state, the AP runs Suspend to
+RAM. For example, the AP suspends its state (such as register stored value) in RAM. When the AP
+wakes up, all states are restored.</p>
+
+<h3 id=module>Power management modules</h3>
+
+<p>These five modules comprise the power management system:</p>
+
+<table>
+<thead>
+<tr>
+<th><strong>Module name</strong></th>
+<th><strong>Description</strong></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>CarPowerManager</td>
+<td>Java/C++ API</td>
+</tr>
+<tr>
+<td>CarPowerManagementService</td>
+<td>Responsible for coordinating the sleep/suspend power state</td>
+</tr>
+<tr>
+<td>Vehicle HAL</td>
+<td>Interface to VMCU</td>
+</tr>
+<tr>
+<td>libsuspend</td>
+<td>Native library to place the device into suspend</td>
+</tr>
+<tr>
+<td>Kernel</td>
+<td>Suspend to RAM implementation</td>
+</tr>
+</tbody>
+</table>
+
+<p>The deep sleep feature (suspending Android to RAM) is implemented in the kernel. This feature is
+exposed to the user space as a special file located at <code>/sys/power/state</code>. AAE is
+suspended by writing <code>mem</code> to this file. </p>
+
+<p><code>libsuspend</code> is a native library that implements <code>forcesuspend()</code>. This
+function uses <code>/sys/power/state</code> to suspend AAE. <code>forcesuspend()</code> can be
+called from system services, including CPMS.</p>
+
+<p>The CPMS coordinates the power state with other services and HALs. The CPMS implements the state
+machine described above and sends notifications to every observer when a power state transition
+occurs. This service also uses <code>libsuspend</code> and the VHAL to send messages to the
+hardware. </p>
+
+<p>Some properties are defined in the VHAL. To communicate with the VMCU, the CPMS reads and writes
+these properties. Applications can use the interface defined in the CPM to monitor power state
+changes. This interface also enables applications to acquire the boot reason and to send shutdown
+requests. This API can be called from Java and C++ and are annotated with @hide / @System API, which
+means it is available to privileged applications <em>only</em>. The relationship between these five
+modules, applications, and services is illustrated below:</p>
+
+<p><img src="/devices/automotive/images/automotive_power_reference_diagram.png"></p>
+
+<p><b>Figure 2</b>. Power components reference diagram</p>
+
+<h3 id=msg>Typical message sequence</h3>
+
+<p>The previous section described the modules that comprise the power management system. This
+section uses the following two examples to explain how the modules and applications communicate:</p>
+
+<ul>
+<li>Enter deep sleep.</li>
+<li>Exit deep sleep.</li>
+</ul>
+
+<h4>Enter deep sleep</h4>
+
+<p>Only the VMCU can initiate deep sleep. Once deep sleep is initiated, the VMCU sends a
+notification to the CPMS via the VHAL. The CPMS changes the state to SHUTDOWN PREPARE and
+broadcasts this state transition to all observers (the applications and services that monitor
+CPMS) by calling the <code>onStateChanged()</code> method with a new state ID provided by the
+CPM.</p>
+
+The CPM mediates between the applications/services and the CPMS. The <code>onStateChanged()</code>
+method for the applications/services is synchronously invoked in the CPM's
+<code>onStateChanged()</code> method. After which, the finished method of the CPMS is invoked to
+notify the CPMS that the target application or service is ready to suspend. The CPM's
+<code>onStateChanged()</code> method runs asynchronously. Therefore, some delay occurs between the
+calling of the <code>onStateChanged()</code> method to all CPM objects and the receiving of the
+finished message from all these objects. During this time, the CPMS continues to send shutdown
+postpone requests to the VHAL.</p>
+
+<p>Once the CPMS receives the finished message from all CPM objects, the CPMS sends
+<code>AP_POWER_STATE_REPORT</code> to the VHAL, which then notifies the VMCU that the AP is ready to
+suspend. The CPMS also calls its suspend method, which suspends the kernel with a feature provided
+by <code>libsuspend</code>.</p>
+
+<p>The entire sequence described above is illustrated in the following sequence diagram:
+
+<p><img src="/devices/automotive/images/automotive_power_deep_sleep.png"></p>
+
+<p><b>Figure 3</b>. Enter deep sleep sequence diagram</p>
+
+<h4>Exit deep sleep</h4>
+
+<p>The sequence to exit suspend is also initiated by the VMCU. The VMCU turns on the AP and the AP
+restores the suspended Android from RAM. The CPMS uses <code>onStateChanged</code>method to send a
+<code>SUSPEND_EXIT</code> message to applications and services when it wakes up. </p>
+
+To access the reason, applications and services can call the <code>getBootReason()</code> method
+provided by the CPM. This method returns these values, as notified from the VMCU to the VHAL:</p>
+
+<ul>
+<li>BOOT_REASON_USER_POWER_ON</li>
+<li>BOOT_REASON_DOOR_UNLOCK</li>
+<li>BOOT_REASON_TIMER</li>
+<li>BOOT_REASON_DOOR_OPEN</li>
+<li>BOOT_REASON_REMOTE_START</li>
+</ul>
+
+<p><img src="/devices/automotive/images/automotive_power_deep_sleep_exit.png"></p>
+
+<p><b>Figure 4</b>. Exit deep sleep sequence diagram</p>
+
+<h2 id=cpm>Programming interfaces provided by CPM</h2>
+
+<p>This section describes the Java and C++ API provided by the CPM for system applications and
+services. The process to call the CPM in C++ is identical to that used by the Java API. This API
+enables the system software to:</p>
+
+<ul>
+<li>Monitor power state changes in the AP.</li>
+<li>Acquire boot reasons from the CPMS.</li>
+<li>Request the VMCU to shut down the AP on the next suspend instruction.</li>
+</ul>
+
+<p><code>PowerTestFragment.java</code> in <code>com.google.android.car.kitchensink.power</code>
+illustrates how to use these APIs in Java. Use these steps to call the APIs provided by the CPM:</p>
+
+<ol>
+<li>To acquire the CPM instance, call the Car API.</li>
+<li>Call the appropriate method on the object created in Step 1.</li>
+</ol>
+
+<h3 id=object>Creating a CarPowerManager object</h3>
+
+<p>To create a CPM object, call the Car object's <code>getCarManager()</code> method. This method is
+a facade used to create CM objects. Specify <code>android.car.Car.POWER_SERVICE</code> as an
+argument to create a CPM object.</p>
+
+<div>
+<pre class="prettyprint">
+Car car = Car.createCar(this, carCallbacks);
+car.connect();
+CarPowerManager powerManager =
+  (CarPowerManager)car.getCarManager(android.car.Car.POWER_SERVICE);
+</pre>
+</div>
+
+<h2 id=reg>CarPowerStateListener and registration</h2>
+
+<p>System applications and services can receive power state change notifications by implementing
+<code>CarPowerManager.CarPowerStateListener</code>. This interface defines one method
+<code>onStateChanged()</code>, which is a callback function invoked when the power state of CPMS
+is changed. The following example defines a new anonymous class that implements the interface:</p>
+
+<div>
+<pre class="prettyprint">
+private final CarPowerManager.CarPowerStateListener listener =
+  new CarPowerManager.CarPowerStateListener () {
+    @Override
+     public void onStateChanged(int state) {
+       Log.i(TAG, "onStateChanged() state = " + state);
+     }
+};
+</pre>
+</div>
+
+<p>To instruct this listener object to monitor a power state transition, create a new execution
+thread and register the listener and this thread to the PM object: </p>
+
+<div>
+<pre class="prettyprint">
+executer = new ThreadPerTaskExecuter();
+powerManager.setListener(powerListener, executer);
+</pre>
+</div>
+
+<p>When the power state is changed, the <code>onStateChanged()</code> method of the listener object
+is invoked with a value to represent the new power state. The association between actual value and
+power state is defined in <code>CarPowerManager.CarPowerStateListene</code>r and is shown in the
+following table:</p>
+
+<table>
+<thead>
+<tr>
+<th><strong>Name</strong></th>
+<th><strong>Description</strong></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SHUTDOWN_CANCELED</td>
+<td>Shutdown is canceled and power state is returned to the normal state.</td>
+</tr>
+<tr>
+<td>SHUTDOWN_ENTER</td>
+<td>Enter the shutdown state. Applications are expected to clean up and be ready to shutdown.</td>
+</tr>
+<tr>
+<td>SUSPEND_ENTER</td>
+<td>Enter the suspend state. Applications are expected to clean up and be ready to suspend.</td>
+</tr>
+<tr>
+<td>SUSPEND_EXIT</td>
+<td>Wake up from suspend or resume from a cancelled suspend.</td>
+</tr>
+</tbody>
+</table>
+
+<h3 id=dereg>CarPowerStateListener unregistration</h3>
+
+<p>To unregister all listener objects registered to CPM, call the <code>clearListener</code> method:</p>
+
+<p><pre class="prettyprint">
+powerManager.clearListener();
+</pre>
+</div>
+
+<h3 id=boot>Boot reason acquisition</h3>
+
+<p>To acquire the boot reason, call the <code>getBootReason</code> method, which communicates with
+the CPMS and returns one of the following five boot reasons:</p>
+
+<table>
+<thead>
+<tr>
+<th><strong>Name</strong></th>
+<th><strong>Description</strong></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>BOOT_REASON_USER_POWER_ON</td>
+<td>A user presses the power key or rotates the ignition switch to boot the device.</td>
+</tr>
+<tr>
+<td>BOOT_REASON_DOOR_UNLOCK</td>
+<td>Door unlocks, which causes the device to boot.</td>
+</tr>
+<tr>
+<td>BOOT_REASON_TIMER</td>
+<td>Timer expires and vehicle wakes up the AP.</td>
+</tr>
+<tr>
+<td>BOOT_REASON_DOOR_OPEN</td>
+<td>Door opens, which causes the device to boot.</td>
+</tr>
+<tr>
+<td>BOOT_REASON_REMOTE_START</td>
+<td>User activates remote start.</td>
+</tr>
+</tbody>
+</table>
+
+<p>These boot reasons are defined in the CPM. The following sample code demonstrates boot reason
+acquisition:</p>
+
+<div>
+<pre class="prettyprint">
+try{
+  int bootReason = carPowerManager.getBootReason();
+  if (bootReason == CarPowerManager.BOOT_REASON_TIMER){
+    doSomething;
+  }else{
+    doSomethingElse();
+  }
+}catch(CarNotConnectedException e){
+   Log.e("Failed to getBootReason()" + e);
+}
+</pre>
+</div>
+
+<p>This method throws a <code>CarNotConnectedException</code> when it fails to communicate with the
+CPMS.</p>
+
+<h3 id=shutdown>Shutdown request on next suspend</h3>
+
+<p>The <code>requestShutdownOnNextSuspend()</code>method instructs CPMS to shut down instead of deep
+sleep at the next opportunity.</p>
+
+<h2 id=integration>System integration on your Android implementation</h2>
+
+<p>Integrators are responsible for implementing the following items:</p>
+
+<ul>
+<li>Kernel interface to suspend Android.</li>
+<li>The VHAL to:<ul type="circle">
+<li>Propagate the initiation of suspend or shutdown from the car to Android.</li>
+<li>Send the shutdown ready message from Android to the car.</li>
+<li>Initiate shutdown or suspend of Android via the Linux kernel interface.</li>
+<li>Propagate the wake reason from the car to Android upon resume from suspend.</li>
+</ul>
+<li>Wakesources to be disabled when the device is in suspend.</li>
+<li>Applications to shut down quickly enough so as not to indefinitely postpone the shutdown
+process.</li>
+</ul>
+
+<h3 id=kernel>Kernel interface: /sys/power/state</h3>
+
+<p>First, implement the Linux suspend power state. Android places a device into suspend mode when
+an application or service writes <code>mem</code> into a file located at
+<code>/sys/power/state.</code> This function may include the sending of a GPIO to the VMCU to notify
+the VMCU that the device has shut down completely. The Integrator is also responsible for removing
+any race conditions between VHAL sending the final message to the VMCU and the system going into
+suspend or shutdown mode.</p>
+
+<h3 id=vhal>VHAL responsibility</h3>
+
+<p>The VHAL provides an interface between the vehicle network and Android. The VHAL:</p>
+
+<ul>
+<li>Propagates the initiation of suspend or shutdown from the car to Android.</li>
+<li>Sends the shutdown ready message from Android to the car.</li>
+<li>Initiates the shutdown or suspend of Android via the Linux kernel interface.</li>
+<li>Propagates the wake reason from the car to Android upon resume from suspend.</li>
+</ul>
+
+<p>When the CPMS informs the VHAL that it is ready to shut down, the VHAL sends the shutdown ready
+message to the VMCU. Typically, on-chip peripherals such as UART, SPI, and USB transmit the
+message. Once the message has been sent, the VHAL calls the kernel command to suspend or shutdown
+the device. Before doing so, in the case of a shutdown, the VHAL or BSP may toggle a GPIO to
+instruct the VMCU that it is safe to remove power from the device.</p>
+
+<p>The VHAL must support the following properties, which control power management via the VHAL:</p>
+
+<table>
+<thead>
+<tr>
+<th><strong>Name</strong></th>
+<th><strong>Description</strong></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>AP_POWER_STATE_REPORT</td>
+<td>Android reports state transitions to the VMCU with this property, using VehicleApPowerStateSet enum values.</td>
+</tr>
+<tr>
+<td>AP_POWER_STATE_REQ</td>
+<td>The VMCU uses this property to instruct Android to transition to different power states, using VehicleApPowerStateReq enum values.</td>
+</tr>
+<tr>
+<td>AP_POWER_BOOTUP_REASON</td>
+<td>The VMCU reports the wake reason to Android, using the VehicleApPowerBootupReason enum values.</td>
+</tr>
+</tbody>
+</table>
+
+<h4>AP_POWER_STATE_REPORT</h4>
+
+<p>Use this property to report Android's current power management state.This property contains two
+integers:</p>
+
+<ul>
+<li><code>int32Values[0]</code>: <code>VehicleApPowerStateReport</code> enum of the current state.</li>
+<li><code>int32Values[1]</code>: Time in milliseconds to postpone or sleep/shutdown. This value
+depends on the first value.</li>
+</ul>
+
+<p>The first value can take one of the following values. <code>Types.hal</code> contains more
+specific descriptions, which are stored in the
+<code>hardware/interfaces/automotive/vehicle/2.0.</code></p>
+
+<table>
+<thead>
+<tr>
+<th><strong>Value name</strong></th>
+<th><strong>Description</strong></th>
+<th><strong>Second&nbsp;value</strong></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>BOOT_COMPLETE</td>
+<td>AP has completed boot up and can start shutdown.</td>
+<td></td>
+</tr>
+<tr>
+<td>DEEP_SLEEP_ENTRY</td>
+<td>AP is entering the deep sleep state.</td>
+<td>Must be set</td>
+</tr>
+<tr>
+<td>DEEP_SLEEP_EXIT</td>
+<td>AP is exiting the deep sleep state.</td>
+<td></td>
+</tr>
+<tr>
+<td>SHUTDOWN_POSTPONE</td>
+<td>Android is requesting to postpone shutdown .</td>
+<td>Must be set</td>
+</tr>
+<tr>
+<td>SHUTDOWN_START</td>
+<td>AP is starting shutdown. The VMCU can turn on AP after the time specified in the second
+value.</td>
+<td>Must be set</td>
+</tr>
+<tr>
+<td>DISPLAY_OFF</td>
+<td>User has requested to turn off the display of the head unit.</td>
+<td></td>
+</tr>
+<tr>
+<td>DISPLAY_ON</td>
+<td>User has requested to turn on the display of the head unit.</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+
+<p>The state can be set asynchronously (in the case of <code>BOOT_COMPLETE</code>) or in response to
+a request via the VMCU. When the state is set to <code>SHUTDOWN_START</code>,
+<code>DEEP_SLEEP_ENTRY,</code> or <code>SHUTDOWN_POSTPONE</code>, an integer value in
+milliseconds is sent to notify the VMCU for how long the AP must postpone shutdown or sleep.</p>
+
+<h4>AP_POWER_STATE_REQ</h4>
+
+<p>This property is sent by the VMCU to transition Android into a different power state and contains
+two integers:</p>
+
+<ul>
+<li><code>int32Values[0]</code>: <code>VehicleApPowerStateReq</code> enum value, which represents
+the new state into which to transition.</li>
+<li><code>int32Values[1]</code>: <code>VehicleApPowerStateShutdownParam</code> enum value. This
+  value os sent only for a <code>SHUTDOWN_PREPARE</code> message and transmits to Android the
+  options it contains.</li>
+</ul>
+
+<p>The first integer value represents the new state into which Android is to transit. The semantics
+are defined in <code>types.hal</code> and provided in the following table:</p>
+
+<table>
+<thead>
+<tr>
+<th><strong>Value name</strong></th>
+<th><strong>Description</strong></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>OFF</td>
+<td>AP is turned off.</td>
+</tr>
+<tr>
+<td>DEEP_SLEEP</td>
+<td>AP is in deep sleep.</td>
+</tr>
+<tr>
+<td>ON_DISP_OFF</td>
+<td>AP is on, but display is off.</td>
+</tr>
+<tr>
+<td>N_FULL</td>
+<td>AP and display are on.</td>
+</tr>
+<tr>
+<td>SHUTDOWN_START</td>
+<td>AP is starting shutdown. The VMCU can turn on the AP after the time specified in the second
+value.</td>
+</tr>
+<tr>
+<td>SHUTDOWN_PREPARE</td>
+<td>The VMCU has requested the AP to shut down. The AP can either enter sleep state or start a full
+shutdown.</td>
+</tr>
+</tbody>
+</table>
+
+<p><code>VehicleApPowerStateShutdownParam</code> is also defined in <code>types.hal</code>. This
+enum has three elements, as described below:</p>
+
+<table>
+<thead>
+<tr>
+<th><strong>Value name</strong></th>
+<th><strong>Description</strong></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SHUTDOWN_IMMEDIATELY</td>
+<td>The AP must shut down immediately. Postpone is not allowed.</td>
+</tr>
+<tr>
+<td>CAN_SLEEP</td>
+<td>The AP can enter deep sleep instead of shutting down completely.</td>
+</tr>
+<tr>
+<td>SHUTDOWN_ONLY</td>
+<td>The AP can only shut down when postponing is allowed.</td>
+</tr>
+</tbody>
+</table>
+
+<h4>AP_POWER_BOOTUP_REASON</h4>
+
+<p>This property is set by the VMCU whenever Android is booted up or resumed from suspend. This
+property instructs Android which event triggered the wakeup. This value must remain static until
+Android is rebooted or completes a suspend/wake cycle. This property can take a
+<code>VehicleApPowerBootupReason</code> value, which is defined in <code>types.hal</code> as
+follows:</p>
+
+<table>
+<thead>
+<tr>
+<th><strong>Value name</strong></th>
+<th><strong>Description</strong></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>USER_POWER_ON</td>
+<td>Power on because the user pressed the power key or rotated the ignition switch.</td>
+</tr>
+<tr>
+<td>USER_UNLOCK</td>
+<td>Automatic power on triggered by a user unlocking a door (or any other type of automatic user
+detection).</td>
+</tr>
+<tr>
+<td>TIMER</td>
+<td>Automatic power on triggered by a timer. This occurs only when the AP has requested wakeup after
+a specific duration, as specified in <code>VehicleApPowerSetState</code>#SHUTDOWN_START.</td>
+</tr>
+</tbody>
+</table>
+
+<h3 id=wake>Wake sources</h3>
+
+<p>Use Integrator to disable the appropriate wake sources when the device is in suspend mode.
+Common wake sources include heartbeats, modem, wifi, and Bluetooth. The only valid wake source must
+be an interrupt from the VMCU to wake up the SoC. This assumes that the VMCU can listen to the modem
+for remote wakeup events (such as remote engine start). If this functionality is pushed to the AP,
+then another wake source to service the modem must be added. In the current design, the Integrator
+supplies a file with a list of wake sources to be turned off. The CPMS iterates through this file
+and manages the turning off and on of the wake sources at suspend time.</p>
+
+<h3 id=apps>Applications</h3>
+
+<p>OEMs must be careful to write applications so that they can be shut down quickly and not postpone
+the process indefinitely. </p>
+
+<h2 id=app>Appendix</h2>
+
+<h3 id=tree>Directories in the source code tree</h3>
+
+<table>
+<thead>
+<tr>
+<th><strong>Content</strong></th>
+<th><strong>Directory</strong></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>CarPowerManager-related code.</td>
+<td><code>packages/services/Car/car-lib/src/android/car/hardware/power</code></td>
+</tr>
+<tr>
+<td>CarPowerManagementService and so on.</td>
+<td><code>packages/services/Car/service/src/com/android/car</code></td>
+</tr>
+<tr>
+<td>Services dealing with the VHAL, such as <code>VehicleHal</code> and <code>HAlClient</code>.</td>
+<td><code>packages/services/Car/service/src/com/android/car/hal</code></td>
+</tr>
+<tr>
+<td>VHAL interface and property definitions.</td>
+<td><code>hardware/interfaces/automotive/vehicle/2.0</code></td>
+</tr>
+<tr>
+<td>Sample app to provide some idea about the <code>CarPowerManager</code>.</td>
+<td><code>packages/services/Car/tests/EmbeddedKitchenSinkApp/src/com/google/android/car/kitchensink</code></td>
+</tr>
+<tr>
+<td>libsuspend resides in this directory.</td>
+<td><code>system/core/libsuspend</code></td>
+</tr>
+</tbody>
+</table>
+
+<h3 id=diagram>Class diagram</h3>
+
+<p>This class diagram displays the Java classes and interfaces in the power management system:</p>
+
+<p><img src="/devices/automotive/images/automotive_power_class_diagram.png"></p>
+
+<p><b>Figure 5</b>. Power class diagram</p>
+
+<h3 id=rel>Object relationship</h3>
+
+<p>The following graph illustrates which objects have references to other objects. An edge
+means that the source object holds a reference to the target object. For example, VehicleHAL has a
+reference to a PropertyHalService object.</p>
+
+<p><img src="/devices/automotive/images/automotive_power_object_state.png"></p>
+
+<p><b>Figure 6</b>. Object reference diagram</p>
+
+  </body>
+</html>
+>>>>>>> CHANGE (3fbb9e Docs: Changes to source.android.com)
