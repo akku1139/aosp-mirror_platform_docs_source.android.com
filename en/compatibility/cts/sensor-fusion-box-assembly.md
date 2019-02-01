@@ -51,7 +51,7 @@ Figure 1):
 
 Before starting, ensure you have downloaded the technical drawings for the
 Sensor Fusion Box (included in the
-[Sensor Fusion Box zip file](/compatibility/cts/sensor_fusion_1.5.zip)) and
+[Sensor Fusion Box zip file](/compatibility/cts/sensor_fusion_1_5.zip)) and
 have the following tools available:
 
 * Phillips head screwdriver
@@ -211,7 +211,7 @@ To complete assembly of the Sensor Fusion Box:
         screw detail
 
 1. Print out a colored copy of the checkerboard (included in the [Sensor Fusion
-   Box zip file](/compatibility/cts/sensor_fusion_1.5.zip)) on A3 (or 11 x 17
+   Box zip file](/compatibility/cts/sensor_fusion_1_5.zip)) on A3 (or 11 x 17
    inch) paper, and tape it on the opposite wall of the phone fixture.
 
    Make sure the red dot in the center of the checkerboard is directly facing

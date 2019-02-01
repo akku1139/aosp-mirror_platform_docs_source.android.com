@@ -20,7 +20,7 @@
       limitations under the License.
   -->
 
-<p><a href="https://android.googlesource.com/platform/hardware/libhardware/+/master/include/hardware/sensors.h">sensors.h</a> 中声明的 HAL 接口表示 Android <a href="sensor-stack.html#framework">框架</a>与特定硬件专用软件之间的接口。HAL 实现必须定义 sensors.h 中声明的每个函数。主要函数如下：</p>
+<p><a href="https://android.googlesource.com/platform/hardware/libhardware/+/master/include/hardware/sensors.h">sensors.h</a> 中声明的 HAL 接口表示 Android <a href="sensor-stack.html#framework">框架</a>与硬件专用软件之间的接口。HAL 实现必须定义 sensors.h 中声明的每个函数。主要函数如下：</p>
 <ul>
   <li><code>get_sensors_list</code> - 返回所有传感器的列表。</li>
   <li><code>activate</code> - 启动或停止传感器。</li>
@@ -49,7 +49,7 @@
 <pre class="prettyprint">int (*activate)(struct sensors_poll_device_t *dev, int sensor_handle, int
   enabled);</pre>
 <p>激活或禁用传感器。</p>
-<p><code>sensor_handle</code> 是要激活/禁用的传感器的句柄。传感器的句柄是通过其 <a href="#sensor_t">sensor_t</a> 结构的 <code>handle</code> 字段定义的。</p>
+<p><code>sensor_handle</code> 是要激活/禁用的传感器的句柄。传感器的句柄是由传感器的 <a href="#sensor_t">sensor_t</a> 结构的 <code>handle</code> 字段定义的。</p>
 <p><code>enabled</code> 设为 1 时启用传感器，设为 0 时则停用传感器。</p>
 <p>单次传感器在接收到事件后会自动自行禁用，并且必须仍接受通过调用 <code>activate(...,
   enabled=0)</code> 进行禁用。</p>
@@ -79,7 +79,7 @@ int (*batch)(
   <li>连续模式：<code>sampling_period_ns</code> 是采样率，指的是生成事件的速率。</li>
   <li>变化模式：<code>sampling_period_ns</code> 限制事件的采样率，表示事件的生成频率不会高于每 <code>sampling_period_ns</code> 纳秒一次。可能会有比 <code>sampling_period_ns</code> 长的周期，在这种情况下，如果测量值长时间不变化，则不会生成任何事件。要了解详情，请参阅<a href="report-modes.html#on-change">变化</a>报告模式。</li>
   <li>单次模式：<code>sampling_period_ns</code> 会被忽略。该参数没有任何作用。</li>
-  <li>特殊模式：要详细了解 <code>sampling_period_ns</code> 如何用于特殊的传感器，请参阅具体的<a href="sensor-types.html">传感器类型说明</a>。</li>
+  <li>特殊模式：要详细了解如何将 <code>sampling_period_ns</code> 用于特殊的传感器，请参阅具体的<a href="sensor-types.html">传感器类型说明</a>。</li>
 </ul>
 <p>要详细了解 <code>sampling_period_ns</code> 在不同模式下的影响，请参阅<a href="report-modes.html">报告模式</a>。</p>
 <p>对于连续和变化传感器：</p>
@@ -131,7 +131,7 @@ int (*setDelay)(
 <p>刷写会异步执行（即该函数必须立即返回）。如果实现将一个 FIFO 用于多个传感器，则刷写该 FIFO，并且仅为指定传感器添加刷写完成事件。</p>
 <p>如果指定传感器没有 FIFO（无法缓冲），或者如果 FIFO 在调用时为空，则 <code>flush</code> 仍必须操作成功并为该传感器发送刷写完成事件。这适用于除单次传感器以外的所有传感器。</p>
 <p>当调用 <code>flush</code> 时，即使该传感器的 FIFO 中已经存在刷写事件，也必须另外创建一个刷写事件并将其添加到 FIFO 的末尾，并且必须刷写 FIFO。<code>flush</code> 调用的次数必须等于创建的刷写完成事件数。</p>
-<p><code>flush</code> 不适用于<a href="report-modes.html#one-shot">单次</a>传感器。如果 <code>sensor_handle</code> 指的是单次传感器，则 <code>flush</code> 必须返回 <code>-EINVAL</code>，并且不生成任何刷写完成元数据事件。</p>
+<p><code>flush</code> 不适用于<a href="report-modes.html#one-shot">单次</a>传感器。如果 <code>sensor_handle</code> 指的是单次传感器，则 <code>flush</code> 必须返回 <code>-EINVAL</code>，并且不会生成任何刷写完成元数据事件。</p>
 <p>如果操作成功，该函数返回 0；如果指定的传感器是单次传感器或未启用，则返回 <code>-EINVAL</code>；其他情况返回表示错误的负数。</p>
 <h2 id="poll">poll()</h2>
 <pre class="prettyprint">int (*poll)(struct sensors_poll_device_t *dev, sensors_event_t* data, int
@@ -147,15 +147,15 @@ int (*setDelay)(
 <p>当传感器禁用时，将调用 <code>activate(..., enable=0)</code>。</p>
 <p>在进行上述调用的同时，会反复调用 <code>poll</code> 函数来请求数据。甚至在没有传感器激活的情况下，也可以调用 <code>poll</code>。</p>
 <h2 id="sensors_module_t">sensors_module_t</h2>
-<p><code>sensors_module_t</code> 是用于为传感器创建 Android 硬件模块的类型。HAL 的实现必须定义一个该类型的对象 <code>HAL_MODULE_INFO_SYM</code>，以提供 <a href="#get_sensors_list_list">get_sensors_list</a> 函数。要了解详情，请参阅 <a href="https://android.googlesource.com/platform/hardware/libhardware/+/master/include/hardware/sensors.h">sensors.h</a> 中 <code>sensors_module_t</code> 的定义以及 <code>hw_module_t</code> 的定义。</p>
+<p><code>sensors_module_t</code> 是用于为传感器创建 Android 硬件模块的类型。HAL 的实现必须定义一个该类型的对象 <code>HAL_MODULE_INFO_SYM</code>，以提供 <a href="#get_sensors_list_list">get_sensors_list</a> 函数。要了解详情，请参阅 <a href="https://android.googlesource.com/platform/hardware/libhardware/+/master/include/hardware/sensors.h">sensors.h</a> 中的 <code>sensors_module_t</code> 的定义以及 <code>hw_module_t</code> 的定义。</p>
 <h2 id="sensors_poll_device_t_sensors_poll_device_1_t">sensors_poll_device_t/sensors_poll_device_1_t</h2>
-<p><code>sensors_poll_device_1_t</code> 包含上文定义的方法的剩余部分：<code>activate</code>、<code>batch</code>、<code>flush</code> 和 <code>poll</code>。它的 <code>common</code> 字段（类型为 <a href="/devices/halref/structhw__device__t.html">hw_device_t</a>）用于定义 HAL 的版本号。</p>
+<p><code>sensors_poll_device_1_t</code> 包含上文定义的方法的剩余部分：<code>activate</code>、<code>batch</code>、<code>flush</code> 和 <code>poll</code>。它的 <code>common</code> 字段（类型为 <a href="/devices/halref/structhw__device__t.html">hw_device_t</a>）定义了 HAL 的版本号。</p>
 <h2 id="sensor_t">sensor_t</h2>
-<p><code>sensor_t</code> 表示 <a href="index.html">Android 传感器</a>。以下是 sensor_t 的一些重要字段：</p>
+<p><code>sensor_t</code> 表示这是一个 <a href="index.html">Android 传感器</a>。以下是 sensor_t 的一些重要字段：</p>
 <p><strong>name</strong>：表示传感器的用户可见字符串。该字符串通常包括底层传感器的部件名称、传感器的类型以及是否为唤醒传感器。例如，“LIS2HH12 Accelerometer”、“MAX21000 Uncalibrated Gyroscope”、“BMP280 Wake-up Barometer”、“MPU6515 Game Rotation Vector”。</p>
 <p><strong>handle</strong>：用于在注册到传感器或从传感器生成事件时表示传感器的整数。</p>
 <p><strong>type</strong>：传感器的类型。要详细了解传感器类型的解释，请参阅<a href="index.html">什么是 Android 传感器？</a>； 要了解官方传感器类型，请参阅<a href="sensor-types.html">传感器类型</a>。对于非官方传感器类型，<code>type</code> 必须以 <code>SENSOR_TYPE_DEVICE_PRIVATE_BASE</code> 开头。</p>
-<p><strong>stringType</strong>：传感器的类型（以字符串表示）。如果传感器为官方类型，则设置为 <code>SENSOR_STRING_TYPE_*</code>。如果传感器为制造商特定类型，<code>stringType</code> 必须以制造商的反向域名开头。<em></em>例如，由 Fictional-Company 的 Cool-product 团队定义的传感器（比如独角兽检测器）可以使用 <code>stringType=”com.fictional_company.cool_product.unicorn_detector”</code>。
+<p><strong>stringType</strong>：传感器的类型（以字符串表示）。如果传感器为官方类型，则设置为 <code>SENSOR_STRING_TYPE_*</code>。如果传感器为制造商特定类型，<code>stringType</code> 必须以制造商的反向域名开头。例如，由 Fictional-Company 的 Cool-product 团队定义的传感器（比如独角兽检测器）可以使用 <code>stringType=”com.fictional_company.cool_product.unicorn_detector”</code>。<em></em>
   <code>stringType</code> 用于唯一标识非官方传感器类型。要详细了解传感器类型和字符串类型，请参阅 <a href="https://android.googlesource.com/platform/hardware/libhardware/+/master/include/hardware/sensors.h">sensors.h</a>。</p>
 <p><strong>requiredPermission</strong>：代表应用要查看传感器、注册到传感器和接收传感器数据所必须具备的权限的字符串。空字符串表明应用不需要获取该传感器的任何访问权限。部分传感器类型（例如<a href="sensor-types.html#heart_rate">心率监测器</a>）具有强制性的 <code>requiredPermission</code>。提供敏感用户信息（例如心率）的所有传感器必须受到权限保护。</p>
 <p><strong>flags</strong>：传感器的标记，用于定义传感器的报告模式以及传感器是否为唤醒传感器。例如，对于单次唤醒传感器，标记为 <code>flags = SENSOR_FLAG_ONE_SHOT_MODE | SENSOR_FLAG_WAKE_UP</code>。当前版本的 HAL 中未使用的标记位必须等于 0。</p>
@@ -169,7 +169,7 @@ int (*setDelay)(
 <p>对于官方传感器类型的传感器，一些字段会被框架覆盖。例如，强制要求<a href="sensor-types.html#accelerometer">加速度计</a>传感器使用连续报告模式，并强制要求<a href="sensor-types.html#heart_rate">心率</a>监测器受 <code>SENSOR_PERMISSION_BODY_SENSORS</code> 权限的保护。</p>
 <h2 id="sensors_event_t">sensors_event_t</h2>
 <p>由 Android 传感器生成并通过 <a href="#poll">poll</a> 函数报告的传感器事件属于 <code>type sensors_event_t</code>。以下是 <code>sensors_event_t</code> 的一些重要字段：</p>
-<p><strong>version</strong>：必须是 <code>sizeof(struct sensors_event_t)</code>。</p>
+<p><strong>version</strong>：必须是 <code>sizeof(struct sensors_event_t)</code></p>
 <p><strong>sensor</strong>：生成相应事件的传感器的句柄，如 <code>sensor_t.handle</code> 所定义。</p>
 <p><strong>type</strong>：生成相应事件的传感器的类型，如 <code>sensor_t.type</code> 所定义。</p>
 <p><strong>timestamp</strong>：事件的时间戳，以纳秒为单位。这是事件发生（采取了步骤，或是进行了加速度计测量）的时间，而不是报告事件的时间。<code>timestamp</code> 必须与 <code>elapsedRealtimeNano</code> 时钟同步，并且对于连续传感器，抖动必须很小。有时需要进行时间戳过滤以满足 CDD 要求，因为仅使用 SoC 中断时间来设置时间戳会导致抖动过大，而仅使用传感器芯片时间来设置时间戳又会由于传感器时钟漂移而无法与 <code>elapsedRealtimeNano</code> 时钟同步。</p>
