@@ -1,0 +1,78 @@
+<<<<<<< HEAD   (b056d3 Update dalvikvm configuration docs for 7.1)
+=======
+<html devsite><head>
+
+  <meta name="book_path" value="/_book.yaml"/>
+
+  <meta name="project_path" value="/_project.yaml"/>
+</head>
+<body>
+
+<!--
+  Copyright 2018 The Android Open Source Project
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+<h1 id="implementing_data_plans" class="page-title">实现流量套餐</h1>
+
+<p>Android 9 可让运营商直接在“设置”应用中向用户提供权威的套餐详情，以减少用户的困惑和支持来电次数。在运行 Android 4.0 或更高版本的设备上，用户可以在“设置”应用中手动配置特定于运营商的流量套餐详情，例如，设置警告和上限以管理其流量用量。</p>
+
+<h2 id="configuration_by_carrier">运营商配置</h2>
+
+<p>要配置流量套餐，运营商可以使用 <a href="https://developer.android.com/reference/android/telephony/SubscriptionPlan.Builder" class="external"><code>SubscriptionPlan</code> API</a> 向其现有 Android 应用中添加功能。这些 API 用于支持各种类型的流量套餐，包括可续费和不可续费套餐以及随时间而变化的套餐。</p>
+
+<p>以下是如何配置按月续费的常见流量套餐类型的示例：</p>
+<pre class="prettyprint"><code>SubscriptionManager sm =
+    context.getSystemService(SubscriptionManager.class);
+sm.setSubscriptionPlans(subId, Lists.newArrayList(
+    SubscriptionPlan.Builder.createRecurringMonthly(
+            ZonedDateTime.parse("2016-12-03T10:00:00Z"))
+        .setTitle("G-Mobile")
+        .setDataLimit(4_000_000_000L,
+            SubscriptionPlan.LIMIT_BEHAVIOR_BILLED)
+        .setDataUsage(200_493_293L, dataUsageTimestamp)
+        .build()));
+</code></pre>
+<p>只有当应用符合以下某项条件时，设备才允许其配置流量套餐：</p>
+
+<ul>
+<li>SIM 卡已明确指定可对其进行管理的应用（如 <a href="https://developer.android.com/reference/android/telephony/SubscriptionManager.html#canManageSubscription(android.telephony.SubscriptionInfo)" class="external"><code>SubscriptionManager.canManageSubscription()</code></a> 中所定义）。</li>
+<li>运营商已通过 <code>CarrierConfigManager</code> 推送 <a href="https://developer.android.com/reference/android/telephony/CarrierConfigManager#KEY_CONFIG_PLANS_PACKAGE_OVERRIDE_STRING" class="external"><code>KEY_CONFIG_PLANS_PACKAGE_OVERRIDE_STRING</code></a> 值，以指明可管理其流量套餐的应用。</li>
+<li>设备在系统映像中内置了一个具有 <code>MANAGE_SUBSCRIPTION_PLANS</code> 权限的应用。</li>
+</ul>
+
+<p>若符合前两个条件，则运营商应用可由用户直接安装，而无需在出厂前预安装在系统映像中。操作系统强制要求（且 CDD 要求）所有已配置的流量套餐详情一律受到保护，且仅供最初向操作系统提供相应详情的运营商应用使用。</p>
+
+<p>针对运营商应用的一项建议是，使用空闲维护服务以便每天更新流量套餐详情，但运营商可以自由选择使用各种机制（例如通过运营商内部短信来接收流量套餐详情）。建议通过某项使用 <a href="https://developer.android.com/reference/android/app/job/JobInfo.Builder#setRequiresDeviceIdle(boolean)" class="external"><code>setRequiresDeviceIdle()</code></a> 和 <a href="https://developer.android.com/reference/android/app/job/JobInfo.Builder.html#setRequiresCharging(boolean)" class="external"><code>setRequiresCharging()</code></a> 的 <code>JobScheduler</code> 作业来实现空闲维护服务。</p>
+
+<h2 id="usage_by_os">操作系统使用情况</h2>
+
+<p>操作系统通过以下方式使用由 SubscriptionPlan API 提供的流量套餐详情：</p>
+
+<ul>
+<li>通过“设置”应用来显示套餐详情，以向用户显示准确的流量用量数据，并提供<a href="https://developer.android.com/reference/android/telephony/SubscriptionManager.html#ACTION_MANAGE_SUBSCRIPTION_PLANS" class="external">指向运营商应用的直接深层链接</a>以获得升级/追加销售的机会。</li>
+<li>系统会根据套餐详情自动配置流量用量警告和上限通知阈值；用量达到上限的 90% 时便会发出警告提醒。</li>
+<li>如果运营商暂时提示网络<a href="https://developer.android.com/reference/android/telephony/SubscriptionManager.html#setSubscriptionOverrideCongested(int,%20boolean,%20long)" class="external">“拥挤”</a>，操作系统将延迟可进行时移的 JobScheduler 作业，从而减少运营商网络的负载。</li>
+<li>如果运营商暂时提示网络<a href="https://developer.android.com/reference/android/telephony/SubscriptionManager#setSubscriptionOverrideUnmetered(int,%20boolean,%20long)" class="external">“不按流量计费”</a>，操作系统会将移动网络连接报告为“不按流量计费”，直到运营商清除替换内容或达到超时值（如果提供）。</li>
+<li>通过将用户当前的流量用量与总体流量上限进行比较，操作系统会估算用户在结算周期结束时的正常流量用量，并适当分配 10% 的剩余流量以改善用户体验，例如让应用使用来自多个途径的流量。</li>
+</ul>
+
+<h2 id="customization_and_validation">自定义和验证</h2>
+
+<p>Android 的“设置”应用将显示由运营商配置的所有流量套餐详情，从而确保用户可以看到最准确的运营商关系状态，并为用户提供进入运营商应用的途径以升级其套餐。建议您选择可自定义“设置”应用的设备制造商，以便继续显示相关详情。</p>
+
+<p>上述 <code>SubscriptionManager</code> API 由 <code>android.telephony.cts.SubscriptionManagerTest</code> 进行测试，这样可确保流量套餐详情可通过运营商应用配置，且更改得以应用于整个操作系统。</p>
+
+</body></html>
+>>>>>>> CHANGE (3fbb9e Docs: Changes to source.android.com)

@@ -1,0 +1,129 @@
+<<<<<<< HEAD   (b056d3 Update dalvikvm configuration docs for 7.1)
+=======
+<html devsite><head>
+    <title>企业 OTA 更新</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2018 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+    <p>
+<a href="https://source.android.com/compatibility/android-cdd#11_updatable_software">Android 兼容性定义文档 (CDD) 可更新软件</a>要求设备实现 <a href="https://developer.android.com/reference/android/app/admin/SystemUpdatePolicy.html" class="external"><code>SystemUpdatePolicy</code></a> 类。<code>SystemUpdatePolicy</code> 可让设备所有者 (DO) 应用（如果存在）控制系统更新的安装。
+    </p>
+
+    <h2 id="notify-do">通知设备所有者</h2>
+
+      <p>
+无线下载 (OTA) 客户端必须使用系统 API 将传入的 OTA 更新通知给设备所有者应用。OTA 客户端还必须包含时间戳，记录何时 OTA 更新开始可用。OTA 客户端可以通过调用 <code>DevicePolicyManager.notifyPendingSystemUpdate(long updateReceivedTime, boolean isSecurityPatch)</code> 通知设备所有者应用。如果 OTA 客户端不知道更新是否为安全补丁程序，则可回退至使用 <code>DevicePolicyManager.notifyPendingSystemUpdate(long updateReceivedTime)</code>。
+      </p>
+
+      <p>
+如果当前没有可用的更新，OTA 客户端可通过将 <code>updateReceivedTime</code> 参数设置为 <code>-1</code> 来报告此情况。我们建议每当 OTA 客户端对 OTA 服务器进行轮询或向客户端推送 OTA 时都发送通知。您还可以在更多的时间节点发送通知。
+      </p>
+
+    <h2 id="system-update-policy">系统更新政策</h2>
+
+      <p>
+Android 9 允许设备所有者将 OTA 更新最多推迟 90 天，增强了设备所有者<a href="https://developer.android.com/work/dpc/system-updates">控制更新</a>的能力。此功能主要适用于专用设备（之前称为 COSU）解决方案，可让所有者在重要时段（如节假日）暂停在设备上运行的操作系统版本。
+      </p>
+      <p>
+为遵守 CDD 的要求，OTA 客户端必须实施行为政策。DO 可以设置下列政策，设备系统更新子系统必须遵守这些政策：</p>
+
+      <ul>
+        <li>
+          <a href="https://developer.android.com/reference/android/app/admin/SystemUpdatePolicy.html#TYPE_INSTALL_AUTOMATIC" class="external"><code>TYPE_INSTALL_AUTOMATIC</code></a>
+        </li>
+        <li>
+          <a href="https://developer.android.com/reference/android/app/admin/SystemUpdatePolicy.html#TYPE_INSTALL_WINDOWED" class="external"><code>TYPE_INSTALL_WINDOWED</code></a>
+        </li>
+        <li>
+          <a href="https://developer.android.com/reference/android/app/admin/SystemUpdatePolicy.html#TYPE_POSTPONE" class="external"><code>TYPE_POSTPONE</code></a>
+        </li>
+      </ul>
+
+      <p>
+设备所有者还可以通过<a href="https://developer.android.com/work/dpc/system-updates#freeze-periods">设置冻结时段</a>（在 Android 9 或更高版本中），在重要时段（如节假日或其他繁忙时段）冻结操作系统版本。系统在冻结时段不会安装 OTA 更新。我们建议使用 <code>SystemUpdatePolicy.InstallationOption</code>（请参见下一节）；不过，OTA 客户端还可以调用 <a href="https://developer.android.com/reference/android/app/admin/SystemUpdatePolicy#getFreezePeriods()"><code>SystemUpdatePolicy.getFreezePeriods()</code></a> 来检查设备是否处于冻结时段。
+      </p>
+
+    <h2 id="implementing-installation-options">
+实现安装选项</h2>
+
+      <p>
+Android 9 引入了专为系统更新客户端设计的 @SystemApi <code>SystemUpdatePolicy.InstallationOption</code>。
+        <code>SystemUpdatePolicy.InstallationOption</code> 充当政策和冻结时段的封装容器类。根据当前系统更新政策或任何可能设定的冻结时段，安装选项会告知客户端如何针对传入的系统更新执行操作，以及相应操作的有效时长。安装选项可以是下列项之一：</p>
+
+      <ul>
+        <li>
+          <code>TYPE_INSTALL_AUTOMATIC</code> - 传入的系统更新在可用后会立即安装，且无需用户干预。相应设备会自动重启。
+        </li>
+        <li>
+          <code>TYPE_POSTPONE</code> - 传入的系统更新最多可延迟 30 天。用户无法手动安装更新。设备制造商可以选择是否屏蔽安全补丁程序。
+        </li>
+        <li>
+          <code>TYPE_PAUSE</code> - 传入的系统更新可无限期延迟，除非另行通知。用户无法手动安装更新。<code>TYPE_PAUSE</code> 会延迟所有更新，包括安全补丁程序。
+        </li>
+      </ul>
+
+      <p>
+系统更新客户端可以查询 <code>SystemUpdatePolicy.InstallationOption</code>，方法是使用 <code>SystemUpdatePolicy.getInstallationOptionAt(long <var>when</var>)</code>，其中“when”表示查询安装选项的时间（从公元纪年开始计算的毫秒数）。<var></var>系统更新客户端可以使用 <code>SystemUpdatePolicy.getInstallationOptionAt(long <var>when</var>)</code> 方法在有效时间结束前针对返回的选项执行操作。在返回的选项失效后，客户端可以使用新的时间戳为最近的选项执行另一次查询。
+      </p>
+
+    <p>
+系统更新客户端必须监听 <code>DevicePolicyManager.ACTION_SYSTEM_UPDATE_POLICY_CHANGED</code> 广播，以随时了解整个政策的更新情况。
+    </p>
+
+  <h2 id="validating-the-type_pause-policy">
+验证 <code>TYPE_PAUSE</code> 政策</h2>
+
+    <p>
+您可以手动验证 <code>TYPE_PAUSE</code> 选项是否能在 OTA 系统上正常运行。
+    </p>
+
+    <h3 id="policy-type_pause-in-effect">
+政策 <code>TYPE_PAUSE</code> 生效</h3>
+
+      <p>
+要验证 <code>TYPE_PAUSE</code> 政策是否还能发挥作用，请执行以下操作：</p>
+
+      <ol>
+        <li>设置自动政策并指定 <code>TYPE_PAUSE</code>。</li>
+        <li>当系统时钟处于暂停期时，推送 OTA 更新。
+        </li>
+        <li>确认设备未进行 OTA 更新，且用户无法手动安装更新。
+        </li>
+        <li>如果设备为 A/B 设备，请重新启动设备，并确认重启操作不会触发自动安装更新的过程。
+        </li>
+      </ol>
+
+    <h3 id="policy-type_pause-is-expired">
+政策 <code>TYPE_PAUSE</code> 过期</h3>
+
+      <p>
+要验证过期的 <code>TYPE_PAUSE</code> 政策是否还能发挥作用，请执行以下操作：</p>
+
+      <ol>
+        <li>设置自动政策并指定 <code>TYPE_PAUSE</code>。</li>
+        <li>当系统时钟处于暂停期时，推送 OTA 更新。
+        </li>
+        <li>等待暂停期结束。
+        </li>
+        <li>验证设备是否会自动重新启动，以及 OTA 更新是否会在设备重启后进行。
+        </li>
+      </ol>
+
+</body></html>
+>>>>>>> CHANGE (3fbb9e Docs: Changes to source.android.com)

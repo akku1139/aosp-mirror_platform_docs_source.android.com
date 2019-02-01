@@ -1,0 +1,275 @@
+<<<<<<< HEAD   (b056d3 Update dalvikvm configuration docs for 7.1)
+=======
+<html devsite><head>
+    <title>调试 Android 平台原生代码</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>本部分总结了开发平台级功能时，可用于调试、跟踪和分析原生 Android 平台代码的实用工具和相关命令。</p>
+
+<p class="note"><strong>注意</strong>：本部分和本网站其他部分的页面建议您配合使用 <code>adb</code> 与 <code>setprop</code> 参数来调试 Android 的某些方面。请注意，在 Android 操作系统的 O 版本之前，属性名称的长度上限为 32 个字符。也就是说，要创建一个包含应用名称的 wrap 属性，您需要截断该名称以使其符合字符数限制。在 Android O 及更高版本中，此字符数上限值要大得多，应该不需要截断。</p>
+
+<p>本页面中介绍了与崩溃转储有关的基本信息（可以在 logcat 输出中找到）；其他页面更详细地介绍了如何<a href="/devices/tech/debug/native-crash.html">诊断原生代码崩溃问题</a>，如何通过<a href="https://developer.android.com/studio/command-line/dumpsys.html"> <code>dumpsys</code></a> 了解系统服务状况，如何查看<a href="/devices/tech/debug/native-memory.html">本地内存</a>、<a href="https://developer.android.com/studio/command-line/dumpsys.html#network">网络</a>和 <a href="https://developer.android.com/studio/command-line/dumpsys.html#procstats">RAM</a> 使用情况，如何使用 <a href="/devices/tech/debug/asan.html">AddressSanitizer</a> 检测原生代码中的内存错误，如何评估<a href="/devices/tech/debug/eval_perf.html">性能问题</a>（包括 <a href="/devices/tech/debug/systrace">systrace</a>），以及如何使用 <a href="/devices/tech/debug/gdb.html">GNU 调试程序 (GDB)</a> 和其他调试工具。</p>
+
+<h2 id="debuggerd">崩溃转储</h2>
+
+<p>当动态链接的可执行文件启动时，系统会注册多个信号处理程序，这些处理程序会在出现崩溃时将基本崩溃转储写入 logcat，并将更详细的“tombstone”文件写入 <code>/data/tombstones/</code>。
+tombstone 是一个包含与崩溃进程相关的额外数据的文件。需要特别指出的是，它包含对以下内容进行的堆栈跟踪：崩溃进程中的所有线程（而不只是捕捉到信号的线程）、完整的内存映射，以及所有打开的文件描述符的列表。</p>
+
+在 Android 8.0 之前，崩溃由 <code>debuggerd</code> 和 <code>debuggerd64</code> 守护进程处理。在 Android O 和更高版本中，<code>crash_dump32</code> 和 <code>crash_dump64</code> 是根据需要生成的。<p></p>
+
+<p>崩溃转储程序仅在未连接任何其他内容时才可连接。这意味着，在使用 <code>strace</code> 或 <code>gdb</code> 等工具时，将无法进行崩溃转储。</p>
+
+<p>输出示例（已去除时间戳和无关信息）：</p>
+
+<pre class="devsite-click-to-copy">
+*** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***
+Build fingerprint: 'Android/aosp_angler/angler:7.1.1/NYC/enh12211018:eng/test-keys'
+Revision: '0'
+ABI: 'arm'
+pid: 17946, tid: 17949, name: crasher  &gt;&gt;&gt; crasher &lt;&lt;&lt;
+signal 11 (SIGSEGV), code 1 (SEGV_MAPERR), fault addr 0xc
+    r0 0000000c  r1 00000000  r2 00000000  r3 00000000
+    r4 00000000  r5 0000000c  r6 eccdd920  r7 00000078
+    r8 0000461a  r9 ffc78c19  sl ab209441  fp fffff924
+    ip ed01b834  sp eccdd800  lr ecfa9a1f  pc ecfd693e  cpsr 600e0030
+
+backtrace:
+    #00 pc 0004793e  /system/lib/libc.so (pthread_mutex_lock+1)
+    #01 pc 0001aa1b  /system/lib/libc.so (readdir+10)
+    #02 pc 00001b91  /system/xbin/crasher (readdir_null+20)
+    #03 pc 0000184b  /system/xbin/crasher (do_action+978)
+    #04 pc 00001459  /system/xbin/crasher (thread_callback+24)
+    #05 pc 00047317  /system/lib/libc.so (_ZL15__pthread_startPv+22)
+    #06 pc 0001a7e5  /system/lib/libc.so (__start_thread+34)
+Tombstone written to: /data/tombstones/tombstone_06
+</pre>
+
+<p>输出的最后一行提供了完整 tombstone 在磁盘上的位置。<em></em></p>
+
+<p>假设您有可用的未剥离二进制文件，则可以将堆栈粘贴到 <code>development/scripts/stack</code> 中，从而获取更详细的展开信息（包含行号信息）：</p>
+
+<p class="key-point"><strong>提示</strong>：为方便起见，如果您已运行 <code>lunch</code>，<code>stack</code> 将自动包含在您的 $PATH 中，因此您无需提供完整的路径。</p>
+
+<pre class="devsite-terminal devsite-click-to-copy">
+development/scripts/stack
+</pre>
+
+<p>输出示例（基于上述 logcat 输出）：</p>
+<pre class="devsite-click-to-copy">
+Reading native crash info from stdin
+03-02 23:53:49.477 17951 17951 F DEBUG   : *** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***
+03-02 23:53:49.477 17951 17951 F DEBUG   : Build fingerprint: 'Android/aosp_angler/angler:7.1.1/NYC/enh12211018:eng/test-keys'
+03-02 23:53:49.477 17951 17951 F DEBUG   : Revision: '0'
+03-02 23:53:49.477 17951 17951 F DEBUG   : ABI: 'arm'
+03-02 23:53:49.478 17951 17951 F DEBUG   : pid: 17946, tid: 17949, name: crasher  &gt;&gt;&gt; crasher &lt;&lt;&lt;
+03-02 23:53:49.478 17951 17951 F DEBUG   : signal 11 (SIGSEGV), code 1 (SEGV_MAPERR), fault addr 0xc
+03-02 23:53:49.478 17951 17951 F DEBUG   :     r0 0000000c  r1 00000000  r2 00000000  r3 00000000
+03-02 23:53:49.478 17951 17951 F DEBUG   :     r4 00000000  r5 0000000c  r6 eccdd920  r7 00000078
+03-02 23:53:49.478 17951 17951 F DEBUG   :     r8 0000461a  r9 ffc78c19  sl ab209441  fp fffff924
+03-02 23:53:49.478 17951 17951 F DEBUG   :     ip ed01b834  sp eccdd800  lr ecfa9a1f  pc ecfd693e  cpsr 600e0030
+03-02 23:53:49.491 17951 17951 F DEBUG   :
+03-02 23:53:49.491 17951 17951 F DEBUG   : backtrace:
+03-02 23:53:49.492 17951 17951 F DEBUG   :     #00 pc 0004793e  /system/lib/libc.so (pthread_mutex_lock+1)
+03-02 23:53:49.492 17951 17951 F DEBUG   :     #01 pc 0001aa1b  /system/lib/libc.so (readdir+10)
+03-02 23:53:49.492 17951 17951 F DEBUG   :     #02 pc 00001b91  /system/xbin/crasher (readdir_null+20)
+03-02 23:53:49.492 17951 17951 F DEBUG   :     #03 pc 0000184b  /system/xbin/crasher (do_action+978)
+03-02 23:53:49.492 17951 17951 F DEBUG   :     #04 pc 00001459  /system/xbin/crasher (thread_callback+24)
+03-02 23:53:49.492 17951 17951 F DEBUG   :     #05 pc 00047317  /system/lib/libc.so (_ZL15__pthread_startPv+22)
+03-02 23:53:49.492 17951 17951 F DEBUG   :     #06 pc 0001a7e5  /system/lib/libc.so (__start_thread+34)
+03-02 23:53:49.492 17951 17951 F DEBUG   :     Tombstone written to: /data/tombstones/tombstone_06
+Reading symbols from /huge-ssd/aosp-arm64/out/target/product/angler/symbols
+Revision: '0'
+pid: 17946, tid: 17949, name: crasher  &gt;&gt;&gt; crasher &lt;&lt;&lt;
+signal 11 (SIGSEGV), code 1 (SEGV_MAPERR), fault addr 0xc
+     r0 0000000c  r1 00000000  r2 00000000  r3 00000000
+     r4 00000000  r5 0000000c  r6 eccdd920  r7 00000078
+     r8 0000461a  r9 ffc78c19  sl ab209441  fp fffff924
+     ip ed01b834  sp eccdd800  lr ecfa9a1f  pc ecfd693e  cpsr 600e0030
+Using arm toolchain from: /huge-ssd/aosp-arm64/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9/bin/
+
+Stack Trace:
+  RELADDR   FUNCTION                   FILE:LINE
+  0004793e  pthread_mutex_lock+2       bionic/libc/bionic/pthread_mutex.cpp:515
+  v------&gt;  ScopedPthreadMutexLocker   bionic/libc/private/ScopedPthreadMutexLocker.h:27
+  0001aa1b  readdir+10                 bionic/libc/bionic/dirent.cpp:120
+  00001b91  readdir_null+20            system/core/debuggerd/crasher.cpp:131
+  0000184b  do_action+978              system/core/debuggerd/crasher.cpp:228
+  00001459  thread_callback+24         system/core/debuggerd/crasher.cpp:90
+  00047317  __pthread_start(void*)+22  bionic/libc/bionic/pthread_create.cpp:202 (discriminator 1)
+  0001a7e5  __start_thread+34          bionic/libc/bionic/clone.cpp:46 (discriminator 1)
+</pre>
+
+<p class="note"><strong>注意</strong>：有些系统库是使用 <code>LOCAL_STRIP_MODULE := keep_symbols</code> 编译的，可直接提供可用的回溯，而不会像未剥离版本那样占用较大的空间。</p>
+
+<p>您也可以 <code>stack</code> 整个 tombstone。示例：</p>
+<pre class="devsite-terminal devsite-click-to-copy">
+stack &lt; FS/data/tombstones/tombstone_05
+</pre>
+<p>如果您刚刚在当前目录中解压过错误报告，这将非常有用。要详细了解如何诊断原生代码崩溃和 tombstone，请参阅<a href="/devices/tech/debug/native-crash.html">诊断原生代码崩溃</a>。
+</p>
+
+<h2 id="tombstone">从正在运行的进程获取堆栈跟踪/tombstone</h2>
+
+<p>您也可以使用 <code>debuggerd</code> 工具从正在运行的进程获取堆栈转储。
+在命令行中，使用进程 ID (PID) 调用 <code>debuggerd</code>，以将完整的 tombstone 转储至 <code>stdout</code>。要确切获取进程中每个线程的堆栈，请添加 <code>-b</code> 或 <code>--backtrace</code> 标记。</p>
+
+<h2 id="complex">理解复杂的展开信息</h2>
+
+<p>当应用崩溃时，堆栈往往会非常复杂。以下详细示例突出显示了诸多复杂性：</p>
+
+<pre class="devsite-click-to-copy">
+    #00 pc 00000000007e6918  /system/priv-app/Velvet/Velvet.apk (offset 0x346b000)
+    #01 pc 00000000001845cc  /system/priv-app/Velvet/Velvet.apk (offset 0x346b000)
+    #02 pc 00000000001847e4  /system/priv-app/Velvet/Velvet.apk (offset 0x346b000)
+    #03 pc 00000000001805c0  /system/priv-app/Velvet/Velvet.apk (offset 0x346b000) (Java_com_google_speech_recognizer_AbstractRecognizer_nativeRun+176)
+</pre>
+
+<p>框架 #00-#03 来自原生 JNI 代码，该代码以未压缩的形式存储在 APK 中（以节省磁盘空间），而不是提取到单独的 <code>.so</code> 文件中。Android 9 中的堆栈展开程序不需要提取的 <code>.so</code> 文件也能够应对这种常见的 Android 特定情况。</p>
+
+<p>框架 #00-#02 没有符号名称，因为开发者已将其剥离。</p>
+
+<p>框架 #03 显示了有符号可用的情况，在这种情况下，展开程序会使用这些符号。</p>
+
+<pre class="devsite-click-to-copy">
+    #04 pc 0000000000117550  /data/dalvik-cache/arm64/system@priv-app@Velvet@Velvet.apk@classes.dex (offset 0x108000) (com.google.speech.recognizer.AbstractRecognizer.nativeRun+160)
+</pre>
+
+<p>框架 #04 是预先编译的 Java 代码。旧的展开程序会在此终止，无法通过 Java 展开。</p>
+
+<pre class="devsite-click-to-copy">
+    #05 pc 0000000000559f88  /system/lib64/libart.so (art_quick_invoke_stub+584)
+    #06 pc 00000000000ced40  /system/lib64/libart.so (art::ArtMethod::Invoke(art::Thread*, unsigned int*, unsigned int, art::JValue*, char const*)+200)
+    #07 pc 0000000000280cf0  /system/lib64/libart.so (art::interpreter::ArtInterpreterToCompiledCodeBridge(art::Thread*, art::ArtMethod*, art::ShadowFrame*, unsigned short, art::JValue*)+344)
+    #08 pc 000000000027acac  /system/lib64/libart.so (bool art::interpreter::DoCall<false, false>(art::ArtMethod*, art::Thread*, art::ShadowFrame&amp;, art::Instruction const*, unsigned short, art::JValue*)+948)
+    #09 pc 000000000052abc0  /system/lib64/libart.so (MterpInvokeDirect+296)
+    #10 pc 000000000054c614  /system/lib64/libart.so (ExecuteMterpImpl+14484)
+</false,></pre>
+
+<p>框架 #05-#10 来自 ART 解释器实现。Android 9 之前的版本中的堆栈展开程序会显示这些框架，而不含框架 #11 的上下文（说明解释器正在解释哪些代码）。如果您要对 ART 本身进行调试，这些框架会非常有用。如果您要调试某个应用，则可以忽略这些框架。某些工具（如 <code>simpleperf</code>）会自动忽略这些框架。</p>
+
+<pre class="devsite-click-to-copy">
+    #11 pc 00000000001992d6  /system/priv-app/Velvet/Velvet.apk (offset 0x26cf000) (com.google.speech.recognizer.AbstractRecognizer.run+18)
+</pre>
+
+<p>框架 #11 是正在解释的 Java 代码。</p>
+
+<pre class="devsite-click-to-copy">
+    #12 pc 00000000002547a8  /system/lib64/libart.so (_ZN3art11interpreterL7ExecuteEPNS_6ThreadERKNS_20CodeItemDataAccessorERNS_11ShadowFrameENS_6JValueEb.llvm.780698333+496)
+    #13 pc 000000000025a328  /system/lib64/libart.so (art::interpreter::ArtInterpreterToInterpreterBridge(art::Thread*, art::CodeItemDataAccessor const&amp;, art::ShadowFrame*, art::JValue*)+216)
+    #14 pc 000000000027ac90  /system/lib64/libart.so (bool art::interpreter::DoCall<false, false>(art::ArtMethod*, art::Thread*, art::ShadowFrame&amp;, art::Instruction const*, unsigned short, art::JValue*)+920)
+    #15 pc 0000000000529880  /system/lib64/libart.so (MterpInvokeVirtual+584)
+    #16 pc 000000000054c514  /system/lib64/libart.so (ExecuteMterpImpl+14228)
+</false,></pre>
+
+<p>框架 #12-#16 更像是解释器实现本身。</p>
+
+<pre class="devsite-click-to-copy">
+    #17 pc 00000000002454a0  /system/priv-app/Velvet/Velvet.apk (offset 0x1322000) (com.google.android.apps.gsa.speech.e.c.c.call+28)
+</pre>
+
+<p>框架 #17 更像是正在解释的 Java 代码。该 Java 方法与解释器框架 #12-#16 相对应。</p>
+
+<pre class="devsite-click-to-copy">
+    #18 pc 00000000002547a8  /system/lib64/libart.so (_ZN3art11interpreterL7ExecuteEPNS_6ThreadERKNS_20CodeItemDataAccessorERNS_11ShadowFrameENS_6JValueEb.llvm.780698333+496)
+    #19 pc 0000000000519fd8  /system/lib64/libart.so (artQuickToInterpreterBridge+1032)
+    #20 pc 00000000005630fc  /system/lib64/libart.so (art_quick_to_interpreter_bridge+92)
+</pre>
+
+<p>框架 #18-#20 更像是虚拟机本身，可用于编码以将代码从编译的 Java 代码转换为解释的 Java 代码。</p>
+
+<pre class="devsite-click-to-copy">
+    #21 pc 00000000002ce44c  /system/framework/arm64/boot.oat (offset 0xdc000) (java.util.concurrent.FutureTask.run+204)
+</pre>
+
+<p>框架 #21 是编译的 Java 方法，可调用框架 #17 中的 Java 方法。</p>
+
+<pre class="devsite-click-to-copy">
+    #22 pc 0000000000559f88  /system/lib64/libart.so (art_quick_invoke_stub+584)
+    #23 pc 00000000000ced40  /system/lib64/libart.so (art::ArtMethod::Invoke(art::Thread*, unsigned int*, unsigned int, art::JValue*, char const*)+200)
+    #24 pc 0000000000280cf0  /system/lib64/libart.so (art::interpreter::ArtInterpreterToCompiledCodeBridge(art::Thread*, art::ArtMethod*, art::ShadowFrame*, unsigned short, art::JValue*)+344)
+    #25 pc 000000000027acac  /system/lib64/libart.so (bool art::interpreter::DoCall<false, false>(art::ArtMethod*, art::Thread*, art::ShadowFrame&amp;, art::Instruction const*, unsigned short, art::JValue*)+948)
+    #26 pc 0000000000529880  /system/lib64/libart.so (MterpInvokeVirtual+584)
+    #27 pc 000000000054c514  /system/lib64/libart.so (ExecuteMterpImpl+14228)
+</false,></pre>
+
+<p>框架 #22-#27 是解释器实现，可执行从解释的代码到编译方法的方法调用。</p>
+
+<pre class="devsite-click-to-copy">
+    #28 pc 00000000003ed69e  /system/priv-app/Velvet/Velvet.apk (com.google.android.apps.gsa.shared.util.concurrent.b.e.run+22)
+</pre>
+
+<p>框架 #28 是正在解释的 Java 代码。</p>
+
+<pre class="devsite-click-to-copy">
+    #29 pc 00000000002547a8  /system/lib64/libart.so (_ZN3art11interpreterL7ExecuteEPNS_6ThreadERKNS_20CodeItemDataAccessorERNS_11ShadowFrameENS_6JValueEb.llvm.780698333+496)
+    #30 pc 0000000000519fd8  /system/lib64/libart.so (artQuickToInterpreterBridge+1032)
+    #31 pc 00000000005630fc  /system/lib64/libart.so (art_quick_to_interpreter_bridge+92)
+</pre>
+
+<p>框架 #29-#31 是编译代码和解释代码之间的另一种转换。</p>
+
+<pre class="devsite-click-to-copy">
+    #32 pc 0000000000329284  /system/framework/arm64/boot.oat (offset 0xdc000) (java.util.concurrent.ThreadPoolExecutor.runWorker+996)
+    #33 pc 00000000003262a0  /system/framework/arm64/boot.oat (offset 0xdc000) (java.util.concurrent.ThreadPoolExecutor$Worker.run+64)
+    #34 pc 00000000002037e8  /system/framework/arm64/boot.oat (offset 0xdc000) (java.lang.Thread.run+72)
+</pre>
+
+<p>框架 #32-#34 是可直接相互调用的编译 Java 框架。在此例中，原生调用堆栈与 Java 调用堆栈是相同的。</p>
+
+<pre class="devsite-click-to-copy">
+    #35 pc 0000000000559f88  /system/lib64/libart.so (art_quick_invoke_stub+584)
+    #36 pc 00000000000ced40  /system/lib64/libart.so (art::ArtMethod::Invoke(art::Thread*, unsigned int*, unsigned int, art::JValue*, char const*)+200)
+    #37 pc 0000000000280cf0  /system/lib64/libart.so (art::interpreter::ArtInterpreterToCompiledCodeBridge(art::Thread*, art::ArtMethod*, art::ShadowFrame*, unsigned short, art::JValue*)+344)
+    #38 pc 000000000027acac  /system/lib64/libart.so (bool art::interpreter::DoCall<false, false>(art::ArtMethod*, art::Thread*, art::ShadowFrame&amp;, art::Instruction const*, unsigned short, art::JValue*)+948)
+    #39 pc 0000000000529f10  /system/lib64/libart.so (MterpInvokeSuper+1408)
+    #40 pc 000000000054c594  /system/lib64/libart.so (ExecuteMterpImpl+14356)
+</false,></pre>
+
+<p>框架 #35-#40 是解释器本身。</p>
+
+<pre class="devsite-click-to-copy">
+    #41 pc 00000000003ed8e0  /system/priv-app/Velvet/Velvet.apk (com.google.android.apps.gsa.shared.util.concurrent.b.i.run+20)
+</pre>
+
+<p>框架 #41 是正在解释的 Java 代码。</p>
+
+<pre class="devsite-click-to-copy">
+    #42 pc 00000000002547a8  /system/lib64/libart.so (_ZN3art11interpreterL7ExecuteEPNS_6ThreadERKNS_20CodeItemDataAccessorERNS_11ShadowFrameENS_6JValueEb.llvm.780698333+496)
+    #43 pc 0000000000519fd8  /system/lib64/libart.so (artQuickToInterpreterBridge+1032)
+    #44 pc 00000000005630fc  /system/lib64/libart.so (art_quick_to_interpreter_bridge+92)
+    #45 pc 0000000000559f88  /system/lib64/libart.so (art_quick_invoke_stub+584)
+    #46 pc 00000000000ced40  /system/lib64/libart.so (art::ArtMethod::Invoke(art::Thread*, unsigned int*, unsigned int, art::JValue*, char const*)+200)
+    #47 pc 0000000000460d18  /system/lib64/libart.so (art::(anonymous namespace)::InvokeWithArgArray(art::ScopedObjectAccessAlreadyRunnable const&amp;, art::ArtMethod*, art::(anonymous namespace)::ArgArray*, art::JValue*, char const*)+104)
+    #48 pc 0000000000461de0  /system/lib64/libart.so (art::InvokeVirtualOrInterfaceWithJValues(art::ScopedObjectAccessAlreadyRunnable const&amp;, _jobject*, _jmethodID*, jvalue*)+424)
+    #49 pc 000000000048ccb0  /system/lib64/libart.so (art::Thread::CreateCallback(void*)+1120)
+</pre>
+
+<p>框架 #42-#49 是虚拟机本身。这次，它是开始在新线程上运行 Java 的代码。</p>
+
+<pre class="devsite-click-to-copy">
+    #50 pc 0000000000082e24  /system/lib64/libc.so (__pthread_start(void*)+36)
+    #51 pc 00000000000233bc  /system/lib64/libc.so (__start_thread+68)
+</pre>
+
+<p>框架 #50-#51 是所有线程实际应启动的方式。这是 <code>libc</code> 新线程启动代码。便利提示：如果您看到这些框架，即表示您拥有的展开信息有效且完整。只要您未在堆栈的底部看到这些调用帧，就应怀疑您查看的堆栈是否被截断或损坏；如果堆栈未在底部显示这些调用帧，切勿盲目地认为它正确无误。</p>
+
+</body></html>
+>>>>>>> CHANGE (3fbb9e Docs: Changes to source.android.com)

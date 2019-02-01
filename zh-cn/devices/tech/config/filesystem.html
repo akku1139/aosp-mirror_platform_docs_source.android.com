@@ -1,0 +1,428 @@
+<<<<<<< HEAD   (b056d3 Update dalvikvm configuration docs for 7.1)
+=======
+<html devsite><head>
+    <title>配置自主访问控制 (DAC)</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>
+  添加到编译环境的文件系统对象和服务通常需要单独的专属 ID，称为 Android ID (AID)。目前，文件和服务等很多资源并非必须使用 Android 定义的核心 AID；在很多情况下，您可以改为使用 OEM 定义的 AID。
+</p>
+
+<p>
+  早期版本的 Android（Android 7.x 及更低版本）使用设备专属的 <code>android_filesystem_config.h</code> 文件来指定文件系统权能和/或自定义 OEM AID，从而扩展了 AID 机制。但是，此机制不够直观，因为它不支持 OEM AID 使用好记的名称，而是要求您为用户和群组字段指定原始数字，这样一来，便无法将好记的名称与数字 AID 关联起来。
+</p>
+
+<p>
+  较高版本的 Android（Android 8.0 及更高版本）支持采取一种新方法来扩展文件系统权能。这种新方法支持：
+</p>
+
+<ul>
+  <li>配置文件可以有多个源位置（支持可扩展的编译环境配置）。</li>
+  <li>在编译时对 OEM AID 值进行健全性检查。</li>
+  <li>生成可视需要在源文件中使用的自定义 OEM AID 标头。</li>
+  <li>将好记的名称与实际的 OEM AID 值相关联。支持为用户和群组指定非数字的字符串参数，即“foo”而不是“2901”。</li>
+</ul>
+
+<p>
+  其他改进包括从 <code>system/core/include/private/android_filesystem_config.h</code> 中移除了 <code>android_ids[]</code> 数组。该数组现在作为完全自行生成的数组存在于 Bionic 中，程序可通过 <code>getpwnam()</code> 和 <code>getgrnam()</code> 获取该数组中的数据。（此改进还有另一个作用，即使核心 AID 发生更改，生成的二进制文件也可保持稳定。）如需了解这种机制以及查看包含更多详情的 README 文件，请参阅 <code>build/make/tools/fs_config</code>。
+</p>
+
+<aside class="note">
+  <strong>注意</strong>：虽然您仍可以使用<a href="#older">旧版 Android 中的文件系统替换方法</a>，但在使用该方法时，不能同时使用新的 AID 机制。建议您尽可能使用新的机制。
+</aside>
+
+<h2 id="adding-android-aids">添加 Android ID (AID)</h2>
+
+<p>
+  Android 8.0 从 Android 开源项目 (AOSP) 中移除了 <code>android_ids[]</code> 数组。所有好记的 AID 名称都改为在生成 Bionic <code>android_ids[]</code> 数组时从 <code>system/core/include/private/android_filesystem_config.h</code> 标头文件生成。这种机制会发现与 <code>define</code> 匹配的所有 <code>AID_*</code>，且 <strong>*</strong> 会变为小写名称。
+</p>
+
+<p>
+  例如，在 <code>private/android_filesystem_config.h</code> 中：
+</p>
+
+<pre class="prettyprint">#define AID_SYSTEM 1000</pre>
+
+<p>
+  会变为：
+</p>
+
+<ul>
+  <li>好记的名称：system</li>
+  <li>uid：1000</li>
+  <li>gid：1000</li>
+</ul>
+
+<p>
+  要添加新的 AOSP 核心 AID，只需将 <code>#define</code> 添加到 <code>android_filesystem_config.h</code> 标头文件中即可。AID 将在编译环境中生成，并会提供给使用用户和群组参数的接口。这种机制会确认新的 AID 不在应用或 OEM 范围内；此外，它还会接受对此类范围的更改，并自动根据相应更改或新的 OEM 保留范围重新进行配置。
+</p>
+
+<h2 id="configuring-aids">配置 AID</h2>
+
+<p>
+  要启用新的 AID 机制，请在 <code>BoardConfig.mk</code> 文件中设置 <code>TARGET_FS_CONFIG_GEN</code>。此变量存储的是配置文件列表，使您可以根据需要附加文件。
+</p>
+
+<aside class="caution">
+  <strong>注意</strong>：请勿将 <code>TARGET_FS_CONFIG_GEN</code> 与更低版本 Android 中较旧的 <code>TARGET_ANDROID_FILESYSTEM_CONFIG_H</code> 方法结合使用！否则，您会收到错误提示。
+</aside>
+
+<p>
+  按照惯例，配置文件使用名称 <code>config.fs</code>，但在实际中，您可以使用任意名称。<code>config.fs</code> 文件采用 <a href="https://docs.python.org/2/library/configparser.html" class="external">Python ConfigParser ini 格式</a>，并包含 caps 部分（用于配置文件系统权能）和 AID 部分（用于配置 OEM AID）。
+</p>
+
+<h3 id="configuring-the-caps-section">配置 caps 部分</h3>
+
+<aside class="note">
+  <strong>注意</strong>：<a href="/devices/tech/config/ambient">Ambient 权能</a>是为由 <code>init</code> 启动的服务设置权能的首选机制（此方法会将服务配置的所有方面保存在单个 <code>.rc</code> 文件中）。建议您对这些服务使用 Ambient 权能，而不是在 <code>config.fs</code> 文件中使用 caps 部分配置文件系统权能。在为<strong>不是由 <code>init</code> 启动</strong>的服务设置权能时，请继续使用 <code>fs_config.c</code> 配置文件系统权能。
+</aside>
+
+<p>
+  caps 部分支持在编译环境中对文件系统对象设置<a href="http://man7.org/linux/man-pages/man7/capabilities.7.html" class="external">文件系统权能</a>（文件系统本身也必须支持此功能）。
+</p>
+
+<p>
+  由于在 Android 中以 Root 身份运行稳定的服务会导致无法通过<a href="/compatibility/cts/index.html">兼容性测试套件 (CTS)</a> 测试，因此之前有关在运行进程或服务时必须保留权能的要求中规定，必须先设置权能，然后再使用 <code>setuid</code>/<code>setgid</code> 设置适当的 AID。借助 caps 部分，您可以跳过这些要求，让内核为您代劳。当控制权交给 <code>main()</code> 时，您的进程已拥有其所需的权能，因此您的服务可以使用非 Root 用户和群组（这是启动特权服务的首选方式）。
+</p>
+
+<p>
+  caps 部分使用以下语法：
+</p>
+
+<table>
+  <tbody><tr>
+   <th>部分</th>
+   <th>值</th>
+   <th>定义</th>
+  </tr>
+  <tr>
+   <td><code>[path]</code></td>
+   <td></td>
+   <td>要配置的文件系统路径。以 / 结尾的路径被视为目录，否则，将被视为文件。
+   <br /><br />在不同文件中使用同一 <code>[path]</code> 指定多个部分的做法是错误的。在 Python 3.2 之前的版本中，同一文件中包含的某些部分可替换它之前的部分；而在 Python 3.2 中，系统设置了严格模式。</td>
+  </tr>
+  <tr>
+   <td><code>mode</code></td>
+   <td>八进制文件模式</td>
+   <td>至少为 3 位数的有效八进制文件模式。如果指定 3，则会附上前缀 0，否则系统会按原样使用模式。</td>
+  </tr>
+  <tr>
+  <td><code>user</code></td>
+   <td>AID_&lt;user&gt;</td>
+   <td>有效 AID 的 C 样式的 <code>define</code> 或好记的名称（例如 <code>AID_RADIO</code> 和 <code>radio</code> 皆可）。要指定自定义 AID，请参阅<a href="#configuring-the-aid-section">配置 AID 部分</a>。</td>
+  </tr>
+  <tr>
+   <td><code>group</code></td>
+   <td>AID_&lt;group&gt;</td>
+   <td>和用户一样。</td>
+  </tr>
+  <tr>
+  <td><code>caps</code></td>
+   <td>cap*</td>
+   <td><code>system/core/include/private/android_filesystem_capability.h</code> 中所声明的名称，不含前导 <code>CAP_</code>。允许大小写混用。caps 条目也可以是原始值：
+   <ul>
+   <li>binary (0b0101)</li>
+   <li>octal (0455)</li>
+   <li>int (42)</li>
+   <li>hex (0xFF)</li>
+  </ul>
+  可以使用空格分隔多个 caps 条目。</td>
+  </tr>
+</tbody></table>
+
+<p>
+  有关使用示例，请参阅<a href="#using-file-system-capabilities">使用文件系统权能</a>。
+</p>
+
+<h3 id="configuring-the-aid-section">配置 AID 部分</h3>
+
+<p>
+  AID 部分包含 OEM AID，并使用以下语法：
+</p>
+
+<table>
+  <tbody><tr>
+   <th>部分</th>
+   <th>值</th>
+   <th>定义</th>
+  </tr>
+  <tr>
+  <td><code>[AID_&lt;name&gt;]</code></td>
+   <td></td>
+   <td><code>&lt;name&gt;</code> 可以包含大写字母、数字和下划线字符。小写版本作为好记的名称使用。生成的用于代码收录的标头文件使用确切的 <code>AID_&lt;name&gt;</code>。
+   <br /><br />使用同一 <code>AID_&lt;name&gt;</code> 指定多个部分（不区分大小写，限制条件与 <code>[path]</code> 相同）是错误的做法。</td>
+  </tr>
+  <tr>
+  <td><code>value</code></td>
+  <td>&lt;number&gt;</td>
+  <td>有效的 C 样式的数字字符串（十六进制、八进制、二进制和十进制）。
+  <br /><br />无论是使用同一个值选项指定多个部分，<strong>还是</strong>指定超出收录的 OEM 范围（在 <code>system/core/include/private/android_filesystem_config.h</code> 中指定）的值，都是错误的做法：
+  <ul>
+  <li>AID_OEM_RESERVED_START(2900) - AID_OEM_RESERVED_END(2999)</li>
+  <li>AID_OEM_RESERVED_2_START(5000) - AID_OEM_RESERVED_2_END(5999)</li>
+  </ul>
+  </td>
+  </tr>
+</tbody></table>
+
+<p>
+  有关使用示例，请参阅<a href="#defining-oem-aid-name">定义 OEM AID</a> 和<a href="#using-oem-aids">使用 OEM AID</a>。
+</p>
+
+<h2 id="usage-examples">用法示例</h2>
+
+<p>
+  以下示例详细介绍了如何定义和使用 OEM AID，以及如何启用文件系统权能。OEM AID 名称 (<strong>[AID_</strong><em>name<strong></strong></em><strong>]</strong>) 必须以值“<strong>vendor_</strong>”开头，以确保它们不会与未来的 AOSP 名称发生冲突。
+</p>
+
+<h3 id="defining-oem-aid-name">定义 OEM AID 名称</h3>
+
+<p>
+  要定义 OEM AID，请创建一个 <code>config.fs</code> 文件并设置 AID 值。例如，在 <code>device/x/y/config.fs</code> 中设置以内容：
+</p>
+
+<pre>
+[AID_VENDOR_FOO]
+value: 2900
+</pre>
+
+<p>
+  创建好文件后，设置 <code>TARGET_FS_CONFIG_GEN</code> 变量并在 <code>BoardConfig.mk</code> 中指向它。例如，在 <code>device/x/y/BoardConfig.mk</code> 中设置以下内容：
+</p>
+
+<pre class="prettyprint">TARGET_FS_CONFIG_GEN += device/x/y/config.fs</pre>
+
+<p>
+  总的来说，现在系统已经可以在新编译环境中使用自定义 AID 了。
+</p>
+
+<h2 id="using-oem-aids">使用 OEM AID</h2>
+
+<p>
+  要使用 OEM AID，请在您的 C 代码中添加 <code>#include
+  "generated_oem_aid.h"</code> 并开始使用声明的标识符。例如，在 <code>my_file.c</code> 中添加以下代码：
+</p>
+
+<pre>
+#include "generated_oem_aid.h"
+…
+
+If (ipc-&gt;uid == AID_VENDOR_FOO) {
+  // Do something
+...
+</pre>
+
+<h3 id="using-friendly-names">使用好记的名称</h3>
+
+<p>
+  在 Android 9 中，您可以对支持 AID 名称的任何接口使用好记的名称。例如：</p>
+
+<ul>
+  <li>在 <code>some/init.rc</code> 的 <code>chown</code> 命令中：
+<pre>
+chown vendor_foo /vendor/some/vendor_foo/file
+</pre>
+  </li>
+  <li>在 <code>some/init.rc</code> 的 <code>service</code> 命令中：
+
+<pre>
+service vendor_foo /vendor/bin/foo_service
+    user vendor_foo
+    group vendor_foo
+</pre>
+  </li>
+</ul>
+
+<p>
+  由于从好记的名称到 uid 的内部映射由 <code>/vendor/etc/passwd</code> 和 <code>/vendor/etc/group</code> 执行，因此必须装载供应商分区。
+</p>
+
+<h2 id="associating-friendly-names">关联好记的名称</h2>
+
+<p>
+  Android 9 支持将好记的名称与实际 OEM AID 值相关联。您可以为用户和群组使用非数字的字符串参数，即“<strong>vendor_</strong>foo”而不是“2901”。
+</p>
+
+<h2 id="converting-aid-to-friendly">从 AID 转换为好记的名称</h2>
+
+<p>
+  对于 <a href="#using-oem-aid">OEM AID</a>，Android 8.x 要求jiang 配合 <code>oem_####</code> 使用 <code>getpwnam</code> 和类似函数，在通过 <code>getpwnam</code>（如 <code>init</code> 脚本）处理查询时也是如此。在 Android 9 中，您可以使用 Bionic 中的 <code>getpwnam</code> 和 <code>getgrnam</code> 这对组合函数从 Android ID (AID) 转换为好记的名称，反之亦然。
+</p>
+
+<h3 id="using-file-system-capabilities">使用文件系统权能</h3>
+
+<p>
+  要启用文件系统权能，请在 <code>config.fs</code> 文件中创建一个 caps 部分。例如，在 <code>device/x/y/config.fs</code> 中添加以下部分：
+</p>
+
+<pre>
+[system/bin/foo_service]
+mode: 0555
+user: AID_VENDOR_FOO
+group: AID_SYSTEM
+caps: SYS_ADMIN | SYS_NICE
+</pre>
+
+<aside class="note">
+  <strong>注意</strong>：此处也可以使用好记的名称 <code><strong>vendor_</strong>foo</code> 和 <code>system</code>。
+</aside>
+
+<p>
+  创建好文件后，在 <code>BoardConfig.mk</code> 中设置 <code>TARGET_FS_CONFIG_GEN</code>，以指向该文件。例如，在 <code>device/x/y/BoardConfig.mk</code> 中设置以下内容：
+</p>
+
+<pre>
+TARGET_FS_CONFIG_GEN += device/x/y/config.fs
+</pre>
+
+<p>当执行 <code><strong>vendor_</strong>foo</code> 服务时，它会先使用 <code>CAP_SYS_ADMIN</code> 和 <code>CAP_SYS_NICE</code> 权能，而不使用 <code>setuid</code> 和 <code>setgid</code> 调用。此外，<code><strong>vendor_</strong>foo</code> 服务的 SELinux 政策不再需要 <code>setuid</code> 和 <code>setgid</code> 权能，因此可以删除这些权能。
+</p>
+
+<h2 id="older">配置替换（Android 6.x 到 7.x）</h2>
+
+<p>
+  Android 6.0 将 <code>fs_config</code> 和关联的结构定义 (<code>system/core/include/private/android_filesystem_config.h</code>) 转移到了 <code>system/core/libcutils/fs_config.c</code>。在此处，可使用安装在 <code>/system/etc/fs_config_dirs</code> 和 <code>/system/etc/fs_config_files</code> 中的二进制文件更新或替换它们。针对目录和文件分别采用单独的匹配和解析规则（可能会使用其他全局表达式），这样一来，Android 就能够在两个不同的表格中处理目录和文件。<code>system/core/libcutils/fs_config.c</code> 中的结构定义不仅可让系统在运行时读取目录和文件，而且主机在编译时也可以使用相同的文件将文件系统映像构建为 <code>${OUT}/system/etc/fs_config_dirs</code> 和 <code>${OUT}/system/etc/fs_config_files</code>。
+</p>
+
+<p>
+  虽然扩展文件系统时采用的替换方法已被 Android 8.0 中推出的模块化配置系统所取代，但如果需要，您仍可以使用原来的方法。以下部分将详细介绍如何生成和纳入替换文件以及如何配置文件系统。
+</p>
+
+<h3 id="older-generate">生成替换文件</h3>
+
+<p>您可以使用 <code>build/tools/fs_config</code> 中的 <code>fs_config_generate</code> 工具生成相应的二进制文件 <code>/system/etc/fs_config_dirs</code> 和 <code>/system/etc/fs_config_files</code>。该工具使用 <code>libcutils</code> 库函数 (<code>fs_config_generate()</code>) 将 DAC 要求放入一个缓冲区内，并为包含文件定义规则，以规定 DAC 规则的用法。</p>
+
+<p>要使用该工具，请在 <code>device/<em>vendor</em>/<em>device</em>/android_filesystem_config.h</code> 中创建用作替换文件的包含文件。该文件必须使用 <code>system/core/include/private/android_filesystem_config.h</code> 中定义的 <code>structure fs_path_config</code> 格式，并对目录和文件符号进行以下结构初始化：</p>
+<ul>
+<li>对于目录，请使用 <code>android<strong>_device</strong>_dirs[]</code>。</li>
+<li>对于文件，请使用 <code>android<strong>_device</strong>_files[]</code>。</li>
+</ul>
+
+<p>
+  在不使用 <code>android_device_dirs[]</code> 和 <code>android_device_files[]</code> 时，您可以定义 <code>NO_ANDROID_FILESYSTEM_CONFIG_DEVICE_DIRS</code> 和 <code>NO_ANDROID_FILESYSTEM_CONFIG_DEVICE_FILES</code>（请参见下面的<a href="#older-example">示例</a>）。您还可以使用板级配置中的 <code>TARGET_ANDROID_FILESYSTEM_CONFIG_H</code> 指定强制基本名称为 <code>android_filesystem_config.h</code> 的替换文件。
+</p>
+
+<h3 id="older-include">包含替换文件</h3>
+
+<p>
+  要包含文件，请确保 <code>PRODUCT_PACKAGES</code> 包含 <code>fs_config_dirs</code> 和/或 <code>fs_config_files</code>，以便它可以分别将二者安装到 <code>/system/etc/fs_config_dirs</code> 和 <code>/system/etc/fs_config_files</code> 中。编译系统会在 <code>BoardConfig.mk</code> 所在的 <code>$(TARGET_DEVICE_DIR)</code> 中搜索自定义 <code>android_filesystem_config.h</code>。如果此文件位于其他位置，请设置板级配置变量 <code>TARGET_ANDROID_FILESYSTEM_CONFIG_H</code> 来指向该位置。
+</p>
+
+<h3 id="older-configure">配置文件系统</h3>
+
+<p>
+  要在 Android 6.0 及更高版本中配置文件系统，请执行以下操作：
+</p>
+
+<ol>
+  <li>创建 <code>$(TARGET_DEVICE_DIR)/android_filesystem_config.h</code> 文件。</li>
+  <li>将 <code>fs_config_dirs</code> 和/或 <code>fs_config_files</code> 添加到板级配置文件（例如 <code>$(TARGET_DEVICE_DIR)/device.mk</code>）中的 <code>PRODUCT_PACKAGES </code>。</li>
+</ol>
+
+<h3 id="older-example">替换示例</h3>
+
+<p>
+  以下示例展示了一个补丁程序，该程序用于替换 <code>system/bin/glgps</code> 守护进程，以在 <code>device/<em>vendor</em>/<em>device</em></code> 目录中添加唤醒锁定支持。请注意以下几点：
+</p>
+
+<ul>
+  <li>每个结构条目都包含模式、uid、gid、权能和名称。
+  已自动包含 <code>system/core/include/private/android_filesystem_config.h</code> 来提供清单 #defines（<code>AID_ROOT</code>、<code>AID_SHELL</code>、<code>CAP_BLOCK_SUSPEND</code>）。</li>
+  <li><code>android_device_files[]</code> 区段包含在未指定时禁止访问 <code>system/etc/fs_config_dirs</code> 的操作，其作用是在缺少目录替换内容时提供额外 DAC 保护。但此保护的强度较弱；如果有人拥有对 <code>/system</code> 的控制权，那么他通常可以执行任何操作。</li>
+</ul>
+
+<pre class="devsite-click-to-copy">
+diff --git a/android_filesystem_config.h b/android_filesystem_config.h
+new file mode 100644
+index 0000000..874195f
+--- /dev/null
++++ b/android_filesystem_config.h
+@@ -0,0 +1,36 @@
++/*
++ * Copyright (C) 2015 The Android Open Source Project
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
++ * implied. See the License for the specific language governing
++ * permissions and limitations under the License.
++ */
++
++/* This file is used to define the properties of the filesystem
++** images generated by build tools (eg: mkbootfs) and
++** by the device side of adb.
++*/
++
++#define NO_ANDROID_FILESYSTEM_CONFIG_DEVICE_DIRS
++/* static const struct fs_path_config android_device_dirs[] = { }; */
++
++/* Rules for files.
++** These rules are applied based on "first match", so they
++** should start with the most specific path and work their
++** way up to the root. Prefixes ending in * denotes wildcard
++** and will allow partial matches.
++*/
++static const struct fs_path_config android_device_files[] = {
++  { 00755, AID_ROOT, AID_SHELL, (1ULL &lt;&lt; CAP_BLOCK_SUSPEND),
+"system/bin/glgps" },
++#ifdef NO_ANDROID_FILESYSTEM_CONFIG_DEVICE_DIRS
++  { 00000, AID_ROOT, AID_ROOT, 0, "system/etc/fs_config_dirs" },
++#endif
++};
+
+diff --git a/device.mk b/device.mk
+index 0c71d21..235c1a7 100644
+--- a/device.mk
++++ b/device.mk
+@@ -18,7 +18,8 @@ PRODUCT_PACKAGES := \
+     libwpa_client \
+     hostapd \
+     wpa_supplicant \
+-    wpa_supplicant.conf
++    wpa_supplicant.conf \
++    fs_config_files
+
+ ifeq ($(TARGET_PREBUILT_KERNEL),)
+ ifeq ($(USE_SVELTE_KERNEL), true)
+</pre>
+
+<h3 id="older-migration">从早期版本迁移文件系统</h3>
+
+<p>
+  当从 Android 5.x 及更低版本迁移文件系统时，请注意以下事项：
+</p>
+
+<ul>
+  <li>Android 6.x 移除了部分头文件、结构和内嵌定义。</li>
+  <li>Android 6.x 需要引用 <code>libcutils</code>，而不是直接从 <code>system/core/include/private/android_filesystem_config.h</code> 运行。文件/目录结构依赖于 <code>system/code/include/private_filesystem_config.h</code> 的设备制造商专属可执行文件或者 <code>fs_config</code> 必须添加 <code>libcutils</code> 库依赖项。</li>
+  <li>Android 6.x 需要 <code>system/core/include/private/android_filesystem_config.h</code> 的设备制造商专属分支副本，该副本应包含有关现有目标的附加内容，以便移至 <code>device/<em>vendor</em>/<em>device</em>/android_filesystem_config.h</code>。
+  </li>
+  <li>由于 Android 6.x 保留将 SELinux 强制访问控制 (MAC) 应用于目标系统中的配置文件的权利，因此如果实现包含使用 <code>fs_config()</code> 的自定义目标可执行文件，则必须确保具有访问权限。</li>
+</ul>
+
+</body></html>
+>>>>>>> CHANGE (3fbb9e Docs: Changes to source.android.com)

@@ -1,0 +1,390 @@
+<<<<<<< HEAD   (b056d3 Update dalvikvm configuration docs for 7.1)
+=======
+<html devsite><head>
+    <title>Renderscript</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>
+  <em></em>RenderScript 是用于在 Android 上以高性能运行计算密集型任务的框架。RenderScript 专为数据并行计算而设计，不过串行工作负载也可以从中受益。RenderScript 运行时可以并行安排设备上可用的多个处理器（如多核 CPU 和 GPU）上的工作负载，使开发者能够专注于表达算法而不是调度工作。RenderScript 对于专注于图像处理、计算摄影或计算机视觉的应用来说尤其有用。
+</p>
+
+<p>
+  运行 Android 8.0 及更高版本的设备使用以下 RenderScript 框架和供应商 HAL：
+</p>
+
+<img src="../images/treble_rs_linking.png"/>
+<figcaption>
+  <strong>图 1.</strong> 与内部库相关联的供应商代码
+</figcaption>
+
+<p>
+  与 Android 7.x 及更低版本中的 RenderScript 之间的区别包括：
+</p>
+
+<ul>
+  <li>一个进程中有两组 RenderScript 内部库的实例。一组用于 CPU 备用路径，直接来源于 <code>/system/lib</code>；另一组用于 GPU 路径，来源于 <code>/system/lib/vndk-sp</code>。</li>
+  <li><code>/system/lib</code> 中的 RS 内部库是作为平台的一部分构建的，会随着 <code>system.img</code> 的升级而更新。不过，<code>/system/lib/vndk-sp</code> 中的库是面向供应商构建的，不会随着 <code>system.img</code> 的升级而更新（虽然可以针对安全修复程序进行更新，但其 ABI 仍然保持不变）。</li>
+  <li>供应商代码（RS HAL、RS 驱动程序和 <code>bcc plugin</code>）与位于 <code>/system/lib/vndk-sp</code> 的 RenderScript 内部库相关联。它们无法与 <code>/system/lib</code> 中的库相关联，因为该目录中的库是面向平台构建的，可能与供应商代码不兼容（即，符号可能会被移除）。如此一来可能会导致仅针对框架的 OTA 无法实现。</li>
+</ul>
+
+<p>
+  有关详情，请参阅 developer.android.com 上的 <a href="https://developer.android.com/guide/topics/renderscript/compute.html" class="external">Renderscript</a>。
+</p>
+
+<h2 id="design">设计</h2>
+
+<p>
+  以下部分详细介绍了 Android 8.0 及更高版本中的 RenderScript 设计。
+</p>
+
+<h3 id="renderscript-libs-available-to-vendors">供应商可使用的 RenderScript 库</h3>
+
+<p>
+  本部分列出了向供应商代码开放且可与之关联的 RenderScript 库（称为供应商 NDK，适用于 Same-Process HAL 或 VNDK-SP）。此外，本部分还详细介绍了虽然与 RenderScript 无关但也已向供应商代码提供的其他库。
+</p>
+
+<p>
+  虽然以下库的列表可能会因 Android 版本而异，但对于特定的 Android 版本来说是不变的；有关可用库的最新列表，请参阅 <code>/system/etc/ld.config.txt</code>。
+</p>
+
+<aside class="note">
+  <strong>注意</strong>：任何供应商代码都无法使用下面未列出的库；也就是说，供应商的 <code>bcc plugin</code> 无法使用 <code>libLLVM.so</code>，因为以下列表中不包含该库。
+</aside>
+
+<table>
+<tbody><tr>
+<th style="width:50%">RenderScript 库</th>
+<th>非 RenderScript 库</th>
+</tr>
+<tr>
+<td><ul>
+<li><code>android.hardware.graphics.renderscript@1.0.so</code></li>
+<li><code>libRS_internal.so</code></li>
+<li><code>libRSCpuRef.so</code></li>
+<li><code>libblas.so</code></li>
+<li><code>libbcinfo.so</code></li>
+<li><code>libcompiler_rt.so</code></li>
+<li><code>libRSDriver.so</code></li>
+</ul></td>
+<td><ul>
+<li><code>libc.so</code></li>
+<li><code>libm.so</code></li>
+<li><code>libdl.so</code></li>
+<li><code>libstdc++.so</code></li>
+<li><code>liblog.so</code></li>
+<li><code>libnativewindow.so</code></li>
+<li><code>libsync.so</code></li>
+<li><code>libvndksupport.so</code></li>
+<li><code>libbase.so</code></li>
+<li><code>libc++.so</code></li>
+<li><code>libcutils.so</code></li>
+<li><code>libutils.so</code></li>
+<li><code>libhardware.so</code></li>
+<li><code>libhidlbase.so</code></li>
+<li><code>libhidltransport.so</code></li>
+<li><code>libhwbinder.so</code></li>
+<li><code>liblzma.so</code></li>
+<li><code>libz.so</code></li>
+<li><code>libEGL.so</code></li>
+<li><code>libGLESv1_CM.so</code></li>
+<li><code>libGLESv2.so</code></li>
+</ul></td>
+  </tr>
+</tbody></table>
+
+<h3 id="linker-namespace-configuration">链接器命名空间配置</h3>
+
+<p>
+  系统会在运行时使用链接器命名空间，强制实施关联限制，阻止供应商代码使用 VNDK-SP 中未包含的库（有关详情，请参阅 <a href="/devices/architecture/images/VNDK.pdf">VNDK 设计</a>演示文稿）。
+</p>
+
+<p>
+  在运行 Android 8.0 或更高版本的设备上，除 RenderScript 之外的所有 Same-Process HAL (SP-HA) 都会在链接器命名空间 <em></em><code>sphal</code> 中加载。RenderScript 将被加载到 RenderScript 专用的命名空间 <code>rs</code> 中，该位置对 RenderScript 库的限制稍微宽松些。由于 RS 实现需要加载编译后的位码，因此系统会将 <code>/data/*/*.so</code> 添加到 <code>rs</code> 命名空间的路径中（不允许其他 SP-HAL 从该数据分区加载库）。
+</p>
+
+<p>
+  此外，<code>rs</code> 命名空间所允许的库要比其他命名空间提供的库多。<code>libmediandk.so</code> 和 <code>libft2.so</code> 将可用于 <code>rs</code> 命名空间，因为 <code>libRS_internal.so</code> 有一个对这些库的内部依赖项。
+</p>
+
+<img src="../images/treble_rs_namespace.png"/>
+<figcaption>
+  <strong>图 2.</strong> 链接器的命名空间配置
+</figcaption>
+
+<h3 id="loading-drivers">加载驱动程序</h3>
+
+<h4>CPU 备用路径</h4>
+
+<p>
+  根据在创建 RS 上下文时是否存在 <code>RS_CONTEXT_LOW_LATENCY</code> 位，可以选择 CPU 或 GPU 路径。选择 CPU 路径时，系统会直接从默认链接器命名空间（提供了 RS 库的平台版本）对 <code>libRS_internal.so</code>（RS 框架的主要实现）执行 <code>dlopen</code> 处理。
+</p>
+
+<p>
+  采用 CPU 备用路径时，系统根本不会使用来自供应商的 RS HAL 实现，而是通过空的 <code>mVendorDriverName</code> 创建一个 <code>RsContext</code> 对象。系统会对 <code>libRSDriver.so</code> 执行 <code>dlopen</code> 处理（默认情况下），且驱动程序库会从 <code>default</code> 名称空间加载，因为调用程序 (<code>libRS_internal.so</code>) 也会在 <code>default</code> 命名空间中加载。
+</p>
+
+<img src="../images/treble_rs_cpu_fallback.png"/>
+<figcaption>
+  <strong>图 4.</strong> CPU 备用路径
+</figcaption>
+
+<h4 id="gpu-path">GPU 路径</h4>
+
+<p>
+  对于 GPU 路径来说，系统会通过不同的方式加载 <code>libRS_internal.so</code>。首先，<code>libRS.so</code> 使用 <code>android.hardware.renderscript@1.0.so</code>（及其底层的 <code>libhidltransport.so</code>）将 <code>android.hardware.renderscript@1.0-impl.so</code>（一种 RS HAL 的供应商实现）加载到一个不同的链接器命名空间（名称为 <code>sphal</code>）。然后，RS HAL 在另一个名称为 <code>rs</code> 的链接器命名空间中对 <code>libRS_internal.so</code> 执行 <code>dlopen</code> 处理。
+</p>
+
+<p>
+  供应商可以通过设置编译时标记 <code>OVERRIDE_RS_DRIVER</code> 来提供自己的 RS 驱动程序，该标记嵌入在 RS HAL 实现 (<code>hardware/interfaces/renderscript/1.0/default/Context.cpp</code>) 中。然后，系统会在 GPU 路径的 RS 上下文中对该驱动程序名称执行 <code>dlopen</code> 处理。
+</p>
+
+<p>
+  <code>RsContext</code> 对象的创建被委派给 RS HAL 实现。HAL 使用 <code>rsContextCreateVendor()</code> 函数（并将驱动程序的名称用作参数）来回调 RS 框架。然后，RS 框架会在 <code>RsContext</code> 进行初始化时加载指定的驱动程序。在这种情况下，驱动程序库会加载到 <code>rs</code> 命名空间中，因为 <code>RsContext</code> 对象是在 <code>rs</code> 命名空间内创建的，而且 <code>/vendor/lib</code> 位于该命名空间的搜索路径中。
+</p>
+
+<img src="../images/treble_rs_gpu_fallback.png"/>
+<figcaption>
+  <strong>图 5.</strong> GPU 备用路径
+</figcaption>
+
+<p>
+  从 <code>default</code> 命名空间转换为 <code>sphal</code> 命名空间时，<code>libhidltransport.so</code> 使用 <code>android_load_sphal_library()</code> 函数来明确指示动态链接器从 <code>sphal</code> 命名空间加载 <code>-impl.so</code> 库。
+</p>
+
+<p>
+  从 <code>sphal</code> 命名空间转换为 <code>rs</code> 命名空间时，加载由 <code>/system/etc/ld.config.txt</code> 中的以下行间接完成：
+</p>
+
+<pre class="prettyprint">
+namespace.sphal.link.rs.shared_libs = libRS_internal.so
+</pre>
+
+<p>
+  此行指定了以下规则：如果无法从 <code>sphal</code> 命名空间找到/加载目标库（这种情况一直会出现，因为 <code>sphal</code> 命名空间不会搜索 <code>libRS_internal.so</code> 所在的 <code>/system/lib/vndk-sp</code>），动态链接器应该从 <code>rs</code> 命名空间加载 <code>libRS_internal.so</code>。借助此配置，对 <code>libRS_internal.so</code> 进行简单的 <code>dlopen()</code> 调用就足以实现命名空间转换。
+</p>
+
+<h3 id="loading-bcc-plugin">加载 bcc 插件</h3>
+
+<p>
+  <code>bcc plugin</code> 是由供应商提供的加载到 <code>bcc</code> 编译器中的库。由于 <code>bcc</code> 是 <code>/system/bin</code> 目录中的系统进程，因此 <code>bcc plugin</code> 可以被视为 SP-HAL（即，可以直接加载到系统进程中而无需 Binder 化的供应商 HAL）。作为 SP-HAL，<code>bcc-plugin</code> 库具有以下特点：
+</p>
+
+<ul>
+  <li>无法与框架专用库（如 <code>libLLVM.so</code>）相关联。</li>
+  <li>只能与面向供应商的 VNDK-SP 库相关联。</li>
+</ul>
+
+<p>
+  此限制是通过使用 <code>android_sphal_load_library()</code> 函数将 <code>bcc plugin</code> 加载到 <code>sphal</code> 命名空间来强制实施的。在之前的 Android 版本中，插件名称是使用 <code>-load</code> 选项指定的，而库是由 <code>libLLVM.so</code> 使用简单的 <code>dlopen()</code> 加载的。在 Android 8.0 及更高版本中，该名称在 <code>-plugin</code> 选项中指定，而库则直接由 <code>bcc</code> 本身加载。此选项可使开放源代码 LLVM 项目支持非 Android 专用路径。
+</p>
+
+<img src="../images/treble_rs_bcc_plugin_old.png"/>
+<figcaption>
+  <strong>图 6.</strong> 加载 bcc 插件 - Android 7.x 及更低版本
+</figcaption>
+<br />
+<br />
+<img src="../images/treble_rs_bcc_plugin_new.png"/>
+  <figcaption><strong>图 7.</strong> 加载 bcc 插件 - Android 8.0 及更高版本
+</figcaption>
+
+<h3 id="search-paths-for-ld-mc">ld.mc 的搜索路径</h3>
+
+<p>
+  在执行 <code>ld.mc</code> 时，系统会将某些 RS 运行时库作为输入提供给链接器。来自应用的 RS 位码会与运行时库相关联，当转换后的位码被加载到某个应用进程中时，会再次与运行时库动态关联。
+</p>
+
+<p>运行时库包括：</p>
+
+<ul>
+  <li><code>libcompiler_rt.so</code></li>
+  <li><code>libm.so</code></li>
+  <li><code>libc.so</code></li>
+  <li>RS 驱动程序（<code>libRSDriver.so</code> 或 <code>OVERRIDE_RS_DRIVER</code>）</li>
+</ul>
+
+<p>
+  在将编译后的位码加载到应用进程中时，请提供与 <code>ld.mc</code> 所使用的完全相同的库。否则，编译后的位码可能无法找到它被关联时可供使用的那个符号。
+</p>
+
+<p>
+  为此，RS 框架在执行 <code>ld.mc</code> 时会针对运行时库使用不同的搜索路径，具体取决于 RS 框架本身是从 <code>/system/lib</code> 中还是 <code>/system/lib/vndk-sp</code> 中加载的。通过读取 RS 框架库的任意符号的地址，并使用 <code>dladdr()</code> 获取映射到该地址的文件路径，可以确定 RS 框架的加载位置。
+</p>
+
+<h3 id="selinux-policy">SELinux 政策</h3>
+
+<p>
+  由于 Android 8.0 及更高版本中的 SELinux 政策发生了变化，您在 <code>neverallows</code> 分区中标记额外的文件时必须遵循特定规则（通过 <code>vendor</code> 强制实施）：
+</p>
+
+<ul>
+  <li><code>vendor_file</code> 必须是 <code>vendor</code> 分区中所有文件的默认标签。平台政策要求使用此标签来访问直通式 HAL 实现。</li>
+  <li>通过供应商 SEPolicy 在 <code>vendor</code> 分区中添加的所有新 <code>exec_types</code> 均必须具有 <code>vendor_file_type</code> 属性。这一规则将通过 <code>neverallows</code> 强制实施。</li>
+  <li>为了避免与将来的平台/框架更新发生冲突，请避免在 <code>vendor</code> 分区中标记除 <code>exec_types</code> 之外的文件。
+  </li>
+  <li>AOSP 标识的 Same-Process HAL 的所有库依赖项均必须标记为 <code>same_process_hal_file</code>。</li>
+</ul>
+
+<p>
+  要详细了解 SELinux 政策，请参阅 <a href="/security/selinux/">Android 中的安全增强型 Linux</a>。
+</p>
+
+<h3 id="abi-compatibility-for-bitcode">位码的 ABI 兼容性</h3>
+
+<p>
+  如果没有添加新的 API（意味着无 HAL 版本递增），RS 框架将继续使用现有的 GPU (HAL 1.0) 驱动程序。
+</p>
+
+<p>
+  对于不会影响位码的 HAL 小更改 (HAL 1.1)，RS 框架应该回退到 CPU 以支持这些新添加的 API，并在其他地方继续使用 GPU (HAL 1.0) 驱动程序。
+</p>
+
+<p>
+  对于会影响位码编译/关联的 HAL 大更改 (HAL 2.0)，RS 框架应选择不加载供应商提供的 GPU 驱动程序，而是使用 CPU 或 Vulkan 路径以实现加速。
+</p>
+
+<p>RenderScript 位码的使用发生在以下三个阶段：</p>
+
+<table>
+<tbody><tr>
+<th>阶段</th>
+<th>详细信息</th>
+</tr>
+<tr>
+<td><em>编译</em></td>
+<td>
+  <ul>
+    <li><code>bcc</code> 的输入位码 (.bc) 的格式必须是 <code>LLVM 3.2</code>，且 <code>bcc</code> 必须向后兼容现有的（旧版）应用。</li>
+    <li>不过，.bc 中的元数据可能会发生变化（可能会有新的运行时函数，例如分配设置器和获取器、数学函数等）。部分运行时函数位于 <code>libclcore.bc</code> 中，部分位于 LibRSDriver 或供应商同类驱动程序中。</li>
+    <li>对于新运行时函数或重大元数据更改，必须递增位码 API 级别。HAL 版本也必须递增，否则供应商驱动程序将无法使用它。</li>
+    <li>供应商可能有自己的编译器，不过针对 <code>bcc</code> 的总结/要求也适用于这些编译器。</li>
+  </ul>
+</td>
+</tr>
+<tr>
+<td><em>链接</em></td>
+<td>
+  <ul>
+    <li>编译后的 .o 将与供应商驱动程序相关联，例如 <code>libRSDriver_foo.so</code> 和 <code>libcompiler_rt.so</code>。CPU 路径将与 <code>libRSDriver.so</code> 相关联。</li>
+    <li>如果 .o 需要来自 <code>libRSDriver_foo</code> 的新运行时 API，则供应商驱动程序必须进行更新，以便为其提供支持。</li>
+    <li>某些供应商可能有自己的链接器，不过适用于 <code>ld.mc</code> 的参数也适用于这些链接器。</li>
+  </ul>
+</td>
+</tr>
+<tr>
+<td><em>加载</em></td>
+<td>
+  <ul>
+    <li><code>libRSCpuRef</code> 会加载共享对象。如果此接口发生更改，则需要递增 HAL 版本。</li>
+    <li>供应商可以依赖 <code>libRSCpuRef</code> 加载共享对象，也可以实现自己的对象。</li>
+  </ul>
+</td>
+</tr>
+</tbody></table>
+
+<p>
+  除了 HAL 之外，运行时 API 和导出的符号也是接口。从 Android 7.0 (API 24) 开始，这两种接口均未发生更改，目前也没有在 Android 8.0 及更高版本中对其做出更改的计划。但是，如果接口发生更改，HAL 版本也会进行递增。
+</p>
+
+<h2 id="vendor-implementations">供应商实现</h2>
+
+<p>
+  Android 8.0 及更高版本需要对 GPU 驱动程序做出一些更改，以便 GPU 驱动程序能够正常运行。
+</p>
+
+<h3 id="driver-modules">驱动程序模块</h3>
+
+<ul>
+  <li>驱动程序模块不得依赖<a href="#renderscript-libs-available-to-vendors">此列表</a>中未包含的任何系统库。</li>
+  <li>驱动程序必须提供自己的 <code>android.hardware.renderscript@1.0-impl_{NAME}</code>，或者将默认实现 <code>android.hardware.renderscript@1.0-impl</code> 声明为其依赖项。</li>
+  <li>CPU 实现 <code>libRSDriver.so</code> 就是关于如何移除非 VNDK-SP 依赖项的一个很好的例子。</li>
+</ul>
+
+<h3 id="bitcode-compiler">位码编译器</h3>
+
+<p>
+  您可以通过以下两种方式为供应商驱动程序编译 RenderScript 位码：
+</p>
+
+<ol>
+  <li>在 <code>/vendor/bin/</code> 中调用供应商专用的 RenderScript 编译器（GPU 编译的首选方法）。与其他驱动程序模块类似，供应商编译器二进制文件不能依赖<a href="#renderscript-libs-available-to-vendors">面向供应商的 RenderScript 库</a>列表中未包含的任何系统库。</li>
+  <li>使用供应商提供的 <code>bcc plugin</code> 调用系统 bcc：<code>/system/bin/bcc</code>；此插件不能依赖<a href="#renderscript-libs-available-to-vendors">面向供应商的 RenderScript 库</a>列表中未包含的任何系统库。</li>
+</ol>
+
+<p>
+  如果供应商 <code>bcc plugin</code> 需要干预 CPU 编译，并且它对 <code>libLLVM.so</code> 的依赖无法轻松解除，那么供应商应将 <code>bcc</code>（以及包括 <code>libLLVM.so</code> 和 <code>libbcc.so</code> 在内的所有非 LL-NDK 依赖项）复制到 <code>/vendor</code> 分区。
+</p>
+
+<p>
+  此外，供应商还需要做出以下更改：
+</p>
+
+<img src="../images/treble_rs_vendor_driver.png"/>
+<figcaption>
+  <strong>图 8.</strong> 供应商驱动程序更改
+</figcaption>
+
+<ol>
+  <li>将 <code>libclcore.bc</code> 复制到 <code>/vendor</code> 分区。这样可以确保 <code>libclcore.bc</code>、<code>libLLVM.so</code> 和 <code>libbcc.so</code> 保持同步。</li>
+  <li>在 RS HAL 实现中设置 <code>RsdCpuScriptImpl::BCC_EXE_PATH</code> 来更改 <code>bcc</code> 可执行文件的路径。
+  </li>
+</ol>
+
+<aside class="note">
+  <strong>注意</strong>：对 <code>/vendor/bin/*</code> 进程的限制并未完全实现。从理论上讲，可以只将 <code>bcc</code> 复制到 <code>/vendor/bin/</code> 而不复制其依赖项，但并不建议您这样做。
+</aside>
+
+<h3 id="selinux-policy">SELinux 政策</h3>
+
+<p>
+  SELinux 政策会影响驱动程序和编译器可执行文件。所有驱动程序模块必须在设备的 <code>file_contexts</code> 中标记为 <code>same_process_hal_file</code>。例如：
+</p>
+
+<pre class="prettyprint">
+/vendor/lib(64)?/libRSDriver_EXAMPLE\.so     u:object_r:same_process_hal_file:s0
+</pre>
+
+<p>
+  编译器可执行文件必须能够由应用进程调用，bcc 的供应商副本 (<code>/vendor/bin/bcc</code>) 也是如此。例如：
+</p>
+
+<pre class="prettyprint">
+device/vendor_foo/device_bar/sepolicy/file_contexts:
+/vendor/bin/bcc                    u:object_r:same_process_hal_file:s0
+</pre>
+
+<h3 id="legacy-devices">旧版设备</h3>
+
+<p>
+  旧版设备是指满足以下条件的设备：
+</p>
+
+<ol>
+  <li><em></em>PRODUCT_SHIPPING_API_LEVEL 低于 26。</li>
+  <li><em></em>PRODUCT_FULL_TREBLE_OVERRIDE 未定义。</li>
+</ol>
+
+<p>
+  将旧版设备的系统升级到 Android 8.0 及更高版本时，不会强制执行这些限制，这意味着驱动程序可以继续与 <code>/system/lib[64]</code> 中的库相关联。不过，由于与 <code>OVERRIDE_RS_DRIVER</code> 相关的架构变更，您必须将 <code>android.hardware.renderscript@1.0-impl</code> 安装到 <code>/vendor</code> 分区；如果无法做到这一点，RenderScript 运行时会被强制回退到 CPU 路径。
+</p>
+
+</body></html>
+>>>>>>> CHANGE (3fbb9e Docs: Changes to source.android.com)
