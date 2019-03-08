@@ -292,7 +292,7 @@ RefArDo ::= [PRIVATE 2] SEQUENCE {  -- Tag E2
         pkgRefDo [PRIVATE 10] OCTET STRING (SIZE(0..127)) OPTIONAL  -- Tag CA
     },
     arDo [PRIVATE 3] SEQUENCE {  -- Tag E3
-        permArDo [PRIVATE 27] BIT STRING (SIZE(8))  -- Tag DB
+        permArDo [PRIVATE 27] OCTET STRING (SIZE(8))  -- Tag DB
     }
 }
 ```
