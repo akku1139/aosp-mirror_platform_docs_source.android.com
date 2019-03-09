@@ -1,0 +1,156 @@
+<html devsite><head>
+    <title>Noções básicas sobre versões de 64 bits</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<h2 id="overview">Visão geral</h2>
+
+<p>Do ponto de vista do sistema de criação, a alteração mais notável é que agora ele é compatível com a criação de binários para duas arquiteturas de CPU de destino (64 e 32 bits) na mesma versão. Isso também é conhecido como <em>versão Multilib</em>.</p>
+
+<p>Para bibliotecas estáticas nativas e bibliotecas compartilhadas, o sistema de criação configura regras para criar binários para as duas arquiteturas. A configuração do produto (<code>PRODUCT_PACKAGES</code>), junto com o gráfico de dependência, determina quais binários são criados e instalados na imagem do sistema.</p>
+
+<p>Para executáveis e apps, o sistema de criação cria apenas a versão de 64 bits por padrão, mas é possível modificar essa configuração usando uma variável global <code>BoardConfig.mk</code> ou uma variável com escopo de módulo.</p>
+
+<p class="caution"><strong>Cuidado</strong>: se um app expuser uma API a outros apps que podem ser de 32 ou 64 bits, o app precisa ter a propriedade <code>android:multiarch</code> definida como <code>true</code> dentro do próprio manifesto para evitar possíveis erros.</p>
+
+<h2 id="product_configuration">Configuração do produto</h2>
+
+<p>Em <code>BoardConfig.mk</code>, adicionamos as seguintes variáveis para configurar a segunda arquitetura e ABI de CPU:</p>
+
+<pre>
+TARGET_2ND_ARCH
+TARGET_2ND_ARCH_VARIANT
+TARGET_2ND_CPU_VARIANT
+TARGET_2ND_CPU_ABI
+TARGET_2ND_CPU_ABI2
+</pre>
+
+<p>Veja um exemplo em <code>build/target/board/generic_arm64/BoardConfig.mk</code>.</p>
+
+<p>Se quiser que o sistema de criação crie executáveis e apps de 32 bits por padrão, defina a seguinte variável:</p>
+
+<pre class="devsite-click-to-copy">
+TARGET_PREFER_32_BIT := true
+</pre>
+
+<p>No entanto, é possível substituir essa configuração usando variáveis específicas de módulo em <code>Android.mk</code>.</p>
+
+<p>Em uma versão Multilib, os nomes dos módulos em <code>PRODUCT_PACKAGES</code> abrangem os binários de 32 e 64 bits, desde que eles sejam definidos pelo sistema de criação. Para bibliotecas extraídas por dependência, uma biblioteca de 32 bits será instalada apenas se for exigida por outra biblioteca ou executável de 32 bits. O mesmo ocorre para bibliotecas de 64 bits.</p>
+
+<p>No entanto, os nomes dos módulos na linha de comando <code>make</code> abrangem apenas a versão de 64 bits. Por exemplo, depois de executar as versões <code>lunch
+aosp_arm64-eng</code>, <code>make libc</code> cria apenas a libc de 64 bits. Para criar a libc de 32 bits, é necessário executar <code>make libc_32</code>.</p>
+
+<h2 id="module_definition_in_android_mk">Definição de módulo no Android.mk</h2>
+
+<p>Você pode usar a variável <code>LOCAL_MULTILIB</code> para configurar sua versão para 32 bits e/ou 64 bits e modificar o <code>TARGET_PREFER_32_BIT</code> global.</p>
+
+<p>Defina <code>LOCAL_MULTILIB</code> como um dos seguintes:</p>
+
+<ul>
+  <li>"both": cria 32 bits e 64 bits.</li>
+  <li>"32": cria apenas 32 bits.</li>
+  <li>"64": cria apenas 64 bits.</li>
+  <li>“first”: cria somente para a primeira arquitetura (32 bits em dispositivos de 32 bits e 64 bits em dispositivos de 64 bits).</li>
+  <li>“”: o padrão. O sistema de criação decide qual arquitetura será criada com base na classe do módulo e outras variáveis <code>LOCAL_</code>, como <code>LOCAL_MODULE_TARGET_ARCH</code>, <code>LOCAL_32_BIT_ONLY</code> etc.</li>
+</ul>
+
+<p>Em uma versão Multilib, condicionais como <code>ifeq $(TARGET_ARCH)</code> deixam de funcionar. </p>
+
+<p>Se você quiser criar seu módulo para alguma arquitetura específica, as seguintes variáveis podem ajudar:</p>
+
+<ul>
+  <li><code>LOCAL_MODULE_TARGET_ARCH</code><br />Pode ser definida para uma lista de arquiteturas, algo como “arm x86 arm64”. O módulo atual será incluído pelo sistema de criação somente se a arquitetura que está sendo criada estiver nessa lista.</li>
+
+  <li><code>LOCAL_MODULE_UNSUPPORTED_TARGET_ARCH</code><br />O oposto de <code>LOCAL_MODULE_TARGET_ARCH</code>. O módulo atual será incluído somente se a arquitetura que está sendo criada não estiver na lista.</li>
+</ul>
+
+<p>Existem variantes menores das duas variáveis acima:</p>
+
+<ul>
+  <li><code>LOCAL_MODULE_TARGET_ARCH_WARN</code></li>
+  <li><code>LOCAL_MODULE_UNSUPPORTED_TARGET_ARCH_WARN</code></li>
+</ul>
+
+<p>O sistema de criação avisará se o módulo atual for ignorado devido a arquiteturas limitadas por eles.</p>
+
+<p>Para configurar sinalizadores de criação específicos da arquitetura, use as variáveis <code>LOCAL_</code> específicas da arquitetura. Uma variável <code>LOCAL_</code> específica da arquitetura é uma variável <code>LOCAL_</code> normal com um sufixo de arquitetura, por exemplo:</p>
+
+<ul>
+  <li> <code>LOCAL_SRC_FILES_arm, LOCAL_SRC_FILES_x86,</code>
+  </li><li> <code>LOCAL_CFLAGS_arm, LOCAL_CFLAGS_arm64,</code>
+  </li><li> <code>LOCAL_LDFLAGS_arm, LOCAL_LDFLAGS_arm64,</code>
+</li></ul>
+
+<p>Essas variáveis serão aplicadas somente se um binário estiver sendo criado para essa arquitetura.</p>
+
+<p>Às vezes, é mais conveniente configurar sinalizadores de acordo com a criação do binário atual para 32 ou 64 bits. Nesse caso, você pode usar a variável <code>LOCAL_</code> com um sufixo <code>_32</code> ou <code>_64</code>, por exemplo:</p>
+
+<ul>
+  <li> <code>LOCAL_SRC_FILES_32, LOCAL_SRC_FILES_64,</code>
+  </li><li> <code>LOCAL_CFLAGS_32, LOCAL_CFLAGS_64,</code>
+  </li><li> <code>LOCAL_LDFLAGS_32, LOCAL_LDFLAGS_64,</code>
+</li></ul>
+
+<p>Observe que nem todas as variáveis <code>LOCAL_</code> são compatíveis com as variantes específicas de arquitetura.
+Para ver uma lista atualizada dessas variáveis, consulte <code>build/core/clear_vars.mk</code>.</p>
+
+<h2 id="install_path">Caminho de instalação</h2>
+
+<p>Anteriormente, era possível usar <code>LOCAL_MODULE_PATH</code> para instalar uma biblioteca em um local diferente do padrão. Por exemplo, <code>LOCAL_MODULE_PATH :=
+$(TARGET_OUT_SHARED_LIBRARIES)/hw</code>.</p>
+
+<p>Na versão Multilib, use <code>LOCAL_MODULE_RELATIVE_PATH</code>:</p>
+
+<pre class="devsite-click-to-copy">
+LOCAL_MODULE_RELATIVE_PATH := hw
+</pre>
+
+<p>para que as bibliotecas de 64 e 32 bits possam ser instaladas no lugar correto.</p>
+
+<p>Se você criar um executável como 32 e 64 bits, será necessário usar uma das seguintes variáveis para diferenciar o caminho de instalação:</p>
+
+<ul>
+  <li><code>LOCAL_MODULE_STEM_32, LOCAL_MODULE_STEM_64</code><br />Especifica o nome do arquivo instalado.
+  </li><li><code>LOCAL_MODULE_PATH_32, LOCAL_MODULE_PATH_64</code><br />Especifica o caminho de instalação.
+</li></ul>
+
+<h2 id="generated_sources">Origens geradas </h2>
+
+<p>Em uma versão Multilib, se você gerar arquivos de origem para <code>$(local-intermediates-dir)</code> (ou <code>$(intermediates-dir-for)
+</code> com variáveis explícitas), ela não funcionará mais de forma confiável. Isso ocorre porque as origens geradas intermediárias serão exigidas pelas versões de 32 e 64 bits, mas <code>$(local-intermediates-dir)</code> aponta apenas para um dos dois diretórios intermediários.</p>
+
+<p>Felizmente, o sistema de criação agora fornece um diretório intermediário dedicado e compatível com Multilib para gerar origens. Você pode chamar <code>
+$(local-generated-sources-dir)</code> ou <code>$(generated-sources-dir-for)</code> para indicar o caminho do diretório. As formas de usá-los são semelhantes a <code>$(local-intermediates-dir)</code> e <code>$(intermediates-dir-for)</code>. </p>
+
+<p>Se um arquivo de origem for gerado para o novo diretório dedicado e escolhido por <code>LOCAL_GENERATED_SOURCES</code>, ele será criado para 32 e 64 bits na versão Multilib.</p>
+
+<h2 id="prebuilts">Pré-versões</h2>
+
+<p>No Multilib, não é possível usar <code>TARGET_ARCH</code> (ou junto com <code>TARGET_2ND_ARCH</code>) para informar ao sistema de criação a que arquitetura o binário pré-construído se destina. Use as variáveis <code>LOCAL_</code> <code>LOCAL_MODULE_TARGET_ARCH</code> ou <code>LOCAL_MODULE_UNSUPPORTED_TARGET_ARCH</code> mencionadas anteriormente.</p>
+
+<p>Com essas variáveis, o sistema de criação pode escolher o binário pré-criado de 32 bits correspondente, mesmo que esteja atualmente criando uma versão Multilib de 64 bits.</p>
+
+<p>Se quiser usar a arquitetura escolhida para calcular o caminho de origem para o binário pré-criado, chame <code> $(get-prebuilt-src-arch)</code>.</p>
+
+<h2 id="dex-preopt">Dex-preopt</h2>
+
+<p>Para dispositivos de 64 bits, por padrão, geramos arquivos odex de 32 e 64 bits para a imagem de inicialização e as bibliotecas Java. Para os APKs, por padrão, geramos odex apenas para a arquitetura principal de 64 bits. Se um app for lançado nos processos de 32 e 64 bits, use <code>LOCAL_MULTILIB := both</code> para garantir que os arquivos odex de 32 e 64 bits sejam gerados. Esse sinalizador também instrui o sistema de criação a incluir bibliotecas JNI de 32 e 64 bits, se o app tiver alguma.</p>
+
+</body></html>

@@ -1,0 +1,283 @@
+<html devsite><head>
+    <title>Como usar placas de referência</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>É possível criar versões para dispositivos Nexus usando as versões do Android Open Source Project (AOSP) e os binários relevantes específicos de hardware. Para conhecer as versões do Android e os dispositivos de destino disponíveis, consulte <a href="../start/build-numbers.html#source-code-tags-and-builds">Tags e versões de código-fonte</a>.</p>
+
+<p>Você também pode criar versões para as placas de referência do <a href="https://android.googlesource.com/device/linaro/hikey/" class="external">HiKey</a> Android, que são projetadas para ajudar fornecedores de componentes que não sejam do Nexus a desenvolver e portar drivers para versões do Android. Usar uma placa de referência pode facilitar os esforços de upgrade, reduzir o tempo de lançamento de novos dispositivos Android, diminuir os custos de dispositivos permitindo que ODMs/OEMs escolham a partir de uma variedade maior de componentes compatíveis e aumentar a velocidade de inovação entre fornecedores de componentes.</p>
+
+<p>O Google é compatível com a <a href="#960hikey">HiKey960</a> e
+<a href="#620hikey">HiKey</a> com certificação <a href="https://www.96boards.org/products/ce/" class="external">96Boards</a> como placas de referência do Android. O AOSP fornece suporte para a placa e a origem do kernel para o HiKey, de forma que os desenvolvedores possam criar e depurar com facilidade os drivers de periféricos novos e existentes, realizar desenvolvimento de kernel e executar outras tarefas com menos ônus para OEMs. Para desenvolver novos recursos do ContextHub que usam os novos sensores ou LEDs, você também pode usar um <a href="#neonkey">Neonkey SensorHub</a> conectado a uma placa de desenvolvimento HiKey ou HiKey960.</p>
+
+<h2 id="960hikey">Placas HiKey960</h2>
+
+<p>A placa HiKey960 está disponível na Amazon.com e na <a href="http://www.lenovator.com/product/80.html" class="external">Lenovator</a><a>.
+</a></p><a>
+
+<img src="../images/hikey960.png" alt="Imagem da placa HiKey960"/>
+<figcaption><strong>Figura 1.</strong> Placa HiKey960 da Lenovator</figcaption>
+
+<h3 id="additional-resources">Recursos adicionais</h3>
+
+</a><a href="https://github.com/96boards/documentation/wiki/" class="external">Wiki da 96boards</a>
+
+<h3 id="960userspace">Como compilar o espaço do usuário</h3>
+
+<p>Use os seguintes comandos para fazer o download, criar e executar o Android na placa HiKey960.</p>
+
+<ol>
+  <li>Faça o download da árvore de origem do Android:
+<pre class="devsite-click-to-copy">
+<code class="devsite-terminal">repo init -u <a href="https://android.googlesource.com/platform/manifest">https://android.googlesource.com/platform/manifest</a> -b master</code>
+<code class="devsite-terminal">repo sync -j24</code>
+</pre>
+  </li>
+  <li>Crie:
+<pre class="devsite-click-to-copy">
+<code class="devsite-terminal">. ./build/envsetup.sh</code>
+<code class="devsite-terminal">lunch hikey960-userdebug</code>
+<code class="devsite-terminal">make -j32</code>
+</pre>
+  </li>
+</ol>
+
+<h3 id="960fastboot">Como instalar imagens iniciais</h3>
+<ol>
+  <li>Selecione o modo fastboot ligando os interruptores 1 e 3 (para ver mais detalhes, consulte o guia do usuário da HiKey960).</li>
+  <li>Ligue a placa.</li>
+  <li>Realize atualização flash das imagens iniciais:
+<pre class="devsite-click-to-copy">
+<code class="devsite-terminal">cd device/linaro/hikey/installer/hikey960</code>
+<code class="devsite-terminal">./flash-all.sh</code>
+</pre>
+  </li>
+  <li>Desligue o interruptor 3 e reinicie a placa.</li>
+</ol>
+
+<h3 id="960images">Realizar atualização flash das imagens</h3>
+<ol>
+  <li>Entre no modo fastboot ligando os interruptores 1 e 3.</li>
+  <li>Realize a atualização flash das imagens executando os seguintes comandos:
+<pre class="devsite-click-to-copy">
+<code class="devsite-terminal">fastboot flash boot out/target/product/hikey960/boot.img</code>
+<code class="devsite-terminal">fastboot flash dts out/target/product/hikey960/dt.img</code>
+<code class="devsite-terminal">fastboot flash system out/target/product/hikey960/system.img</code>
+<code class="devsite-terminal">fastboot flash vendor out/target/product/hikey960/vendor.img</code>
+<code class="devsite-terminal">fastboot flash cache out/target/product/hikey960/cache.img</code>
+<code class="devsite-terminal">fastboot flash userdata out/target/product/hikey960/userdata.img</code>
+</pre>
+  </li>
+  <li>Desligue o interruptor 3 e reinicie a placa.</li>
+</ol>
+
+<h3 id="960kernel">Como criar o kernel</h3>
+<ol>
+  <li>Execute os seguintes comandos:
+<pre class="devsite-click-to-copy">
+<code class="devsite-terminal">git clone <a href="https://android.googlesource.com/kernel/hikey-linaro">https://android.googlesource.com/kernel/hikey-linaro</a></code>
+<code class="devsite-terminal">cd hikey-linaro</code>
+<code class="devsite-terminal">git checkout -b android-hikey-linaro-4.9 origin/android-hikey-linaro-4.9</code>
+<code class="devsite-terminal">make ARCH=arm64 hikey960_defconfig</code>
+<code class="devsite-terminal">make ARCH=arm64 CROSS_COMPILE=aarch64-linux-android- -j24</code>
+</pre>
+  </li>
+  <li>Atualize o kernel na imagem de inicialização.
+    <ul>
+      <li>Copie <code>hi3660-hikey960.dtb</code> (<code>arch/arm64/boot/dts/hisilicon/hi3660-hikey960.dtb</code>) para o diretório <code>hikey-kernel</code> como arquivo: <code>hi3660-hikey960.dtb-4.9</code></li>
+      <li>Copie o arquivo de imagem <code>(arch/arm64/boot/Image.gz-dtb</code>) para o diretório <code>hikey-kernel</code> como o arquivo: <code>Image.gz-dtb-hikey960-4.9</code></li>
+    </ul>
+  </li><li>Crie a imagem de inicialização:
+<pre class="devsite-terminal devsite-click-to-copy">
+make bootimage -j24
+</pre>
+  </li>
+</ol>
+
+<h3 id="960serial">Como definir o número de série</h3>
+<p>Para definir um número de série aleatório, execute:
+</p><pre class="devsite-terminal devsite-click-to-copy">
+fastboot getvar nve:SN@<var>16_DIGIT_NUMBER</var>
+</pre>
+<p>O carregador de inicialização exporta o número de série gerado para o kernel via <code>androidboot.serialno=</code>.
+
+</p><h3 id="960resolution">Como definir a resolução do monitor</h3>
+<p>Edite o parâmetro <code>BOARD_KERNEL_CMDLINE</code> de <code>device/linaro/hikey/hikey960/BoardConfig.mk</code> e defina a configuração de <code>video</code>.
+Por exemplo, a configuração de um monitor de 24" é <code>video=HDMI-A-1:1280x800@60</code>.
+</p>
+
+<h2 id="620hikey">Placas HiKey</h2>
+
+<p>A placa HiKey (também conhecida como HiKey620) está disponível em configurações de <a href="http://www.lenovator.com/product/86.html" class="external">1 GB de RAM</a> e <a href="http://www.lenovator.com/product/90.html" class="external">2 GB de RAM</a> da <a href="http://www.lenovator.com" class="external">Lenovator</a>:
+</p>
+
+<img src="../images/hikey620.png" alt="Imagem da placa HiKey620"/>
+<figcaption><strong>Figura 2.</strong> Placa HiKey da Lenovator</figcaption>
+
+<p>Recursos adicionais:</p>
+
+<a href="https://github.com/96boards/documentation/wiki/" class="external">Wiki da 96boards</a>
+
+<h3 id="620userspace">Como compilar o espaço do usuário</h3>
+
+<p>Use os seguintes comandos para fazer o download, criar e executar o Android na placa HiKey.</p>
+
+<ol>
+  <li>Faça o download da árvore de origem do Android:
+<pre class="devsite-click-to-copy">
+<code class="devsite-terminal">repo init -u <a href="https://android.googlesource.com/platform/manifest">https://android.googlesource.com/platform/manifest</a> -b master</code>
+<code class="devsite-terminal">repo sync -j24</code>
+</pre>
+  </li>
+  <li>Instale o utilitário mcopy:
+<pre class="devsite-terminal devsite-click-to-copy">
+apt-get install mtools
+</pre>
+  </li>
+  <li>Crie:
+<pre class="devsite-click-to-copy">
+<code class="devsite-terminal">. ./build/envsetup.sh</code>
+<code class="devsite-terminal">lunch hikey-userdebug</code>
+<code class="devsite-terminal">make -j32</code>
+</pre>
+  </li>
+</ol>
+
+<p class="note"><strong>Observação</strong>: para eMMC de 4 GB, em vez de <code>$ make -j32</code>, use: <code>$ make -j32 TARGET_USERDATAIMAGE_4GB=true</code>.</p>
+
+<h3 id="620fastboot">Como instalar o fastboot e o ptable iniciais</h3>
+<ol>
+  <li>Selecione o modo especial do carregador de inicialização, ligando os pinos J15 1-2 e 3-4.</li>
+  <li>Conecte o USB ao computador para receber o dispositivo ttyUSB (ex: <code>/dev/ttyUSB1</code>).</li>
+  <li>Ligue a placa:
+<pre class="devsite-click-to-copy">
+<code class="devsite-terminal">cd device/linaro/hikey/installer/hikey</code>
+<code class="devsite-terminal">./flash-all.sh /dev/ttyUSB1 [4g]</code>
+</pre>
+  </li>
+  <li>Remova o jumper 3-4 e ligue a placa.</li>
+</ol>
+
+<h3 id="620images">Realizar atualização flash das imagens</h3>
+<ol>
+  <li>Entre no modo fastboot ligando os pinos J15 1-2 e 5-6.</li>
+  <li>Execute os seguintes comandos:
+<pre class="devsite-click-to-copy">
+<code class="devsite-terminal">fastboot flash ptable device/linaro/hikey/installer/hikey/ptable-aosp-8g.img</code>
+<code class="devsite-terminal">fastboot reboot-bootloader</code>
+<code class="devsite-terminal">fastboot flash boot out/target/product/hikey/boot.img</code>
+<code class="devsite-terminal">fastboot flash vendor out/target/product/hikey/vendor.img</code>
+<code class="devsite-terminal">fastboot flash -w system out/target/product/hikey/system.img</code>
+</pre>
+  </li>
+  <li>Remova o jumper 5-6 e ligue a placa.</li>
+</ol>
+
+<h3 id="620kernel">Como criar o kernel</h3>
+<ol>
+  <li>Execute os seguintes comandos:
+<pre class="devsite-click-to-copy">
+<code class="devsite-terminal">git clone <a href="https://android.googlesource.com/kernel/hikey-linaro">https://android.googlesource.com/kernel/hikey-linaro</a></code>
+<code class="devsite-terminal">cd hikey-linaro</code>
+<code class="devsite-terminal">git checkout -b android-hikey-linaro-4.9 origin/android-hikey-linaro-4.9</code>
+<code class="devsite-terminal">make ARCH=arm64 hikey_defconfig</code>
+<code class="devsite-terminal">make ARCH=arm64 CROSS_COMPILE=aarch64-linux-android- -j24</code>
+</pre>
+  </li>
+  <li>Copie a saída para o diretório hikey-kernel (<code>/kernel/hikey-linaro</code>):
+    <ul>
+      <li>Copie hi6220-hikey.dtb (<code>arch/arm64/boot/dts/hisilicon/hi6220-hikey.dtb</code>) para o diretório hikey-kernel como o arquivo hi6220-hikey.dtb-4.9.</li>
+  <li>Copie o arquivo de imagem <code>(arch/arm64/boot/Image.gz-dtb</code>) para o diretório hikey-kernel como o arquivo Image.gz-dtb-4.9.</li>
+    </ul>
+  </li><li>Crie a imagem de inicialização:
+<pre class="devsite-terminal devsite-click-to-copy">
+make bootimage -j24
+</pre>
+  </li>
+</ol>
+
+<h3 id="620resolution">Como definir a resolução do monitor</h3>
+<p>Edite o parâmetro <code>BOARD_KERNEL_CMDLINE</code> do <code>device/linaro/hikey/hikey/BoardConfig.mk</code> e defina a configuração de <code>video</code>.
+Exemplo de configuração para um monitor de 24": <code>video=HDMI-A-1:1280x800@60</code>.</p>
+
+<h3 id="620serial">Como configurar a saída de série do kernel (uart3)</h3>
+<p>Defina o conector de expansão de baixa velocidade J2 para 1 - Gnd, 11 - Rx, 13 - Tx.</p>
+
+<h2 id="neonkey">Neonkey SensorHub</h2>
+<p>Para desenvolver novos recursos do ContextHub que usam os novos sensores ou LEDs, você pode usar um <a href="http://www.96boards.org/product/neonkey/" class="external">Neonkey SensorHub</a> conectado a uma placa de desenvolvimento Hikey ou Hikey960.</p>
+
+<img src="../images/neonkey-sensorhub.png" alt="Imagem do Neonkey Sensorhub"/>
+<figcaption><strong>Figura 3.</strong> Neonkey SensorHub</figcaption>
+
+<p>O Neonkey é uma base de mezanino <a href="http://www.96boards.org/" class="external">96Boards</a> certificada no STM32F411CE com os seguintes componentes:</p>
+
+<ul>
+<li>Sensor de pressão: BMP280</li>
+<li>ALS/Sensor de proximidade: RPR-0521RS</li>
+<li>Sensor ARM Hall: MRMS501A</li>
+<li>Driver de LED com 15 LEDs: LP3943</li>
+<li>Sensores de aceleração/giroscópio + geomagnético: BMI160 + BMM150</li>
+<li>Sensor de temperatura/umidade: SI7034-A10</li>
+<li>4 LEDs acionados por GPIO, expansão de I2C, expansão de GPIO (duas linhas) e conector JTAG</li>
+<li>Flash NOR: 512 KB</li>
+<li>SRAM: 128 KB, conector de expansão LS da 96boards</li>
+</ul>
+
+<p>O suporte para a origem do kernel e a placa ContextHub estão disponíveis no AOSP para ajudar os desenvolvedores a criar e depurar novos sensores, fazer novas alterações na HAL e no kernel etc., com menos ônus para OEMs.</p>
+
+<p>Para criar, ativar e carregar o Neonkey:</p>
+
+<ol>
+<li>Adquira a origem do AOSP:
+<pre class="devsite-terminal">
+repo init -u https://android.googlesource.com/platform/manifest -b master &amp; repo sync -j24
+</pre>
+</li>
+<li>Crie:
+<pre class="devsite-click-to-copy">
+<code class="devsite-terminal">. ./build/envsetup.sh</code>
+<code class="devsite-terminal">lunch hikey-userdebug</code>
+<code class="devsite-terminal">. device/google/contexthub/firmware/toolchain-setup.sh</code>
+<code class="devsite-terminal">make -C device/google/contexthub/firmware/variant/neonkey</code>
+<code class="devsite-terminal">adb push device/google/contexthub/firmware/out/nanohub/neonkey/full.bin /data/local/tmp</code>
+</pre>
+</li>
+<li>Para ativar o Neonkey, entre no modo de inicialização usando o seguinte método:
+<ol>
+<li>Conecte o BOOT0 a 1V8 (ligue os pinos JTAG P4 1-5).</li>
+<li>Segure o botão USR.</li>
+<li>Pressione o botão RST.</li>
+</ol>
+</li>
+<li>Para fazer upload do firmware:
+<pre class="devsite-click-to-copy">
+<code class="devsite-terminal">adb root</code>
+<code class="devsite-terminal">adb shell stm32_flash -u -d /dev/ttyAMA2 -e 0xffff -w /data/local/tmp/full.bin</code>
+</pre>
+</li>
+<li>Para criar a HAL do espaço do usuário:
+<pre class="devsite-click-to-copy">
+<code class="devsite-terminal">make TARGET_SENSOR_MEZZANINE=neonkey -j24</code>
+<code class="devsite-terminal">fastboot flashall</code>
+</pre>
+</li>
+</ol>
+
+</body></html>
