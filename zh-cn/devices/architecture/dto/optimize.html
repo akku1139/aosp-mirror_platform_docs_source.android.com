@@ -4,7 +4,6 @@
     <meta name="book_path" value="/_book.yaml"/>
   </head>
   <body>
-
   <!--
       Copyright 2017 The Android Open Source Project
 
@@ -21,16 +20,10 @@
       limitations under the License.
   -->
 
-<p>
-  本页介绍了您可以对 DTO 实现进行哪些优化，描述了针对叠加根节点的限制，并详细介绍了如何在 DTBO 映像中配置经过压缩的叠加层。此外，还提供了示例实现说明和代码。
-</p>
+<p>本页详细介绍了您可以对 DTO 实现进行哪些优化，描述了针对叠加根节点的限制，并提供了示例实现说明和代码。</p>
 
 <h2 id="kernel">内核命令行</h2>
-
-<p>
-  设备树中的原始内核命令行位于 <code>chosen/bootargs</code> 节点中。引导加载程序必须将此位置与内核命令行的其他源位置进行连接：
-</p>
-
+<p>设备树中的原始内核命令行位于 <code>chosen/bootargs</code> 节点中。引导加载程序必须将此位置与内核命令行的其他源进行串联：</p>
 <pre class="prettyprint">
 /dts-v1/;
 
@@ -41,9 +34,7 @@
 };
 </pre>
 
-<p>
-  DTO <strong>无法</strong>连接主 DT 和叠加 DT 的值，因此您必须将主 DT 的内核命令行置入 <code>chosen/bootargs</code> 中，并将叠加 DT 的内核命令行置入 <code>chosen/bootargs_ext</code> 中。接下来，引导加载程序会连接这些位置，并将结果传递给内核。
-</p>
+<p>DTO <strong>无法</strong>连接主 DT 和叠加 DT 的值。建议您将主 DT 的内核命令行置入 <code>chosen/bootargs</code> 中，并将叠加 DT 的内核命令行置入 <code>chosen/bootargs_ext</code> 中。接下来，引导加载程序会合并这些位置，并将结果传递给内核。</p>
 
 <table>
 <tbody><tr>
@@ -79,52 +70,29 @@
 </tbody></table>
 
 <h2 id="libufdt">libufdt</h2>
-
-<p>
-  虽然最新的 <code><a href="https://github.com/dgibson/dtc/tree/master/libfdt" class="external">libfdt</a></code> 支持 DTO，但是我们建议您使用 <code>libufdt</code> 来实现 DTP（AOSP 源代码位于 <code><a href="https://android.googlesource.com/platform/system/libufdt/+/refs/heads/master" class="external">platform/system/libufdt</a></code> 下）。
-  <code>libufdt</code> 会从扁平化设备树 (FDT) 编译真实的树结构（非扁平化设备树，简称“ufdt”），从而改善两个 <code>.dtb</code> 文件（从 O(N2) 到 O(N)，其中 N 是树中的节点数）的合并效果。
-<em></em>
-</p>
+<p>虽然最新的 <code><a href="https://github.com/dgibson/dtc/tree/master/libfdt" class="external">libfdt</a></code> 支持 DTO，但是我们建议您使用 <code>libufdt</code> 来实现 DTP（源代码位于 AOSP 中的 <code><a href="https://android.googlesource.com/platform/system/libufdt/+/refs/heads/master" class="external">platform/system/libufdt</a></code> 下）。<code>libufdt</code> 会从扁平化设备树 (FDT) 编译真实的树结构（非扁平化设备树，简称“ufdt”<em></em>），从而改善两个 <code>.dtb</code> 文件（从 O(N2) 到 O(N)，其中 N 是树中的节点数）的合并效果。</p>
 
 <h3 id="performance">性能测试</h3>
+<p>在 Google 的内部测试中，进行编译后，在 2405 个 <code>.dtb</code> 和 283 个 <code>.dtbo</code> DT 节点上使用 <code>libufdt</code> 生成了 70618 字节和 8566 字节的文件。与从 FreeBSD 移植的 <a href="http://fxr.watson.org/fxr/source/boot/fdt/" class="external">DTO 实现</a>（运行时为 124 毫秒）相比，<code>libufdt</code> DTO 运行时为 10 毫秒。</p>
 
-<p>
-  在 Google 的内部测试中，进行编译后，在 2405 个 <code>.dtb</code> 和 283 个 <code>.dtbo</code> DT 节点上使用 <code>libufdt</code> 生成了 70618 字节和 8566 字节的文件。与从 FreeBSD 移植的 <a href="http://fxr.watson.org/fxr/source/boot/fdt/" class="external">DTO 实现</a>（运行时为 124 毫秒）相比，<code>libufdt</code> DTO 运行时为 10 毫秒。
-</p>
-
-<p>
-  Pixel 设备的性能测试比较了 <code>libufdt</code> 和 <code>libfdt</code>。基本节点数量带来的影响相似，但包含以下差异：
-</p>
-
+<p>在 Pixel 设备的性能测试中，我们比较了 <code>libufdt</code> 和 <code>libfdt</code>。基本节点数量带来的影响相似，但包含以下差异：</p>
 <ul>
-  <li>500 次叠加（附加或覆盖）操作具有 6-8 倍的时间差异</li>
-  <li>1000 次叠加（附加或覆盖）操作具有 8-10 倍的时间差异</li>
+<li>500 次叠加（附加或覆盖）操作具有 6〜8 倍的时间差异</li>
+<li>1000 次叠加（附加或覆盖）操作具有 8〜10 倍的时间差异</li>
 </ul>
 
-<p>
-  附加计数设置为 X 的示例：
-</p>
-
+<p>附加计数设置为 X 的示例：</p>
 <p><img src="../images/treble_dto_appending.png"/></p>
-<figcaption><strong>图 1.</strong> 附加计数为 X</figcaption>
+<figcaption><strong>图 1</strong> 附加计数为 X。</figcaption>
 
-<p>
-  覆盖计数设置为 X 的示例：
-</p>
-
+<p>覆盖计数设置为 X 的示例：</p>
 <p><img src="../images/treble_dto_overriding.png"/></p>
-<figcaption><strong>图 2.</strong> 覆盖计数为 X</figcaption>
+<figcaption><strong>图 2.</strong> 覆盖计数为 X。</figcaption>
 
-<p>
-  <code>libufdt</code> 是用一些 <code>libfdt</code> API 和数据结构开发的。使用 <code>libufdt</code> 时，您必须包含并关联 <code>libfdt</code>（不过，您可以在代码中使用 <code>libfdt</code> API 来操作 DTB 或 DTBO）。
-</p>
+<p><code>libufdt</code> 是用一些 <code>libfdt</code> API 和数据结构开发的。使用 <code>libufdt</code> 时，您必须包含并关联 <code>libfdt</code>（不过，您可以在代码中使用 <code>libfdt</code> API 来操作 DTB 或 DTBO）。</p>
 
 <h3 id="api">libufdt DTO API</h3>
-
-<p>
-  <code>libufdt</code> 中适用于 DTO 的主要 API 如下：
-</p>
-
+<p><code>libufdt</code> 中适用于 DTO 的主要 API 如下：</p>
 <pre class="prettyprint">
 struct fdt_header *ufdt_apply_overlay(
         struct fdt_header *main_fdt_header,
@@ -133,23 +101,14 @@ struct fdt_header *ufdt_apply_overlay(
         size_t overlay_size);
 </pre>
 
-<p>
-  参数 <code>main_fdt_header</code> 是主 DT，<code>overlay_fdt</code> 是包含 <code>.dtbo</code> 文件内容的缓冲区。返回值是一个包含合并的 DT 的新缓冲区（如果出现错误，则返回 <code>null</code>）。合并的 DT 采用 FDT 格式，您可以在启动内核时将其传递给内核。
-</p>
+<p>参数 <code>main_fdt_header</code> 是主 DT，<code>overlay_fdt</code> 是包含 <code>.dtbo</code> 文件内容的缓冲区。返回值是一个包含合并的 DT 的新缓冲区（如果出现错误，则返回 <code>null</code>）。合并的 DT 会在 FDT 中进行格式化，您可以在启动内核时将其传递给内核。</p>
 
-<p>
-  来自返回值的新缓冲区由 <code>dto_malloc()</code>（您应在将 <code>libufdt</code> 移植到引导加载程序时加以实现）创建。有关参考实现，请参阅 <code>sysdeps/libufdt_sysdeps_*.c</code>。
-</p>
+<p>来自返回值的新缓冲区由 <code>dto_malloc()</code>（您应在将 <code>libufdt</code> 移植到引导加载程序时加以实现）创建。有关参考实现，请参阅 <code>sysdeps/libufdt_sysdeps_*.c</code>。</p>
 
 <h2 id="root">根节点限制</h2>
+<p>您不能将新节点或属性叠加到主 DT 的根节点，因为叠加操作依赖于标签。由于主 DT 必须定义一个标签，而叠加 DT 则会分配要叠加标签的节点，因此，我们无法为根节点提供标签（因而不能叠加根节点）。</p>
 
-<p>
-  您不能将新节点或属性叠加到主 DT 的根节点，因为叠加操作依赖于标签。由于主 DT 必须定义一个标签，而叠加 DT 则会分配要叠加标签的节点，因此，您无法为根节点提供标签（因而不能叠加根节点）。
-</p>
-
-<p>
-  SoC 供应商必须定义主 DT 的叠加能力；ODM/OEM 只能使用由 SoC 供应商定义的标签附加或覆盖节点。要解决这个问题，您可以在基础 DT 中的根节点下定义一个 <strong><code>odm</code></strong> 节点，使叠加 DT 中的所有 ODM 节点都能够添加新节点。或者，您也可以将基础 DT 中的所有 SoC 相关节点放在根节点下的 <strong><code>soc</code></strong> 节点中，如下所述：
-</p>
+<p>SoC 供应商必须定义主 DT 的叠加能力；ODM/OEM 只能使用由 SoC 供应商定义的标签附加或叠加节点。要解决这个问题，您可以在基础 DT 中的根节点下定义一个 <strong><code>odm</code></strong> 节点，使叠加 DT 中的所有 ODM 节点都能够添加新节点。或者，您也可以将基础 DT 中的所有 SoC 相关节点放在根节点下的 <strong><code>soc</code></strong> 节点中，如下所述：</p>
 
 <table>
 <tbody><tr>
@@ -211,92 +170,51 @@ struct fdt_header *ufdt_apply_overlay(
 </tr>
 </tbody></table>
 
-<h2 id="compressed-overlays">使用经过压缩的叠加层</h2>
-
-<p>
-  Android 9 增加了以下支持：在使用第 1 版设备树表格表头时，在 DTBO 映像中使用经过压缩的叠加层。使用 DTBO 标头 v1 时，dt_table_entry 中标记字段的四个最不重要的有效位会指明 DT 条目的压缩格式。<em></em>
-</p>
-
-<pre class="prettyprint">struct dt_table_entry_v1 {
-  uint32_t dt_size;
-  uint32_t dt_offset;  /* offset from head of dt_table_header */
-  uint32_t id;         /* optional, must be zero if unused */
-  uint32_t rev;        /* optional, must be zero if unused */
-  uint32_t flags;      /* For version 1 of dt_table_header, the 4 least significant bits
-                        of 'flags' will be used to indicate the compression
-                        format of the DT entry as per the enum 'dt_compression_info' */
-  uint32_t custom[3];  /* optional, must be zero if unused */
-};
-</pre>
-
-<p>
-  目前，系统支持 <code>zlib</code> 和 <code>gzip</code> 压缩。
-</p>
-
-<pre class="prettyprint">enum dt_compression_info {
-    NO_COMPRESSION,
-    ZLIB_COMPRESSION,
-    GZIP_COMPRESSION
-};
-</pre>
-
-<p>
-  Android 9 增加了在 <code>VtsFirmwareDtboVerification</code> 测试中测试经过压缩的叠加层的支持，以帮助您验证叠加应用的正确性。
-</p>
-
 <h2 id="sample">DTO 实现示例</h2>
-
-<p>
-  以下说明介绍了使用 <code>libufdt</code> 进行 DTO 实现的示例过程（示例代码如下）。
-</p>
+<p>以下说明介绍了使用 <code>libufdt</code> 进行 DTO 实现的示例过程（示例代码如下）。</p>
 
 <h3 id="sample-instructions">示例 DTO 说明</h3>
 
 <ol>
-  <li>包含库。要使用 <code>libufdt</code>，请包含 <code>libfdt</code> 以用于数据结构和 API：
-<pre class="prettyprint">
+<li>包含库。要使用 <code>libufdt</code>，请包含 <code>libfdt</code> 以用于数据结构和 API：<pre class="prettyprint">
 #include &lt;libfdt.h&gt;
 #include &lt;ufdt_overlay.h&gt;
 </pre>
-  </li>
-  <li>加载主 DT 和叠加 DT。将 <code>.dtb</code> 和 <code>.dtbo</code> 从存储空间加载到内存中（确切的步骤取决于您的设计）。此时，您应该设置 <code>.dtb</code>/<code>.dtbo</code> 的缓冲区和大小：
-<pre class="prettyprint">
+</li>
+
+<li>加载主 DT 和叠加 DT。将 <code>.dtb</code> 和 <code>.dtbo</code> 从存储空间加载到内存中（确切的步骤取决于您的设计）。此时，您应该设置 <code>.dtb</code>/<code>.dtbo</code> 的缓冲区和大小：<pre class="prettyprint">
 main_size = my_load_main_dtb(main_buf, main_buf_size)
 </pre>
 <pre class="prettyprint">
 overlay_size = my_load_overlay_dtb(overlay_buf, overlay_buf_size);
 </pre>
-  </li>
-  <li>叠加 DT：
-  <ol>
-    <li>使用 <code>ufdt_install_blob()</code> 获取主 DT 的 FDT 标头：
-<pre class="prettyprint">
+</li>
+
+<li>叠加 DT：<ol>
+
+<li>使用 <code>ufdt_install_blob()</code> 获取主 DT 的 FDT 标头：<pre class="prettyprint">
 main_fdt_header = ufdt_install_blob(main_buf, main_size);
 main_fdt_size = main_size;
 </pre>
-    </li>
-    <li>对 DTO 调用 <code>ufdt_apply_overlay()</code> 以获取采用 FDT 格式的合并 DT：
-<pre class="prettyprint">
+</li>
+<li>对 DTO 调用 <code>ufdt_apply_overlay()</code> 以获取采用 FDT 格式的合并 DT：<pre class="prettyprint">
 merged_fdt = ufdt_apply_overlay(main_fdt_header, main_fdt_size,
                                 overlay_buf, overlay_size);
 </pre>
-    </li>
-    <li>使用 <code>merged_fdt</code> 获取 <code>dtc_totalsize()</code> 的大小：
-<pre class="prettyprint">
+</li>
+
+<li>要获取 <code>merged_fdt</code> 的大小，请使用 <code>dtc_totalsize()</code>：<pre class="prettyprint">
 merged_fdt_size = dtc_totalsize(merged_fdt);
 </pre>
-    </li>
-    <li>传递合并的 DT 以启动内核：
-<pre class="prettyprint">
+</li>
+
+<li>传递合并的 DT 以启动内核。当您启动内核时，请将合并的 DT 传递给内核：<pre class="prettyprint">
 my_kernel_entry(0, machine_type, merged_fdt);
 </pre>
-    </li>
-  </ol>
-  </li>
-</ol>
+</li>
+</ol></li></ol>
 
 <h3 id="sample-code">示例 DTO 代码</h3>
-
 <pre class="prettyprint">
 #include &lt;libfdt.h&gt;
 #include &lt;ufdt_overlay.h&gt;

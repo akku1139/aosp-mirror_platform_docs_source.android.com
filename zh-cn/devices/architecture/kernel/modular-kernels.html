@@ -3,7 +3,6 @@
     <meta name="project_path" value="/_project.yaml"/>
     <meta name="book_path" value="/_book.yaml"/>
   </head>
-
   <body>
   <!--
       Copyright 2017 The Android Open Source Project
@@ -26,7 +25,7 @@
 <p>本页详细介绍了以下方面的要求：</p>
 
 <ul>
-<li>对于独立 SoC 和 OEM/ODM 内核开发的平台支持。Android 9 建议以设备中的内核模块的形式编译和推出所有板专属代码。因此：
+<li>对于独立的 SoC 和 OEM/ODM 内核开发的平台支持。Android O 建议以设备中的内核模块的形式构建和推出所有板专属代码。因此：
  <ul>
  <li>所有平台都应支持<a href="https://www.devicetree.org/" class="external">设备树</a>或<a href="http://www.uefi.org/acpi/specs" class="external">高级配置与电源接口 (ACPI)</a>，以便描述所有不可检测的设备。</li>
  <li>对于基于设备树的平台，应将板专属设备节点作为<a href="/devices/architecture/dto/index.html">叠加层</a>添加到内核设备树中。</li>
@@ -37,7 +36,7 @@
 </ul>
 
 <h2 id="loadable-kernel-modules">可加载的内核模块</h2>
-<p>所有 SoC 内核都必须支持可加载的内核模块。作为着手点，以下内核配置选项（或其内核版本等效项）已添加到所有通用内核中的 <a href="https://android.googlesource.com/kernel/common/+/android-4.4-o/android/configs/android-base.cfg" class="external">android-base.cfg</a>，且必须在所有设备内核中启用：</p>
+<p>所有 SoC 内核都应支持可加载的内核模块。作为着手点，以下内核配置选项（或其内核版本等效选项）已添加到所有通用内核中的 <a href="https://android.googlesource.com/kernel/common/+/android-4.4-o/android/configs/android-base.cfg" class="external">android-base.cfg</a>，且必须在所有设备内核中启用：</p>
 
 <pre class="prettyprint">
 CONFIG_MODULES=y
@@ -45,7 +44,7 @@ CONFIG_MODULE_UNLOAD=y
 CONFIG_MODVERSIONS=y
 </pre>
 
-<p>内核模块应尽可能支持卸载和重新加载。</p>
+<p>所有内核模块都要经过模块加载/取消加载测试，以确保驱动程序/模块正确无误。</p>
 
 <aside class="note"><strong>注意</strong>：<code>CONFIG_MODULE_SRCVERSION_ALL</code> 是可选项，不会进行测试。</aside>
 
@@ -60,8 +59,7 @@ CONFIG_MODULE_SIG_FORCE=y
 <p>在需要支持验证启动的设备上，Android 要求内核模块位于启用 dm-verity 的分区中。模块签名并非强制性要求，也不会进行测试；不过，如有需要，ODM 也可以启用模块签名，但前提是 ODM 拥有所需的密钥签名及其他基础架构，以确保未来可进行独立的内核和文件系统 OTA 更新。</p>
 
 <h3 id="file-locations">文件位置</h3>
-<p>Android 7.x 及更早版本对内核模块（包括对 <code>insmod</code> 和 <code>rmmod</code> 的支持）没有强制要求，而 Android 8.x 及更高版本建议在生态系统中使用内核模块。下表显示了 Android 的 3 种启动模式所需的潜在板专用外设支持：</p>
-
+<p>Android 7.x 及更早版本对内核模块（包括对 <code>insmod</code> 和 <code>rmmod</code> 的支持）没有强制要求，而 Android 8.0 建议在生态系统中使用内核模块。下表显示了 Android 的 3 种启动模式所需的板专用外设设备支持：</p>
 <table>
 <tbody><tr>
 <th>启动模式</th>
@@ -118,7 +116,7 @@ CONFIG_MODULE_SIG_FORCE=y
 <ul>
 <li>所有内核都应内置对启动和装载分区的支持。
 </li>
-<li>必须从只读分区加载内核模块。</li>
+<li>应从只读分区加载内核模块。</li>
 <li>对于需要支持验证启动的设备，应从验证分区加载内核模块。</li>
 <li>内核模块不应位于 <code>/system</code> 中。</li>
 <li>完整 Android 模式或充电模式所需的 SoC 供应商内核模块应该位于 <code>/vendor/lib/modules</code> 中。</li>
@@ -129,7 +127,7 @@ CONFIG_MODULE_SIG_FORCE=y
 <li>SoC 供应商内核模块不应依赖 ODM 内核模块。</li>
 </ul>
 
-<p>在 Android 7.x 及更早版本中，<code>/vendor</code> 和 <code>/odm</code> 分区<strong>不会</strong>提前装载。在 Android 8.x 及更高版本中，为使模块能够从这些分区加载，已进行相关配置，以便为<a href="/devices/tech/ota/ab_updates">非 A/B 和 A/B 设备</a>提前装载分区。这还确保了在 Android 和充电模式下均装载分区。</p>
+<p>在 Android 7.x 及更早版本中，<code>/vendor</code> 和 <code>/odm</code> 分区<strong>不会</strong>提前装载。在 Android 8.0 中，为使模块能够从这些分区加载，已进行相关配置，以便为<a href="/devices/tech/ota/ab_updates">非 A/B 和 A/B 设备</a>提前装载分区。这还确保了在 Android 和充电模式下均装载分区。</p>
 
 <h3 id="android-build-system-support">Android 编译系统支持</h3>
 <p>在 <code>BoardConfig.mk</code> 中，Android 编译系统定义了 <code>BOARD_VENDOR_KERNEL_MODULES</code> 变量，该变量提供了用于供应商映像的内核模块的完整列表。此变量中列出的模块会被复制到位于 <code>/lib/modules/</code> 的供应商映像中，在 Android 中装载后会显示在 <code>/vendor/lib/modules</code> 中（根据上述要求）。下面是一个供应商内核模块的配置示例：</p>
@@ -175,11 +173,11 @@ on early-init
 
 <h2 id="mounting-partitions-early-first-stage-mount">提前装载分区（第一阶段装载）</h2>
 <font style="font-family: Roboto, Arial, Helvetica, sans-serif; background-color: green; color: white"> 必须执行的工作 </font>
-<p>所有支持 Treble 的设备都必须启用第一阶段装载，以确保 <code>init</code> 可以加载分布在 <code>system</code> 和 <code>vendor</code> 分区的 SELinux 政策片段（这样还可实现在内核启动后尽快加载内核模块）。</p>
+<p>所有支持 Treble 的设备都必须启用第一阶段装载，以确保 <code>init</code> 可以加载分布在 <code>system</code> 和 <code>vendor</code> 分区的 SELinux 政策片段（这还可实现在内核启动后尽快加载内核模块）。</p>
 
-<aside class="note"><strong>注意</strong>：要详细了解 Android 8.x 中的 SELinux，请参阅 <a href="/security/selinux/images/SELinux_Treble.pdf">SELinux for Android 8.0</a>。</aside>
+<aside class="note"><strong>注意</strong>：要详细了解 Android 8.0 中的 SELinux，请参阅 <a href="/security/selinux/images/SELinux_Treble.pdf">SELinux for Android 8.0</a>。</aside>
 
-<p>Android 必须有权访问模块所在的文件系统。为此，Android 8.x 及更高版本支持在 <code>init</code> 的第一阶段（即初始化 SELinux 之前）装载 <code>/system</code>、<code>/vendor</code> 或 <code>/odm</code>。设备制造商可以使用<a href="/devices/architecture/dto/index.html">设备树叠加层</a>为提前装载的分区指定 <code>fstab</code> 条目。</p>
+<p>Android 必须有权访问模块所在的文件系统。为此，Android 8.0 支持在 <code>init</code> 的第一阶段（即初始化 SELinux 之前）装载 <code>/system</code>、<code>/vendor</code> 或 <code>/odm</code>。设备制造商可以使用<a href="/devices/architecture/dto/index.html">设备树叠加层</a>为提前装载的分区指定 <code>fstab</code> 条目。</p>
 
 <aside class="key-point"><strong>AOSP 提前装载更改摘要：</strong>
 <ul>
@@ -211,7 +209,8 @@ CUSTOM_IMAGE_VERITY_BLOCK_DEVICE := /dev/block/…./by-name/odm
 </ol>
 
 <h3 id="early-mounting-device-tree-vboot-1-0">提前装载设备树 (VBoot 1.0)</h3>
-<p>在 Android 8.x 及更高版本中，<code>init</code> 会解析设备树并创建 <code>fstab</code> 条目，以在其第一阶段提前装载分区。<code>fstab</code> 条目采取以下形式：</p>
+<p>在 Android 8.0 中，<code>init</code> 会解析设备树并创建 <code>fstab</code> 条目，以在其第一阶段提前装载分区。
+fstab 条目采取以下形式：</p>
 
 <pre class="prettyprint">src mnt_point type mnt_flags fs_mgr_flags</pre>
 
@@ -389,14 +388,9 @@ CUSTOM_IMAGE_VERITY_BLOCK_DEVICE := /dev/block/…./by-name/odm
 
 <h2 id="device-tree-overlay-support-bootloader">设备树叠加层支持（引导加载程序）</h2>
 <p>
-<a href="/devices/architecture/dto/">设备树叠加层</a> (DTO) 旨在扩展现有<a href="https://events.linuxfoundation.org/sites/events/files/slides/petazzoni-device-tree-dummies.pdf" class="external">扁平化设备树 (FDT)</a> 的实现，以便用户空间（在运行时）可通过加载修改了原始数据的额外叠加层 FDT 来修改内核中的初始设备树数据。Android 不需要在运行时更新用户空间的 DT Blob，而是建议供应商借助 <code>libfdt</code>/<code>libufdt</code> 在引导加载程序中添加设备树补丁程序。</p>
+<a href="/devices/architecture/dto/">设备树叠加层</a> (DTO) 旨在扩展现有<a href="https://events.linuxfoundation.org/sites/events/files/slides/petazzoni-device-tree-dummies.pdf" class="external">扁平化设备树 (FDT)</a> 的实现，以便用户空间（在运行时）可通过加载修改了原始数据的额外叠加层 FDT 来修改内核中的初始设备树数据。Android 不需要来自用户空间的 DT Blob 运行时更新，而是建议供应商借助 <code>libfdt</code>/<code>libufdt</code> 在引导加载程序中添加设备树补丁程序。</p>
 
-<p>Android 对 DTO 的支持因 Android 版本而异：</p>
-<ul>
-  <li>Android 7.x 及更早版本不要求提供设备树支持，同时，没有针对供应商如何将 DT Blob 传递给内核或在何处存储这些 Blob 提供建议。</li>
-  <li>不过，Android 8.x 建议提供此类支持，以将内核的板专属部分和仅限 SoC 访问的部分区分开来。</li>
-  <li>Android 9 要求必须存在 DTBO 分区并且至少应用一个 DTO。</li>
-</ul>
+<p>在 Android 7.x 及更早版本中，Android 不要求提供设备树支持，同时，没有针对供应商如何将 DT Blob 传递给内核或在何处存储这些 Blob 提供相关建议。不过，Android 8.0 建议提供此类支持，以将内核的板专属部分和仅限 SoC 访问的部分区分开来。</p>
 
 <h3 id="partitioning-requirements">分区要求</h3>
 <p>目前，大多数 Android 设备都在编译时将 DT Blob 附加到内核中，而引导加载程序知道如何从内核读取 DT Blob。由于 Android 对如何编译/存储 DT Blob（被视为 SoC 内核的一部分）没有特定要求，因此 DT Blob 可以附加到内核中，也可以将其单独存储在某个分区中。这里唯一的假设前提是引导加载程序已经知道如何加载以及从何处加载 DT Blob。</p>
@@ -424,7 +418,7 @@ CUSTOM_IMAGE_VERITY_BLOCK_DEVICE := /dev/block/…./by-name/odm
 <p>要详细了解如何在引导加载程序中增加对 DTO 的支持，请参阅<a href="/devices/architecture/dto/index.html">设备树叠加层</a>。</p>
 
 <h2 id="core-kernel-requirements">核心内核要求</h2>
-<p>自 Android 8.0 开始，Android 规定了最低内核版本和内核配置，且会在 VTS 中以及 OTA 期间对它们进行检查。Android 设备内核必须启用内核 <code>.config</code> 支持以及在运行时通过 <code>procfs</code> 读取内核配置的选项。</p>
+<p>Android 8.0 规定了最低内核版本和内核配置，且会在 VTS 中以及 OTA 期间对它们进行检查。Android 设备内核必须启用内核 <code>.config</code> 支持以及在运行时通过 <code>procfs</code> 读取内核配置的选项。</p>
 
 <h3 id="kernel-config-support">内核 .config 支持</h3>
 <p>所有设备内核都必须完整启用 <a href="https://android.googlesource.com/kernel/common/+/android-4.4/android/configs/android-base.cfg" class="external">android-base.cfg</a>，其中必须包含以下内核配置选项（或其内核版本等效选项）：</p>
@@ -435,18 +429,13 @@ CONFIG_IKCONFIG_PROC=y
 </pre>
 
 <h3 id="kernel-version">内核版本</h3>
-<p>对于 Android 9，要求的最低 LTS 内核版本是 4.4.107、4.9.84 和 4.14.42。</p>
-
+<p>内核版本要求：</p>
 <ul>
-<li>2018 年构建的所有 SoC 都必须使用 4.9.84 版或更新版本的内核才能发布。</li>
-<li>在推出搭载 Android 8.x 的新 Android 设备时，所有其他 SoC 都必须使用 3.18 版或更新版本的内核。在推出搭载 Android 9 的新 Android 设备时，所有其他 SoC 都必须使用 4.4.107 版或更新版本的内核。</li>
-<li>基于 4.14 的设备内核必须包含 4.14.42 或更高版本的 LTS。
-</li>
-<li>发布搭载 Android 8.x 及更高版本的设备时，所有 SoC 仍然需要遵循启用 Treble 所需的内核更改要求，无论发布日期是什么时候。</li>
-<li>如有需要，将升级到 Android 8.x 或 9 的早期 Android 设备可以继续使用原来的基础内核版本。</li>
+<li>2017 年构建的所有 SoC 都必须使用 4.4 版或更新版本的内核才能发布。</li>
+<li>在推出搭载 Android 8.0 的新 Android 设备时，所有其他 SoC 都必须使用 3.18 版或更新版本的内核。</li>
+<li>发布搭载 Android 8.0 的设备时，所有 SoC 仍然需要遵循启用 Treble 所需的内核更改要求，无论发布日期是什么时候。</li>
+<li>如有需要，发布时间早于 Android 8.0 但是将升级到 Android 8.0 的早期 Android 设备可以继续使用原来的基础内核版本。</li>
 </ul>
-
-<p>要详细了解 LTS 内核，请参阅<a href="/devices/architecture/kernel/releases#long-term-stable-kernels">长期稳定内核</a>和 <a href="https://source.android.com/devices/architecture/kernel/android-common">Android 通用内核</a></p>
 
 <h3 id="device-tree-support">设备树支持</h3>
 <p>内核中必须启用设备树支持，且引导加载程序必须将硬件描述以设备树的形式传递给内核（除非平台支持 ACPI）。设备树还必须可供 Android 读取，且能够将供应商/ODM 特有的参数传递给 Android。
@@ -462,17 +451,18 @@ CONFIG_PROC_DEVICETREE=y (kernels prior to 3.15)
 <p>要查看使用设备树提前装载 <code>vendor</code>/<code>odm</code> 分区的示例，请参阅 <a href="https://android-review.googlesource.com/#/c/337310/" class="external">AOSP 变更列表</a>。</p>
 
 <h3 id="debugfs">DebugFS</h3>
-<p>供应商接口的实现不应依赖 <code>debugfs</code>，您可以启用 debugfs，但在不装载 <code>debugfs</code> 的情况下也可以完成 VTS 测试。</p>
+<p>供应商接口的实现不应依赖 <code>debugfs</code>，您可以将后者启用，但在不装载 <code>debugfs</code> 的情况下也可以完成 VTS 测试。</p>
 
-<h2 id="beyond-android-o">未来的 Android 版本</h2>
-<p>当前的 Android 版本建议以设备中的内核模块的形式编译和推出所有板专属代码。对 Android 而言，内核的其余部分为一个整体（无论它实际上是单片内核，还是其中的一部分是作为内核模块编译的）。</p>
+<h2 id="beyond-android-o">Android 8.0 之后的版本</h2>
+<p>Android 8.0 建议任何板专属内核功能都采用可加载的内核模块和设备树叠加层的形式。对 Android 而言，内核的其余部分为一个整体（无论它实际上是单片内核，还是其中的一部分是作为内核模块编译的）。
+</p>
 
 <p>该单片内核是可以在 SoC 供应商的参考硬件上启动的 SoC 内核，但仅限于此。如今，对 SoC 内核的处理方式与通用内核类似；SoC 内核在板专属的代码库中会有大量副本。这种分发模型会导致，针对每个分支中的同一错误，系统会采取极为不同的方式修复 SoC 内核；这样一来，由于会在不同的时间择优挑选或修复同一错误的方式不同，未来的内核更新会有延迟。要解决此问题，必须单独提供 SoC 内核，以便使用 SoC 的每个人都可以为同一 SoC 内核做贡献。</p>
 
 <p>图 1（下图）是一个常见示例，显示了 SoC 内核如何随着时间的推移在各个 Android 版本以及 ODM 之间逐渐碎片化。</p>
 
 <img src="../images/treble_kernel_current.png"/>
-<figcaption><strong>图 1.</strong> 设备内核副本</figcaption>
+<figcaption><strong>图 1.</strong> 设备内核副本。</figcaption>
 
 <p>图 1 表明：</p>
 <ol>
@@ -484,16 +474,16 @@ CONFIG_PROC_DEVICETREE=y (kernels prior to 3.15)
 图 2（下图）显示了工作流程在按 SoC 和内核进行过统一的理想场景中如何变化：</p>
 
 <img src="../images/treble_kernel_treble.png"/>
-<figcaption><strong>图 2.</strong> Android 8.x 及更高版本的设备内核</figcaption>
+<figcaption><strong>图 2.</strong> Android 8.0 及更高版本对应的设备内核。</figcaption>
 
-<p>这种方法旨在通过推荐并与设备制造商展开协作以采用最新的通用 SoC 内核，解决内核代码库碎片化的问题。Android 8.x 及更高版本为 ODM 提供了各种可能的选项，使 ODM 不需要维护自己的 SoC 内核，而是依赖通用的 SoC 内核来获取 LTS 升级/问题修复程序/安全漏洞补丁程序等。</p>
+<p>这种方法旨在通过推荐并与设备制造商展开协作以采用最新的通用 SoC 内核，来解决分散内核代码库碎片化的问题。Android 8.0 为 ODM 提供了各种可能的选项，使 ODM 不需要维护自己的 SoC 内核，而是依赖通用的 SoC 内核来获取 LTS 升级/错误修复程序/安全漏洞补丁程序等。</p>
 
-<p>我们初步的计划是推动所有 ODM/供应商都使用单一的 SoC 内核源。未来，我们计划朝着每个 SoC 分发单个内核二进制文件的方向发展。</p>
+<p>我们初步的计划是推动所有 ODM/供应商都使用单一的 SoC 内核源。未来，我们计划朝着以单个二进制文件按照 SoC 分发内核的方向发展。</p>
 
 <h3 id="upstreaming">上游化</h3>
 <p>为了更轻松且近乎自动地更新为较新的内核版本，并为 ODM 提供更安全可靠的平台来开发产品，我们强烈建议 SoC 供应商将其内核更改上游化，并使它们被 kernel.org 主代码库接受。虽然这样做需要前期投入额外的时间和工程资源，但事实证明，从长远的角度来看，这样会节省时间和资金。另据证实，与未经社区审核的代码相比，合并后的代码质量高很多，错误和安全漏洞问题也更少（这些错误和安全漏洞问题的严重程度通常更低）。</p>
 
-<p>如果将对 SoC 的全面支持合并到上游，社区便可以在内部的内核 API 随时间不断发展的同时，做出必要的 API 更改，从而自动延长平台的使用寿命。通过将硬件平台添加到诸多社区管理的内核测试平台的其中一个（如 <code><a href="https://kernelci.org" class="external">kernelci.org</a></code>），还可以在开发和稳定版本中针对任何回归自动测试内核。
+<p>如果将对 SoC 的全面支持合并到上游，社区便可以在内部的内核 API 随时间不断发展的同时，做出必要的 API 更改，从而自动延长平台的使用寿命。通过将硬件平台添加到诸多社区管理的内核测试平台的其中一个（如 <code><a href="https://kernelci.org" class="external">kernelci.org</a></code>），您还可以在开发和稳定版本中针对任何回归自动测试内核。
 </p>
 
 <p>要获取与 Linux 内核社区协作以将您的代码上游化的相关帮助，请参阅以下资源：</p>
