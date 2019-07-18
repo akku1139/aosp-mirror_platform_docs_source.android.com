@@ -285,6 +285,13 @@ implementing ImsServices installed on a system with the following features:
 </table>
 
 ## Validation
+
+The ImsService APIs include a GTS test suite that verifies the functionality of
+the ImsService API in the framework as well as the IMS application Service
+binding logic. The `GtsImsServiceTestCases` GTS APK can be run as part of the
+GTS test suite to ensure that the API surface functions consistently across all
+Android {{ androidPVersionNumber }} implementations.
+
 Tools for verifying the IMS implementation itself are not included since the IMS
 specifications are extremely large and use special verification equipment. The
 tests can only verify that the telephony framework properly responds to the
