@@ -16,11 +16,7 @@ Book: /_book.yaml
     limitations under the License.
 -->
 
-# Performance and Health
-
-Take advantage of the many tests and tools described in
-<a href="/devices/tech/debug/eval_perf">Evaluating Performance</a> as part of
-your work getting the most out of Android.
+# Health
 
 Android {{ androidPVersionNumber }} includes `android.hardware.health` HAL 2.0,
 a major version upgrade from health@1.0 HAL. This new HAL has the following
