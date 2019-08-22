@@ -22,10 +22,7 @@
   -->
 
 <p><a href="https://strace.io">Strace</a> enables you to see the system calls a
-process makes and what those system calls return. A typical process makes a lot
-of system calls, so you'll want to review the
-<a href="http://man7.org/linux/man-pages/man1/strace.1.html">strace man page</a>
-to learn how to collect only data you're actually interested in.</p>
+process makes and what those system calls return.</p>
 
 <h2 id=build-strace>Building strace</h2>
 
@@ -44,21 +41,34 @@ adb shell strace -f -p PID
 <p>The <code>-f</code> flag tells strace to attach to all the threads in the
 process, plus any new threads spawned later.</p>
 
+<p>A typical process makes a lot of system calls, so you'll want to review the
+<a href="http://man7.org/linux/man-pages/man1/strace.1.html">strace man page</a>
+to learn how to collect only data you're actually interested in.</p>
+
 <h2 id=app-strace>Using on an application</h2>
 <p>To use strace on an application:</p>
 
 <ol>
-<li>Set up a directory for strace logs:
+<li>Set up the device so that you can run strace. You need to be root, disable SELinux, and restart
+the runtime to remove the seccomp filter that will otherwise prevent strace from running:
 <pre class="devsite-click-to-copy">
+<code class="devsite-terminal">adb root</code>
 <code class="devsite-terminal">adb shell setenforce 0</code>
-<code class="devsite-terminal">adb shell mkdir /data/local/tmp/strace</code>
-<code class="devsite-terminal">adb shell chmod 777 /data/local/tmp/strace</code>
+<code class="devsite-terminal">adb shell stop</code>
+<code class="devsite-terminal">adb shell start</code>
 </pre>
 </li>
 
-<li>Choose the process to trace before launching it:
+<li>Set up a world-writable directory for strace logs, because strace will be running under the
+app's uid:
+<pre class="devsite-click-to-copy">
+<code class="devsite-terminal">adb shell mkdir -m 777 /data/local/tmp/strace</code>
+</pre>
+</li>
+
+<li>Choose the process to trace and launch it:
 <pre class="devsite-terminal devsite-click-to-copy">
-adb shell setprop wrap.com.google.android.browser "logwrapper strace -f -o /data/local/tmp/strace/strace.com.google.android.browser.txt"
+adb shell setprop wrap.com.android.calendar '"logwrapper strace -f -o /data/local/tmp/strace/strace.com.android.calendar.txt"'
 </pre>
 </li>
 <li>Launch the process normally.</li>
@@ -76,7 +86,7 @@ line (requires <code>adb shell setenforce 0</code>):
 +++ b/rootdir/init.zygote32.rc
 @@ -1,4 +1,4 @@
 -service zygote /system/bin/app_process -Xzygote /system/bin --zygote --start-system-server
-+service zygote /system/xbin/strace -o /data/local/tmp/zygote.strace /system/bin/app_process -Xzygote /system/bin --zygote --start-system-server
++service zygote /system/bin/strace -o /data/local/tmp/zygote.strace /system/bin/app_process -Xzygote /system/bin --zygote --start-system-server
      class main
      socket zygote stream 660 root system
      onrestart write /sys/android_power/request_state wake
@@ -95,7 +105,7 @@ add a new line for strace in <code>system/sepolicy/private/file_contexts</code>
 and copy the original file context over. Example:
 <pre class="devsite-click-to-copy">
 /dev/socket/zygote      u:object_r:zygote_socket:s0
-+ /system/xbin/strace u:object_r:zygote_socket:s0
++ /system/bin/strace u:object_r:zygote_socket:s0
 </pre>
 </li>
 

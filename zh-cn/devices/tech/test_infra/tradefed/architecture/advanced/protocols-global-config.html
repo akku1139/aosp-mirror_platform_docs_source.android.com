@@ -1,0 +1,69 @@
+<html devsite><head>
+
+  <meta name="book_path" value="/_book.yaml"/>
+
+  <meta name="project_path" value="/_project.yaml"/>
+</head>
+<body>
+<!--
+  Copyright 2019 The Android Open Source Project
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+<h1 id="load_protocols_via_global_config" class="page-title">通过全局配置加载协议</h1>
+
+<p>为了理解本部分内容，我们先研究一下 Tradefed <a href="/devices/tech/test_infra/tradefed/fundamentals/options">@Option</a>。</p>
+
+<p>Tradefed 中的典型选项允许测试类从 XML 配置或命令行接收附加信息。此功能允许您再往前迈一步，那就是在必要时解析其中某些附加信息。</p>
+
+<h2 id="file_option_example">文件选项示例</h2>
+
+<p>文件 @option 示例：</p>
+<pre class="prettyprint lang-java"><code>@Option(name = 'config-file')
+private File mConfigFile;
+</code></pre>
+<p>上例可以通过 XML 配置来设置：</p>
+<pre class="prettyprint lang-XML"><code>&lt;option name="config-file" value="/tmp/file" /&gt;
+</code></pre>
+<p>也可以通过以下命令来设置：</p>
+<pre class="prettyprint lang-shell"><code>--config-file /tmp/file
+</code></pre>
+<h2 id="description">说明</h2>
+
+<p>该功能允许您从用户的角度将远程的文件类型 @Options 解析为可无缝使用的本地文件。</p>
+
+<p>为实现此目的，需要使用远程样式路径来指定文件。<em></em>例如：</p>
+<pre class="prettyprint lang-shell"><code>--config-file gs://bucket/tmp/file
+</code></pre>
+<p>此路径指向用于存储文件的 Google Cloud Storage (GCS) 存储分区中的文件。Tradefed 看到该远程路径后，会尝试在本地下载文件并将其分配给 @Option。这会导致 <code>mConfigFile</code> 变量现在指向文件的本地版本，该版本可供测试使用。</p>
+
+<p>如果出于任何原因无法下载远程文件，Tradefed 将抛出 <code>ConfigurationException</code>，从而阻止测试运行。我们认为缺失这些文件是严重的故障，因为某些测试工件也会缺失。</p>
+
+<h2 id="supported_protocols">支持的协议</h2>
+
+<p>正式支持的下载协议及其格式如下：</p>
+
+<p>Google Cloud Storage，协议：<code>gs</code>，格式：<code>gs://&lt;bucket name&gt;/path</code></p>
+
+<h2 id="limitations">限制</h2>
+
+<p>@Option 的动态解析目前仅支持有限数量的协议和下载位置。目前仅针对主要 XML Tradefed 配置启用了 @Option 的解析。如果作为套件运行，当前模块 (<code>AndroidTest.xml</code>) 将无法解析文件。这是为了防止模块创建一些未知的依赖项。<em></em></p>
+
+<h2 id="implementing_a_new_protocol">实现新协议</h2>
+
+<p>支持的协议在 Tradefed 中有 <a href="https://android.googlesource.com/platform/tools/tradefederation/+/refs/heads/master/src/com/android/tradefed/config/remote/IRemoteFileResolver.java">IRemoteFileResolver 接口</a>的实现，它定义了将在文件路径中匹配的协议的短标记。例如，<code>gs</code> 用于 Google Cloud Storage 协议。</p>
+
+<p>可以将实现的协议添加到 <a href="https://android.googlesource.com/platform/tools/tradefederation/+/refs/heads/master/src/com/android/tradefed/config/DynamicRemoteFileResolver.java">DynamicRemoteFileResolver</a> 映射以正式启用支持。</p>
+
+</body></html>

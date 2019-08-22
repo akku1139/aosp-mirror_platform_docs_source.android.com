@@ -1,0 +1,97 @@
+<html devsite><head>
+
+  <meta name="book_path" value="/_book.yaml"/>
+
+  <meta name="project_path" value="/_project.yaml"/>
+</head>
+<body>
+<!--
+  Copyright 2019 The Android Open Source Project
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+<h1 id="write_a_host-driven_test_in_trade_federation" class="page-title">在 Trade Federation 中编写主机驱动的测试</h1>
+
+<p>本页介绍如何编写由主机驱动的 JUnit4 型设备测试。由主机驱动意味着自动化测试框架的主机端将触发针对设备的操作。</p>
+
+<p>请注意，我们认为“主机端”测试与“主机驱动的”测试略有不同：</p>
+
+<ul>
+<li>主机驱动的测试：是在与一个或多个设备进行交互的主机上运行的测试。被测系统 (SUT) 不在主机本身上，而是通过主机进行测试。</li>
+<li>主机端测试：是纯粹在主机上运行且仅在主机上测试某些内容的测试，例如单元测试。</li>
+</ul>
+
+<h2 id="why_create_a_host-driven_test_rather_than_an_instrumentation_test">为什么创建主机驱动的测试而不是插桩测试？</h2>
+
+<p>某些测试可能要求您影响设备的整体状态，如发出重新启动命令。在插桩测试用例中，重新启动会终止插桩测试，导致测试无法继续，也不会有任何结果。</p>
+
+<p>主机驱动的测试还可以驱动要求与测试所依赖的外部设备进行交互的其他设置步骤。</p>
+
+<p>主机驱动的测试可以处理这些用例，并允许使用更多方案对设备进行高级测试。如果您处于这种情况，那么编写主机驱动的测试最为合理。</p>
+
+<h2 id="how_are_host-driven_tests_written_in_tf">如何在 TF 中编写主机驱动的测试？</h2>
+
+<p>下面是一个示例：</p>
+<pre class="prettyprint lang-java"><code>@RunWith(DeviceJUnit4ClassRunner.class)
+public class SampleHostJUnit4DeviceTest extends BaseHostJUnit4Test {
+    @Before
+    public void setUp() throws Exception {
+       // Some setup
+    }
+
+    @Test
+    public void testCheckWeHaveDevice() throws Exception {
+        Assert.assertNotNull(getDevice());
+    }
+}
+</code></pre>
+<p>Trade Federation 中的主机驱动的测试由 <a href="https://android.googlesource.com/platform/tools/tradefederation/+/refs/heads/master/src/com/android/tradefed/testtype/DeviceJUnit4ClassRunner.java">DeviceJUnit4ClassRunner</a> JUnit4 测试运行程序驱动。测试类的整体结构与常规 JUnit4 测试相同：</p>
+
+<ul>
+<li><code>@BeforeClass</code></li>
+<li><code>@Before</code></li>
+<li><code>@Test</code></li>
+<li><code>@After</code></li>
+<li><code>@AfterClass</code></li>
+<li><code>Assume</code> 和 <code>Assert</code></li>
+</ul>
+
+<p>您可以通过扩展 <a href="https://android.googlesource.com/platform/tools/tradefederation/+/refs/heads/master/src/com/android/tradefed/testtype/junit4/BaseHostJUnit4Test.java">BaseHostJunit4Test</a> 来继承有用的测试实用程序 API，如：</p>
+
+<ul>
+<li><code>installPackage</code>：允许在目标设备上安装 APK。</li>
+<li><code>installPackageAsUser</code>：允许在目标设备上以用户身份安装 APK。</li>
+<li><code>uninstallPackage</code>：允许卸载 APK。</li>
+<li><code>isPackageInstalled</code>：检查是否安装了某个软件包。</li>
+<li><code>hasDeviceFeature</code>：检查设备是否支持某项功能。(<code>pm list features</code>)</li>
+<li><code>runDeviceTests(DeviceTestRunOptions options)</code>：使用 <a href="https://android.googlesource.com/platform/tools/tradefederation/+/refs/heads/master/src/com/android/tradefed/testtype/junit4/DeviceTestRunOptions.java">DeviceTestRunOptions</a> 对目标设备运行插桩测试，以处理所有可能的选项。</li>
+</ul>
+
+<p>此外，还可以通过这种方法来访问 Tradefed 设备对象：</p>
+
+<ul>
+<li><code>getDevice()</code>：返回用于操控设备的 TF 设备对象。</li>
+<li><code>getBuild()</code>：返回版本信息 TF 对象以获取有关版本的信息。</li>
+<li><code>getAbi()</code>：返回运行此测试所针对的 ABI。</li>
+</ul>
+
+<h2 id="how_to_configure_a_host-driven_test_in_tf">如何在 TF 中配置主机驱动的测试？</h2>
+
+<p>在 Tradefed XML 配置文件中，主机驱动的测试通过 <a href="https://android.googlesource.com/platform/tools/tradefederation/+/refs/heads/master/src/com/android/tradefed/testtype/HostTest.java">HostTest</a> 运行程序来运行。</p>
+<pre class="prettyprint lang-xml"><code>&lt;test class="com.android.tradefed.testtype.HostTest" &gt;
+    &lt;option name="class" value="android.sample.cts.SampleHostJUnit4DeviceTest" /&gt;
+&lt;/test&gt;
+</code></pre>
+
+</body></html>

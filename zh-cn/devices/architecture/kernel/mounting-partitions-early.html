@@ -1,0 +1,241 @@
+<html devsite><head>
+    <title>提前装载分区</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>支持 Treble 的设备必须启用第一阶段装载，以确保 <code>init</code> 可以加载分布在 <code>system</code> 和 <code>vendor</code> 分区的安全增强型 Linux (SELinux) 政策片段。此访问权限还可实现在内核启动后尽快加载内核模块。
+</p>
+
+<aside class="note"><strong>注意</strong>：有关 SELinux 的详细信息，请参阅 <a href="/security/selinux">Android 中的安全增强型 Linux (SELinux)</a>。
+</aside>
+
+<p>要执行提前装载，Android 必须有权访问模块所在的文件系统。Android 8.x 及更高版本支持在 <code>init</code> 的第一阶段（即初始化 SELinux 之前）装载 <code>/system</code>、<code>/vendor</code> 或 <code>/odm</code>。设备制造商可以使用<a href="/devices/architecture/dto/index">设备树叠加层</a>为提前装载的分区指定 <code>fstab</code> 条目。
+</p>
+
+<p>AOSP 提前装载更改摘要：</p>
+
+<ul>
+  <li>
+  <a href="https://android-review.googlesource.com/#/q/topic:pre-early-mount" class="external">提前装载 v1</a> 和 <a href="https://android-review.googlesource.com/#/q/status:merged+project:platform/system/core+branch:master+topic:pre-early-mount-2" class="external">v2</a></li>
+  <li>
+  <a href="https://android-review.googlesource.com/#/c/339471/" class="external">杂项分区查找移除</a></li>
+  <li>
+  <a href="https://android-review.googlesource.com/#/q/branch:master+topic:early-mount-support" class="external">提前装载支持</a></li>
+  <li>
+  <a href="https://android-review.googlesource.com/#/q/branch:master+topic:early-mount-support" class="external">使用 VBoot 2.0 (AVB) 完成提前装载</a></li>
+</ul>
+
+<h2 id="early-mount-partitions-vboot1">提前装载分区，VBoot 1.0</h2>
+
+<p>使用 VBoot 1.0 提前装载分区的要求包括：</p>
+
+<ol>
+  <li>设备节点路径必须在 <code>fstab</code> 和设备树条目中使用其 <code>by-name</code> 符号链接。例如，确保对分区进行命名且设备节点为 <code>/dev/block/…./by-name/{system,vendor,odm}</code>，而不是使用 <code>/dev/block/mmcblk0pX</code> 指定分区。</li>
+  <li>在产品的设备配置中（即 <code>device/<em>oem</em>/<em>project</em>/device.mk</code> 中）为 <code>PRODUCT_{SYSTEM,VENDOR}_VERITY_PARTITION</code> 和 <code>CUSTOM_IMAGE_VERITY_BLOCK_DEVICE</code> 指定的路径必须与 <code>fstab</code>/设备树条目中相应块设备节点指定的 <code>by-name</code> 相匹配。例如：<pre class="prettyprint">
+PRODUCT_SYSTEM_VERITY_PARTITION := /dev/block/…./by-name/system
+PRODUCT_VENDOR_VERITY_PARTITION := /dev/block/…./by-name/vendor
+CUSTOM_IMAGE_VERITY_BLOCK_DEVICE := /dev/block/…./by-name/odm
+</pre>
+  </li>
+  <li>通过设备树叠加层提供的条目不得在 <code>fstab</code> 文件片段中出现重复。例如，指定某个条目以在设备树中装载 <code>/vendor</code> 时，<code>fstab</code> 文件不得重复该条目。</li>
+  <li><strong>不得</strong>提前装载需要 <code>verifyatboot</code> 的分区（此操作不受支持）。</li>
+  <li>必须在 <code>kernel_cmdline</code> 中使用 <code>androidboot.veritymode</code> 选项指定验证分区的真实模式/状态（现有要求）。</li>
+</ol>
+
+<h2 id="early-mount-dt-vboot1">提前装载设备树，VBoot 1.0</h2>
+
+<p>在 Android 8.x 及更高版本中，<code>init</code> 会解析设备树并创建 <code>fstab</code> 条目，以在其第一阶段提前装载分区。<code>fstab</code> 条目采取以下形式：</p>
+
+<pre class="prettyprint">src mnt_point type mnt_flags fs_mgr_flags</pre>
+
+<p>定义设备树属性以模拟该格式：</p>
+
+<ul>
+  <li><code>fstab</code> 条目必须在设备树中的 <code>/firmware/android/fstab</code> 下，且必须将兼容字符串集设为 <code>android,fstab</code>。</li>
+  <li><code>/firmware/android/fstab</code> 下的每个节点都被视为单个提前装载 <code>fstab</code> 条目。节点必须定义以下属性：<ul>
+    <li><code>dev</code> 必须指向代表 <code>by-name</code> 分区的设备节点。</li>
+    <li><code>type</code> 必须是文件系统类型（如在 <code>fstab</code> 文件中一样）。</li>
+    <li><code>mnt_flags</code> 必须是装载标记的逗号分隔列表（如在 <code>fstab</code> 文件中一样）。</li>
+    <li><code>fsmgr_flags</code> 必须是 Android <code>fs_mgr
+    flags</code> 列表（如在 <code>fstab</code> 文件中一样）。</li>
+  </ul>
+  </li>
+  <li>A/B 分区必须具有 <code>slotselect fs_mgr</code> 选项。</li>
+  <li>已启用 dm-verity 的分区必须具有 <code>verify fs_mgr</code> 选项。</li>
+  </ul>
+
+<h3><strong>示例</strong>：N6P 上的 /system 和 /vendor</h3>
+
+<p>下面的示例显示的是在 Nexus 6P 上为 <code>system</code> 和 <code>vendor</code> 分区提前装载设备树：</p>
+
+<pre class="prettyprint">
+/ {
+  firmware {
+    android {
+      compatible = "android,firmware";
+  fstab {
+    compatible = "android,fstab";
+    system {
+      compatible = "android,system";
+      dev = "/dev/block/platform/soc.0/f9824900.sdhci/by-name/system";
+      type = "ext4";
+      mnt_flags = "ro,barrier=1,inode_readahead_blks=8";
+      fsmgr_flags = "wait,verify";
+    };
+    vendor {
+      compatible = "android,vendor";
+      dev = "/dev/block/platform/soc.0/f9824900.sdhci/by-name/vendor";
+      type = "ext4";
+      mnt_flags = "ro,barrier=1,inode_readahead_blks=8";
+      fsmgr_flags = "wait";
+    };
+      };
+    };
+  };
+};
+</pre>
+
+<h3><strong>示例</strong>：Pixel 上的 /vendor</h3>
+
+<p>下面的示例显示的是在 Pixel 上为 <code>/vendor</code> 提前装载设备树（请务必为 A/B 分区添加 <code>slotselect</code>）：</p>
+
+<pre class="prettyprint">
+/ {
+  firmware {
+    android {
+      compatible = "android,firmware";
+      fstab {
+        compatible = "android,fstab";
+        vendor {
+          compatible = "android,vendor";
+          dev = "/dev/block/platform/soc/624000.ufshc/by-name/vendor";
+          type = "ext4";
+          mnt_flags = "ro,barrier=1,discard";
+          fsmgr_flags = "wait,slotselect,verify";
+        };
+      };
+    };
+  };
+};
+</pre>
+
+<h2 id="early-mount-partitions-vboot2">提前装载分区，VBoot 2.0</h2>
+
+<p>VBoot 2.0 是 <a href="https://android.googlesource.com/platform/external/avb/" class="external">Android 验证启动 (AVB)</a>。使用 VBoot 2.0 提前装载分区的要求如下：</p>
+
+<ol>
+  <li>设备节点路径必须在 <code>fstab</code> 和设备树条目中使用其 <code>by-name</code> 符号链接。例如，确保对分区进行命名且设备节点为 <code>/dev/block/…./by-name/{system,vendor,odm}</code>，而不是使用 <code>/dev/block/mmcblk0pX</code> 指定分区。</li>
+  <li>VBoot 1.0 所用的编译系统变量（如 <code>PRODUCT_{SYSTEM,VENDOR}_VERITY_PARTITION</code> 和 <code>CUSTOM_IMAGE_VERITY_BLOCK_DEVICE</code>）对 VBoot 2.0 而言并不是必需的。您应定义 VBoot 2.0 中引入的编译变量（包括 <code>BOARD_AVB_ENABLE := true</code>）；有关完整配置，请参阅<a href="https://android.googlesource.com/platform/external/avb/#Build-System-Integration" class="external">适用于 AVB 的编译系统集成</a>。</li>
+  <li>通过设备树叠加层提供的条目不得在 <code>fstab</code> 文件片段中出现重复。例如，如果您指定某个条目以在设备树中装载 <code>/vendor</code>，则 <code>fstab</code> 文件不得重复该条目。</li>
+  <li>VBoot 2.0 不支持 <code>verifyatboot</code>，无论是否启用了提前装载。</li>
+  <li>必须在 <code>kernel_cmdline</code> 中使用 <code>androidboot.veritymode</code> 选项指定验证分区的真实模式/状态（现有要求）。确保包含以下 AVB 修复程序：<ul>
+    <li>
+    <a href="https://android-review.googlesource.com/#/q/topic:libavb-api-rev-for-verity-modes+(status:open+OR+status:merged)" class="external">https://android-review.googlesource.com/#/q/topic:libavb-api-rev-for-verity-modes+(status:open+OR+status:merged)</a></li>
+    <li><a href="https://android-review.googlesource.com/#/c/394215/" class="external">https://android-review.googlesource.com/#/c/394215/</a>
+    </li>
+  </ul>
+  </li>
+</ol>
+
+<h2 id="early-mount-dt-vboot2">提前装载设备树，VBoot 2.0</h2>
+
+<p>VBoot 2.0 设备树中的配置与 <a href="#early-mounting-device-tree-vboot-1-0">VBoot 1.0</a> 中的大致相同，但还有以下几项不同之处：</p>
+
+<ul>
+  <li><code>fsmgr_flag</code> 由 <code>verify</code> 变为 <code>avb</code>。</li>
+  <li>包含 AVB 元数据的所有分区都必须位于设备树的 VBMeta 条目中，即使相应的分区并非提前装载的分区（如 <code>/boot</code>）也是如此。</li>
+</ul>
+
+<h3><strong>示例</strong>：N5X 上的 /system 和 /vendor</h3>
+
+<p>下面的示例显示的是在 Nexus 5X 上为 <code>system</code> 和 <code>vendor</code> 分区提前装载设备树。请注意：</p>
+
+<ul>
+  <li><code>/system</code> 使用 AVB 进行装载，且 <code>/vendor</code> 的装载不需要进行完整性验证。</li>
+  <li>由于 Nexus 5X 没有 <code>/vbmeta</code> 分区，因此顶级 vbmeta 位于 <code>/boot</code> 分区的末端（有关详情，请参阅 <a href="https://android-review.googlesource.com/#/c/344907/" class="external">AOSP 变更列表</a>）。
+
+<pre class="prettyprint">
+/ {
+  firmware {
+    android {
+      compatible = "android,firmware";
+      vbmeta {
+      compatible = "android,vbmeta";
+      parts = "boot,system,vendor";
+      };
+  fstab {
+    compatible = "android,fstab";
+    system {
+      compatible = "android,system";
+      dev = "/dev/block/platform/soc.0/f9824900.sdhci/by-name/system";
+      type = "ext4";
+      mnt_flags = "ro,barrier=1,inode_readahead_blks=8";
+      fsmgr_flags = "wait,avb";
+        };
+    vendor {
+      compatible = "android,vendor";
+      dev = "/dev/block/platform/soc.0/f9824900.sdhci/by-name/vendor";
+      type = "ext4";
+      mnt_flags = "ro,barrier=1,inode_readahead_blks=8";
+      fsmgr_flags = "wait";
+        };
+      };
+    };
+  };
+};
+</pre>
+</li>
+</ul>
+
+<h3><strong>示例</strong>：Pixel 上的 /vendor</h3>
+
+<p>下面的示例显示的是在 Pixel 上提前装载 <code>/vendor</code>。请注意：</p>
+
+<ul>
+  <li>很多分区都是在 vbmeta 条目中指定的，因为这些分区<a href="https://android.googlesource.com/platform/external/avb/#The-VBMeta-struct" class="external">受 AVB 保护</a>。</li>
+  <li>请务必包含所有 AVB 分区，即使仅提前装载了 <code>/vendor</code> 也是如此。</li>
+  <li>请务必为 A/B 分区添加 <code>slotselect</code>。<pre class="prettyprint">
+/ {
+  vbmeta {
+      compatible = "android,vbmeta";
+  parts = "vbmeta,boot,system,vendor,dtbo";
+  };
+  firmware {
+    android {
+      compatible = "android,firmware";
+      fstab {
+        compatible = "android,fstab";
+        vendor {
+          compatible = "android,vendor";
+          dev = "/dev/block/platform/soc/624000.ufshc/by-name/vendor";
+          type = "ext4";
+          mnt_flags = "ro,barrier=1,discard";
+          fsmgr_flags = "wait,slotselect,avb";
+        };
+      };
+    };
+  };
+};
+</pre>
+</li>
+</ul>
+
+</body></html>

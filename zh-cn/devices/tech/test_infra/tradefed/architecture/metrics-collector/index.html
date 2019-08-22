@@ -1,0 +1,70 @@
+<html devsite><head>
+
+  <meta name="book_path" value="/_book.yaml"/>
+
+  <meta name="project_path" value="/_project.yaml"/>
+</head>
+<body>
+<!--
+  Copyright 2019 The Android Open Source Project
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+<h1 id="host-driven_metrics_collector" class="page-title">主机驱动的指标收集器</h1>
+
+<p>主机驱动的指标收集器在主机上运行，而不是在设备端运行。这些收集器从主机端与设备进行交互，以收集它们瞄准的指标。</p>
+
+<h2 id="metrics_collector_design">指标收集器设计</h2>
+
+<p>所有收集器将扩展的基类是 <a href="https://android.googlesource.com/platform/tools/tradefederation/+/refs/heads/master/src/com/android/tradefed/device/metric/BaseDeviceMetricCollector.java">BaseDeviceMetricCollector</a>，它有助于提供相同的共享基本功能：</p>
+
+<ul>
+<li>过滤</li>
+<li>停用</li>
+<li>测试用例与测试运行的指标收集</li>
+</ul>
+
+<p>收集器遵循<a href="/devices/tech/test_infra/tradefed/architecture/result-reporter">结果报告程序</a>模型，因为它们与主机上的测试执行同步。换句话说，如果测试由主机驱动，那么收集器将在测试进入下一个执行步骤之前执行。</p>
+
+<p>例如，如果收集器在 <code>testEnded</code> 时执行，那么收集器将在继续执行下一个测试 (<code>testStart</code>) 之前执行。</p>
+
+<h2 id="implement_a_host-driven_metrics_collector">实现主机驱动的指标收集器</h2>
+
+<p>在基类 <code>BaseDeviceMetricCollector</code> 之上实现时，您可以决定要在生命周期内的什么时间收集指标：</p>
+
+<ul>
+<li>测试运行开始时：<code>onTestRunStart</code></li>
+<li>测试用例开始时：<code>onTestStart</code></li>
+<li>测试用例结束时：<code>onTestEnd</code></li>
+<li>测试运行结束时：<code>onTestRunEnd</code></li>
+</ul>
+
+<h2 id="how_to_do_asynchronous_collection">如何进行异步收集</h2>
+
+<p>除了同步方法之外，TF 还提供了一个实现基类，即 <a href="https://android.googlesource.com/platform/tools/tradefederation/+/refs/heads/master/src/com/android/tradefed/device/metric/ScheduledDeviceMetricCollector.java">ScheduledDeviceMetricCollector</a>，用来执行定期异步收集。该基类提供了一个定期运行的 <code>collect</code> 实现方法。</p>
+
+<p>期间可通过选项进行自定义。</p>
+
+<h2 id="xml_configuration">XML 配置</h2>
+
+<p>对象标记将为 <code>metrics_collector</code>，例如：</p>
+<pre class="prettyprint lang-xml"><code>&lt;metrics_collector class="com.android.tradefed.device.metric.AtraceCollector"&gt;
+    &lt;option name="categories" value="freq"/&gt;
+&lt;/metrics_collector&gt;
+</code></pre>
+<h2 id="recommendations">建议</h2>
+
+<p>首先看一下<a href="https://android.googlesource.com/platform/tools/tradefederation/+/refs/heads/master/src/com/android/tradefed/device/metric">现有的收集器列表</a>，以确保您没有做重复的工作。我们会尽力确保实现最高的可重用性，因此应让每个收集器执行一种类型的收集，因为这样可以在测试执行期间更多地混合搭配不同的收集器。</p>
+
+</body></html>

@@ -1,0 +1,76 @@
+<html devsite><head>
+
+  <meta name="book_path" value="/_book.yaml"/>
+
+  <meta name="project_path" value="/_project.yaml"/>
+</head>
+<body>
+<!--
+  Copyright 2019 The Android Open Source Project
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+<h1 id="device_detection_in_tradefed" class="page-title">Tradefed 中的设备检测</h1>
+
+<p>新设备连接会触发一系列异步事件，这些事件不好理解，但值得我们了解一下。</p>
+
+<h2 id="physically_connected">物理连接</h2>
+
+<p>Tradefed 使用 <code>ddmlib</code> 库（一个 Java <code>adb</code> 库）提供与 <code>adb</code> 和设备的基本交互。此解决方案的一部分是 <a href="https://android.googlesource.com/platform/tools/base/+/refs/heads/master/ddmlib/src/main/java/com/android/ddmlib/AndroidDebugBridge.java">IDeviceChangeListener 接口</a>，该接口用于接收新设备事件，如：</p>
+
+<ul>
+<li><code>deviceConnected</code>：当 <code>adb</code> 看到新设备时</li>
+<li><code>deviceDisconnected</code>：当设备不再向 <code>adb</code> 报告时</li>
+<li><code>deviceChanged</code>：当出现主要设备状态时（如设备离线或设备在线）</li>
+</ul>
+
+<p>这些事件在 <code>adb</code> 级别足以决定设备是处于已连接、在线还是离线状态。但对于自动化测试框架，我们需要一种比这更强大的状态来确保设备真正准备好开始运行测试；它不应受新连接的设备可能带来的潜在状态不稳定的影响。</p>
+
+<p>下面是 Tradefed 中的事件序列：</p>
+
+<ol>
+<li>设备被识别为 <code>deviceConnected</code> 并对 <code>adb</code> 中的常规事件开放</li>
+<li><p>创建一个内部 Tradefed 事件，该事件将：</p>
+
+<ul>
+<li>检查设备是否已知；Tradefed 会保持对某些设备的内部引用（尤其是当前已分配且正在运行测试的设备），以避免 TF 随便地与它们失去联系。</li>
+<li>检查设备是处于 <code>ONLINE</code> 还是 <code>OFFLINE</code> 状态。</li>
+</ul></li>
+<li><p>如果设备处于以下状态：</p>
+
+<ul>
+<li><p><code>OFFLINE</code>：设备将切换到 Tradefed <code>CONNECTED_OFFLINE</code> 状态，这种状态尚不允许设备运行测试。如果设备之后变为在线状态，它将经过 <code>ONLINE</code> 循环。如果我们收到 <code>deviceDisconnect</code> 事件，会直接从列表中移除相应设备。</p></li>
+<li><p><code>ONLINE</code>（adb 所看到的状态）：系统会将设备置于 <code>CONNECTED_ONLINE</code> 状态，并检查其可用性以进行测试分配：<code>checking_availability</code>。</p></li>
+</ul></li>
+<li><p>如果 <code>availability</code> 检查成功，会将设备标记为可用于测试分配，因此它将能够运行测试。否则，会将设备标记为 <code>unavailable</code>，表示不可用于测试分配，因此它无法接收任何测试。</p></li>
+</ol>
+
+<p>通过 <code>tf&gt; list devices</code> 列出相应设备时，所有这些状态都会反映在 Tradefed 控制台中。</p>
+
+<p>务必注意，如果当前已分配设备来运行测试，那么上述大部分事件都不会发生，而是由 Tradefed 在内部确定设备状态。因此，有可能某个设备已从 <code>adb devices</code> 中消失，而仍由 Tradefed 列出。例如，当测试重新启动设备时，可能会发生这种情况。</p>
+
+<h2 id="virtual_device_connected_via_adb_connect">通过“adb connect”连接的虚拟设备</h2>
+
+<p>创建远程虚拟设备后，Tradefed 将使用 <code>adb
+connect</code> 连接到该设备。这通常会触发以 <code>&lt;some ip&gt;:&lt;port number&gt;</code> 的形式显示在 <code>adb devices</code> 中的设备，并且将遵循与物理连接的设备相同的顺序。</p>
+
+<h2 id="device_tracking_when_a_deviceconnected_event_occurs">发生 <code>deviceConnected</code> 事件时的设备跟踪</h2>
+
+<p>当发生 <code>deviceConnected</code> 时，<code>ddmlib</code> 会创建一个新的引用 <a href="https://android.googlesource.com/platform/tools/base/+/refs/heads/master/ddmlib/src/main/java/com/android/ddmlib/IDevice.java">IDevice</a> 来跟踪新连接的设备。</p>
+
+<p>Tradefed 使用该引用并将其封装在自己的设备接口 <a href="https://android.googlesource.com/platform/tools/tradefederation/+/refs/heads/master/src/com/android/tradefed/device/ITestDevice.java">ITestDevice</a> 实现中，以提供更高级的服务。但是，底层 IDevice 始终来自 <code>ddmlib</code>。</p>
+
+<p>这意味着，如果连接了一个新设备，系统会创建一个新的 ITestDevice 并使其与 IDevice 相关联。如果在调用期间发生这种情况，并且正在使用该 ITestDevice，仍会替换底层 IDevice，以便可以基于正确的引用继续进行测试。每次设备断开连接/重新连接时（例如，在重新启动期间），都会无缝地完成此操作。</p>
+
+</body></html>

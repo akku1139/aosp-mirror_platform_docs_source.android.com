@@ -1,9 +1,10 @@
 <html devsite><head>
-    <title>选项处理</title>
+    <title>Tradefed 中的选项处理</title>
     <meta name="project_path" value="/_project.yaml"/>
     <meta name="book_path" value="/_book.yaml"/>
   </head>
   <body>
+
   <!--
       Copyright 2017 The Android Open Source Project
 
@@ -22,10 +23,10 @@
 
 <p>选项处理是 Trade Federation 模块化方法的核心。具体而言，选项是一种机制，让开发者、集成者和测试运行者通过该机制可以共同协作，而不会重复相互的工作。简单地说，实现选项处理后，开发者可将 Java 类成员标记为可配置，届时该成员的值可被集成者增强或覆盖，并且随后可被测试运行者增强或覆盖。该机制适用于所有 Java 固有类型，以及固有类型的任何 <code>Map</code> 或 <code>Collection</code>。</p>
 
-<p class="note"><strong>注意</strong>：选项处理机制仅适用于实现<a href="lifecycle.html">测试生命周期</a>中包含的接口之一的类，并且仅当该类由生命周期系统实例化后才适用。<em></em></p>
+<p class="note"><strong>注意</strong>：选项处理机制仅适用于实现<a href="lifecycle.html">测试生命周期</a>中包含的某个接口的类，并且仅当该类由生命周期系统实例化后才适用。<em></em></p>
 
 <h2 id="developer">开发者</h2>
-<p>要开始使用，开发者需要为成员添加 <code><a href="https://android.googlesource.com/platform/tools/tradefederation/+/master/src/com/android/tradefed/config/Option.java">@Option</a></code> 注释。<!-- note: javadoc for the Option class is broken -->开发者需要至少指定 <code>name</code> 和 <code>description</code> 值，这两个值指定了与该选项关联的参数名称和说明（后者在命令使用 -<code>--help</code> 或 <code>--help-all</code> 运行时会在 TF 控制台中显示）。</p>
+<p>首先，开发者需要使用 <code><a href="https://android.googlesource.com/platform/tools/tradefederation/+/master/src/com/android/tradefed/config/Option.java">@Option</a></code> 注释来标记成员。<!-- note: javadoc for the Option class is broken -->他们需要至少指定 <code>name</code> 和 <code>description</code> 值，前者指定与该选项关联的参数名称，后者指定使用 <code>--help</code> 或 <code>--help-all</code> 运行命令时会在 TF 控制台上显示的说明。</p>
 
 <p>举例来说，假设我们要构建一个功能完善的电话测试，我们会在测试中拨打各种电话号码，并预期在每个号码连接后收到一系列 DTMF 音。</p>
 <pre class="prettyprint">
@@ -77,5 +78,13 @@ tf&gt; run low-latency.xml --call 111-111-1111 #*#*TEST1*#*# --call 222-222-2222
 <p>或者，要从相反方向获得类似的效果，测试运行者可以减少 <code>many-numbers</code> 测试的等待时间：</p>
 <pre class="devsite-click-to-copy">
 tf&gt; run many-numbers.xml --timeout 5000</pre>
+
+<h2 id="order">选项排序</h2>
+<p>您可能会注意到底层实现的 <code>call</code> 选项是 <code>Map</code>，因此它们全都存储在命令行上的重复 <code>--call</code> 中。</p>
+
+<p>选项 <code>timeout</code>（底层实现为 <code>long</code>）只能存储一个值。因此，系统只会存储指定的最后一个值。
+<code>--timeout 5 --timeout 10</code> 会导致 <code>timeout</code> 包含 10。</p>
+
+<p>如果将 <code>List</code> 或 <code>Collection</code> 用作底层实现，则系统会按照命令行中指定的顺序存储所有值。</p>
 
 </body></html>

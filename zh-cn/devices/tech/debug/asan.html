@@ -4,6 +4,7 @@
     <meta name="book_path" value="/_book.yaml"/>
   </head>
   <body>
+
   <!--
       Copyright 2017 The Android Open Source Project
 
@@ -20,36 +21,35 @@
       limitations under the License.
   -->
 
-<p>AddressSanitizer (ASan) 是一种基于编译器的快速检测工具，用于检测原生代码中的内存错误。它与 Valgrind（Memcheck 工具）相差不大，但 ASan 具备以下独有特性：</p>
+<p>AddressSanitizer (ASan) 是一种基于编译器的快速检测工具，用于检测原生代码中的内存错误。</p>
 
+<p>Android Q 和 AArch64 上的 AOSP master 分支支持<a href="/devices/tech/debug/hwasan">硬件加速 ASan</a> (HWASan)，这是一种 RAM 开销更小、检测到的错误范围更大的类似工具。</p>
+
+<p>AddressSanitizer 可以检测以下问题：</p>
 <ul>
-  <li>+ 会检测堆栈和全局对象是否有溢出
-  </li><li>- 不检测未初始化的读取和内存泄露
-  </li><li>+ 速度更快（与 Valgrind 的 20-100x 倍速设置相差 2-3 倍）
-  </li><li>+ 内存占用空间较少
-</li></ul>
+<li>堆栈和堆缓冲区上溢/下溢</li>
+<li>释放之后的堆使用情况</li>
+<li>超出范围的堆栈使用情况</li>
+<li>重复释放/错误释放</li>
+</ul>
 
-<p>本文档介绍了如何使用 AddressSanitizer 来编译和运行 Android 平台的各个组成部分。如果您希望利用 AddressSanitizer 编译独立的（即 SDK/NDK）应用，请改为参阅 <a href="https://github.com/google/sanitizers/wiki/AddressSanitizerOnAndroid">AddressSanitizerOnAndroid</a> 公共项目网站。</p>
+<p>除了 AddressSanitizer 可以检测到的错误之外，HWASan 还可以检测返回之后的堆栈使用情况。</p>
 
-<p>AddressSanitizer 包括一个编译器 (<code>external/clang</code>) 和一个运行时库 (<code>external/compiler-rt/lib/asan</code>)。</p>
+<p>ASan 可同时在 32 位和 64 位 ARM 以及 x86 和 x86-64 上运行。ASan 的 CPU 开销约为 2 倍，代码大小开销在一半到 2 倍之间，并且内存开销很大（具体取决于您的分配模式，但约为 2 倍）。</p>
 
-<p class="note"><strong>注意</strong>：使用最新的 master 分支即可使用 <a href="#sanitize_target">SANITIZE_TARGET</a> 功能，并能够使用 AddressSanitizer 一次性编译整个 Android 平台。否则，您将只能使用 <code>LOCAL_SANITIZE</code>。</p>
+<p>HWASan 具有类似的 CPU 和代码大小开销，但 RAM 开销要小得多 (15%)。HWASan 具有不确定性。只有 256 个可能的标记值，因此忽略任何错误的概率为 0.4％。ASan 对检测上溢规定了有限大小的 redzone，并对检测释放后使用情况规定了有限容量隔离区，而 HWAsan 没有这些规定，因此上溢大小或多久之前内存解除分配对 HWAsan 无关紧要。这使得 HWASan 优于 ASan。您可以详细了解 <a href="http://clang.llvm.org/docs/HardwareAssistedAddressSanitizerDesign.html" class="external">HWAsan 的设计</a>或 <a href="/devices/tech/debug/hwasan">Android 上的 HWASan</a> 的使用。</p>
 
-<h2 id="building_with_clang">使用 Clang 编译</h2>
+<p>Valgrind 的 Memcheck 工具类似，但除了堆上溢外，ASan 还能检测堆栈/全局上溢，并且速度快多了，内存开销更少。相反，Valgrind 可检测未初始化的读取和内存泄露（而 ASO 不能）。Valgrind 可能对调试应用很有用，但对整个操作系统来说并不实用，这就是 Android 团队改用 ASan 的原因。</p>
 
-<p>要编译可通过 ASan 进行测试的二进制文件，第一步是要确保您的代码是使用 Clang 编译的。ASan 的 master 分支会默认执行这一步骤，因此您无需执行任何操作。如果您认为自己要测试的模块是使用 GCC 编译的，则可以向编译规则中添加 <code>LOCAL_CLANG:=true</code>，从而切换至 Clang。Clang 也许可以发现 GCC 遗漏的代码错误。</p>
+<p>本文档介绍了如何使用 AddressSanitizer 编译和运行 Android 操作系统自身的各个/所有组成部分。如果要使用 AddressSanitizer 编译 SDK/NDK 应用，请参阅 <a href="https://github.com/google/sanitizers/wiki/AddressSanitizerOnAndroid" class="external">AddressSanitizerOnAndroid</a>。</p>
 
-<h2 id="building_executables_with_addresssanitizer">使用 AddressSanitizer 编译可执行文件</h2>
+<h2 id="sanitizing_individual_executables_with_asan">使用 ASan 清理各个可执行文件</h2>
 
-<p>将 <code>LOCAL_SANITIZE:=address</code> 添加到可执行文件的编译规则中。</p>
+<p>将 <code>LOCAL_SANITIZE:=address</code> 或 <code>sanitize: { address: true }</code> 添加到可执行文件的编译规则中。您可以搜索现有示例的代码或查找其他可用的排错程序。</p>
 
-<pre class="devsite-click-to-copy">
-LOCAL_SANITIZE:=address
-</pre>
+<p>检测到错误时，ASan 会向标准输出和 <code>logcat</code> 发送一份详细报告，然后让进程崩溃。</p>
 
-<p>检测到错误时，ASan 会向标准输出和 <code>logcat</code> 发送一份详细报告，然后让相应进程崩溃。</p>
-
-<h2 id="building_shared_libraries_with_addresssanitizer">使用 AddressSanitizer 编译共享库</h2>
+<h2 id="sanitizing_shared_libraries_with_asan">使用 ASan 清理共享库</h2>
 
 <p>根据 ASan 的工作原理，不是通过 ASan 编译的可执行文件将无法使用通过 ASan 编译的库。</p>
 
@@ -70,7 +70,7 @@ LOCAL_MODULE_RELATIVE_PATH := asan
 setenv LD_LIBRARY_PATH /system/lib/asan
 </pre>
 
-<p class="warning"><strong>警告</strong>：<code>LOCAL_MODULE_RELATIVE_PATH</code> 设置会将您的库<strong>移至</strong> <code>/system/lib/asan</code>，这意味着，如果从头开始重写并重新编译，将会导致 <code>/system/lib</code> 中缺少该库，并且生成的映像可能会无法启动。这是当前编译系统存在的一个令人遗憾的限制。请不要重写；而是执行 <code>make -j $N</code> 和 <code>adb
+<p class="warning"><strong>警告</strong>：<code>LOCAL_MODULE_RELATIVE_PATH</code> 设置会将您的库<strong>移至</strong> <code>/system/lib/asan</code>，这意味着，如果从头开始重写并重新编译，将会导致 <code>/system/lib</code> 中缺少该库，并且生成的映像可能无法启动。这是当前编译系统存在的一个令人遗憾的限制。请不要重写；而是执行 <code>make -j $N</code> 和 <code>adb
 sync</code>。</p>
 
 <p>通过读取 <code>/proc/$PID/maps</code>，验证相应进程使用的库是否来自 <code>/system/lib/asan</code>（如果此库存在）。如果不是，您可能需要停用 SELinux，如下所示：</p>
@@ -105,9 +105,9 @@ LOCAL_ARM_MODE:=arm
 
 <h2 id="addresssanitizer_in_the_apps">在应用中使用 AddressSanitizer</h2>
 
-<p>AddressSanitizer 无法检查 Java 代码，但可以检测 JNI 库中的错误。为此，您需要使用 ASan 编译可执行文件（在这种情况下是 <code>/system/bin/app_process(<em>32|64</em>)</code>）。这将在设备上的所有应用中同时启用 ASan，因而会给设备带来一些压力，但 2GB RAM 的设备可以从容处理这种情况。</p>
+<p>AddressSanitizer 无法检查 Java 代码，但可以检测 JNI 库中的错误。为此，您需要使用 ASan 编译可执行文件（在此情况下是 <code>/system/bin/app_process(<em>32|64</em>)</code>）。这将在设备上的所有应用中同时启用 ASan，因而会给设备带来一些压力，但 2GB RAM 的设备可以从容处理这种情况。</p>
 
-<p>向 <code>LOCAL_SANITIZE:=address</code> 中的 app_process 编译规则添加常规的 <code>frameworks/base/cmds/app_process</code>。暂时忽略同一个文件中的 <code>app_process__asan</code> 目标（如果在您阅读该文件时这个目标仍存在于其中）。在 <code>system/core/rootdir/init.zygote(<em>32|64</em>).rc</code> 中修改 Zygote 记录，以添加以下行：</p>
+<p>向 <code>LOCAL_SANITIZE:=address</code> 中的 app_process 编译规则添加常规的 <code>frameworks/base/cmds/app_process</code>。暂时忽略同一个文件中的 <code>app_process__asan</code> 目标（如果在您阅读本文时这个目标仍存在于其中）。在 <code>system/core/rootdir/init.zygote(<em>32|64</em>).rc</code> 中修改 Zygote 记录，以添加以下行：</p>
 
 <pre class="devsite-click-to-copy">
 setenv LD_LIBRARY_PATH /system/lib/asan:/system/lib
@@ -135,7 +135,7 @@ allow_user_segv_handler=true
 
 <h2 id="sanitize_target">SANITIZE_TARGET</h2>
 
-<p>master 分支支持使用 AddressSanitizer 一次性编译整个 Android 平台。</p>
+<p>自 Android 7.0 Nougat 起，系统支持使用 ASan 一次性编译整个 Android 平台。（如果您要编译的版本比 Android 9.0 Pie 更高，那么 HWASan 是更好的选择。）</p>
 
 <p>在同一编译树中运行以下命令。</p>
 
@@ -150,9 +150,7 @@ allow_user_segv_handler=true
 fastboot flash userdata &amp;&amp; fastboot flashall
 </pre>
 
-<p>写入时，现今的 Nexus 和 Pixel 设备会启动到该模式中的界面。</p>
-
-<p>其工作原理是编译两组共享库：<code>/system/lib</code> 中的常规库（第一次 make 调用），<code>/data/asan/lib</code> 中可通过 ASan 进行测试的库（第二次 make 调用）。第二次编译出的可执行文件会覆盖第一次编译出的可执行文件。通过使用 PT_INTERP 中的“/system/bin/linker_asan”，可通过 ASan 进行测试的可执行文件会获得一个不同的库搜索路径（在该路径中，<code>/data/asan/lib</code> 前面添加了 <code>/system/lib</code>）。</p>
+<p>其工作原理是编译两组共享库：<code>/system/lib</code> 中的常规库（第一次 make 调用），<code>/data/asan/lib</code> 中进行 ASan 插桩的库（第二次 make 调用）。第二次编译出的可执行文件会覆盖第一次编译出的可执行文件。通过使用 PT_INTERP 中的“/system/bin/linker_asan”，可通过 ASan 进行测试的可执行文件会获得一个不同的库搜索路径（在该路径中，<code>/data/asan/lib</code> 前面添加了 <code>/system/lib</code>）。</p>
 
 <p><code>$SANITIZE_TARGET</code> 的值变更时，编译系统会重写中间对象目录。这样一来，系统便会强制重新编译所有目标，同时保留 <code>/system/lib</code> 下已安装的二进制文件。</p>
 

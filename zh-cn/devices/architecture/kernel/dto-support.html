@@ -1,0 +1,67 @@
+<html devsite><head>
+    <title>DTO 支持</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>
+  <a href="/devices/architecture/dto/">设备树叠加层 (DTO)</a> 扩展了现有的<a href="https://events.linuxfoundation.org/sites/events/files/slides/petazzoni-device-tree-dummies.pdf" class="external">扁平化设备树 (FDT)</a> 实现，让用户空间（在运行时）可以通过加载用于修改原始数据的额外叠加层 FDT 来修改内核中的初始设备树数据。Android 不需要在运行时更新用户空间的 DT Blob，而是建议供应商借助 <code>libfdt</code> 或 <code>libufdt</code> 在引导加载程序中添加设备树补丁程序。
+</p>
+
+<h2 id="android-dto-support">Android DTO 支持</h2>
+
+<p>Android 对 DTO 的支持因 Android 版本而异：</p>
+
+<ul>
+  <li>Android 7.x 及更早版本不要求提供设备树支持，同时，没有针对供应商如何将 DT Blob 传递给内核或在何处存储这些 Blob 提供建议。</li>
+  <li>Android 8.x 建议提供设备树支持，以将内核的板专属部分和仅限 SoC 访问的部分区分开来。</li>
+  <li>Android 9 及更高版本要求必须存在设备树 Blob 叠加层 (DTBO) 分区并且至少应用一个 DTO。
+  </li>
+</ul>
+
+<h2 id="partitioning-requirements">DTO 分区要求</h2>
+
+<p>大多数 Android 设备都在编译时将 DT Blob 附加到内核中，并且引导加载程序会从内核加载 Blob。但是，由于 DT Blob 被视为系统芯片 (SoC) 内核的一部分，因此 Android 对如何编译或存储 DT Blob 没有特定要求。设备可以将 DT Blob 附加到内核，也可以将 Blob 存储在单独的分区中；唯一的要求是引导加载程序应该知道如何加载以及从何处加载 DT Blob。
+</p>
+
+<aside class="note"><strong>注意</strong>：要详细了解分区格式，请参阅 <a href="/devices/architecture/dto/partitions">DTB/DTBO 分区</a>。
+</aside>
+
+<p>要支持 DTO，设备应具备以下条件：</p>
+
+<ul>
+  <li>每个适用于板专属 DT 叠加层的内核映像都应具有一个 DTBO 分区，并且引导加载程序必须知道从何处以及如何加载 SoC 专属 DTB。分区大小取决于编译 SoC 内核所需的更改数量；选择分区大小时需要为未来更新留出空间，通常，8 MB 大小的分区已绰绰有余。</li>
+  <li><a href="/devices/tech/ota/ab_updates">针对 A/B 设备更新</a>了 DTO 分区。恢复内核与 Android 内核相同，但分区必须针对 A/B 设备设置，因为这样才可以通过无线下载 (GOTA) 更新进行更新。分区大小取决于设备以及主 SoC 内核 DT Blob 上所需的更改数量。</li>
+ </ul>
+
+<h2 id="bootloader-requirements">DTO 引导加载程序要求</h2>
+
+<p>要支持 DTO，引导加载程序应具备以下条件：</p>
+
+<ul>
+  <li>知道如何以及从何处（考虑使用 A/B 设备的启动槽）以供应商独有的方式加载 SoC 专属 DT Blob（通常是从内核映像的末端提取，因为 Blob 已附加到内核中）。</li>
+  <li>知道如何以及从何处以供应商独有的方式加载叠加层 DT Blob。</li>
+  <li>将组合设备树传递给内核之前，使用叠加层修补主 DT Blob。</li>
+</ul>
+
+<p>要详细了解如何在引导加载程序中增加对 DTO 的支持，请参阅<a href="/devices/architecture/dto/index">设备树叠加层</a>。
+</p>
+
+</body></html>

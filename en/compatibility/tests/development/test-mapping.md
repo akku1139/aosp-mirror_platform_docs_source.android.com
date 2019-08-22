@@ -40,7 +40,11 @@ See these examples:
 
 [Add presubmit tests to TEST_MAPPING for services.core](https://android.googlesource.com/platform/frameworks/base/+/master/services/core/java/com/android/server/pm/dex/TEST_MAPPING)
 
-[Add presubmit and postsubmit tests to TEST_MAPPING for startop/iorap](https://android.googlesource.com/platform/frameworks/base/+/master/startop/iorap/TEST_MAPPING)
+[Add presubmit tests to TEST_MAPPING for tools/dexter using imports](https://android.googlesource.com/platform/tools/dexter/+/refs/heads/master/TEST_MAPPING)
+
+Test Mapping relies on the
+[Trade Federation (TF) Test Harness](/devices/tech/test_infra/tradefed) for
+tests execution and results reporting.
 
 ## Defining test groups
 
@@ -112,8 +116,7 @@ Here is a sample TEST_MAPPING file:
 ### Setting attributes
 
 In the above example, `presubmit` and `postsubmit` are the names of each **test
-group**. Note that a test run for `postsubmit` will automatically include all
-tests in the `presubmit` group. See
+group**. See
 [Defining test groups](#defining_test_groups) for more information about test
 groups.
 
@@ -136,15 +139,16 @@ matching the relative path of any source code file (relative to the directory
 containing the TEST_MAPPING file). In above example, test `CtsWindowManagerDeviceTestCases`
 will run in presubmit only when any java file starts with Window or Activity,
 which exists in the same directory of the TEST_MAPPING file or any of its sub
-directories, is changed. Note that `\` needs to escaped as it's in a JSON file.
+directories, is changed. Backslashes \ need to be escaped as they are in a
+JSON file.
 
 The **imports** attribute allows you to include tests in other TEST_MAPPING files
 without copying the content. Note that the TEST_MAPPING files in the parent
-directories of the imported path will also be included.
+directories of the imported path will also be included. Test Mapping allows
+nested imports; this means two TEST_MAPPING files can import each other, and
+Test Mapping is able to properly merge the included tests.
 
-The **options** attribute contains additional TradeFed command line options. In
-the above example, only tests with annotation `Presubmit` will run in presubmit;
-all tests will run in postsubmit.
+The **options** attribute contains additional TradeFed command line options.
 
 To get a complete list of available options for a given test, run:
 
@@ -263,7 +267,7 @@ and its parent directories:
 You can use option **--host** for Atest to only run tests configured against the
 host that require no device. Without this option, Atest will run both tests, the
 ones requiring device and the ones running on host and require no device. The
-tests will be run in two seperate suites.
+tests will be run in two separate suites.
 
 <pre>
 <code class="devsite-terminal">atest [--test-mapping] --host</code>
@@ -271,10 +275,9 @@ tests will be run in two seperate suites.
 
 ### Identifying test groups
 
-You can specify test groups in the Atest command. Note that presubmit tests are
-part of postsubmit tests, as well. The following command will run all
-**postsubmit** tests related to files in directory src/project_1, which are
-three tests (A, B, C).
+You can specify test groups in the Atest command. The following command will run
+all **postsubmit** tests related to files in directory src/project_1, which
+contains only one test (C).
 
 Or you can use **:all** to run all tests regardless of group. The following
 command runs four tests (A, B, C, X):
@@ -297,3 +300,25 @@ force Atest to include those tests too.
 
 Without the `--include-subdir` option, Atest will run only test A. With the
 `--include-subdir` option, Atest will run two tests (A, B).
+
+### Line-level comment is supported
+
+You can add a line-level `//`-format comment to flesh out the TEST_MAPPING file
+with a description of the setting that follows. [ATest](https://source.android.com/compatibility/tests/development/atest) and Trade Federation will
+preprocess the TEST_MAPPING to a valid JSON format without comments. To keep
+the JSON file clean and easy to read, only line-level `//`-format comment is
+supported.
+
+Example:
+
+```
+{
+  // For presubmit test group.
+  "presubmit": [
+    {
+      // Run test on module A.
+      "name": "A"
+    }
+  ]
+}
+```

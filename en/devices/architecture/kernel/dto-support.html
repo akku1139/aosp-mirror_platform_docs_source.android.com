@@ -1,0 +1,110 @@
+<html devsite>
+  <head>
+    <title>DTO Support</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  {% include "_versions.html" %}
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>
+  <a href="/devices/architecture/dto/">Device Tree Overlay (DTO)</a> extends
+  existing
+  <a href="https://events.linuxfoundation.org/sites/events/files/slides/petazzoni-device-tree-dummies.pdf"
+  class="external">Flattened Device Tree (FDT)</a> implementations by enabling
+  userspace to modify the initial devicetree data in the kernel at runtime by
+  loading additional overlay FDTs that amend the original data. Android doesn't
+  require runtime updates of DT blobs from userspace, but instead recommends
+  that vendors add the devicetree patching in the bootloader with the help of
+  <code>libfdt</code> or <code>libufdt</code>.
+</p>
+
+<h2 id="android-dto-support">Android DTO support</h2>
+
+<p>
+  Android support for DTOs varies by Android release:
+</p>
+
+<ul>
+  <li>Android 7.x and earlier don't require devicetree support and don't
+  provide recommendations for how vendors pass DT blobs to the kernel or where
+  they store them.</li>
+  <li>Android 8.x recommends devicetree support to keep the board-specific and
+  SoC-only parts of the kernel separate.</li>
+  <li>Android {{ androidPVersionNumber }} and higher require a device tree blob
+  overlay (DTBO) partition to be present and at least one DTO to be applied.
+  </li>
+</ul>
+
+<h2 id="partitioning-requirements">DTO partitioning requirements</h2>
+
+<p>
+  Most Android devices append the DT blob to the kernel at build time and the
+  bootloader loads the blob from the kernel. However, because DT blobs are
+  considered part of the system-on-chip (SoC) kernel, Android has no specific
+  requirements for how to build or store DT blobs. Devices can append the DT
+  blob to the kernel or store the blob in a separate partition; the only
+  requirement is that the bootloader knows how and where to load the DT blob
+  from.
+</p>
+
+<aside class="note"><strong>Note</strong>:
+  For details on the partition format, see
+  <a href="/devices/architecture/dto/partitions">DTB/DTBO Partitions</a>.
+</aside>
+
+<p>
+  To support DTO, devices should have:
+</p>
+
+<ul>
+  <li>One DTBO partition per kernel image for a board-specific DT overlay and
+  the bootloader must know where and how to load the SoC-specific DTB. The
+  partition size depends on the number of changes needed to make the SoC
+  kernel&mdash;choose a size with room to grow for future updates; typically, an
+  8&nbsp;MB partition size is more than enough.</li>
+  <li>DTO partitions <a href="/devices/tech/ota/ab_updates">updated for A/B
+  devices</a>. The recovery kernel is the same as the Android kernel, but the
+  partition must be set up for A/B devices so it can be updated via over-the-air
+  (OTA) updates. The partition size depends on the device and the number of
+  changes on top of the main SoC kernel DT blob.</li>
+ </ul>
+
+<h2 id="bootloader-requirements">DTO bootloader requirements</h2>
+
+<p>
+  To support DTO, bootloader should:
+</p>
+
+<ul>
+  <li>Know how and where (considering the boot slot for A/B devices) to load the
+  SoC-specific DT blob in a vendor-specific way (typically extracted from
+  the end of the kernel image as blobs are appended to the kernel).</li>
+  <li>Know how and where to load the overlay DT blob from in a vendor-specific
+  way.</li>
+  <li>Patch the main DT blob with the overlay before passing the combined device
+  tree to the kernel.</li>
+</ul>
+
+<p>
+  For more details about adding support for DTO in bootloader, see
+  <a href="/devices/architecture/dto/index">Device Tree Overlays</a>.
+</p>
+
+</body>
+</html>

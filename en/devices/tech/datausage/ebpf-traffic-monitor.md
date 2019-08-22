@@ -18,8 +18,6 @@ Book: /_book.yaml
 
 # eBPF Traffic Monitoring
 
-## Introduction {:#introduction}
-
 The eBPF network traffic tool uses a combination of kernel and user space
 implementation to monitor network usage on the device since the last device
 boot. It provides additional functionality such as socket tagging, separating

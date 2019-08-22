@@ -1,0 +1,179 @@
+<html devsite>
+  <head>
+    <title>HWAddressSanitizer</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  {% include "_versions.html" %}
+  <!--
+      Copyright 2019 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+    <p>
+      Hardware-assisted AddressSanitizer (HWASan) is a memory error
+      detection tool similar to
+      <a href="/devices/tech/debug/asan">AddressSanitizer</a>. HWASan
+      uses a lot less RAM compared to ASan, which makes it suitable for
+      whole system sanitization. HWASan is only available on Android
+      {{ androidQVersionNumber }} and higher, and on AArch64 hardware.
+    </p>
+
+    <p>Compared to classic ASan, HWASan has:</p>
+
+    <ul>
+      <li>Similar CPU overhead (~2x)</li>
+      <li>Similar code size overhead (40 &ndash; 50%)</li>
+      <li>Much smaller RAM overhead (10% &ndash; 35%)</li>
+    </ul>
+
+    <p>HWASan detects the same set of bugs as ASan:</p>
+
+    <ul>
+      <li>Stack and heap buffer overflow/underflow</li>
+      <li>Heap use after free</li>
+      <li>Stack use outside scope</li>
+      <li>Double free/wild free</li>
+    </ul>
+
+    <p>Additionally, HWASan detects stack use after return.</p>
+
+    <h2 id="implementation">Implementation details and limitations</h2>
+
+      <p>
+        HWASan is based on the
+        <a href="https://arxiv.org/pdf/1802.09517" class="external">memory
+        tagging</a> approach, where a small random tag value is associated
+        both with pointers and with ranges of memory addresses. For a memory
+        access to be valid, the pointer and memory tags have to match.
+        HWASan relies on ARMv8 feature top byte ignore (TBI), also called
+        <em>virtual address tagging</em>, to store the pointer tag in the
+        highest bits of the address.
+      </p>
+
+      <p>You can read more about
+        <a href="http://clang.llvm.org/docs/HardwareAssistedAddressSanitizerDesign.html"
+           class="external">the design of HWASan</a> on the Clang
+        documentation site.
+      </p>
+
+      <p>
+        By design, HWASan doesn't have ASan's limited-size redzones for
+        detecting overflows or ASan's limited-capacity quarantine for
+        detecting use after free. For this reason, HWASan can detect a bug
+        no matter how large the overflow is or how long ago the memory was
+        deallocated. This gives HWASan a big advantage over ASan.
+      </p>
+
+      <p>
+        However, HWASan has a limited number of possible tag values (256),
+        which means that there is a 0.4% probability of missing any bug
+        during one execution of the program.
+      </p>
+
+      <p>
+        HWASan requires the Linux kernel to accept tagged pointers in system
+        call arguments. This isn't supported in the common kernel currently,
+        so supporting a device requires backporting the
+        <a href="https://lore.kernel.org/patchwork/project/lkml/list/?series=375855&archive=both"
+           class="external">arm64: untag user pointers passed to the kernel</a>
+        patch series.
+      </p>
+
+      <p>
+        Several branches of the
+        <a href="https://android.googlesource.com/kernel/msm" class="external">AOSP
+        kernel source repository</a> contain the necessary backports, but none
+        of the prebuilt kernels do. Until the binary kernel repositories are updated,
+        using HWASan in AOSP requires <a href="/setup/build/building-kernels">
+        building the kernel from source</a>.
+      </p>
+
+      <p>
+        Userspace support for HWASan in Android requires changes from January 2019,
+        which are only available in the master branch of AOSP. Pixel 2, 3, and 3a
+        are known to work with an entire system built with HWASan.
+      </p>
+
+    <h2 id="using-hwasan">Using HWASan</h2>
+
+      <p>
+        Use the following commands to build the entire platform using HWASan:
+      </p>
+
+<pre class="prettyprint">
+<code class="devsite-terminal">lunch aosp_walleye-userdebug # (or any other product)</code>
+<code class="devsite-terminal">make SANITIZE_TARGET=hwaddress</code>
+</pre>
+
+      <p>
+        Unlike ASan, with HWASan there's no need to build twice.
+        Incremental builds just work, there are no special flashing
+        instructions or wiping requirement, static executables are supported, and it's
+        okay to skip sanitization of any library other than <code>libc</code>.
+        There's also no requirement that if a library is sanitized, any
+        executable that links to it must also be sanitized.
+      </p>
+
+      <p>
+        To skip sanitization of a module, use
+        <code>LOCAL_NOSANITIZE := hwaddress</code> or
+        <code>sanitize: { hwaddress: false }</code>.
+      </p>
+
+      <aside class="note">
+        <strong>Note:</strong> Currently there is no support for sanitizing
+        individual modules with HWASan. Use ASan to sanitize individual
+        modules. Note that ASan and HWASan can't be used on a device at the
+        same time.
+      </aside>
+
+    <h2 id="better_stack_traces">Better stack traces</h2>
+
+      <p>
+        HWASan uses a fast, frame-pointer-based unwinder to record a stack
+        trace for every memory allocation and deallocation event in the
+        program. Android enables frame pointers in AArch64 code by default,
+        so this works great in practice. If you need to unwind through
+        managed code, set <code>HWASAN_OPTIONS=fast_unwind_on_malloc=0</code>
+        in the process environment. Note that bad memory access stack
+        traces use the "slow" unwinder by default; this setting only affects
+        allocation and deallocation traces. This option can be very
+        CPU-intensive, depending on the load.
+      </p>
+
+    <h2 id="symbolization">Symbolization</h2>
+
+      <p>
+        See <a href="/devices/tech/debug/asan#symbolization">Symbolization</a>
+        in ASan documentation.
+      </p>
+
+    <h2 id="hwasan_in_the_apps">HWASan in apps</h2>
+
+      <p>
+        Similar to AddressSanitizer, HWASan can't see into Java code, but
+        it can detect bugs in the JNI libraries. Unlike ASan, running HWASan
+        apps on a non-HWASan device is <strong>not</strong> supported.
+      </p>
+
+      <p>
+        On a HWASan device, apps can be checked with HWASan by building their
+        code with <code>SANITIZE_TARGET:=hwaddress</code> in
+        Make, or <code>-fsanitize=hwaddress</code> in compiler flags.
+      </p>
+
+  </body>
+</html>

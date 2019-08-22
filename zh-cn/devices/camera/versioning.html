@@ -4,6 +4,7 @@
     <meta name="book_path" value="/_book.yaml"/>
   </head>
   <body>
+
   <!--
       Copyright 2017 The Android Open Source Project
 
@@ -29,7 +30,7 @@
 <dl>
 
 <dt>Camera API1</dt>
-<dd>Android 4.4 或更低版本设备上的应用级摄像头框架，通过 <code>android.hardware.Camera</code> 类提供。</dd>
+<dd>Android 4.4 及更早版本设备上的应用级摄像头传输框架，通过 <code>android.hardware.Camera</code> 类提供。</dd>
 
 <dt>Camera API2</dt>
 <dd>Android 5.0 及更高版本设备上的应用级相机框架，通过<code> android.hardware.camera2</code> 包提供。</dd>
@@ -143,7 +144,7 @@
 <p>为增强媒体和相机框架安全性而进行的架构更改包括以下附加设备要求。</p>
 
 <ul>
-<li><strong>常规</strong>。由于 IPC，设备需要额外带宽，这可能会影响对时间敏感的相机使用情况，例如高速视频录制。供应商可以运行 <code>android.hardware.camera2.cts.PerformanceTest</code> 和 Google 摄像头应用，以进行 120/240 FPS 高速视频录制，从而衡量实际影响。设备还需要少量额外的 RAM 来创建新进程。</li>
+<li><strong>常规</strong>。由于 IPC，设备需要额外带宽，这可能会影响对时间敏感的相机使用情况，例如高速视频录制。供应商可以运行 <code>android.hardware.camera2.cts.PerformanceTest</code> 和 Google 相机应用，以进行 120/240 FPS 高速视频录制，从而衡量实际影响。设备还需要少量额外的 RAM 来创建新进程。</li>
 <li><strong>在视频缓冲区中传递元数据</strong>（仅限 HAL1）。<em></em>如果 HAL1 在视频缓冲区中存储元数据而非实际的 YUV 帧数据，则 HAL 必须使用 <code>kMetadataBufferTypeNativeHandleSource</code> 作为元数据缓冲区类型，并在视频缓冲区中传递 <code>VideoNativeHandleMetadata</code>（<code>kMetadataBufferTypeCameraSource</code> 在 Android 7.0 中不再受支持）。通过 <code>VideoNativeHandleMetadata</code>，相机和媒体框架能够正确地对原生句柄进行序列化和反序列化，从而在进程之间传递视频缓冲区。</li>
 <li><strong>缓冲区句柄地址并不总是存储相同的缓冲区</strong>（仅限 HAL3）。<em></em>对于每个捕获请求，HAL3 会获取缓冲区句柄的地址。HAL 不能使用地址来识别缓冲区，因为地址可能会在 HAL 返回缓冲区之后存储另一个缓冲区句柄。您必须更新 HAL，以便使用缓冲区句柄来标识缓冲区。例如：HAL 接收缓冲区句柄地址 A，该地址存储缓冲区句柄 A。在 HAL 返回缓冲区句柄 A 之后，缓冲区句柄地址 A 可能在 HAL 下次接收到它时存储缓冲区句柄 B。</li>
 <li><strong>更新用于 cameraserver 的 SELinux 策略</strong>。如果设备特定的 SELinux 策略向 mediaserver 授予运行相机的权限，则您必须更新 SELinux 策略，以授予 cameraserver 正确的权限。我们建议不要为 cameraserver 复制 mediaserver 的 SELinux 策略（因为 mediaserver 和 cameraserver 通常需要系统中的不同资源）。Cameraserver 应仅具有执行相机功能所需的权限，并且 mediaserver 中任何不必要的相机相关权限均应被移除。</li>
@@ -156,7 +157,70 @@
 <p>对于包含相机并运行 Android 8.0 或更高版本的所有设备，请通过运行 VTS 来验证供应商实现。</p>
 
 <h2 id="version-history">Camera HAL 版本历史记录</h2>
-<p>要获取可用于评估 Android Camera HAL 的测试列表，请参阅 <a href="/compatibility/cts/camera-hal.html">Camera HAL 测试核对清单</a>。</p>
+<p>有关可用于评估 Android Camera HAL 的测试列表，请参阅 <a href="/compatibility/cts/camera-hal.html">Camera HAL 测试核对清单</a>。</p>
+
+<h3 id="90">Android 9</h3>
+
+<p>
+Android 9 版本对摄像头 API2 和 HAL 界面进行了以下更新。
+</p>
+
+<h4 id="90-api">Camera API</h4>
+
+<ul>
+  <li>引入多摄像头 API，以更好地支持多摄像头朝向同一方向的设备，实现散景和无缝变焦等功能。这样，应用就可以将设备上的多个摄像头视为一个逻辑单元（逻辑摄像头）。拍摄请求也可以发送到由一个逻辑摄像头包含的各个摄像头设备。请参阅<a href="/devices/camera/multi-camera">多摄像头支持</a>。</li>
+  <li>引入会话参数。会话参数是可用拍摄参数的一个子集，在进行修改时会导致严重的处理延迟。如果客户端在拍摄会话初始化期间传递其初始值，则可以减少这些开销。请参阅<a href="/devices/camera/session-parameters">会话参数</a>。</li>
+  <li>添加光学防抖 (OIS) 数据键，以实现应用级稳定性和效果。请参阅 <a href="https://developer.android.com/reference/android/hardware/camera2/CaptureResult.html#STATISTICS_OIS_SAMPLES" class="external"><code>STATISTICS_OIS_SAMPLES</code></a>。</li>
+  <li>添加外部闪存支持。请参阅 <a href="https://developer.android.com/reference/android/hardware/camera2/CameraMetadata.html#CONTROL_AE_MODE_ON_EXTERNAL_FLASH" class="external"><code>CONTROL_AE_MODE_ON_EXTERNAL_FLASH</code></a>。</li>
+  <li>在 <code>CAPTURE_INTENT</code> 中添加了运动跟踪 intent。请参阅 <a href="https://developer.android.com/reference/android/hardware/camera2/CameraMetadata.html#CONTROL_CAPTURE_INTENT_MOTION_TRACKING" class="external"><code>CONTROL_CAPTURE_INTENT_MOTION_TRACKING</code></a>。</li>
+  <li>弃用了 <code>LENS_RADIAL_DISTORTION</code> 并在其位置添加了 <a href="https://developer.android.com/reference/android/hardware/camera2/CameraCharacteristics.html#LENS_DISTORTION" class="external"><code>LENS_DISTORTION</code></a>。</li>
+  <li>在 <code>CaptureRequest</code> 中添加了失真校正模式。请参阅 <a href="https://developer.android.com/reference/android/hardware/camera2/CaptureRequest.html#DISTORTION_CORRECTION_MODE" class="external"><code>DISTORTION_CORRECTION_MODE</code></a>。</li>
+  <li>在支持的设备上添加了对外部 USB/UVC 摄像头的支持。请参阅 <a href="https://developer.android.com/reference/android/hardware/camera2/CameraMetadata.html#INFO_SUPPORTED_HARDWARE_LEVEL_EXTERNAL" class="external"><code>INFO_SUPPORTED_HARDWARE_LEVEL_EXTERNAL</code></a>。</li>
+</ul>
+
+<h4 id="90-hal">相机 HAL</h4>
+
+<p><strong>3.4</strong></p>
+
+<p><code>ICameraDeviceSession</code> 更新</p>
+
+<ul>
+<li><a href="/reference/hidl/android/hardware/camera/device/3.4/ICameraDeviceSession#configurestreams_3_4"><code>configureStreams_3_4</code></a>：添加了对 <code>sessionParameters</code> 和逻辑摄像头的支持。</li>
+<li><a href="/reference/hidl/android/hardware/camera/device/3.4/ICameraDeviceSession#processcapturerequest_3_4"><code>processCaptureRequest_3_4</code></a>：现在支持在信息流结构中包含物理摄像头 ID。</li>
+</ul>
+
+<p><code>ICameraDeviceCallback</code> 更新</p>
+
+<ul>
+<li> <a href="/reference/hidl/android/hardware/camera/device/3.4/ICameraDeviceCallback#processcaptureresult_3_4"><code>processCaptureResult_3_4</code></a>：在拍摄结果中添加了物理摄像头元数据。</li>
+</ul>
+
+<p><strong>3.3</strong></p>
+
+<p>在 Android 9 的摄像头元数据中添加了以下键。</p>
+
+<ul>
+<li>权能
+  <ul>
+    <li><code>ANDROID_REQUEST_AVAILABLE_CAPABILITIES_LOGICAL_MULTI_CAMERA</code></li>
+    <li><code>ANDROID_REQUEST_AVAILABLE_CAPABILITIES_MOTION_TRACKING</code></li>
+    <li><code>ANDROID_REQUEST_AVAILABLE_CAPABILITIES_MONOCHROME</code></li>
+  </ul>
+</li><li>摄像头元数据标记<ul>
+    <li><code>ANDROID_LOGICAL_MULTI_CAMERA_PHYSICAL_IDS</code></li>
+    <li><code>ANDROID_LOGICAL_MULTI_CAMERA_SENSOR_SYNC_TYPE</code></li>
+    <li><code>ANDROID_DISTORTION_CORRECTION_AVAILABLE_MODES</code></li>
+    <li><code>ANDROID_LENS_POSE_REFERENCE</code></li>
+    <li> <code>ANDROID_LENS_DISTORTION</code></li>
+    <li><code>ANDROID_REQUEST_AVAILABLE_SESSION_KEYS</code></li>
+    <li><code>ANDROID_REQUEST_AVAILABLE_PHYSICAL_CAMERA_REQUEST_KEYS</code></li>
+    <li><code>ANDROID_STATISTICS_OIS_DATA_MODE</code></li>
+    <li><code>ANDROID_STATISTICS_OIS_TIMESTAMPS</code></li>
+    <li><code>ANDROID_STATISTICS_OIS_X_SHIFTS</code></li>
+    <li><code>ANDROID_STATISTICS_OIS_Y_SHIFTS</code></li>
+  </ul>
+</li>
+</ul>
 
 <h3 id="80">Android 8.0</h3>
 
@@ -199,8 +263,7 @@ Android 8.0 版本引入了 Treble。引入 Treble 后，供应商相机 HAL 实
 
 <p>
 方法名称是 <code><a href="https://developer.android.com/reference/android/hardware/camera2/CameraCaptureSession.StateCallback.html#onCaptureQueueEmpty(android.hardware.camera2.CameraCaptureSession)" class="external">
-  android.hardware.camera2.CameraDevice#createCustomCaptureSession</a></code>。
-请参阅：<a href="https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/hardware/camera2/CameraDevice.java#805" class="external"><code>frameworks/base/core/java/android/hardware/camera2/CameraDevice.java#805</code></a>。</p>
+  android.hardware.camera2.CameraDevice#createCustomCaptureSession</a></code>。请参阅：<a href="https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/hardware/camera2/CameraDevice.java#805" class="external"><code>frameworks/base/core/java/android/hardware/camera2/CameraDevice.java#805</code></a>。</p>
 
 <aside class="note"><strong>注意</strong>：在 Android 8.1 版本中，应用必须预安装到系统映像上才能访问此 API。
 </aside>
@@ -308,7 +371,7 @@ Android 8.0 版本引入了 Treble。引入 Treble 后，供应商相机 HAL 实
 
 <p>本部分包含相机硬件模块的模块版本控制信息（基于 <code>camera_module_t.common.module_api_version</code>）。两个最重要的十六进制数字表示 Major 版本，而两个最不重要的数字表示 Minor 版本。</p>
 
-<h3 id="24">2_4</h3>
+<h3 id="24">2.4</h3>
 
 <p>此相机模块版本添加了以下 API 更改：</p>
 
@@ -323,23 +386,23 @@ Android 8.0 版本引入了 Treble。引入 Treble 后，供应商相机 HAL 实
  <li>模块初始化方法。<em></em>在加载 HAL 模块后由相机服务调用，以允许初始化 HAL 一次。该方法在调用任何其他模块方法之前调用。</li>
 </ol>
 
-<h3 id="23">2_3</h3>
+<h3 id="23">2.3</h3>
 
 <p>该相机模块版本添加了对打开旧版 Camera HAL 设备的支持。如果同一设备可以支持多个设备 API 版本，则框架利用该支持可以打开相机设备作为较低设备 HAL 版本的 HAL 设备。标准硬件模块打开调用 (common.methods-&gt;open) 会继续使用支持的最新版本（即 <code>camera_info_t.device_version</code> 中列出的版本）打开相机设备。</p>
 
-<h3 id="22">2_2</h3>
+<h3 id="22">2.2</h3>
 
 <p>该相机模块版本添加了模块供应商标记支持，并且弃用了以前只能通过打开设备才可访问的旧版 <code>vendor_tag_query_ops</code>。</p>
 
-<h3 id="21">2_1</h3>
+<h3 id="21">2.1</h3>
 
 <p>该相机模块版本添加了对从 Camera HAL 模块到框架的异步回调支持，利用该支持可以通知框架关于相机模块状态的更改。提供有效 <code>set_callbacks()</code> 方法的模块必须至少报告此版本号。</p>
 
-<h3 id="20">2_0</h3>
+<h3 id="20">2.0</h3>
 
 <p>报告此版本号的相机模块会实现相机模块 HAL 接口的第二个版本。可通过此模块打开的相机设备可能支持 1.0 版本或 2.0 版本的相机设备 HAL 接口。camera_info 的 <code>device_version</code> 字段始终有效；如果 <code>device_version</code> 字段为 2.0 或更高版本，则 <code>camera_info</code> 的 <code>static_camera_characteristics</code> 字段有效。</p>
 
-<h3 id="10">1_0</h3>
+<h3 id="10">1.0</h3>
 
 <p>报告这些版本号的相机模块实现了初始相机模块 HAL 接口。可通过此模块打开的所有相机设备仅支持版本 1 的相机设备 HAL。<code>camera_info</code> 的 <code>device_version</code> 和 <code>static_camera_characteristics</code> 字段无效。只有 <code>android.hardware.Camera</code> API 可以受该模块及其设备的支持。</p>
 

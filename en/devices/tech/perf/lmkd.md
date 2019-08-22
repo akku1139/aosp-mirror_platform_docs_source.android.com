@@ -19,7 +19,7 @@ Book: /_book.yaml
   limitations under the License.
 -->
 
-# LMKD in Userspace
+# lmkd in Userspace
 
 This document describes the userspace lowmemorykiller daemon (`lmkd`) features
 added in Android {{ androidPVersionNumber }} and how to configure them.
@@ -36,7 +36,7 @@ pressure levels.  It also can use memory cgroup features to limit memory resourc
 allocated to each process based on its importance.
 
 
-# How to switch to userspace lmkd
+## How to switch to userspace lmkd
 
 Starting in Android {{ androidPVersionNumber }}, userspace `lmkd` activates if an
 in-kernel lowmemorykiller driver is not detected. Note that userspace `lmkd`
@@ -49,7 +49,7 @@ CONFIG_MEMCG=y
 CONFIG_MEMCG_SWAP=y
 ```
 
-# lmkd kill strategies
+## lmkd kill strategies
 
 `lmkd` supports new kill strategies based on vmpressure events, their severity,
 and other hints like swap utilization, as well as legacy mode in which `lmkd`
@@ -68,7 +68,7 @@ thresholds. This mode is enabled by setting the `ro.lmk.use_minfree_levels`
 property to `true`.
 
 
-# Configuring lmkd for specific device
+## Configuring lmkd for specific device
 
 Configure `lmkd` with the following properties:
 

@@ -360,6 +360,61 @@ You can reproduce an instance of this type of crash using <code>crasher
 seccomp</code>.
 </p>
 
+<h2 id="xom">Execute-only memory violation</h2>
+
+<p>
+  For arm64 in Android Q and higher, executable segments of system binaries and libraries are mapped
+  into memory execute-only (non-readable) as a hardening technique against code-reuse attacks.
+  Read primitives can be used to bypass address space layout randomization (ASLR) by searching
+  executable memory for known functions or by constructing gadget chains without any prior
+  knowledge of the memory layout. By marking executable code as unreadable, read primitives
+  are unable to access executable memory, shutting down an entire class of exploitation techniques.
+  This not only improves the effectiveness of ASLR but also control-flow integrity (CFI) because
+  valid destinations can no longer be revealed to attackers with read primitives.
+</p>
+<p>
+  Making code unreadable causes intentional and unintentional reads into memory segments marked
+  execute-only to throw a <code>SIGSEGV</code> with code <code>SEGV_ACCERR</code>. This might
+  occur as a result of a bug, vulnerability, data mixed with code (such as a literal pool),
+  or intentional memory introspection.
+</p>
+<p>
+  The compiler assumes code and data are not intermixed, but issues can arise from hand-written
+  assembly. In many cases these can be fixed by simply moving the constants to a <code>.data</code>
+  section.
+  If code introspection is absolutely necessary on executable code sections,
+  <a href="http://man7.org/linux/man-pages/man2/mprotect.2.html" class="external"><code>mprotect(2)</code></a>
+  should be called first to mark the code readable, and then again to mark it unreadable after the
+  operation is completed.
+</p>
+<pre class="devsite-terminal devsite-click-to-copy">
+pid: 2938, tid: 2940, name: crasher64  >>> crasher64 <<<
+signal 11 (SIGSEGV), code 2 (SEGV_ACCERR), fault addr 0x5f2ced24a8
+<em style="color:Orange">Cause: execute-only (no-read) memory access error; likely due to data in .text.</em>
+    x0  0000000000000000  x1  0000005f2cecf21f  x2  0000000000000078  x3  0000000000000053
+    x4  0000000000000074  x5  8000000000000000  x6  ff71646772607162  x7  00000020dcf0d16c
+    x8  0000005f2ced24a8  x9  000000781251c55e  x10 0000000000000000  x11 0000000000000000
+    x12 0000000000000014  x13 ffffffffffffffff  x14 0000000000000002  x15 ffffffffffffffff
+    x16 0000005f2ced52f0  x17 00000078125c0ed8  x18 0000007810e8e000  x19 00000078119fbd50
+    x20 00000078125d6020  x21 00000078119fbd50  x22 00000b7a00000b7a  x23 00000078119fbdd8
+    x24 00000078119fbd50  x25 00000078119fbd50  x26 00000078119fc018  x27 00000078128ea020
+    x28 00000078119fc020  x29 00000078119fbcb0
+    sp  00000078119fba40  lr  0000005f2ced1b94  pc  0000005f2ced1ba4
+
+backtrace:
+      #00 pc 0000000000003ba4  /system/bin/crasher64 (do_action+2348)
+      #01 pc 0000000000003234  /system/bin/crasher64 (thread_callback+44)
+      #02 pc 00000000000e2044  /apex/com.android.runtime/lib64/bionic/libc.so (__pthread_start(void*)+36)
+      #03 pc 0000000000083de0  /apex/com.android.runtime/lib64/bionic/libc.so (__start_thread+64)
+</pre>
+
+<p>
+  You can distinguish execute-only memory violations from other crashes by the cause line.
+</p>
+<p>
+You can reproduce an instance of this type of crash using <code>crasher xom</code>.
+</p>
+
 <h2 id="fdsan">Error detected by fdsan</h2>
 
 <p>

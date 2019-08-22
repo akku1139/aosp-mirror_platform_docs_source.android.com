@@ -4,7 +4,6 @@
     <meta name="book_path" value="/_book.yaml"/>
   </head>
   <body>
-
   <!--
       Copyright 2017 The Android Open Source Project
 
@@ -23,7 +22,7 @@
 
 <p>Vulkan 是用于高性能 3D 图形处理的低开销、跨平台 API。与 OpenGL ES 一样，Vulkan 提供多种用于在应用中创建高质量的实时图形的工具。Vulkan 的优势包括降低 CPU 开销和支持 <a href="https://www.khronos.org/spir">SPIR-V 二进制中间</a>语言。</p>
 
-<p class="note"><strong>注意</strong>：本部分介绍的是 Vulkan 实现；有关 Vulkan 架构、优势、API 和其他资源的详细信息，请参阅 <a href="/devices/graphics/arch-vulkan.html">Vulkan 架构</a>。</p>
+<p class="note"><strong>注意</strong>：本部分介绍的是 Vulkan 实现；有关 Vulkan 架构、优势、API 和其他资源的详情，请参阅 <a href="/devices/graphics/arch-vulkan.html">Vulkan 架构</a>。</p>
 
 <p>要实现 Vulkan，设备：</p>
 <ul>
@@ -41,11 +40,13 @@
 <p>Android 要求在构建系统映像时系统可用的 GPU 是已知状态。加载程序使用现有 HAL 机制（请参阅 <code><a href="https://android.googlesource.com/platform/hardware/libhardware/+/master/include/hardware/hardware.h">hardware.h</a></code>）发现和加载驱动程序。32 位和 64 位 Vulkan 驱动程序的首选路径分别为：</p>
 
 <pre class="devsite-click-to-copy">
+/vendor/lib/hw/vulkan.&lt;ro.hardware.vulkan&gt;.so
 /vendor/lib/hw/vulkan.&lt;ro.product.platform&gt;.so
+/vendor/lib64/hw/vulkan.&lt;ro.hardware.vulkan&gt;.so
 /vendor/lib64/hw/vulkan.&lt;ro.product.platform&gt;.so
 </pre>
 
-<p>其中，&lt;<code>ro.product.platform</code>&gt; 需替换为具有该名称的系统属性的值。有关详细信息和受支持的备选位置，请参阅 <code><a href="https://android.googlesource.com/platform/hardware/libhardware/+/master/hardware.c">libhardware/hardware.c</a></code>。</p>
+<p>其中，&lt;<code>ro.hardware.vulkan</code>&gt; 或 &lt;<code>ro.product.platform</code>&gt; 需替换为具有该名称的系统属性的值。有关详情和受支持的备选位置，请参阅 <code><a href="https://android.googlesource.com/platform/hardware/libhardware/+/master/hardware.c">libhardware/hardware.c</a></code>。</p>
 
 <p>在 Android 7.0 中，Vulkan <code>hw_module_t</code> 衍生微不足道；仅支持一个驱动程序，并将常量字符串 <code>HWVULKAN_DEVICE_0</code> 传递给 open 函数。如果在 Android 后续版本中添加对多个驱动程序的支持，则 HAL 模块将导出可以传递给 <code>module open</code> 调用的字符串列表。</p>
 
@@ -90,8 +91,7 @@
 <ol>
 <li>添加支持 Vulkan 1.1 且符合其他 Android 1.1 要求的 Vulkan 驱动程序（请务必查看 9 API 级别文档），或更新现有 Vulkan 1.0 驱动程序。</li>
 <li>您可能需要更新内核 GPU 驱动程序，具体取决于您的实现。</li>
-<li>确保 <code>PackageManager#hasSystemFeature(PackageManager.FEATURE_VULKAN_HARDWARE_VERSION, 0x401000)</code> 返回 <code>true</code>，方法是将如下所示的规则添加到相应的 <code>device.mk</code> 文件：
-<p><code>
+<li>确保 <code>PackageManager#hasSystemFeature(PackageManager.FEATURE_VULKAN_HARDWARE_VERSION, 0x401000)</code> 返回 <code>true</code>，方法是将如下所示的规则添加到相应的 <code>device.mk</code> 文件：<p><code>
 PRODUCT_COPY_FILES += frameworks/native/data/etc/android.hardware.vulkan.version-1_1.xml:
 $(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.vulkan.version.xml
 </code></p></li>
@@ -231,10 +231,24 @@ VkResult VKAPI vkQueueSignalReleaseImageANDROID(
 
 如果图像是使用 <code>VK_SWAPCHAIN_IMAGE_USAGE_SHARED_BIT_ANDROID</code> 创建的，则驱动程序必须允许反复调用 <code>vkQueueSignalReleaseImageANDROID</code>，而不会干预对 <code>vkAcquireImageANDROID</code> 的调用。
 
+<h3 id="shared_presentable_image">共享的可呈现图像支持</h3>
+<p>某些设备可以在显示通道与 Vulkan 实现之间共享单个映像的所有权，以最大限度地缩短延迟。在 Android 9 中，加载程序会根据驱动程序如何响应对 <code>vkGetPhysicalDeviceProperties2</code> 的调用来有条件地播发 <code>VK_KHR_shared_presentable_image</code> 扩展。</p>
+<p>如果驱动程序不支持 Vulkan 1.1 或 <code>VK_KHR_physical_device_properties2</code> 扩展，则加载程序假定不支持共享的可呈现图像。否则，加载程序会通过调用 <code>vkGetPhysicalDeviceProperties2</code> 并在 <code>VkPhysicalDeviceProperties2::pNext</code> 链中包含以下结构来查询驱动程序功能：</p>
+
+<pre class="devsite-click-to-copy">
+typedef struct {
+    VkStructureType sType; // must be VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENTATION_PROPERTIES_ANDROID
+    const void*     pNext;
+    VkBool32        sharedImage;
+} VkPhysicalDevicePresentationPropertiesANDROID;
+</pre>
+
+<p>如果驱动程序能够与显示系统共享某个图像的所有权，则应将 <code>sharedImage</code> 成员设为 <code>VK_TRUE</code>。</p>
+
 <h2 id="validation">验证</h2>
 <p>OEM 可以使用 CTS 测试其 Vulkan 实现，其中包括：</p>
 <ul>
-<li><code>CtsDeqpTestCases</code> 模块中的 <a href="/devices/graphics/cts-integration.html">drawElements 质量计划 (dEQP)</a> 测试，其中包括针对 Vulkan 1.0 和 1.1 的函数式 API 测试。</li>
+<li><code>CtsDeqpTestCases</code> 模块中的 <a href="/devices/graphics/cts-integration.html">drawElements 质量计划 (dEQP)</a> 测试，其中包括针对 Vulkan 1.0 和 Vulkan 1.1 的 API 功能测试。</li>
 <li><code>CtsGraphicsTestCases</code> 模块，用于测试设备是否针对所支持的 Vulkan 功能进行了正确的配置。</li>
 </ul>
 

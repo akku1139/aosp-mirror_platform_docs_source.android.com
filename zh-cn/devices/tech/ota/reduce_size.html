@@ -25,18 +25,18 @@
 
 <p>有时，Android OTA 包含的变更文件并非源于代码变更，而是编译系统造成的。在不同时间、不同目录或不同机器上编译相同的代码时可能会发生上述情况，产生大量变更文件。这些多余的文件不仅会增加 OTA 的大小，还会导致难以确定 OTA 中发生变更的代码。</p>
 
-<p>为了使 OTA 的内容更加透明，我们对 AOSP 编译系统做了多项改动，目的是消除多次编译之间不必要的文件变更，以此减小 OTA 的大小。这样做是为了减小 OTA 的大小，使其只包含与 OTA 中所含补丁程序相关的文件。AOSP 还包括<a href="#the_build_diff_tool">编译 diff 工具</a>（可过滤出常见的与编译相关的文件变更，并提供更清晰的编译文件 diff）以及<a href="#block-mapping-tool">块映射工具</a>（可协助您确保块分配的一致性）。</p>
+<p>为了使 OTA 的内容更加透明，我们对 AOSP 编译系统做了多项改动，目的是消除多次编译之间不必要的文件变更，以此减小 OTA 的大小。这样做是为了减小 OTA 的大小，使其只包含与 OTA 中所含补丁程序相关的文件。AOSP 还包括<a href="#the_build_diff_tool">编译 diff 工具</a>（可过滤出常见的与编译相关的文件变更，并提供更整洁的编译文件 diff）以及<a href="#block-mapping-tool">块映射工具</a>（可协助您确保块分配的一致性）。</p>
 
 <p>编译系统可能会通过多种方式创建不必要的文件 diff。下文讨论了其中一些问题和解决方案，并尽可能提供了 AOSP 中的修复示例。</p>
 
 <h2 id="file_order">文件顺序</h2>
 
-<p><strong>问题</strong>：文件系统在请求目录中的文件列表时，并不保证文件顺序，尽管对于同一个检出，文件顺序通常是相同的。<code>ls</code> 等工具在默认情况下会对结果进行排序，但 <code>find</code> 和 <code>make</code> 等命令使用的通配符函数却不会对结果进行排序。用户在使用这类工具之前，务必要对输出进行排序。
+<p><strong>问题</strong>：文件系统在请求目录中的文件列表时，并不保证文件顺序，尽管对于同一个检出，文件顺序通常是相同的。<code>ls</code> 等工具在默认情况下会对结果进行排序，但 <code>find</code> 和 <code>make</code> 等命令使用的通配符函数却不会对结果排序。用户在使用这类工具之前，务必要对输出进行排序。
 </p>
 
 <p><strong>解决方案</strong>：用户在使用支持通配符的 <code>find</code> 和 <code>make</code> 等工具之前，必须对这些命令的输出进行排序。要在 <code>Android.mk</code> 文件中使用 <code>$(wildcard)</code> 或 <code>$(shell find)</code>，也应该进行排序。有些工具（如 Java）确实会对输入进行排序，因此有必要先对排序进行验证。</p>
 
-<p><strong>示例</strong>：很多问题在核心编译系统中通过内置的 <code>all-*-files-under</code> 宏（其中包括 <code>all-cpp-files-under</code>，因为一些定义分散在其他 makefile 中）得到了修正。有关详情，请参阅以下 CL：</p>
+<p><strong>示例</strong>：很多问题个案在核心编译系统中通过内置的 <code>all-*-files-under</code> 宏（其中包括 <code>all-cpp-files-under</code>，因为一些定义分散在其他 makefile 中）得到了修正。有关详情，请参阅以下 CL：</p>
 
 <ul>
   <li><a href="https://android.googlesource.com/platform/build/+/4d66adfd0e6d599d8502007e4ea9aaf82e95569f" class="external">https://android.googlesource.com/platform/build/+/4d66adfd0e6d599d8502007e4ea9aaf82e95569f</a>
@@ -79,7 +79,7 @@
 
 <p>Android 7.0 通过将 <code>-X</code> 添加到 <code>zip</code> 命令的所有用例中，解决了 zip 归档文件中嵌入时间戳的问题，因此编译工具的 UID/GID 和扩展的 Unix 时间戳不会嵌入到 ZIP 文件中。</p>
 
-<p>新工具 <code>ziptime</code>（位于 <code><a href="https://android.googlesource.com/platform/build/+/master/tools/ziptime/" class="external">/platform/build/+/master/tools/ziptime/</a></code> 下）会重置 zip 标头中的正常时间戳。有关详情，请参阅 <a href="https://android.googlesource.com/platform/build/+/master/tools/ziptime/README.txt" class="external">README 文件</a>。</p>
+<p>新工具 <code>ziptime</code>（位于 <code><a href="https://android.googlesource.com/platform/build/+/master/tools/ziptime/" class="external">/platform/build/+/master/tools/ziptime/</a></code> 下）会重置 zip 头文件中的正常时间戳。有关详情，请参阅 <a href="https://android.googlesource.com/platform/build/+/master/tools/ziptime/README.txt" class="external">README 文件</a>。</p>
 
 <p><code>signapk</code> 工具为 APK 文件设置的时间戳可能会因服务器所在的时区而异。有关详情，请参阅 CL：<a href="https://android.googlesource.com/platform/build/+/6c41036bcf35fe39162b50d27533f0f3bfab3028" class="external">https://android.googlesource.com/platform/build/+/6c41036bcf35fe39162b50d27533f0f3bfab3028</a>。
 </p>
@@ -144,5 +144,10 @@ target_files_diff.py dir1 dir2
 </pre>
 
 <p>虽然这对减小整体的 OTA 更新包大小来说并无帮助，但它确实可以通过减少 I/O 量来改善 OTA 性能。</p>
+
+    <h2 id="avoid-updating-apps">避免更新应用</h2>
+
+    <p>除了最大限度减少编译 diff 以外，对于通过应用商店更新的应用，您还可以去掉更新，借此减小 OTA 大小。APK 通常是构成设备上各种分区的重要组成部分。在 OTA 更新中纳入由应用商店更新的应用的最新版本，一方面可能导致 OTA 更新包显著变大，一方面对用户几乎没有什么用。在用户收到 OTA 更新包时，他们可能已直接从应用商店下载了更新后的应用，甚至是更新的版本。
+    </p>
 
 </body></html>

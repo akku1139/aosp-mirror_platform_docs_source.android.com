@@ -1,0 +1,121 @@
+<html devsite><head>
+    <title>HWAddressSanitizer</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+
+  <!--
+      Copyright 2019 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+    <p>
+      硬件辅助的 AddressSanitizer (HWASan) 是一款类似于 <a href="/devices/tech/debug/asan">AddressSanitizer</a> 的内存错误检测工具。与 ASan 相比，HWASan 使用的内存少得多，因而更适合用于整个系统的清理。HWASan 仅适用于 Android Q 及更高版本且只能用于 AArch64 硬件。
+    </p>
+
+    <p>与经典的 ASan 相比，HWASan 具有如下特征：</p>
+
+    <ul>
+      <li>类似的 CPU 开销（约为 2 倍）</li>
+      <li>类似的代码大小开销 (40 - 50%)</li>
+      <li>更小的 RAM 开销 (10% - 35%)</li>
+    </ul>
+
+    <p>HWASan 能检测到 ASan 所能检测到的同一系列错误：</p>
+
+    <ul>
+      <li>堆栈和堆缓冲区上溢/下溢</li>
+      <li>释放之后的堆使用情况</li>
+      <li>超出范围的堆栈使用情况</li>
+      <li>重复释放/wild free</li>
+    </ul>
+
+    <p>此外，HWASan 还可以检测返回之后的堆栈使用情况。</p>
+
+    <h2 id="implementation">实现详情和限制</h2>
+
+      <p>
+        HWASan 基于<a href="https://arxiv.org/pdf/1802.09517" class="external">内存标记</a>方法，其中小的随机标记值与指针和内存地址范围相关。要使内存访问有效，指针和内存标记必须匹配。HWASan 依赖于 ARMv8 功能 Top-Byte-Ignore（TBI，也称为虚拟地址标记）将指针标记存储在地址的最高位。<em></em>
+      </p>
+
+      <p>要详细了解 <a href="http://clang.llvm.org/docs/HardwareAssistedAddressSanitizerDesign.html" class="external">HWASan 的设计</a>，请前往 Clang 文档所在的网站。
+      </p>
+
+      <p>
+        从设计上讲，ASan 对检测上溢规定了有限大小的 redzone，并对检测释放后使用情况规定了有限容量隔离区，而 HWASan 则没有这些规定。因此，无论上溢有多大或内存在多久之前解除分配，HWASan 都可以检测到错误。这使得 HWASan 比 ASan 更具优势。
+      </p>
+
+      <p>
+        不过，HWASan 具有有限数量的可能标记值 (256)，这意味着在一次程序执行期间忽略任何错误的概率为 0.4%。
+      </p>
+
+      <p>
+        HWASan 要求 Linux 内核接受系统调用参数中被标记的指针。目前这在通用内核中还不受支持，因此支持设备需要向后移植 <a href="https://lore.kernel.org/patchwork/project/lkml/list/?series=375855&archive=both" class="external">arm64：对传递给内核的用户指针取消标记</a>补丁程序系列。
+      </p>
+
+      <p>
+        <a href="https://android.googlesource.com/kernel/msm" class="external">AOSP 内核源代码库</a>的多个分支包含必要的向后移植，但却没有一个预编译的内核包含此内容。在更新二进制内核代码库之前，在 AOSP 中使用 HWASan 需要<a href="/setup/build/building-kernels">从源代码中编译内核</a>。
+      </p>
+
+      <p>
+        Android 中对 HWASan 的用户空间支持需要从 2019 年 1 月开始做出更改，这些更改仅适用于 AOSP 的 master 分支。众所周知，Pixel 2、3 和 3a 可与使用 HWASan 编译的整个系统协作。
+      </p>
+
+    <h2 id="using-hwasan">使用 HWASan</h2>
+
+      <p>
+        要使用 HWASan 编译整个平台，请使用以下命令：
+      </p>
+
+<pre class="prettyprint">
+<code class="devsite-terminal">lunch aosp_walleye-userdebug # (or any other product)</code>
+<code class="devsite-terminal">make SANITIZE_TARGET=hwaddress</code>
+</pre>
+
+      <p>
+        与 ASan 不同，使用 HWASan 时无需编译两次，只需增量编译，没有特殊的刷写指令，不需要擦除，支持静态可执行文件，并且可以跳过除 <code>libc</code> 之外的任何库的清理。也不要求在清理库后必须同时对链接到该库的任何可执行文件进行清理。
+      </p>
+
+      <p>
+        要跳过模块清理，请使用 <code>LOCAL_NOSANITIZE := hwaddress</code> 或 <code>sanitize: { hwaddress: false }</code>。
+      </p>
+
+      <aside class="note">
+        <strong>注意</strong>：目前不支持使用 HWASan 清理各个模块。请使用 ASan 清理各个模块。请注意，不能同时在设备上使用 ASan 和 HWASan。
+      </aside>
+
+    <h2 id="better_stack_traces">更出色的堆栈跟踪</h2>
+
+      <p>
+        HWASan 使用基于帧指针的快速展开程序 (unwinder)，根据程序中的每个内存分配和取消分配事件来记录堆栈跟踪信息。默认情况下，Android 在 AArch64 代码中启用帧指针，因此这在实际操作中非常有用。如果您需要通过受管理代码展开，请在进程环境中设置 <code>HWASAN_OPTIONS=fast_unwind_on_malloc=0</code>。请注意，错误的内存访问堆栈跟踪会默认使用“慢速”展开程序；此设置仅影响分配和取消分配跟踪。此选项可能对 CPU 要求极高，具体取决于负载。
+      </p>
+
+    <h2 id="symbolization">符号化</h2>
+
+      <p>
+        请参阅 ASan 文档中的<a href="/devices/tech/debug/asan#symbolization">符号化</a>。
+      </p>
+
+    <h2 id="hwasan_in_the_apps">在应用中使用 HWASan</h2>
+
+      <p>
+        与 AddressSanitizer 类似，HWASan 无法检查 Java 代码，但可以检测 JNI 库中的错误。与 ASan 不同，在非 HWASan 设备上运行 HWASan 应用这一操作<strong>不</strong>受支持。
+      </p>
+
+      <p>
+        在 HWASan 设备上，可以使用 HWASan 检查应用，方法是使用 Make 中的 <code>SANITIZE_TARGET:=hwaddress</code> 或编译器标记中的 <code>-fsanitize=hwaddress</code> 来编译代码。
+      </p>
+
+</body></html>

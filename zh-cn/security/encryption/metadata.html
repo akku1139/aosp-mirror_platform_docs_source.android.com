@@ -24,7 +24,7 @@
 Android 7.0 及更高版本支持<a href="/security/encryption/file-based">文件级加密</a> (FBE)。采用 FBE 时，可以使用不同的密钥对不同的文件进行加密，并且可以对加密文件进行单独解密。这些密钥可用于加密文件内容和文件名。采用 FBE 时，其他信息（例如目录布局、文件大小、权限和创建/修改时间）不会被加密。这些统称为“文件系统元数据”。
 </p>
 <p>
-Android 9 引入了对存在硬件支持的元数据加密的支持。借助元数据加密，启动时出现的单个密钥会加密未通过 FBE 进行加密的任何内容。该密钥受到 Keymaster 的保护，而 Keymaster 受到验证启动的保护。
+Android 9 引入了对存在硬件支持的元数据加密的支持。借助元数据加密，启动时出现的单个密钥会加密未通过 FBE 进行加密的任何内容。该密钥受到 Keymaster 的保护，而 Keymaster 受到启动时验证功能的保护。
 </p>
 <h2 id="implementation">实现</h2>
 <p>
@@ -44,7 +44,7 @@ Android 9 引入了对存在硬件支持的元数据加密的支持。借助元�
 <p>
 由于在元数据加密密钥出现之前，用户数据分区中的所有内容均无法读取，因此分区表必须留出一个名为“元数据分区”的单独分区，用于存储保护该密钥的 Keymaster Blob。该元数据分区的大小应为 16MB。</p>
 <p>
-<code>fstab.hardware</code> 必须针对在该分区上的元数据系统纳入一个条目，并将其装载到 <code>/metadata</code>（包括 <code>formattable</code> 标记），以确保在启动时对其进行格式化。f2fs 文件系统不适用于较小的分区；在较小分区中，我们建议您改为使用 ext4。例如：</p>
+<code>fstab.hardware</code> 必须为该分区上的元数据文件系统纳入一个条目，并将其装载到 <code>/metadata</code>（包括 <code>formattable</code> 标记），以确保在启动时对其进行格式化。f2fs 文件系统不适用于较小的分区；在较小分区中，我们建议您改为使用 ext4。例如：</p>
 
 <pre class="prettyprint">/dev/block/bootdevice/by-name/metadata              /metadata          ext4        noatime,nosuid,nodev,discard                          wait,check,formattable</pre>
 <p>要确保 <code>/metadata</code> 装载点存在，请在 <code>BoardConfig-common.mk</code> 中添加下面这行代码：</p>
@@ -85,7 +85,7 @@ late-fs</code> 节中。请在这行代码前面添加以下指令，以执行 <
 
 <h3 id="common-issues">常见问题</h3>
 <p>
-在调用 <code>mount_all</code>（用于装载元数据加密的 <code>/data</code> 分区）时，<code>init</code> 会执行 vdc 工具。vdc 工具会通过 <code>vold</code> 连接到 <code>binder</code>，以设置元数据加密的设备并装载分区。在此调用期间，<code>init</code> 会被屏蔽，并且在 <code>mount_all</code> 完成之前，尝试读取或设置 <code>init</code> 属性的操作也会被屏蔽。在此阶段，如果 <code>vold</code> 的任何一部分工作在读取或设置某个属性时被直接或间接屏蔽，则会导致死锁。请务必确保 <code>vold</code> 能够完成读取密钥、与 Keymaster 交互以及装载数据目录的工作，而无需与 <code>init</code> 进一步交互。
+在调用 <code>mount_all</code>（用于装载元数据加密的 <code>/data</code> 分区）时，<code>init</code> 会执行 vdc 工具。vdc 工具会通过 <code>vold</code> 连接到 <code>binder</code>，以设置元数据加密的设备并装载分区。在此调用期间，<code>init</code> 会被拦截，并且在 <code>mount_all</code> 完成之前，尝试读取或设置 <code>init</code> 属性的操作也会被拦截。在此阶段，如果 <code>vold</code> 的任何一部分工作在读取或设置某个属性时被直接或间接拦截，则会导致死锁。请务必确保 <code>vold</code> 能够完成读取密钥、与 Keymaster 交互以及装载数据目录的工作，而无需与 <code>init</code> 进一步交互。
 </p>
 <p>如果 Keymaster 在 <code>mount_all</code> 运行时没有完全启动，就不会响应 <code>vold</code>，直到从 <code>init</code> 读取到某些属性为止，从而导致上述死锁。按照相关规定将 <code>exec_start wait_for_keymaster</code> 放置在相关的 <code>mount_all</code> 调用之前，可确保 Keymaster 提前完全运行，从而避免此类死锁。
 </p>

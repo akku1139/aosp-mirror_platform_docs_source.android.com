@@ -1,0 +1,114 @@
+<html devsite><head>
+
+  <meta name="book_path" value="/_book.yaml"/>
+
+  <meta name="project_path" value="/_project.yaml"/>
+</head>
+<body>
+
+<!--
+  Copyright 2019 The Android Open Source Project
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+<h1 id="write_a_sharded_iremotetest_test_runner" class="page-title">编写分片 IRemoteTest 测试运行程序</h1>
+
+<p>在编写测试运行程序时，请务必考虑可伸缩性。问问您自己，“如果我的测试运行程序必须运行 20 万个测试用例，需要多长时间？”</p>
+
+<p>分片是 Trade Federation 提供的答案之一。它要求将运行程序需要的所有测试拆分成几个可以并行处理的区块。</p>
+
+<p>本页介绍如何针对 Tradefed 将运行程序设为可分片。</p>
+
+<h2 id="interface_to_implement">要实现的接口</h2>
+
+<p>要被 TF 视为可分片，有一个最重要的接口要实现，那就是 <a href="https://android.googlesource.com/platform/tools/tradefederation/+/refs/heads/master/src/com/android/tradefed/testtype/IShardableTest.java">IShardableTest</a>，它包含两种方法：<code>split(int numShard)</code> 和 <code>split()</code>。</p>
+
+<p>如果分片将取决于请求的分片数，您应实现 <code>split(int numShard)</code>。否则，应实现 <code>split()</code>。</p>
+
+<p>当使用分片参数 <code>--shard-count</code> 和 <code>--shard-index</code> 来执行 TF 测试命令时，TF 会遍历所有 <code>IRemoteTest</code> 以查找实现 <code>IShardableTest</code> 的对象。找到后，它将调用 <code>split</code> 来获取一个新的 <code>IRemoteTest</code> 对象，以运行特定分片的测试用例子集。</p>
+
+<h2 id="what_should_i_know_about_the_split_implementation">关于拆分实现，我应该知道些什么？</h2>
+
+<ul>
+<li>运行程序可能只在某些条件下分片；在这种情况下，如果未分片，将返回 <code>null</code>。</li>
+<li>尝试尽可能合理地拆分：将运行程序拆分成对其有意义的执行单元。这其实取决于运行程序。例如：<a href="https://android.googlesource.com/platform/tools/tradefederation/+/refs/heads/master/src/com/android/tradefed/testtype/HostTest.java">HostTest</a> 在类级别进行分片，每个测试类放在一个单独的分片中。</li>
+<li>在有意义的情况下，您可以添加一些选项来稍微控制分片。例如：<a href="https://android.googlesource.com/platform/tools/tradefederation/+/refs/heads/master/src/com/android/tradefed/testtype/AndroidJUnitTest.java">AndroidJUnitTest</a> 有一个 <code>ajur-max-shard</code> 选项，用于指定它可以拆分成的最大分片数，而不管请求的数量是多少。</li>
+</ul>
+
+<h2 id="detailed_example_implementation">详细的实现示例</h2>
+
+<p>下面列举了一个实现 <code>IShardableTest</code> 的代码段示例供您参考。完整的代码位于以下网址：https://android.googlesource.com/platform/tools/tradefederation/+/refs/heads/master/src/com/android/tradefed/testtype/InstalledInstrumentationsTest.java</p>
+<pre class="prettyprint lang-java"><code>/**
+ * Runs all instrumentation found on current device.
+ */
+@OptionClass(alias = "installed-instrumentation")
+public class InstalledInstrumentationsTest
+        implements IDeviceTest, IResumableTest, IShardableTest {
+    ...
+
+    /** {@inheritDoc} */
+    @Override
+    public Collection&lt;IRemoteTest&gt; split(int shardCountHint) {
+        if (shardCountHint &gt; 1) {
+            Collection&lt;IRemoteTest&gt; shards = new ArrayList&lt;&gt;(shardCountHint);
+            for (int index = 0; index &lt; shardCountHint; index++) {
+                shards.add(getTestShard(shardCountHint, index));
+            }
+            return shards;
+        }
+        // Nothing to shard
+        return null;
+    }
+
+    private IRemoteTest getTestShard(int shardCount, int shardIndex) {
+        InstalledInstrumentationsTest shard = new InstalledInstrumentationsTest();
+        try {
+            OptionCopier.copyOptions(this, shard);
+        } catch (ConfigurationException e) {
+            CLog.e("failed to copy instrumentation options: %s", e.getMessage());
+        }
+        shard.mShardIndex = shardIndex;
+        shard.mTotalShards = shardCount;
+        return shard;
+    }
+    ...
+}
+</code></pre>
+<p>本例只是创建了它自己的一个新实例，并为其设置了分片参数。然而，不同测试的拆分逻辑可能完全不同，只要具有确定性且能够产生总体详尽的子集即可。</p>
+
+<h2 id="independence">独立性</h2>
+
+<p>分片需要独立！由运行程序中的 <code>split</code> 实现创建的两个分片不应相互依赖或共享资源。</p>
+
+<p>分片拆分需要具有确定性！这也是强制性的，在相同的条件下，<code>split</code> 方法应始终以相同的顺序返回完全相同的分片列表。</p>
+
+<p>注意：由于每个分片可以在不同的 TF 实例上运行，因此务必确保 <code>split</code> 逻辑以确定的方式产生互斥且总体详尽的子集。</p>
+
+<h2 id="how_to_shard_a_test_locally">如何在本地将测试分片</h2>
+
+<p>要在本地 TF 上将测试分片，只需将 <code>--shard-count</code> 选项添加到命令行即可。</p>
+<pre class="prettyprint"><code>tf &gt;run host --class com.android.tradefed.UnitTests --shard-count 3
+</code></pre>
+<p>然后，TF 将自动为每个分片衍生命令并运行这些命令。</p>
+<pre class="prettyprint"><code>tf &gt;l i
+Command Id  Exec Time  Device          State
+3           0m:03      [null-device-2]  running stub on build 0 (shard 1 of 3)
+3           0m:03      [null-device-1]  running stub on build 0 (shard 0 of 3)
+3           0m:03      [null-device-3]  running stub on build 0 (shard 2 of 3)
+</code></pre>
+<h2 id="test_result_aggregation">测试结果聚合</h2>
+
+<p>由于 TF 不对分片调用执行任何测试结果聚合，因此您需要确保报告服务支持该功能。</p>
+
+</body></html>

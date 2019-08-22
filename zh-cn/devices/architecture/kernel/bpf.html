@@ -1,0 +1,229 @@
+<html devsite><head>
+
+  <meta name="book_path" value="/_book.yaml"/>
+
+  <meta name="project_path" value="/_project.yaml"/>
+</head>
+<body>
+<!--
+  Copyright 2019 The Android Open Source Project
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+<h1 id="extending_the_kernel_with_ebpf" class="page-title">使用 eBPF 扩展内核</h1>
+
+<p>Android 包含一个 eBPF 加载程序和库，它会在 Android 启动时加载 eBPF 程序以扩展内核功能，这可用于从内核收集统计信息，进行监控或调试。</p>
+
+<h2 id="about_ebpf">关于 eBPF</h2>
+
+<p>扩展型伯克利包过滤器 (eBPF) 是一个内核内部的虚拟机，可运行用户提供的 eBPF 程序。这些程序可以通过 hook 接入内核中的探测点或事件、收集有用的统计信息，并将结果存储在多个数据结构中。程序通过 <code>bpf(2)</code> 系统调用加载到内核中，并作为 eBPF 机器指令的二进制 blob 由用户提供。Android 编译系统支持使用下文所述的简单编译文件语法将 C 程序编译到 eBPF。</p>
+
+<p>要详细了解 eBPF 内部架构，请参阅 <a href="http://www.brendangregg.com/ebpf.html" class="external">Brendan Gregg 的 eBPF 页面</a>。</p>
+
+<h2 id="android_bpf_loader">Android BPF 加载程序</h2>
+
+<p>在 Android 启动期间，系统会加载位于 <code>/system/etc/bpf/</code> 的所有 eBPF 程序。这些程序是 Android 编译系统根据 C 程序和 Android 源代码树中的 Android.bp 文件编译而成的二进制对象。编译系统将生成的对象存储在 <code>/system/etc/bpf</code>，这些对象将成为系统映像的一部分。</p>
+
+<h3 id="format_of_an_android_ebpf_c_program">Android eBPF C 程序的格式</h3>
+
+<p>在 Android 设备上加载的 eBPF C 程序必须具有以下格式：</p>
+
+<pre class="prettyprint">
+#include &lt;bpf_helpers.h&gt;
+
+/* Define one or more maps in the maps section, for example
+ * define a map of type array int -&gt; uint32_t, with 10 entries
+ */
+DEFINE_BPF_MAP(name_of_my_map, ARRAY, int, uint32_t, 10);
+
+/* this will also define type-safe accessors:
+ *   value * bpf_name_of_my_map_lookup_elem(&amp;key);
+ *   int bpf_name_of_my_map_update_elem(&amp;key, &amp;value, flags);
+ *   int bpf_name_of_my_map_delete_elem(&amp;key);
+ * as such it is heavily suggested to use lowercase *_map names.
+ * Also note that due to compiler deficiencies you cannot use a type
+ * of 'struct foo' but must instead use just 'foo'.  As such structs
+ * must not be defined as 'struct foo {}' and must instead be
+ * 'typedef struct {} foo'.
+ */
+
+SEC("PROGTYPE/PROGNAME")
+int PROGFUNC(..args..) {
+   &lt;body-of-code
+    ... read or write to MY_MAPNAME
+    ... do other things
+   &gt;
+}
+
+char _license[] SEC("license") = "GPL"; // or other license
+</pre>
+
+<p>在这里，<code>name_of_my_map</code> 是您映射变量的名称，用于指示 BPF 加载程序要使用哪些参数来创建哪种类型的映射。此结构体的定义见 C 程序所包含的 <code>bpf_helpers.h</code> 头文件。运行以上代码会创建一个由 10 个条目构成的数组映射。</p>
+
+<p>接下来，程序会定义函数 <code>PROGFUNC</code>。编译时，此函数会放置在一个 section 中。此 section 的名称必须为以下格式：<code>PROGTYPE/PROGNAME</code>。<code>PROGTYPE</code> 可以是下列任一项。更多类型可以在<a href="https://android.googlesource.com/platform/system/bpf/+/4845288a6e42e13b1bb8063923b24371c9e93397/libbpf_android/Loader.cpp">加载程序源代码</a>中找到。</p>
+
+<table class="responsive">
+<tbody>
+<tr>
+<th>kprobe</th>
+<td>使用 kprobe 基础架构将 <code>PROGFUNC</code> 通过 hook 接入某个内核指令。<code>PROGNAME</code> 必须是 kprobe 目标内核函数的名称。要详细了解 kprobe，请参阅 <a href="https://www.kernel.org/doc/Documentation/kprobes.txt" class="external">kprobe 内核文档</a>。
+</td>
+</tr>
+
+<tr>
+<th>tracepoint</th>
+<td>通过 hook 将 <code>PROGFUNC</code> 接入某个跟踪点。<code>PROGNAME</code> 的格式必须为 <code>SUBSYSTEM/EVENT</code>。例如，用于将函数附加到调度程序上下文切换事件的跟踪点 section 将是 <code>SEC("tracepoint/sched/sched_switch")</code>，其中 <code>sched</code> 是跟踪子系统的名称，<code>sched_switch</code> 是跟踪事件的名称。要详细了解跟踪点，请参阅<a href="https://www.kernel.org/doc/Documentation/trace/events.txt" class="external">跟踪事件内核文档</a>。
+</td>
+</tr>
+
+<tr>
+<th>skfilter</th>
+<td>程序将用作网络套接字过滤器。</td>
+</tr>
+
+<tr>
+<th>schedcls</th>
+<td>程序将用作网络流量分类器。</td>
+</tr>
+
+<tr>
+<th>cgroupskb、cgroupsock</th>
+<td>只要 CGroup 中的进程创建了 AF_INET 或 AF_INET6 套接字，程序就会运行。
+</td>
+</tr>
+
+</tbody>
+</table>
+
+<p>下面是一个完整的 C 程序示例，它创建了一个映射并定义了函数 <code>tp_sched_switch</code>，该函数可以附加到 <code>sched:sched_switch trace</code> 事件中（要了解如何附加，请<a href="/devices/architecture/kernel/bpf#attaching_programs_to_tracepoints_and_kprobes">参阅此部分内容</a>）。该程序添加了与曾在特定 CPU 上运行的最新任务 PID 相关的信息，命名为 <code>myschedtp.c</code>。我们将在本文档的后面部分说到此文件。</p>
+
+<pre class="prettyprint">
+#include &lt;linux/bpf.h&gt;
+#include &lt;stdbool.h&gt;
+#include &lt;stdint.h&gt;
+#include &lt;bpf_helpers.h&gt;
+
+DEFINE_BPF_MAP(cpu_pid_map, ARRAY, int, uint32_t, 1024);
+
+struct switch_args {
+    unsigned long long ignore;
+    char prev_comm[16];
+    int prev_pid;
+    int prev_prio;
+    long long prev_state;
+    char next_comm[16];
+    int next_pid;
+    int next_prio;
+};
+
+SEC("tracepoint/sched/sched_switch")
+int tp_sched_switch(struct switch_args* args) {
+    int key;
+    uint32_t val;
+
+    key = bpf_get_smp_processor_id();
+    val = args-&gt;next_pid;
+
+    bpf_cpu_pid_map_update_elem(&amp;key, &amp;val, BPF_ANY);
+    return 0;
+}
+
+char _license[] SEC("license") = "GPL";
+</pre>
+
+<p>当该程序使用内核提供的 BPF 辅助函数时，内核会使用许可证 section 验证程序是否与内核许可证兼容。请将 <code>_license</code> 设为您项目的许可证。</p>
+
+<h3 id="format_of_the_androidbp_file">Android.bp 文件的格式</h3>
+
+<p>为了使 Android 编译系统能编译 eBPF .c 程序，必须在项目的 Android.bp 文件中输入内容。</p>
+
+<p>例如，要编译一个名为 <code>bpf_test.c</code> 的 eBPF C 程序，请在项目的 Android.bp 文件中输入以下内容：</p><pre class="prettyprint">
+bpf {
+    name: "bpf_test.o",
+    srcs: ["bpf_test.c"],
+    cflags: [
+        "-Wall",
+        "-Werror",
+    ],
+}
+</pre><p></p>
+
+<p>这样就会编译该 C 程序并生成对象 <code>/system/etc/bpf/bpf_test.o</code>。在启动时，Android 系统会自动将 <code>bpf_test.o</code> 程序加载到内核中。</p>
+
+<h3 id="files_available_in_sysfs">sysfs 中的可用文件</h3>
+
+<p>在启动过程中，Android 系统会自动从 <code>/system/etc/bpf/</code> 加载所有 eBPF 对象、创建程序所需的映射，并将加载的程序及其映射固定到 bpf 文件系统。这些文件之后可用于与 eBPF 程序进一步交互或读取映射。本部分介绍了这些文件的命名规范及它们在 sysfs 中的位置。</p>
+
+<p>系统会创建并固定以下文件：</p>
+
+<ul>
+<li><p>对于任何已加载的程序，假设 <code>PROGNAME</code> 是程序的名称，而 <code>FILENAME</code> 是 eBPF C 文件的名称，则 Android 加载程序会创建每个程序并将其固定到 <code>/sys/fs/bpf/prog_FILENAME_PROGTYPE_PROGNAME</code>。</p>
+
+<p>例如，对于上述 <code>myschedtp.c</code> 中的 <code>sched_switch</code> 跟踪点示例，系统会创建一个程序文件并将其固定到 <code>/sys/fs/bpf/prog_myschedtp_tracepoint_sched_sched_switch</code>。</p></li>
+<li><p>对于任何已创建的映射，假设 <code>MAPNAME</code> 是映射的名称，而 <code>PROGNAME</code> 是 eBPF C 文件的名称，则 Android 加载程序会将其创建的每个映射固定到 <code>/sys/fs/bpf/map_FILENAME_MAPNAME</code>。</p>
+
+<p>例如，对于上述 <code>myschedtp.c</code> 中的 <code>sched_switch</code> 跟踪点示例，系统会创建一个映射文件并将其固定到 <code>/sys/fs/bpf/map_myschedtp_cpu_pid_map</code>。</p></li>
+<li><p>Android BPF 库中的 <code>bpf_obj_get()</code> 可用于从这些固定的 /sys/fs/bpf 文件中获取文件描述符。此函数会返回文件描述符，该描述符可用于进一步执行操作（例如读取映射或将程序附加到跟踪点）。</p></li>
+</ul>
+
+<h2 id="android_bpf_library">Android BPF 库</h2>
+
+<p>Android BPF 库名为 <code>libbpf_android.so</code>，属于系统映像的一部分。该库向用户提供了执行以下操作所需的低级 eBPF 功能：创建和读取映射，以及创建探测点、跟踪点、性能缓冲区等。</p>
+
+<h3 id="attaching_programs_to_tracepoints_and_kprobes">将程序附加到跟踪点和 kprobe</h3>
+
+<p>跟踪点和 kprobe 程序加载完成后（如前所述，会在启动时自动完成），需要激活。要激活它们，首先使用 <code>bpf_obj_get()</code> API 从固定文件的位置获取程序 fd（请参阅 <a href="/devices/architecture/kernel/bpf#files_available_in_sysfs">sysfs 中的可用文件</a>部分）。接下来，调用 BPF 库中的 <code>bpf_attach_tracepoint()</code> API，将程序 fd 和跟踪点名称传递给该 API。</p>
+
+<p>例如，要附加在上述示例的 <code>myschedtp.c</code> 源文件中定义的 <code>sched_switch</code> 跟踪点，请执行以下操作（没显示错误检查）：</p>
+
+<pre class="prettyprint">
+  char *tp_prog_path = "/sys/fs/bpf/prog_myschedtp_tracepoint_sched_sched_switch";
+  char *tp_map_path = "/sys/fs/bpf/map_myschedtp_cpu_pid";
+
+  // Attach tracepoint and wait for 4 seconds
+  int mProgFd = bpf_obj_get(tp_prog_path);
+  int mMapFd = bpf_obj_get(tp_map_path);
+  int ret = bpf_attach_tracepoint(mProgFd, "sched", "sched_switch");
+  sleep(4);
+
+  // Read the map to find the last PID that ran on CPU 0
+  android::bpf::BpfMap<int, int> myMap(mMapFd);
+  printf("last PID running on CPU %d is %d\n", 0, myMap.readValue(0));
+</int,></pre>
+
+<h3 id="reading_from_the_maps">从映射中读取数据</h3>
+
+<p>BPF 映射支持任意复杂的键和值结构或类型。Android BPF 库包含一个 <code>android::BpfMap</code> 类，该类利用 C++ 模板根据相关映射的键和值类型来实例化 <code>BpfMap</code>。上述代码示例演示了键和值为整数的 <code>BpfMap</code>。整数也可以是任意结构。</p>
+
+<p>因此，使用模板化的 <code>BpfMap</code> 类可让您轻松定义适合特定映射的自定义 <code>BpfMap</code> 对象。之后可以使用生成的类型感知型自定义函数来访问该映射，从而生成更清晰的代码。</p>
+
+<p class="external">要详细了解 <code>BpfMap</code>，请参阅 [Android 源代码](https://android.googlesource.com/platform/system/bpf/+/75b410bdf186263fa4e05e079bfba44578622c33/libbpf/include/bpf/BpfMap.h)。</p>
+
+<h2 id="debugging_issues">调试问题</h2>
+
+<p>在启动期间，系统将记录与 BPF 加载相关的多条消息。如果加载进程因任何原因失败，logcat 中会提供详细的日志消息。按照“bpf”过滤 logcat 日志时，会输出加载过程中的所有消息和错误详情，例如 eBPF 验证程序错误。</p>
+
+<h2 id="users_of_ebpf_in_android">Android 中的 eBPF 用户</h2>
+
+<p>目前 Android 中有两个 eBPF C 程序，您可以作为示例来参考。</p>
+
+<p><code>netd</code> <a href="https://android.googlesource.com/platform/system/bpf/+/4845288a6e42e13b1bb8063923b24371c9e93397/progs/netd.c" class="external">eBPF C 程序</a>可供 Android 中的网络守护程序 (netd) 用于多种用途，例如过滤套接字和收集统计信息。要了解此程序的使用方式，请查阅 <a href="https://www.google.com/url?sa=D&amp;q=https%3A%2F%2Fsource.android.com%2Fdevices%2Ftech%2Fdatausage%2Febpf-traffic-monitor" class="external">eBPF 流量监控</a>源代码。</p>
+
+<p><code>time_in_state</code> <a href="https://android.googlesource.com/platform/system/bpfprogs/+/482dfa1ca63eb209866ff3a7b3aeb3daada7b4e1/time_in_state.c" class="external">eBPF C 程序</a>会计算一款 Android 应用在不同 CPU 频率下运行所花费的时间，该时间可用于计算功率。此程序目前正在开发中。</p>
+
+<h2 id="licensing_considerations">许可注意事项</h2>
+
+<p>如果您想贡献 eBPF C 程序，则应根据其许可证将该程序贡献给合适的项目。获得 GPL 许可证的 eBPF C 程序应该贡献给 <code>system/bpfprogs</code> AOSP 项目，获得 Apache 许可证的程序则应该贡献给 <code>system/bpf</code> AOSP 项目。</p>
+
+</body></html>

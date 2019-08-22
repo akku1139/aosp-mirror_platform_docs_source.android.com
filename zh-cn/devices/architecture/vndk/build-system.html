@@ -31,7 +31,7 @@
 </p>
 
 <p>
-  <img src="../images/treble_vndk_androidbp.png" alt="具有 vendor_available:true 和 vndk.enabled:true 的 libexample"/>
+  <img src="../images/treble_vndk_androidbp.png" alt="设置 vendor_available:true 和 vndk.enabled:true 的 libexample"/>
 </p>
 <figcaption>
   <strong>图 1.</strong> 已启用 VNDK 支持
@@ -68,7 +68,7 @@
 
 <pre class="prettyprint">$ BOARD_VNDK_VERSION=current m module_name.vendor</pre>
 
-<p>如果启用 <code>BOARD_VNDK_VERSION</code>，系统会移除多个默认的全局标头搜索路径。<em></em>其中包括：
+<p>如果启用 <code>BOARD_VNDK_VERSION</code>，系统会移除多个默认的全局头文件搜索路径。<em></em>其中包括：
 </p>
 
 <ul>
@@ -405,7 +405,7 @@ $(call add-clean-step, rm -rf $(TARGET_OUT_VENDOR)/lib/libvndk.so)
 <h4 id="conditional-cflags">条件编译器标记</h4>
 
 <p>
-默认情况下，Android 编译系统会为供应商变体（包括 VNDK 扩展）定义 <code>__ANDROID_VNDK__</code>。您可以使用 C 预处理器防护程序来保护相应代码：
+默认情况下，Android 编译系统会为供应商变体和 VNDK 扩展定义 <code>__ANDROID_VNDK__</code>。您可以使用 C 预处理器防护程序保护代码：
 </p>
 
 <pre class="prettyprint">
@@ -421,13 +421,17 @@ void vndk_only() { }
 </pre>
 
 <p>
-除了 <code>__ANDROID_VNDK__</code>，还可以在 <code>Android.bp</code> 中指定不同的 <code>cflags</code> 或 <code>cppflags</code>。在 <code>target.vendor</code> 中指定的 <code>cflags</code> 或 <code>cppflags</code> 是专门针对供应商变体的。例如，以下代码示例是针对 <code>libexample</code> 和 <code>libexample_ext</code> 的 <code>Android.bp</code> 模块定义：
+除了 <code>__ANDROID_VNDK__</code>，还可以在 <code>Android.bp</code> 中指定不同的 <code>cflags</code> 或 <code>cppflags</code>。在 <code>target.vendor</code> 中指定的 <code>cflags</code> 或 <code>cppflags</code> 是专门针对供应商变体的。
+</p>
+
+<p>
+例如，以下 <code>Android.bp</code> 定义了 <code>libexample</code> 和 <code>libexample_ext</code>：
 </p>
 
 <pre class="prettyprint">
 cc_library {
     name: "libexample",
-    srcs: ["example.c"],
+    srcs: ["src/example.c"],
     vendor_available: true,
     vndk: {
         enabled: true,
@@ -441,7 +445,7 @@ cc_library {
 
 cc_library {
     name: "libexample_ext",
-    srcs: ["example.c"],
+    srcs: ["src/example.c"],
     vendor: true,
     vndk: {
         enabled: true,
@@ -455,7 +459,7 @@ cc_library {
 </pre>
 
 <p>
-<code>example.c</code> 的代码清单：
+这是 <code>src/example.c</code> 的代码清单：
 </p>
 
 <pre class="prettyprint">
@@ -475,7 +479,7 @@ void vndk_ext() { }
 </pre>
 
 <p>
-针对每个变体导出的符号：
+编译系统会根据这两个文件生成带有以下导出符号的共享库：
 </p>
 
 <table>
@@ -500,24 +504,31 @@ void vndk_ext() { }
  </tr>
 </tbody></table>
 
+<h4 id="exported-symbols">对导出符号的要求</h4>
+
 <p>
-VNDK ABI 合规性检查工具会将 VNDK 和 VNDK 扩展的 ABI 同 <code>prebuilts/abi-dumps/vndk</code> 下的 ABI 转储进行比较：
+<a href="/devices/architecture/vndk/abi-stability">VNDK ABI 检查工具</a>会将 VNDK 供应商变体和 VNDK 扩展的 ABI 同 <code>prebuilts/abi-dumps/vndk</code> 下的参考 ABI 转储进行比较。<em></em><em></em>
 </p>
 
 <ul>
-  <li>通过原始 VNDK 共享库导出的符号必须与 ABI 转储中定义的符号相同（而不是后者的超集）。</li>
-  <li>通过 VNDK 扩展导出的符号必须是 ABI 转储中定义的符号的超集。</li>
+  <li><em></em>通过 VNDK 供应商变体（例如 <code>/system/lib[64]/vndk-${VER}/libexample.so</code>）导出的符号必须与 ABI 转储中定义的符号相同（而不是后者的超集）。</li>
+
+  <li><em></em>通过 VNDK 扩展（例如 <code>/vendor/lib[64]/vndk/libexample.so</code>）导出的符号必须是 ABI 转储中定义的符号的超集。</li>
 </ul>
 
-<h4 id="excluding">排除源文件或共享库</h4>
+<p>
+如果 VNDK 供应商变体或 VNDK 扩展未能遵循上述要求，则 VNDK ABI 检查工具会发出编译错误并停止编译。<em></em><em></em>
+</p>
+
+<h4 id="excluding">从供应商变体中排除源文件或共享库</h4>
 
 <p>
-要从供应商变体中排除源文件，请将相应文件添加到 <code>exclude_srcs</code> 属性中。同样，要确保共享库未与供应商变体相关联，请将这些库添加到 <code>exclude_shared_libs</code> 属性中。例如：
+要从供应商变体中排除源文件，请将这些文件添加到 <code>exclude_srcs</code> 属性中。同样，要确保共享库未与供应商变体相关联，请将这些库添加到 <code>exclude_shared_libs</code> 属性中。例如：
 </p>
 
 <pre class="prettyprint">
 cc_library {
-    name: "libcond_exclude_example",
+    name: "libexample_cond_exclude",
     srcs: ["fwk.c", "both.c"],
     shared_libs: ["libfwk_only", "libboth"],
     target: {
@@ -530,8 +541,140 @@ cc_library {
 </pre>
 
 <p>
-在本示例中，<code>libcond_exclude_example</code> 的核心变体包含 <code>fwk.c</code> 和 <code>both.c</code> 中的代码，并且依赖于共享库 <code>libfwk_only</code> 和 <code>libboth</code>。<code>libcond_exclude_example</code> 的供应商变体仅包含 <code>both.c</code> 中的代码，因为 <code>fwk.c</code> 已被 <code>exclude_srcs</code> 属性排除。同样，<code>libcond_exclude_example</code> 仅依赖于共享库 <code>libboth</code>，因为 <code>libfwk_only</code> 已被 <code>exclude_shared_libs</code> 属性排除。
+在本示例中，<code>libexample_cond_exclude</code> 的核心变体包含 <code>fwk.c</code> 和 <code>both.c</code> 中的代码，并且依赖于共享库 <code>libfwk_only</code> 和 <code>libboth</code>。<code>libexample_cond_exclude</code> 的供应商变体仅包含 <code>both.c</code> 中的代码，因为 <code>fwk.c</code> 已被 <code>exclude_srcs</code> 属性排除。同样，<code>libexample_cond_exclude</code> 仅依赖于共享库 <code>libboth</code>，因为 <code>libfwk_only</code> 已被 <code>exclude_shared_libs</code> 属性排除。
 </p>
+
+<h4 id="export-headers-from-vndk-extension">从 VNDK 扩展导出头文件</h4>
+
+<p>
+VNDK 扩展可以向 VNDK 共享库添加新类或新函数。建议将这些声明保留在独立头文件中，并避免更改现有头文件。
+</p>
+
+<p>
+例如，为 VNDK 扩展 <code>libexample_ext</code> 创建了一个新的头文件 <code>include-ext/example/ext/feature_name.h</code>：
+</p>
+
+<ul>
+  <li>Android.bp</li>
+  <li><strong>include-ext/example/ext/feature_name.h</strong></li>
+  <li>include/example/example.h</li>
+  <li>src/example.c</li>
+  <li><strong>src/ext/feature_name.c</strong></li>
+</ul>
+
+<p>
+在下面的 <code>Android.bp</code> 中，<code>libexample</code> 只会导出 <code>include</code>，而 <code>libexample_ext</code> 会同时导出 <code>include</code> 和 <code>include-ext</code>。这样可以确保 <code>libexample</code> 的用户不会错误地添加 <code>feature_name.h</code>：
+</p>
+
+<pre class="prettyprint">
+cc_library {
+    name: "libexample",
+    srcs: ["src/example.c"],
+    export_include_dirs: ["include"],
+    vendor_available: true,
+    vndk: {
+        enabled: true,
+    },
+}
+
+cc_library {
+    name: "libexample_ext",
+    srcs: [
+        "src/example.c",
+        "src/ext/feature_name.c",
+    ],
+    export_include_dirs: [
+        "include",
+        "include-ext",
+    ],
+    vendor: true,
+    vndk: {
+        enabled: true,
+        extends: "libexample",
+    },
+}
+</pre>
+
+<p>
+如果将扩展分离到独立的头文件不可行，替代方案是添加 <code>#ifdef</code> 防护程序。但是，请确保所有 VNDK 扩展用户都添加了 define 标记。您可以定义 <code>cc_defaults</code> 以向 <code>cflags</code> 添加定义标记并使用 <code>shared_libs</code> 链接共享库。
+</p>
+
+<p>
+例如，要将新成员函数 <code>Example2::get_b()</code> 添加到 VNDK 扩展 <code>libexample2_ext</code> 中，您必须修改现有的头文件并添加 <code>#ifdef</code> 防护程序：
+</p>
+
+<pre class="prettyprint">
+#ifndef LIBEXAMPLE2_EXAMPLE_H_
+#define LIBEXAMPLE2_EXAMPLE_H_
+
+class Example2 {
+ public:
+  Example2();
+
+  void get_a();
+
+#ifdef LIBEXAMPLE2_ENABLE_VNDK_EXT
+  void get_b();
+#endif
+
+ private:
+  void *impl_;
+};
+
+#endif  // LIBEXAMPLE2_EXAMPLE_H_
+</pre>
+
+<p>
+为 <code>libexample2_ext</code> 的用户定义了一个名为 <code>libexample2_ext_defaults</code> 的 <code>cc_defaults</code>：
+</p>
+
+<pre class="prettyprint">
+cc_library {
+    name: "libexample2",
+    srcs: ["src/example2.cpp"],
+    export_include_dirs: ["include"],
+    vendor_available: true,
+    vndk: {
+        enabled: true,
+    },
+}
+
+cc_library {
+    name: "libexample2_ext",
+    srcs: ["src/example2.cpp"],
+    export_include_dirs: ["include"],
+    vendor: true,
+    vndk: {
+        enabled: true,
+        extends: "libexample2",
+    },
+    cflags: [
+        "-DLIBEXAMPLE2_ENABLE_VNDK_EXT=1",
+    ],
+}
+
+cc_defaults {
+    name: "libexample2_ext_defaults",
+    shared_libs: [
+        "libexample2_ext",
+    ],
+    cflags: [
+        "-DLIBEXAMPLE2_ENABLE_VNDK_EXT=1",
+    ],
+}
+</pre>
+
+<p>
+<code>libexample2_ext</code> 的用户只需在其 <code>defaults</code> 属性中添加 <code>libexample2_ext_defaults</code>：
+</p>
+
+<pre class="prettyprint">
+cc_binary {
+    name: "example2_user_executable",
+    defaults: ["libexample2_ext_defaults"],
+    vendor: true,
+}
+</pre>
 
 <h3 id="product-packages">产品包</h3>
 

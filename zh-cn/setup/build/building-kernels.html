@@ -1,290 +1,239 @@
 <html devsite><head>
-    <title>编译内核</title>
-    <meta name="project_path" value="/_project.yaml"/>
-    <meta name="book_path" value="/_book.yaml"/>
-  </head>
-  <body>
-  <!--
-      Copyright 2017 The Android Open Source Project
+  <title>编译内核</title>
+  <meta name="project_path" value="/_project.yaml"/>
+  <meta name="book_path" value="/_book.yaml"/>
+</head>
+<body>
 
-      Licensed under the Apache License, Version 2.0 (the "License");
-      you may not use this file except in compliance with the License.
-      You may obtain a copy of the License at
+<!--
+    Copyright 2017 The Android Open Source Project
 
-          http://www.apache.org/licenses/LICENSE-2.0
+    Licensed under the Apache License, Version 2.0 (the "License");
+    you may not use this file except in compliance with the License.
+    You may obtain a copy of the License at
 
-      Unless required by applicable law or agreed to in writing, software
-      distributed under the License is distributed on an "AS IS" BASIS,
-      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-      See the License for the specific language governing permissions and
-      limitations under the License.
-  -->
+        http://www.apache.org/licenses/LICENSE-2.0
 
-<p>
-本页详细介绍了如何仅编译<a href="/devices/architecture/kernel/">内核</a>。以下说明假设您尚未下载整个 AOSP；如果您已完成下载，则可以跳过 <code>git clone</code> 对应的步骤，但下载内核源代码的步骤除外。
-</p>
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    See the License for the specific language governing permissions and
+    limitations under the License.
+-->
 
-<p>本部分中的所有示例均使用 <a href="devices.html#hikey-boards">hikey</a> 内核。</p>
+<p>本文详细介绍了为 Android 设备编译自定义<a href="/devices/architecture/kernel/">内核</a>的流程。以下说明会逐步指导您如何选择正确的源代码，编译内核，以及将结果嵌入到根据 Android 开源项目 (AOSP) 编译的系统映像中。</p>
 
-<h2 id="figuring-out-which-kernel-to-build">选择内核</h2>
-<p>此表列出了内核源代码和二进制文件的名称及所在位置：</p><table>
-  <tbody><tr>
-    <th>设备</th>
-    <th>二进制文件所在的位置</th>
-    <th>源代码所在的位置</th>
-    <th>编译配置</th>
-  </tr>
-  <tr>
-    <td>blueline</td>
-    <td>device/google/crosshatch-kernel</td>
-    <td><a href="#building-b1c1">说明</a></td>
-    <td>b1c1_defconfig</td>
-  </tr>
-  <tr>
-    <td>crosshatch</td>
-    <td>device/google/crosshatch-kernel</td>
-    <td><a href="#building-b1c1">说明</a></td>
-    <td>b1c1_defconfig</td>
-  </tr>
-  <tr>
-    <td>taimen</td>
-    <td>device/google/wahoo-kernel</td>
-    <td>kernel/msm</td>
-    <td>wahoo_defconfig</td>
-  </tr>
-  <tr>
-    <td>walleye</td>
-    <td>device/google/wahoo-kernel</td>
-    <td>kernel/msm</td>
-    <td>wahoo_defconfig</td>
-  </tr>
-  <tr>
-    <td>easel</td>
-    <td>N/A</td>
-    <td>kernel/arm64</td>
-    <td>mnh_prod_defconfig</td>
-  </tr>
-  <tr>
-    <td>marlin</td>
-    <td>device/google/marlin-kernel</td>
-    <td>kernel/msm</td>
-    <td>marlin_defconfig</td>
-  </tr>
-  <tr>
-    <td>sailfish</td>
-    <td>device/google/marlin-kernel</td>
-    <td>kernel/msm</td>
-    <td>marlin_defconfig</td>
-  </tr>
-  <tr>
-    <td>hikey</td>
-    <td>device/linaro/hikey-kernel</td>
-    <td>kernel/hikey-linaro</td>
-    <td>hikey_defconfig</td>
-  </tr>
-  <tr>
-    <td>angler</td>
-    <td>device/huawei/angler-kernel</td>
-    <td>kernel/msm</td>
-    <td>angler_defconfig</td>
-  </tr>
-  <tr>
-    <td>bullhead</td>
-    <td>device/lge/bullhead-kernel</td>
-    <td>kernel/msm</td>
-    <td>bullhead_defconfig</td>
-  </tr>
-  <tr>
-    <td>shamu</td>
-    <td>device/moto/shamu-kernel</td>
-    <td>kernel/msm</td>
-    <td>shamu_defconfig</td>
-  </tr>
-  <tr>
-    <td>fugu</td>
-    <td>device/asus/fugu-kernel</td>
-    <td>kernel/x86_64</td>
-    <td>fugu_defconfig</td>
-  </tr>
-  <tr>
-    <td>volantis</td>
-    <td>device/htc/flounder-kernel</td>
-    <td>kernel/tegra</td>
-    <td>flounder_defconfig</td>
-  </tr>
-  <tr>
-    <td>hammerhead</td>
-    <td>device/lge/hammerhead-kernel</td>
-    <td>kernel/msm</td>
-    <td>hammerhead_defconfig</td>
-  </tr>
-  <tr>
-    <td>flo</td>
-    <td>device/asus/flo-kernel/kernel</td>
-    <td>kernel/msm</td>
-    <td>flo_defconfig</td>
-  </tr>
-  <tr>
-    <td>deb</td>
-    <td>device/asus/flo-kernel/kernel</td>
-    <td>kernel/msm</td>
-    <td>flo_defconfig</td>
-  </tr>
-  <tr>
-    <td>manta</td>
-    <td>device/samsung/manta/kernel</td>
-    <td>kernel/exynos</td>
-    <td>manta_defconfig</td>
-  </tr>
-  <tr>
-    <td>mako</td>
-    <td>device/lge/mako-kernel/kernel</td>
-    <td>kernel/msm</td>
-    <td>mako_defconfig</td>
-  </tr>
-  <tr>
-    <td>grouper</td>
-    <td>device/asus/grouper/kernel</td>
-    <td>kernel/tegra</td>
-    <td>tegra3_android_defconfig</td>
-  </tr>
-  <tr>
-    <td>tilapia</td>
-    <td>device/asus/grouper/kernel</td>
-    <td>kernel/tegra</td>
-    <td>tegra3_android_defconfig</td>
-  </tr>
-  <tr>
-    <td>maguro</td>
-    <td>device/samsung/tuna/kernel</td>
-    <td>kernel/omap</td>
-    <td>tuna_defconfig</td>
-  </tr>
-  <tr>
-    <td>toro</td>
-    <td>device/samsung/tuna/kernel</td>
-    <td>kernel/omap</td>
-    <td>tuna_defconfig</td>
-  </tr>
-  <tr>
-    <td>panda</td>
-    <td>device/ti/panda/kernel</td>
-    <td>kernel/omap</td>
-    <td>panda_defconfig</td>
-  </tr>
-  <tr>
-    <td>stingray</td>
-    <td>device/moto/wingray/kernel</td>
-    <td>kernel/tegra</td>
-    <td>stingray_defconfig</td>
-  </tr>
-  <tr>
-    <td>wingray</td>
-    <td>device/moto/wingray/kernel</td>
-    <td>kernel/tegra</td>
-    <td>stingray_defconfig</td>
-  </tr>
-  <tr>
-    <td>crespo</td>
-    <td>device/samsung/crespo/kernel</td>
-    <td>kernel/samsung</td>
-    <td>herring_defconfig</td>
-  </tr>
-  <tr>
-    <td>crespo4g</td>
-    <td>device/samsung/crespo/kernel</td>
-    <td>kernel/samsung</td>
-    <td>herring_defconfig</td>
-  </tr>
-</tbody></table>
+<p>您可以使用 <a href="/setup/develop/repo#init">repo</a> 获取最新的内核源代码，并通过运行从源代码检出的根目录中的 <code>build/build.sh</code> 来编译这些内核源代码，而无需更多配置。</p>
 
-<p>确定要使用的设备项目之后，请查看内核二进制文件的 Git 日志。设备项目采用 <code>device/<var>VENDOR</var>/<var>NAME</var></code> 形式。</p>
+<p class="note">内核源代码检出的根目录包含 <code>build/build.sh</code>。Android 树仅包含预编译的内核二进制文件。内核树包含内核源代码和用于编译内核的所有工具，包括此脚本。</p>
 
-<pre class="devsite-click-to-copy">
-<code class="devsite-terminal">git clone https://android.googlesource.com/kernel/hikey-linaro</code>
-<code class="devsite-terminal">cd hikey-linaro</code>
-<code class="devsite-terminal">git log --max-count=1 kernel</code>
-</pre>
+<p>对于较旧的内核或下文未列出的内核，请参阅有关如何编译<a href="/setup/build/building-kernels-deprecated">旧版内核</a>的说明。</p>
 
-<p>内核二进制文件的提交消息中包含用于编译二进制文件的内核源代码的部分 Git 日志。该日志中的第一个条目是最新内容（也即用于编译内核的条目）。请记下提交消息，因为您在后续步骤中会用到该消息。</p>
+<h2 id="downloading">下载源代码和编译工具</h2>
 
-<h2 id="id-version">确定内核版本</h2>
+<p>对于最新的内核，您可以使用 <a href="/setup/develop/repo#init"><code>repo</code></a> 下载源代码、工具链和编译脚本。一些内核（例如 Pixel 3 内核）需要从多个 Git 代码库获取源代码，而其他内核（如通用内核）只需从一个 Git 代码库获取源代码。使用 <code>repo</code> 方法可确保源目录设置正确。</p>
 
-<p>要确定系统映像中使用的内核版本，请对内核文件运行以下命令：</p>
+<p>下载相应分支的源代码：
 
-<pre class="devsite-terminal devsite-click-to-copy">
-dd if=kernel bs=1 skip=$(LC_ALL=C grep -a -b -o $'\x1f\x8b\x08\x00\x00\x00\x00\x00' kernel | cut -d ':' -f 1) | zgrep -a 'Linux version'
-</pre>
-
-<p>对于 Nexus 5 (hammerhead)，请运行以下命令：</p>
-<pre class="devsite-terminal devsite-click-to-copy">
-dd if=zImage-dtb bs=1 skip=$(LC_ALL=C od -Ad -x -w2 zImage-dtb | grep 8b1f | cut -d ' ' -f1 | head -1) | zgrep -a 'Linux version'
-</pre>
-
-<h2 id="downloading-sources">下载源代码</h2>
-<p>使用适当的 <code>git clone</code> 命令，下载您要编译的内核的源代码。例如，以下命令会克隆 <code>common</code> 内核（一种可自定义的通用内核）：</p>
-<pre class="devsite-terminal devsite-click-to-copy">
-git clone https://android.googlesource.com/kernel/common
-</pre>
-
-<p>内核项目的完整列表在 <a href="https://android.googlesource.com/kernel">Kernel</a> 目录下。以下是一些常用内核及其各自的 <code>git clone</code> 命令。</p>
-
-<p><code>exynos</code> 项目包含适用于 Nexus 10 的内核源代码，可用作在 Samsung Exynos 芯片组上开展相关工作的着手点。</p>
-<pre class="devsite-terminal devsite-click-to-copy">git clone https://android.googlesource.com/kernel/exynos</pre>
-
-<p><code>goldfish</code> 项目包含适用于所模拟的平台的内核源代码。</p>
-<pre class="devsite-terminal devsite-click-to-copy">git clone https://android.googlesource.com/kernel/goldfish</pre>
-
-<p><code>hikey-linaro</code> 项目用于 HiKey 参考板，可用作在 HiSilicon 620 芯片组上开展相关工作的着手点。</p>
-<pre class="devsite-terminal devsite-click-to-copy">git clone https://android.googlesource.com/kernel/hikey-linaro</pre>
-
-<p><code>msm</code> 项目包含适用于 ADP1、ADP2、Nexus One、Nexus 4、Nexus 5、Nexus 6、Nexus 5X、Nexus 6P、Nexus 7 (2013)、Pixel 和 Pixel XL 的源代码，可用作在 Qualcomm MSM 芯片组上开展相关工作的着手点。</p>
-<pre class="devsite-terminal devsite-click-to-copy">git clone https://android.googlesource.com/kernel/msm</pre>
-
-<p><code>omap</code> 项目用于 PandaBoard 和 Galaxy Nexus，可用作在 TI OMAP 芯片组上开展相关工作的着手点。</p>
-<pre class="devsite-terminal devsite-click-to-copy">git clone https://android.googlesource.com/kernel/omap</pre>
-
-<p><code>samsung</code> 项目用于 Nexus S，可用作在 Samsung Hummingbird 芯片组上开展相关工作的着手点。</p>
-<pre class="devsite-terminal devsite-click-to-copy">git clone https://android.googlesource.com/kernel/samsung</pre>
-
-<p><code>tegra</code> 项目用于 Xoom、Nexus 7 (2012)、Nexus 9，可用作在 NVIDIA Tegra 芯片组上开展相关工作的着手点。</p>
-<pre class="devsite-terminal devsite-click-to-copy">git clone https://android.googlesource.com/kernel/tegra</pre>
-
-<p><code>x86_64</code> 项目包含适用于 Nexus Player 的内核源代码，可用作在 Intel x86_64 芯片组上开展相关工作的着手点。</p>
-<pre class="devsite-terminal devsite-click-to-copy">git clone https://android.googlesource.com/kernel/x86_64</pre>
-
-<h2 id="building">手动编译内核</h2>
-<p>当您了解了内核的最后一条提交消息并已成功下载内核源代码和预编译的 gcc 后，就可以编译内核了。以下编译命令使用了 hikey 内核：</p>
-<pre class="devsite-click-to-copy">
-<code class="devsite-terminal">export ARCH=arm64</code>
-<code class="devsite-terminal">export CROSS_COMPILE=aarch64-linux-android-</code>
-<code class="devsite-terminal">cd hikey-linaro</code>
-<code class="devsite-terminal">git checkout -b android-hikey-linaro-4.1 origin/android-hikey-linaro-4.1</code>
-<code class="devsite-terminal">make hikey_defconfig</code>
-<code class="devsite-terminal">make</code>
-</pre>
-
-<p>要编译不同的内核，只需将 <code>hikey-linaro</code> 替换为您要编译的内核的名称即可。</p>
-
-<p>映像会输出到 <code>arch/arm64/boot/Image</code> 目录；内核二进制文件会输出到 <code>arch/arm64/boot/dts/hisilicon/hi6220-hikey.dtb</code> 文件。请将 <code>Image</code> 目录和 <code>hi6220-hikey.dtb</code> 文件复制到 <code>hikey-kernel</code> 目录。</p>
-
-<p>或者，您可以在使用 <code>make bootimage</code>（或编译启动映像的任何其他 <code>make</code> 命令行）时添加 <code>TARGET_PREBUILT_KERNEL</code> 变量。所有设备均支持该变量，因为它是通过 <code>device/common/populate-new-device.sh</code> 进行设置的。例如：</p>
-
-<pre class="devsite-terminal devsite-click-to-copy">
-export TARGET_PREBUILT_KERNEL=$your_kernel_path/arch/arm/boot/zImage-dtb
-</pre>
-
-<p class="note"><strong>注意</strong>：内核名称因设备而异。要找到内核的正确文件名，请参阅内核源代码中的 <code>device/<var>VENDOR</var>/<var>NAME</var></code>。</p>
-
-<h2 id="building-b1c1">编译 Pixel 3 (blueline) 内核和 Pixel 3 XL (crosshatch) 内核</h2>
-
-<p>Pixel 3 和 Pixel 3 XL 的内核源代码已分为多个项目。使用 <a href="/setup/develop/repo#init">repo</a> 下载相应分支的内核源代码（在撰写本文时，<code><var>VERSION</var></code> 应为 <code>4.9-pie-qpr1</code>）：</p>
-
-<pre class="devsite-terminal devsite-click-to-copy">repo init -u https://android.googlesource.com/kernel/manifest -b android-msm-bluecross-$<var>VERSION</var></pre>
+</p><pre class="devsite-terminal devsite-click-to-copy">repo init -u https://android.googlesource.com/kernel/manifest -b <var>BRANCH</var></pre>
 <pre class="devsite-terminal devsite-click-to-copy">repo sync</pre>
 
-<p>然后使用以下内容编译内核：</p>
+<var></var>下表列出了可通过此方法获取的内核的 BRANCH 名称：
+   <table>
+       <tbody><tr>
+            <th>设备</th>
+            <th>AOSP 树中的二进制文件路径</th>
+            <th>Repo 分支</th>
+       </tr>
+       <tr>
+            <td>Pixel 3a (sargo)</td>
+            <td rowspan="2">device/google/bonito-kernel</td>
+            <td rowspan="2">android-msm-bonito-4.9-pie-b4s4</td>
+       </tr>
+       <tr>
+            <td>Pixel 3a XL (bonito)</td>
+       </tr>
+       <tr>
+            <td>Pixel 3 (blueline)</td>
+            <td rowspan="2">device/google/crosshatch-kernel</td>
+            <td rowspan="2">android-msm-crosshatch-4.9-pie-qpr2</td>
+       </tr>
+       <tr>
+            <td>Pixel 3 XL (crosshatch)</td>
+       </tr>
+       <tr>
+            <td>Pixel 2 (walleye)</td>
+            <td rowspan="2">device/google/wahoo-kernel</td>
+            <td rowspan="2">android-msm-wahoo-4.4-pie-qpr2</td>
+       </tr>
+       <tr>
+            <td>Pixel 2 XL (taimen)</td>
+       </tr>
+       <tr>
+            <td>Pixel (sailfish)</td>
+            <td rowspan="2">device/google/marlin-kernel</td>
+            <td rowspan="2">android-msm-marlin-3.18-pie-qpr2</td>
+       </tr>
+       <tr>
+            <td>Pixel XL (marlin)</td>
+       </tr>
+       <tr>
+            <td>Hikey/Hikey960</td>
+            <td>device/linaro/hikey-kernel</td>
+            <td>hikey-linaro-android-4.4<br />
+                hikey-linaro-android-4.9<br />
+                hikey-linaro-android-4.14<br />
+                hikey-linaro-android-4.19
+            </td>
+       </tr>
+       <tr>
+            <td>Beagle x15</td>
+            <td>device/ti/beagle_x15-kernel</td>
+            <td>omap-beagle-x15-android-4.14<br />
+                omap-beagle-x15-android-4.19
+            </td>
+       </tr>
+       <tr>
+            <td>Beagle x15</td>
+            <td>device/ti/beagle_x15-kernel</td>
+            <td>omap-beagle-x15-android-4.14<br />
+                omap-beagle-x15-android-4.19
+            </td>
+       </tr>
+       <tr>
+            <td>Android 通用内核</td>
+            <td>无</td>
+            <td>common-android-4.4<br />
+                common-android-4.9<br />
+                common-android-4.14<br />
+                common-android-4.19<br />
+                common-android-mainline
+            </td>
+       </tr>
+   </tbody></table>
+<p></p>
 
-<pre class="devsite-terminal devsite-click-to-copy">sh build/build.sh</pre>
+<h2 id="building">编译内核</h2>
+
+<p>然后，使用以下命令编译内核：
+
+</p><pre class="devsite-terminal devsite-click-to-copy">build/build.sh</pre>
+<p></p>
+
+<p class="note"><b>注意</b>：通用内核是通用的可自定义内核，因此不会定义默认配置。如需了解如何为通用内核指定 <code>BUILD_CONFIG</code>，请参阅<a href="#customize-build">“自定义编译”部分</a>。<i></i></p>
+
+<p>内核二进制文件、模块和相应的映像位于 <code>out/<var>BRANCH</var>/dist</code> 目录下。</p>
+
+<h2 id="running">运行内核</h2>
+
+<p>您可以通过多种方式运行自定义编译的内核。下面介绍了几种适合各种开发场景的已知方法：</p>
+
+<h3>嵌入到 Android 映像编译中</h3>
+
+<p>将 <code>Image.lz4-dtb</code> 复制到 AOSP 树中相应的内核二进制文件位置，然后重新编译启动映像。</p>
+
+<p>或者，您也可以在使用 <code>make bootimage</code>（或用于编译启动映像的任何其他 <code>make</code> 命令行）时定义 <code>TARGET_PREBUILT_KERNEL</code> 变量。所有设备均支持该变量，因为它是通过 <code>device/common/populate-new-device.sh</code> 进行设置的。例如：</p>
+
+<pre class="devsite-terminal devsite-click-to-copy">
+export TARGET_PREBUILT_KERNEL=<var>DIST_DIR</var>/Image.lz4-dtb
+</pre>
+
+<h3>使用 fastboot 刷新和启动内核</h3>
+<p>最新的设备具有引导加载程序扩展，可以简化生成和启动引导映像的过程。要启动内核而不刷新，请运行以下命令：
+
+</p><pre class="devsite-click-to-copy">
+<code class="devsite-terminal">adb reboot bootloader</code>
+<code class="devsite-terminal">fastboot boot Image.lz4-dtb</code>
+</pre>
+
+使用此方法时，内核实际上并未刷新，因此不会在重新启动时保留。
+<p></p>
+
+<p class="note"><strong>注意</strong>：内核名称因设备而异。要找到内核的正确文件名，请参阅 AOSP 树中的 <code>device/<var>VENDOR</var>/<var>NAME</var>-kernel</code>。</p>
+
+<h2 id="customize-build">自定义内核编译</h2>
+
+<p>编译流程和结果可能会受环境变量的影响。它们中的大多数是可选的，并且每个内核分支都应该具有适当的默认配置。此处列出了最常用的变量。如需完整（且最新）的列表，请参阅 <code>build/build.sh</code>。
+   </p><table>
+       <tbody><tr>
+            <th>环境变量</th>
+            <th>说明</th>
+            <th>示例</th>
+       </tr>
+       <tr>
+            <td><code>BUILD_CONFIG</code></td>
+            <td>要从中初始化编译环境的编译配置文件。系统会相对于 repo 根目录定义具体位置。默认为“build.config”。<br />
+                <b>必须为通用内核指定此变量！</b>
+            </td>
+            <td><code>BUILD_CONFIG=common/build.config.cuttlefish.x86_64</code></td>
+       </tr>
+       <tr>
+            <td><code>OUT_DIR</code></td>
+            <td>内核编译的基本输出目录。</td>
+            <td><code>OUT_DIR=/path/to/my/out</code></td>
+       </tr>
+       <tr>
+            <td><code>DIST_DIR</code></td>
+            <td>内核分发的基本输出目录。</td>
+            <td><code>OUT_DIR=/path/to/my/dist</code></td>
+       </tr>
+       <tr>
+            <td><code>CC</code></td>
+            <td>替换要使用的编译器。回退至 build.config 定义的默认编译器。</td>
+            <td><code>CC=clang</code></td>
+       </tr>
+       <tr>
+            <td><code>SKIP_MRPROPER</code></td>
+            <td>跳过 <code>make mrproper</code></td>
+            <td><code>SKIP_MRPROPER=1</code></td>
+       </tr>
+       <tr>
+            <td><code>SKIP_DEFCONFIG</code></td>
+            <td>跳过 <code>make defconfig</code></td>
+            <td><code>SKIP_DEFCONFIG=1</code></td>
+       </tr>
+   </tbody></table>
+
+<h2 id="customize-config">本地编译的自定义内核配置</h2>
+
+<p>如果您需要定期切换内核配置选项（例如，在开发某项功能时），或者需要设置一个用于开发用途的选项，可以通过维护编译配置的本地修改或副本来实现这种灵活性。</p>
+<p>将 POST_DEFCONFIG_CMDS 变量设为一个在常规 <code>make defconfig</code> 步骤完成后立即接受评估的语句。<var></var>由于 <code>build.config</code> 文件源于编译环境，因此 <code>build.config</code> 中定义的函数可以作为 post-defconfig 命令的一部分进行调用。</p>
+<p>一个常见示例是在开发期间针对 crosshatch 内核停用 LTO（链接时优化）。虽然 LTO 对已发布的内核有益，但编译时产生的开销可能巨大。添加到本地 <code>build.config</code> 的以下代码段将在使用 <code>build/build.sh</code> 时永久停用 LTO。
+</p><pre class="devsite-click-to-copy">
+<code>POST_DEFCONFIG_CMDS="check_defconfig &amp;&amp; update_debug_config"
+function update_debug_config() {
+    ${KERNEL_DIR}/scripts/config --file ${OUT_DIR}/.config \
+         -d LTO \
+         -d LTO_CLANG \
+         -d CFI \
+         -d CFI_PERMISSIVE \
+         -d CFI_CLANG
+    (cd ${OUT_DIR} &amp;&amp; \
+     make O=${OUT_DIR} $archsubarch CROSS_COMPILE=${CROSS_COMPILE} olddefconfig)
+}</code>
+
+</pre><p>
+
+</p><h2 id="id-version">确定内核版本</h2>
+<p>您可以通过多种方式确定要编译的正确版本。</p><p>
+
+</p><h3 id="id-version-from-aosp">AOSP 树中的内核版本</h3>
+<p>AOSP 树包含预编译的内核版本。大多数情况下，git 日志会在提交消息中显示正确的版本：
+</p><pre class="devsite-click-to-copy">
+<code class="devsite-terminal">cd $AOSP/device/<var>VENDOR</var>/<var>NAME</var></code>
+<code class="devsite-terminal">git log --max-count=1</code>
+</pre><p></p>
+
+<h3 id="id-version-from-system-image">系统映像中的内核版本</h3>
+
+<p>要确定系统映像中使用的内核版本，请对内核文件运行以下命令：
+</p><pre class="devsite-terminal devsite-click-to-copy">
+file kernel
+</pre><p></p>
+
+<p>对于 <code>Image.lz4-dtb</code> 文件，请运行以下命令：</p>
+<pre class="devsite-terminal devsite-click-to-copy">
+grep -a 'Linux version' Image.lz4-dtb
+</pre>
 
 </body></html>

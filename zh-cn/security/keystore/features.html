@@ -22,7 +22,7 @@
 
 <p>本页中包含与 Android 6.0 及更高版本中 <a href="index.html">Keystore</a> 加密功能相关的信息。</p>
 
-<p class="note"><strong>注意</strong>：标记和功能以 Keymaster 3 样式进行编写。要了解详情，请参阅 <a href="/security/keystore/index##hidl-overview">HIDL 概览</a>。</p>
+<p class="note"><strong>注意</strong>：标记和功能以 Keymaster 3 样式进行编写。要了解详情，请参阅 <a href="/security/keystore/index#hidl-overview">HIDL 概览</a>。</p>
 
 <h2 id="cryptographic_primitives">加密基元</h2>
 
@@ -89,7 +89,7 @@
     <li>CBC 和 ECB 模式支持填充模式 <code>PaddingMode::NONE</code> 和 <code>PaddingMode::PKCS7</code>。采用“无填充”时，如果输入的不是分块大小的倍数，CBC 或 ECB 模式的加密会失败。</li>
   </ul>
   </li>
-  <li><a href="http://en.wikipedia.org/wiki/Hash-based_message_authentication_code">HMAC</a> <a href="http://en.wikipedia.org/wiki/SHA-2">SHA-256</a>，其中任意密钥均不短于 32 个字节。</li>
+  <li><a href="http://en.wikipedia.org/wiki/Hash-based_message_authentication_code">HMAC</a> <a href="http://en.wikipedia.org/wiki/SHA-2">SHA-256</a>，其中任意密钥均不得短于 32 个字节。</li>
 </ul>
 
 <p>对于 Keymaster 实现，强烈建议提供 SHA1，以及 SHA2 系列的其他成员（SHA-224、SHA384 和 SHA512）。如果硬件 Keymaster 实现未提供这些内容，则 Keystore 会在软件中提供它们。</p>
@@ -129,9 +129,9 @@
 <p><strong><code>DATE</code></strong>：日期/时间值，以距 1970 年 1 月 1 日的毫秒数表示。
 例如：<code>TAG::PRIVKEY_EXPIRE_DATETIME</code></p>
 
-<p><strong><code>BOOL</code></strong>：True 或 false。对于 <code>BOOL</code> 类型的标记，如果不存在则被视为“false”，如果存在则被视为“true”。例如：<code>TAG::ROLLBACK_RESISTANT</code></p>
+<p><strong><code>BOOL</code></strong>：true 或 false。对于 <code>BOOL</code> 类型的标记，如果不存在则被视为“false”，如果存在则被视为“true”。例如：<code>TAG::ROLLBACK_RESISTANT</code></p>
 
-<p><strong><code>BIGNUM</code></strong>：任意长度的整数，以字节数数组表示（采用大端字节存）。例如：<code>TAG::RSA_PUBLIC_EXPONENT</code></p>
+<p><strong><code>BIGNUM</code></strong>：任意长度的整数，以字节数数组表示（采用大端字节序）。例如：<code>TAG::RSA_PUBLIC_EXPONENT</code></p>
 
 <p><strong><code>BYTES</code></strong>：一系列字节数。例如：<code>TAG::ROOT_OF_TRUST</code></p>
 
@@ -207,7 +207,7 @@
 <ul>
   <li><code>NO_AUTHENTICATION_REQUIRED</code> 表示无需进行任何用户身份验证，不过仍只有以通过 <code>TAG::USER_ID</code> 指定的用户身份运行的应用可以使用相应密钥。</li>
   <li><code>TAG::AUTH_TIMEOUT</code> 是一个数字值，用于指定用户身份验证需要多新（以秒数计）才能授权使用相应密钥。
-  此标记仅适用于私钥/密钥操作。公钥操作不需要进行身份验证。设备重新启动后超时将会失效；设备重新启动后，所有密钥的状态均为“从未经过身份验证”。可以将超时设为一个较大的值，以指明每次设备启动后只需进行一次身份验证（2^32 秒约为 136 年；Android 设备的重新启动时间间隔一般不会超过该值）。</li>
+  此标记仅适用于私钥/密钥操作。公钥操作不需要进行身份验证。超时会在设备重新启动后失效；设备重新启动后，所有密钥的状态均为“从未经过身份验证”。可将超时设为一个较大的值，以指明每次设备启动后只需进行一次身份验证（2^32 秒约为 136 年；Android 设备的重新启动时间间隔一般不会超过该值）。</li>
 </ul>
 
 <h3 id="client_binding">客户端绑定</h3>
@@ -247,7 +247,7 @@
 
 <p>要实现使用时间间隔上限，一种非常简单的方法是创建一个用于存放密钥 ID 和上次使用时间戳的表格。该表格可能有大小限制，但能够容纳至少 16 个条目。如果该表格已被占满，并且没有任何可以更新或舍弃的条目，那么安全硬件实现会“安全失败”，最好是拒绝所有受密钥使用时间间隔限制的密钥操作，直到其中一个条目过期为止。可设为所有条目在设备重新启动时过期。</p>
 
-<p>也可以通过 <code>TAG::MAX_USES_PER_BOOT</code> 将密钥限制为每次设备启动后最多使用 n 次。<em></em>这也需要一个跟踪表格（能够容纳至少 4 个密钥），并且也能够安全失败。请注意，应用无法创建按设备启动限制使用次数的密钥。该功能不会在 Keystore 之外提供，而且仅用于系统操作。</p>
+<p>也可以通过 <code>TAG::MAX_USES_PER_BOOT</code> 将密钥限制为每次设备启动后最多使用 n 次。这也需要一个跟踪表格（能够容纳至少 4 个密钥），并且也能够安全失败。<em></em>请注意，应用无法创建按设备启动限制使用次数的密钥。该功能不会在 Keystore 之外提供，而且仅用于系统操作。</p>
 
 <p>此功能未提供给应用。</p>
 

@@ -35,8 +35,7 @@
 <ul>
 <li>对于每个文件，HIDL 都会定义一个 Java 样式的命名空间，并且这些命名空间必须以 <code>android.hardware.</code> 开头。生成的 C++ 命名空间为 <code>::android::hardware::…</code>。</li>
 <li>文件的所有定义都包含在一个 Java 样式的 <code>interface</code> 封装容器中。</li>
-<li>HIDL 数组声明遵循 Java 样式，而非 C++ 样式。例如：
-<pre class="prettyprint">
+<li>HIDL 数组声明遵循 Java 样式，而非 C++ 样式。例如：<pre class="prettyprint">
 struct Point {
     int32_t x;
     int32_t y;
@@ -48,9 +47,9 @@ Point[3] triangle;   // sized array
 </ul>
 
 <h2 id="represent">数据表示法</h2>
-<p>采用<a href="http://en.cppreference.com/w/cpp/language/data_members#Standard_layout">标准布局</a>（plain-old-data 要求类型的子集）的 <code>struct</code> 或 <code>union</code> 在生成的 C++ 代码中具有一致的内存布局，这是依靠 <code>struct</code> 和 <code>union</code> 成员上的显式对齐属性实现的。</p>
+<p>采用<a href="http://en.cppreference.com/w/cpp/language/data_members#Standard_layout">标准布局</a>（plain-old-data 类型要求的子集）的 <code>struct</code> 或 <code>union</code> 在生成的 C++ 代码中具有一致的内存布局，这是依靠 <code>struct</code> 和 <code>union</code> 成员上的显式对齐属性实现的。</p>
 
-<p>基本的 HIDL 类型以及 <code>enum</code> 和 <code>bitfield</code> 类型（一律从基本类型派生而来）会映射到标准 C++ 类型，例如 <a href="http://en.cppreference.com/w/cpp/types/integer">cstdint</a> 中的 <code>std::uint32_t</code>。</p>
+<p>基本 HIDL 类型以及 <code>enum</code> 和 <code>bitfield</code> 类型（一律从基本类型派生而来）会映射到标准 C++ 类型，例如 <a href="http://en.cppreference.com/w/cpp/types/integer">cstdint</a> 中的 <code>std::uint32_t</code>。</p>
 
 <p>由于 Java 不支持无符号的类型，因此无符号的 HIDL 类型会映射到相应的有符号 Java 类型。结构体会映射到 Java 类；数组会映射到 Java 数组；Java 目前不支持联合。<em></em><em></em><em></em>字符串在内部以 UTF8 格式存储。<em></em>由于 Java 仅支持 UTF16 字符串，因此发送到或来自 Java 实现的字符串值会进行转换；在重新转换回来后，字符串值可能不会与原来的值完全相同，这是因为字符集并非总能顺畅映射。</p>
 
@@ -161,20 +160,20 @@ typedef struct native_handle
 } native_handle_t;
 </pre>
 
-<p>原生句柄是整数和文件描述符的集合（按值传递）。单个文件描述符可存储在没有整数、包含单个文件描述符的原生句柄中。使用封装有 <code>handle</code> 基本类型的原生句柄传递句柄可确保相应的原生句柄直接包含在 HIDL 中。</p>
+<p>原生句柄是整数和文件描述符的集合（按值传递）。单个文件描述符可存储在没有整数、包含单个文件描述符的原生句柄中。使用封装有 <code>handle</code> 基本类型之原生句柄的传递句柄可确保相应的原生句柄直接包含在 HIDL 中。</p>
 
 <p><code>native_handle_t</code> 的大小可变，因此无法直接包含在结构体中。句柄字段会生成指向单独分配的 <code>native_handle_t</code> 的指针。</p>
 
-<p>在早期版本的 Android 中，原生句柄是使用 <a href="https://android.googlesource.com/platform/system/core/+/master/libcutils/native_handle.c">libcutils</a> 中的相同函数创建的。在 Android 8.0 中，这些函数现在被复制到了 <code>android::hardware::hidl</code> 命名空间或移到了 NDK 中。HIDL 自动生成的代码会自动对这些函数进行序列化和反序列化，而无需用户编写的代码参与。</p>
+<p>在早期版本的 Android 中，原生句柄是使用 <a href="https://android.googlesource.com/platform/system/core/+/master/libcutils/native_handle.cpp">libcutils</a> 中的相同函数创建的。在 Android 8.0 中，这些函数现在被复制到了 <code>android::hardware::hidl</code> 命名空间或移到了 NDK 中。HIDL 自动生成的代码会自动对这些函数进行序列化和反序列化，而无需用户编写的代码参与。</p>
 
 <h3 id="ownership">句柄和文件描述符所有权</h3>
 <p>当您调用传递（或返回）<code>hidl_handle</code> 对象（复合类型的顶级或一部分）的 HIDL 接口方法时，其中包含的文件描述符的所有权如下所述：</p>
 
 <ul>
-<li>将 <code>hidl_handle</code> 对象作为参数传递的<strong>调用程序</strong>会保留对其封装的 <code>native_handle_t</code> 中包含的文件描述符的所有权；该调用程序在完成对这些文件描述符的操作后，必须将这些描述符关闭。</li>
-<li>通过将 <code>hidl_handle</code> 对象传递到 <code>_cb</code> 函数来返回该对象的<strong>进程</strong>会保留对该对象封装的 <code>native_handle_t</code> 中包含的文件描述符的所有权；该进程在完成对这些文件描述符的操作后，必须将这些描述符关闭。
+<li>将 <code>hidl_handle</code> 对象作为参数传递的<strong>调用程序</strong>会保留对其封装的 <code>native_handle_t</code> 中包含的文件描述符的所有权；该调用程序在完成对这些文件描述符的操作后，必须将这些文件描述符关闭。</li>
+<li>通过将 <code>hidl_handle</code> 对象传递到 <code>_cb</code> 函数来返回该对象的<strong>进程</strong>会保留对该对象封装的 <code>native_handle_t</code> 中包含的文件描述符的所有权；该进程在完成对这些文件描述符的操作后，必须将这些文件描述符关闭。
 </li>
-<li>接收 <code>hidl_handle</code> 的<strong>传输</strong>拥有对相应对象封装的 <code>native_handle_t</code> 中的文件描述符的所有权；接收器可在事务回调期间按原样使用这些文件描述符，但如果想在回调完成后继续使用这些文件描述符，则必须克隆原生句柄。事务完成时，transport 将自动对文件描述符执行 <code>close()</code> 操作。</li>
+<li>接收 <code>hidl_handle</code> 的<strong>传输</strong>拥有对相应对象封装的 <code>native_handle_t</code> 中的文件描述符的所有权；接收器可在事务回调期间按原样使用这些文件描述符，但如果想在回调完成后继续使用这些文件描述符，则必须克隆原生句柄。事务完成时，传输将自动对文件描述符执行 <code>close()</code> 操作。</li>
 </ul>
 
 <p>HIDL 不支持在 Java 中使用句柄（因为 Java 根本不支持句柄）。</p>
@@ -195,7 +194,7 @@ uint32_t[3] x; // array is contained in foo
 <p class="note"><strong>注意</strong>：通过 HIDL 接口将字符串传递到 Java 或从 Java 传递字符串（包括从 Java 传递到 Java）将会导致字符集转换，而此项转换可能无法精确保留原始编码。</p>
 
 <h2 id="vec">vec&lt;T&gt; 类型模板</h2>
-<p><code>vec&lt;T&gt;</code> 模板用于表示包含 <code>T</code> 实例且大小可变的缓冲区。<code>T</code> 可以是任何由 HIDL 提供的或由用户定义的类型，句柄除外。（<code>vec&lt;T&gt;</code> 的 <code>vec&lt;&gt;</code> 将指向 <code>vec&lt;T&gt;</code> 结构体数组，而不是指向内部 T 缓冲区数组。）</p>
+<p><code>vec&lt;T&gt;</code> 模板表示包含 <code>T</code> 实例的可变大小的缓冲区。</p>
 
 <p><code>T</code> 可以是以下项之一：</p>
 <ul>
@@ -219,10 +218,20 @@ uint32_t[3] x; // array is contained in foo
 enum name : type { enumerator , enumerator = constexpr , …  }
 </pre>
 
-<p>枚举是以 HIDL 中的一种基本类型定义的，或被定义为其他枚举的扩展。例如：</p>
+<p>基本枚举是根据 HIDL 中的某个整数类型而定义的。如果没有为基于整数类型的枚举的第一个枚举器指定值，则此值默认为 0。如果没有为后面的枚举器指定值，则此值默认为先前的值加 1。例如：</p>
 <pre class="prettyprint">
-enum Color : uint32_t { RED = 0, GREEN, BLUE = 2 } // GREEN == 1
+// RED == 0
+// BLUE == 4 (GREEN + 1)
+enum Color : uint32_t { RED, GREEN = 3, BLUE }
 </pre>
+
+<p>枚举也可以从先前定义的枚举继承。如果没有为子枚举的第一个枚举器指定值（在本例中为 <code>FullSpectrumColor</code>），则此值默认为父枚举的最后一个枚举器的值加 1。例如：</p>
+<pre class="prettyprint">
+// ULTRAVIOLET == 5 (Color:BLUE + 1)
+enum FullSpectrumColor : Color { ULTRAVIOLET }
+</pre>
+
+<p class="warning"><strong>警告</strong>：枚举继承的作用顺序与大多数其他类型的集成是相反的。子枚举值不可用作父枚举值。这是因为子枚举包含的值多于父枚举。不过，父枚举值可以安全地用作子枚举值，因为根据定义，子枚举值是父枚举值的超集。在设计接口时请注意这一点，因为这意味着在以后的接口迭代中，引用父枚举的类型无法引用子枚举。</p>
 
 <p>枚举的值通过冒号语法（而不是像嵌套式类型一样使用点语法）引用。语法是 <code>Type:VALUE_NAME</code>。如果在相同的枚举类型或子类型中引用枚举的值，则无需指定类型。例如：</p>
 <pre class="prettyprint">

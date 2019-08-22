@@ -41,10 +41,10 @@ of the
 To enable motion tracking on a camera device, make sure:
 
 +   The
-    [`ANDROID_REQUEST_AVAILABLE_CAPABILITIES_MOTION_TRACKING`](https://android.googlesource.com/platform/hardware/interfaces/+/master/camera/metadata/3.3/types.hal#231){: .external}
+    [`ANDROID_REQUEST_AVAILABLE_CAPABILITIES_MOTION_TRACKING`](https://android.googlesource.com/platform/hardware/interfaces/+/master/camera/metadata/3.3/types.hal#230){: .external}
     capability is enabled.
 +   The
-    [`ANDROID_CONTROL_CAPTURE_INTENT_MOTION_TRACKING`](https://android.googlesource.com/platform/hardware/interfaces/+/master/camera/metadata/3.3/types.hal#207){: .external}
+    [`ANDROID_CONTROL_CAPTURE_INTENT_MOTION_TRACKING`](https://android.googlesource.com/platform/hardware/interfaces/+/master/camera/metadata/3.3/types.hal#206){: .external}
     intent is supported and when included in a capture request limits the camera
     exposure time to a maximum of 20 milliseconds.
 +   Lens calibration data from the following list is accurately reported in the
@@ -54,7 +54,7 @@ To enable motion tracking on a camera device, make sure:
     +   [`ANDROID_LENS_POSE_TRANSLATION`](https://android.googlesource.com/platform/hardware/interfaces/+/master/camera/metadata/3.2/types.hal#753){: .external}  
     +   [`ANDROID_LENS_INTRINSIC_CALIBRATION`](https://android.googlesource.com/platform/hardware/interfaces/+/master/camera/metadata/3.2/types.hal#773){: .external}  
     +   [`ANDROID_LENS_RADIAL_DISTORTION`](https://android.googlesource.com/platform/hardware/interfaces/+/master/camera/metadata/3.2/types.hal#780){: .external}  
-    +   [`ANDROID_LENS_POSE_REFERENCE`](https://android.googlesource.com/platform/hardware/interfaces/+/master/camera/metadata/3.3/types.hal#79){: .external}  
+    +   [`ANDROID_LENS_POSE_REFERENCE`](https://android.googlesource.com/platform/hardware/interfaces/+/master/camera/metadata/3.3/types.hal#78){: .external}  
 
 ## Validation
 

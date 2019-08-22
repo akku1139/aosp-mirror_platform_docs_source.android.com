@@ -30,8 +30,8 @@
       BT controller vendors to conform to these platform requirements in order
       to use the feature set described below.</p>
 
-      <p>This document refers to the Bluetooth Core 4.1 Specification as the
-        "spec." The Bluetooth Core 4.1 Specification is available on the
+      <p>This document refers to the Bluetooth Core 5.1 Specification as the
+        "spec." The Bluetooth Core 5.1 Specification is available on the
         <a href="https://www.bluetooth.org/en-us/specification/adopted-specifications">
       Bluetooth SIG website</a> along with other adopted documents.</p>
 
@@ -47,7 +47,7 @@
 
           <p>To manage the varying landscape and to manage migrations, a design
           philosophy of allowing BT controllers to expose their capabilities
-          (beyond the standard Bluetooth Core 4.1 Specification) is described
+          (beyond the standard Bluetooth Core 5.1 Specification) is described
           in this document. The host BT stack can then use these capabilities
           to determine which features to enable.</p>
 
@@ -89,17 +89,25 @@
             <td>Command Complete status</td>
           </tr>
           <tr>
-            <td><code>max_advt_instances</code></td>
+            <td><code>max_advt_instances</code><br />
+            <strong>(Deprecated)</strong></td>
             <td>1 octet</td>
-            <td>Number of advertisement instances supported</td>
+            <td>Number of advertisement instances supported.<br /><br />
+            <strong>This parameter is deprecated in the Google feature spec v0.98
+              and higher in favor of the <em>LE Extended Advertising</em> available
+              in the BT spec version 5.0 and higher.</strong></td>
           </tr>
           <tr>
-            <td><code>offloaded_resolution_of_private-address</code></td>
+            <td><code>offloaded_resolution_of_private-address</code><br />
+            <strong>(Deprecated)</strong></td>
             <td>1 octet</td>
             <td>BT chip capability of RPA.<br/>
               If supported by a chip, it needs enablement by the host.<br/>
               0 = Not capable<br/>
-              1 = Capable</td>
+              1 = Capable<br /><br />
+              <strong>This parameter is deprecated in the Google feature spec v0.98
+              and higher in favor of the <em>Privacy feature</em> available
+                in the BT spec version 4.2 and higher.</strong></td>
           </tr>
           <tr>
             <td><code>total_scan_results_storage</code></td>
@@ -132,11 +140,13 @@
           </tr>
           <tr>
             <td><code>version_supported</code></td>
-            <td>2 octets<br/>
-              [0x00, 0x60]</td>
+            <td>2 octets</td>
             <td>Specifies the version of the Google feature spec supported<br/>
               byte[0] = Major number<br/>
-              byte[1] = Minor number</td>
+              byte[1] = Minor number<br /><br />
+              <strong>v0.98</strong><br />
+              byte[0] = 0x00<br />
+              byte[1] = 0x62</td>
           </tr>
           <tr>
             <td><code>total_num_of_advt_tracked</code></td>
@@ -155,764 +165,36 @@
             <td>Supports logging of binary debug information from controller</td>
           </tr>
           <tr>
-            <td><code>LE_address_generation_offloading_support</code></td>
+            <td><code>LE_address_generation_offloading_support</code><br />
+            <strong>(Deprecated)</strong></td>
             <td>1 octet</td>
             <td>0 = Not supported<br/>
-              1 = Supported</td>
+              1 = Supported<br /><br />
+            <strong>This parameter is deprecated in the Google feature spec v0.98
+              and higher in favor of the <em>Privacy feature</em> available
+              in the BT spec version 4.2 and higher.</strong></td>
+          </tr>
+          <tr>
+            <td>A2DP_source_offload_capability_mask</td>
+            <td>4 Octets</td>
+            <td>Bit masks for codec types supported<br />
+              Bit 0 - SBC<br />
+              Bit 1 - AAC<br />
+              Bit 2 - APTX<br />
+              Bit 3 - APTX HD<br />
+              Bit 4 - LDAC<br />
+              Bit 5-31 are reserved
+            </td>
+          </tr>
+          <tr>
+            <td>bluetooth_quality_report_support</td>
+            <td>1 octet</td>
+            <td>Supports reporting of Bluetooth Quality events<br />
+              0 = Not capable<br />
+              1 = Capable
+            </td>
           </tr>
         </table>
-
-        <p>The <code>max_advt_instances parameter</code> represents the total
-        advertisement instances in the controller. The range of
-        <code>advt_instance</code> IDs will be 0 to
-        <code>max_advt_instances</code> minus 1.</p>
-
-        <p>An advertisement instance with an ID equal to 0 will map to an
-        existing (default/standard) HCI instance. When operating on a
-        default/standard HCI interface, the standard HCI command set should be
-        used.</p>
-
-      <h2 id="multi-advertiser-support">Multi-advertiser support</h2>
-
-        <p>The objectives of multi-advertiser support are the following:</p>
-
-        <ul>
-          <li>Ability to support multiple advertisements
-            (<code>max_advt_instances</code>)</li> <li>Different transmit powers
-            to allow for a varying range</li> <li>Different advertising
-            content</li>
-          <li>An individualized response for each advertiser</li>
-          <li>Privacy (non-trackable) for each advertiser</li>
-          <li>Connectable</li>
-        </ul>
-
-        <p>To keep this specification close to existing standards, the
-        following vendor-specific commands are provided. They are derived from
-        the Bluetooth Core 4.1 Specification.</p>
-
-        <h3 id="le_multi_advt_command">LE_Multi_Advt_Command</h3>
-          <p>OCF: 0x154</p>
-
-          <table>
-            <tr>
-              <th>Command parameter</th>
-              <th>Size</th>
-              <th>Purpose</th>
-            </tr>
-            <tr>
-              <td><code>Multi_advt_opcode</code></td>
-              <td>1 octet</td>
-              <td>0x01 - <code>Set_Advt_Param_Multi_Sub_Cmd</code><br/>
-                0x02 - <code>Set_Advt_Data_Multi_Sub_Cmd</code><br/>
-                0x03 - <code>Set_Scan_Resp_Data_Multi_Sub_Cmd</code><br/>
-                0x04 - <code>Set_Random_Addr_Multi_Sub_Cmd</code><br/>
-                0x05 - <code>Set_Advt_Enable_Multi_Sub_Cmd</code></td>
-            </tr>
-          </table>
-
-          <p>A Command Complete event will be generated for this command.</p>
-
-          <table>
-            <tr>
-              <th>Return parameter</th>
-              <th>Size</th>
-              <th>Purpose</th>
-            </tr>
-            <tr>
-              <td><code>Status</code></td>
-              <td>1 octet</td>
-              <td>Command Complete status</td>
-            </tr>
-            <tr>
-              <td><code>Multi_advt_opcode</code></td>
-              <td>1 octet</td>
-              <td>0x01 - <code>Set_Advt_Param_Multi_Command</code><br/>
-                0x02 - <code>Set_Advt_Data_Multi_Command</code><br/>
-                0x03 - <code>Set_Scan_Resp_Data_Multi_Command</code><br/>
-                0x04 - <code>Set_Random_Addr_Multi_Command</code><br/>
-                0x05 - <code>Set_Advt_Enable_Multi_Command</code></td>
-            </tr>
-          </table>
-
-          <h4
-            id="le_multi_advt_command-set_advt_param_multi_sub_cmd">
-            LE_Multi_Advt_Command: Set_Advt_Param_Multi_Sub_Cmd</h4>
-
-            <p>Base reference:
-            Bluetooth Core 4.1 Specification, page 964 (LE Set Advertising
-            Parameter Command)</p>
-
-            <p>Sub OCF: 0x01</p>
-
-            <table>
-              <tr>
-                <th>Sub-command parameter</th>
-                <th>Size</th>
-                <th>Purpose</th>
-              </tr>
-              <tr>
-                <td><code>Advertising_Interval_Min</code></td>
-                <td>Per spec</td>
-                <td>Per spec</td>
-              </tr>
-              <tr>
-                <td><code>Advertising_Interval_Max</code></td>
-                <td>Per spec</td>
-                <td>Per spec</td>
-              </tr>
-              <tr>
-                <td><code>Advertising_Type</code></td>
-                <td>Per spec</td>
-                <td>Per spec</td>
-              </tr>
-              <tr>
-                <td><code>Own_Address_Type</code></td>
-                <td>Per spec</td>
-                <td>Per spec</td>
-              </tr>
-              <tr>
-                <td><code>Own_Address</code></td>
-                <td>Per spec</td>
-                <td>Per spec</td>
-              </tr>
-              <tr>
-                <td><code>Direct_Address_Type</code></td>
-                <td>Per spec</td>
-                <td>Per spec</td>
-              </tr>
-              <tr>
-                <td><code>Direct_Address</code></td>
-                <td>Per spec</td>
-                <td>Per spec</td>
-              </tr>
-              <tr>
-                <td><code>Advertising_Channel_Map</code></td>
-                <td>Per spec</td>
-                <td>Per spec</td>
-              </tr>
-              <tr>
-                <td><code>Adverstising_Filter_Policy</code></td>
-                <td>Per spec</td>
-                <td>Per spec</td>
-              </tr>
-              <tr>
-                <td><code>Advertising_Instance</code></td>
-                <td>1 octet</td>
-                <td>Specifies the applicability of the above parameters to an
-                  instance</td>
-              </tr>
-              <tr>
-                <td><code>Tx_power</code></td>
-                <td>1 octet</td>
-                <td>Transmit_Power<br/>
-                  Unit - in dBm (signed integer)<br/>
-                  Range (-70 to +20)</td>
-              </tr>
-            </table>
-
-            <p>The <code>Own_Address</code> parameter could be a
-            host-configured address at the time of setting up this
-            multi-advertisement instance. This provides the ability to  have a
-            resolvable private address at the time of the transmit of the first
-            beacon. Advertisement on an instance will continue irrespective of
-            the connection. The host BT stack could issue a command to start
-            advertisement on an instance, post connection.</p>
-
-            <p> A Command Complete event will be generated for this command as
-            specified in the Bluetooth Core 4.1 Specification, per the above
-            command. The controller will respond with a non-success (invalid
-            parameter) code if the advertising instance or <code>Tx_Power</code>
-            parameters are invalid.</p>
-
-            <table>
-              <tr>
-                <th>Return parameter</th>
-                <th>Size</th>
-                <th>Purpose</th>
-              </tr>
-              <tr>
-                <td><code>Status</code></td>
-                <td>1 octet</td>
-                <td>Command Complete status</td>
-              </tr>
-              <tr>
-                <td><code>Multi_advt_opcode</code></td>
-                <td>1 octet</td>
-                <td>0x01 [<code>Set_Advt_Param_Multi_Sub_Cmd]</code></td>
-              </tr>
-            </table>
-
-          <h4
-            id="le_multi_advt_command-set_advt_data_multi_sub_cmd">LE_Multi_Advt_Command:
-            Set_Advt_Data_Multi_Sub_Cmd</h4>
-
-            <p>Base reference: Bluetooth Core 4.1 Specification, page 969
-              (LE Set Advertising Data Command)</p>
-
-            <p>Sub OCF: 0x02</p>
-
-            <table>
-              <tr>
-                <th>Sub-command parameter</th>
-                <th>Size</th>
-                <th>Purpose</th>
-              </tr>
-              <tr>
-                <td><code>Advertising_Data_Length</code></td>
-                <td>Per spec</td>
-                <td>Per spec</td>
-              </tr>
-              <tr>
-                <td><code>Advertising_Data</code></td>
-                <td>Per spec</td>
-                <td>Per spec</td>
-              </tr>
-              <tr>
-                <td><code>Advertising_Instance</code></td>
-                <td>1 octet</td>
-                <td>Specifies the applicability of the above parameters to an
-                  instance</td>
-              </tr>
-            </table>
-
-            <p>A Command Complete event will be generated for this command as
-            specified in the Bluetooth Core 4.1 Specification, per the above
-            command. The controller will respond with a non-success code if the
-            advertising instance or <code>Tx_Power</code> parameters are
-            invalid.  </p>
-
-            <table>
-              <tr>
-                <th>Return parameter</th>
-                <th>Size</th>
-                <th>Purpose</th>
-              </tr>
-              <tr>
-                <td><code>Status</code></td>
-                <td>1 octet</td>
-                <td>Command Complete status</td>
-              </tr>
-              <tr>
-                <td><code>Multi_advt_opcode</code></td>
-                <td>1 octet</td>
-                <td>0x02 [<code>Set_Advt_Data_Multi_Sub_Cmd]</code></td>
-              </tr>
-            </table>
-
-          <h4
-            id="le_multi_advt_command-set_scan_resp_data_multi_sub_cmd">LE_Multi_Advt_Command:
-            Set_Scan_Resp_Data_Multi_Sub_Cmd</h4>
-
-            <p>Base reference: Bluetooth Core 4.1 Specification, page 970
-            (LE Set Scan Response Data Command)</p>
-
-            <p>Sub OCF: 0x03</p>
-
-            <table>
-              <tr>
-                <th>Sub-command parameter</th>
-                <th>Size</th>
-                <th>Purpose</th>
-              </tr>
-              <tr>
-                <td><code>Scan_Response_Data_Length</code></td>
-                <td>Per spec</td>
-                <td>Per spec</td>
-              </tr>
-              <tr>
-                <td><code>Scan_Response_Data</code></td>
-                <td>Per spec</td>
-                <td>Per spec</td>
-              </tr>
-              <tr>
-                <td><code>Advertising_Instance</code></td>
-                <td>1 octet</td>
-                <td>Specifies the applicability of the above
-                parameters to an instance</td>
-              </tr>
-            </table>
-
-            <p>A Command Complete event will be generated for this command as
-            specified in the Bluetooth Core 4.1 Specification, per the above
-            command. The controller will respond with a non-success code
-            (invalid parameter) if the advertising instance or
-            <code>Tx_Power</code> parameters are invalid.</p>
-
-            <table>
-              <tr>
-                <th>Return parameter</th>
-                <th>Size</th>
-                <th>Purpose</th>
-              </tr>
-              <tr>
-                <td><code>Status</code></td>
-                <td>1 octet</td>
-                <td>Command Complete status</td>
-              </tr>
-              <tr>
-                <td><code>Multi_advt_opcode</code></td>
-                <td>1 octet</td>
-                <td>0x03 [<code>Set_Scan_Resp_Data_Multi_Sub_Cmd]</code></td>
-              </tr>
-            </table>
-
-          <h4
-            id="le_multi_advt_command-set_random_addr_multi_sub_cmd">LE_Multi_Advt_Command:
-            Set_Random_Addr_Multi_Sub_Cmd</h4>
-            <p>Base reference: Bluetooth Core 4.1 Specification, page 963
-              (LE Set Random Address Command)</p>
-
-            <p>Sub OCF: 0x04</p>
-
-            <table>
-              <tr>
-                <th>Sub-command parameter</th>
-                <th>Size</th>
-                <th>Purpose</th>
-              </tr>
-              <tr>
-                <td><code>Random Address</code></td>
-                <td>Per spec</td>
-                <td>Per spec</td>
-              </tr>
-              <tr>
-                <td><code>Advertising_Instance</code></td>
-                <td>1 octet</td>
-                <td>Specifies the applicability of the above parameters to an
-                instance</td>
-              </tr>
-            </table>
-
-            <p>A Command Complete event will be generated for this command.</p>
-
-            <table>
-              <tr>
-                <th>Return parameter</th>
-                <th>Size</th>
-                <th>Purpose</th>
-              </tr>
-              <tr>
-                <td><code>Status</code></td>
-                <td>1 octet</td>
-                <td>Command Complete status</td>
-              </tr>
-              <tr>
-                <td><code>Multi_advt_opcode</code></td>
-                <td>1 octet</td>
-                <td>0x04 [<code>Set_Random_Addr_Multi_Sub_Cmd]</code></td>
-              </tr>
-            </table>
-
-          <h4
-            id="le_multi_advt_command-set_advt_enable_multi_sub_cmd">LE_Multi_Advt_Command:
-            Set_Advt_Enable_Multi_Sub_Cmd</h4>
-            <p>Base reference: Bluetooth Core 4.1 Specification, page 971
-              (LE Set Advertise Enable Command in that core specification)</p>
-
-            <p>OCF: 0x05</p>
-
-            <table>
-              <tr>
-                <th>Sub-command parameter</th>
-                <th>Size</th>
-                <th>Purpose</th>
-              </tr>
-              <tr>
-                <td><code>Advertising_Enable</code></td>
-                <td>1 octet</td>
-                <td>A value of 1 means enable. Any other value means disable.</td>
-              </tr>
-              <tr>
-                <td><code>Advertising_Instance</code></td>
-                <td>1 octet</td>
-                <td>Specifies the applicability of the above
-                  parameters to an instance. Instance 0 means a standard HCI
-                  instance.</td>
-              </tr>
-            </table>
-
-            <p>A Command Complete event will be generated for this command.</p>
-
-            <table>
-              <tr>
-                <th>Return parameter</th>
-                <th>Size</th>
-                <th>Purpose</th>
-              </tr>
-              <tr>
-                <td><code>Status</code></td>
-                <td>1 octet</td>
-                <td>Command Complete status</td>
-              </tr>
-              <tr>
-                <td><code>Multi_advt_opcode</code></td>
-                <td>1 octet</td>
-                <td>0x05 [<code>Set_Advt_Enable_Multi_Sub_Cmd]</code></td>
-              </tr>
-            </table>
-
-      <h2 id="offloaded-resolution-of-private-address">Offloaded resolution of
-        private address</h2>
-        <p> This feature resolves a private address in the controller firmware
-          or hardware, which provides the following benefits:
-        </p>
-
-        <ul>
-          <li>Latency involved with the host in resolving a private
-            address</li>
-          <li>Saving power by refraining from waking up the host</li>
-        </ul>
-
-        <h3 id="le_set_rpa_timeout">LE_Set_RPA_Timeout</h3>
-          <p>OCF: 0x15C</p>
-
-          <table>
-            <tr>
-              <th>Command parameter</th>
-              <th>Size</th>
-              <th>Purpose</th>
-            </tr>
-            <tr>
-              <td><code>LE_local_IRK</code></td>
-              <td>16 octet</td>
-              <td>The local device IRK used to generate the random resolvable
-                address(es).</td>
-            </tr>
-            <tr>
-              <td><code>tRPA_min</code></td>
-              <td>2 octets</td>
-              <td>The minimum RPA generation timeout in seconds.
-                The controller must generate new resolvable addresses
-                for any advertising/scanning/connection events on or after this
-                timeout.<br/>
-                Valid range: 300-1800</td>
-            </tr>
-            <tr>
-              <td><code>tRPA_max</code></td>
-              <td>2 octets</td>
-              <td>The maximum RPA generation timeout in seconds.
-                The controller must generate new resolvable addresses for
-                any advertising/scanning/connection
-                events on or before this timeout.<br/>
-                Valid range: <code>tRPA_min</code>-1800</td>
-            </tr>
-          </table>
-
-          <table>
-            <tr>
-              <th>Return parameter</th>
-              <th>Size</th>
-              <th>Purpose</th>
-            </tr>
-            <tr>
-              <td><code>Status</code></td>
-              <td>1 octet</td>
-              <td>The status of the command.<br/>
-                <br/>
-                Suggested HCI status values:<br/>
-                0x00 Success<br/>
-                0x01 Unknown command (if not supported)<br/>
-                0x12 Invalid command parameters (if any parameters are outside
-              the given range)</td>
-            </tr>
-          </table>
-
-        <h3 id="le_rpa_offload_command">LE_RPA_offload_Command</h3>
-          <p>OCF: 0x155</p>
-
-          <table>
-            <tr>
-              <th>Command parameter</th>
-              <th>Size</th>
-              <th>Purpose</th>
-            </tr>
-            <tr>
-              <td><code>RPA_offload_opcode</code></td>
-              <td>1 octet</td>
-              <td>0x1 - Enable customer specific feature<br/>
-                0x2 - Add IRK to the list<br/>
-                0x3 - Remove IRK from the list<br/>
-                0x4 - Clear IRK list<br/>
-                0x5 - Read IRK list entry</td>
-            </tr>
-          </table>
-
-          <p>A Command Complete event will be generated for this command.</p>
-
-          <table>
-            <tr>
-              <th>Return parameter</th>
-              <th>Size</th>
-              <th>Purpose</th>
-            </tr>
-            <tr>
-              <td><code>Status</code></td>
-              <td>1 octet</td>
-              <td>Command Complete status</td>
-            </tr>
-            <tr>
-              <td><code>Event_RPA_offload_opcode</code></td>
-              <td>1 octet</td>
-              <td>0x1 - Enable customer specific feature<br/>
-                0x2 - Add IRK to the list<br/>
-                0x3 - Remove IRK from the list<br/>
-                0x4 - Clear IRK list<br/>
-                0x5 - Read IRK list entry</td>
-            </tr>
-          </table>
-
-          <h4
-            id="le_rpa_offload-enable_cust_specific_sub_command">LE_RPA_offload:
-            Enable_cust_specific_sub_Command</h4>
-            <p>Sub OCF: 0x01</p>
-
-            <table>
-              <tr>
-                <th>Sub-command parameter</th>
-                <th>Size</th>
-                <th>Purpose</th>
-              </tr>
-              <tr>
-                <td><code>enable_customer_specific_feature_set</code></td>
-                <td>1 octet</td>
-                <td>0x01 - Enable offloaded RPA feature<br/>
-                  0x00 - Disable offloaded RPA feature</td>
-              </tr>
-            </table>
-
-            <p>RPA offload is required to be enabled by the host, based on the
-            chip capability. Refer to the
-            <code>LE_Get_Vendor_Capabilities_Command</code>. Each chip can have
-            a varying <code>max_irk_list_sz</code> in the firmware.</p>
-
-            <p>A Command Complete event will be generated for this command.
-            </p>
-
-            <table>
-              <tr>
-                <th>Return parameter</th>
-                <th>Size</th>
-                <th>Purpose</th>
-              </tr>
-              <tr>
-                <td><code>Status</code></td>
-                <td>1 octet</td>
-                <td>Command Complete status</td>
-              </tr>
-              <tr>
-                <td><code>Event_cust_specific_feature_opcode</code></td>
-                <td>1 octet</td>
-                <td>0x01 [Enable customer-specific feature]</td>
-              </tr>
-            </table>
-
-          <h4 id="le_rpa_offload-add_irk_to_list_sub_command">LE_RPA_offload:
-            Add_IRK_to_list_sub_Command</h4>
-            <p>Sub OCF: 0x02</p>
-            <table>
-              <tr>
-                <th>Sub-command parameter</th>
-                <th>Size</th>
-                <th>Purpose</th>
-              </tr>
-              <tr>
-                <td><code>LE_IRK</code></td>
-                <td>16 octets</td>
-                <td>LE IRK (1st byte LSB)</td>
-              </tr>
-              <tr>
-                <td><code>Address_Type</code></td>
-                <td>1 octet</td>
-                <td>0: Public address<br/>
-                1: Random address</td>
-              </tr>
-              <tr>
-                <td><code>LE_Device_Address</code></td>
-                <td>6 octets</td>
-                <td>Public or random address associated to the IRK (1st byte
-                  LSB)</td>
-              </tr>
-            </table>
-
-            <p>A Command Complete event will be generated for this command.</p>
-
-            <table>
-              <tr>
-                <th>Return parameter</th>
-                <th>Size</th>
-                <th>Purpose</th>
-              </tr>
-              <tr>
-                <td><code>Status</code></td>
-                <td>1 octet</td>
-                <td>Command Complete status</td>
-              </tr>
-              <tr>
-                <td><code>Event_cust_specific_feature_opcode</code></td>
-                <td>1 octet</td>
-                <td>0x02 [Add IRK to the list]</td>
-              </tr>
-              <tr>
-                <td><code>LE_IrkList_AvailableSpaces</code></td>
-                <td>1 octet</td>
-                <td>Available IRL list entries after current operation</td>
-              </tr>
-            </table>
-
-          <h4 id="le_rpa_offload-remove_irk_to_list_sub_command">LE_RPA_offload:
-            Remove_IRK_to_list_sub_Command</h4>
-            <p>Sub OCF: 0x03</p>
-
-            <table>
-              <tr>
-                <th>Sub-command parameter</th>
-                <th>Size</th>
-                <th>Purpose</th>
-              </tr>
-              <tr>
-                <td><code>Address_Type</code></td>
-                <td>1 octet</td>
-                <td>0: Public address<br/>
-                  1: Random address</td>
-              </tr>
-              <tr>
-                <td><code>LE_Device_Address</code></td>
-                <td>6 octets</td>
-                <td>Public or random address that associates to the IRK</td>
-              </tr>
-            </table>
-
-            <p>A Command Complete event will be generated for this command.</p>
-
-            <table>
-              <tr>
-                <th>Return parameter</th>
-                <th>Size</th>
-                <th>Purpose</th>
-              </tr>
-              <tr>
-                <td><code>Status</code></td>
-                <td>1 octet</td>
-                <td>Command Complete status</td>
-              </tr>
-              <tr>
-                <td><code>Event_cust_specific_feature_opcode</code></td>
-                <td>1 octet</td>
-                <td> 0x03 [Remove IRK from the list]</td>
-              </tr>
-              <tr>
-                <td><code>LE_IrkList_AvailableSpaces</code></td>
-                <td>1 octet</td>
-                <td>Available IRL list entries after current operation</td>
-              </tr>
-            </table>
-
-          <h4 id="le_rpa_offload-clear_irk_list_sub_command">LE_RPA_offload:
-            Clear_IRK_list_sub_Command</h4>
-            <p>Sub OCF: 0x04</p>
-            <table>
-              <tr>
-                <th>Sub-command parameter</th>
-                <th>Size</th>
-                <th>Purpose</th>
-              </tr>
-              <tr>
-                <td>None</td>
-                <td></td>
-                <td></td>
-              </tr>
-            </table>
-
-            <p> A Command Complete event will be generated for this command.</p>
-
-            <table>
-              <tr>
-                <th>Return parameter</th>
-                <th>Size</th>
-                <th>Purpose</th>
-              </tr>
-              <tr>
-                <td><code>Status</code></td>
-                <td>1 octet</td>
-                <td>Command Complete status</td>
-              </tr>
-              <tr>
-                <td><code>Event_cust_specific_feature_opcode</code></td>
-                <td>1 octet</td>
-                <td>0x04 [Clear IRK List]</td>
-              </tr>
-              <tr>
-                <td><code>LE_IrkList_AvailableSpaces</code></td>
-                <td>1 octet</td>
-                <td>Available IRL list entries after current
-                  operation [<code>max_irk_list_sz]</code></td>
-              </tr>
-            </table>
-
-          <h4 id="le_rpa_offload-read_irk_list_sub_command">LE_RPA_offload:
-            Read_IRK_list_sub_Command</h4>
-            <p>Sub OCF: 0x05</p>
-
-            <table>
-              <tr>
-                <th>Sub-command parameter</th>
-                <th>Size</th>
-                <th>Purpose</th>
-              </tr>
-              <tr>
-                <td><code>LE_read_IRK_list_entry-index</code></td>
-                <td>1 octet</td>
-                <td>Index of the  IRK list [0, <code>max_irk_list_sz-1]</code></td>
-              </tr>
-            </table>
-
-            <p> A Command Complete event will be generated for this command.
-            </p>
-
-            <table>
-              <tr>
-                <th>Return parameter</th>
-                <th>Size</th>
-                <th>Purpose</th>
-              </tr>
-              <tr>
-                <td><code>Status</code></td>
-                <td>1 octet</td>
-                <td>Command Complete status</td>
-              </tr>
-              <tr>
-                <td><code>Event_cust_specific_feature_opcode</code></td>
-                <td>1 octet</td>
-                <td> 0x05 [Read IRK List Entry]</td>
-              </tr>
-              <tr>
-                <td><code>LE_Read_IRK_List_entry</code></td>
-                <td>1 octet</td>
-                <td>Index of the IRK that the host wants to read back (maximum
-                IRK list size is 32)</td>
-              </tr>
-              <tr>
-                <td><code>LE_IRK</code></td>
-                <td>16 octets</td>
-                <td>IRK value</td>
-            </tr>
-            <tr>
-              <td><code>Address_Type</code></td>
-              <td>1 octet</td>
-              <td>0: Public address<br/>
-                1: Random address</td>
-            </tr>
-            <tr>
-              <td><code>LE_Device_Address</code></td>
-              <td>6 octets</td>
-              <td>Public or random address associated to the IRK</td>
-            </tr>
-            <tr>
-              <td><code>LE_Resolved_Private_Address</code></td>
-              <td>6 octets</td>
-              <td>Current resolved resolvable private address of this IRK</td>
-            </tr>
-            </table>
 
       <h2 id="batching-of-scan-results">Batching of scan results</h2>
         <p>A design goal is to enhance how the Bluetooth LE Scan Response event
@@ -2026,7 +1308,7 @@
 
         <h3 id="le_get_controller_activity_energy_info">
         LE_Get_Controller_Activity_Energy_Info</h3>
-        <p>This is a vendor-specific command.</p>p>
+        <p>This is a vendor-specific command.</p>
         <p>OCF: 0x159</p>
         <table>
           <tr>
@@ -2078,10 +1360,10 @@
       <h2 id="le-extended-set-scan-parameters-command">LE extended set scan
         parameters command</h2>
         <p>This command can be used to enable a larger scan window and interval
-        in the controller. Per the BT Core 4.1 Specification, a scan window and
+        in the controller. Per the BT Core 5.1 Specification, a scan window and
         interval have an upper bound limit of 10.24 seconds, which hampers
         applications' longer scan intervals beyond 10.24 seconds.</p>
-        <p>Base reference: BT Core 4.1 Specification, page 973 (LE Set Scan
+        <p>Base reference: BT Core 5.1 Specification, page 1331 (LE Set Scan
         Parameters Command)</p>
         <p>OCF: 0x15A</p>
         <table>
@@ -2150,17 +1432,23 @@
           </tr>
         </table>
 
-      <h2 id="get-controller-debug-info-command">Get controller debug info
-        command</h2>
-        <p>The objective of this information element is to acquire controller
-        debug information by a host, in binary form, for post-processing and
-        analysis. This helps debug on-field issues and provides engineers with
-        a toolkit to log information for analysis. A Controller can provide the
-        information when requested by a host via the event (Controller Debug
-        Info sub-event) or autonomously when desired by the controller.
-        Example uses could be to report firmware state information, crash dump
-        information, logging information, etc.</p>
+      <h2 id="get-controller-debug-info-command">
+        Get controller debug info command
+      </h2>
+
+        <p>
+          The objective of this information element is to acquire controller
+          debug information by a host, in binary form, for post-processing and
+          analysis. This helps debug on-field issues and provides engineers with
+          a toolkit to log information for analysis. A Controller can provide the
+          information when requested by a host via the event (Controller Debug
+          Info sub-event) or autonomously when desired by the controller.
+          Example uses could be to report firmware state information, crash dump
+          information, logging information, etc.
+        </p>
+
         <p>OCF: 0x15B</p>
+
         <table>
           <tr>
             <th>Command parameter</th>
@@ -2186,9 +1474,356 @@
             <td>Command Complete status</td>
           </tr>
         </table>
-      <h2 id="hci-event-vendor-specific">HCI event (vendor-specific)</h2>
+
+    <h2 id="a2dp-hardware-offload-support">A2DP Hardware Offload Support</h2>
+
+      <p>
+        The A2DP Offload feature supports the offload of the A2DP audio
+        encoding process to an audio processor attached to the BT Controller.
+        The encoded audio data stream passes directly from the Audio processor
+        to the BT Controller without the BT host’s involvement. The BT Host is
+        still responsible for the configuration and control of the A2DP session.
+      </p>
+
+      <p>
+        OCF: 0x15D
+      </p>
+
+      <h3 id="start-a2dp-offload">Start A2DP Offload</h3>
+
+        <p>Sub OCF: 0x01</p>
+
+        <p>
+          Use this command both to configure the A2DP Offload process and to
+          start the A2DP stream.
+        </p>
+
+        <table>
+          <tr>
+            <th>Command parameter</th>
+            <th>Size</th>
+            <th>Purpose</th>
+          </tr>
+          <tr>
+            <td>Codec</td>
+            <td>4 octets</td>
+            <td>Specifies Codec type<br />
+              0x01 - SBC<br />
+              0x02 - AAC<br />
+              0x04 - APTX<br />
+              0x08 - APTX HD<br />
+              0x10 - LDAC
+            </td>
+          </tr>
+          <tr>
+            <td>Max_Latency</td>
+            <td>2 octets</td>
+            <td>Max Latency Allowed (in ms). A value of zero disables flush.</td>
+          </tr>
+          <tr>
+            <td>SCMS-T_Enable</td>
+            <td>2 octets</td>
+            <td>Octet 0: Flag that enables addition of SCMS-T header.
+              <ul>
+                <li>0x00 - SCMS-T Header not included.</li>
+                <li>0x01 - SCMS-T Header included.</li>
+              </ul>
+              <p>
+                Octet 1: Value for the SCMS-T header, when it’s enabled.
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td>Sampling_Frequency</td>
+            <td>4 octets</td>
+            <td>0x01 - 44100 Hz<br />
+              0x02 - 48000 Hz<br />
+              0x04 - 88200 Hz<br />
+              0x08 - 96000 Hz
+            </td>
+          </tr>
+          <tr>
+            <td>Bits_Per_Sample</td>
+            <td>1 octet
+            </td>
+            <td>0x01 - 16 bits per sample<br />
+              0x02 - 24 bits per sample<br />
+              0x04 - 32 bits per sample
+            </td>
+          </tr>
+          <tr>
+            <td>Channel_Mode</td>
+            <td>1 octet</td>
+            <td>0x01 - Mono<br />
+              0x02 - Stereo
+            </td>
+          </tr>
+          <tr>
+            <td>Encoded_Audio_Bitrate</td>
+            <td>4 octets</td>
+            <td>The encoded audio bitrate in bits per second second.<br />
+              0x00000000 - The audio bitrate is not
+              specified&hairsp;/&hairsp;unused.<br />
+              0x00000001 - 0x00FFFFFF - Encoded audio bitrate in
+              bits per second.<br />
+              0x01000000 - 0xFFFFFFFF - Reserved.
+            </td>
+          </tr>
+          <tr>
+            <td>Connection_Handle</td>
+            <td>2 octets</td>
+            <td>Connection Handle of A2DP connection being configured</td>
+          </tr>
+          <tr>
+            <td>L2CAP_Channel_ID</td>
+            <td>2 octets</td>
+            <td>L2CAP Channel ID to be used for this A2DP connection</td>
+          </tr>
+          <tr>
+            <td>L2CAP_MTU_Size</td>
+            <td>2 octets</td>
+            <td>Maximum size of L2CAP MTU containing encoded audio packets</td>
+          </tr>
+          <tr>
+            <td>Codec_Information</td>
+            <td>32 octets</td>
+            <td>Codec-specific Information.
+              <p><strong>SBC Codec:</strong></p>
+              <p>
+                Refer to SBC Codec specific information elements in A2DP v1.3.<br />
+                Octet 0: Block length | Subbands | Allocation Method<br />
+                Octet 1: Minimum Bitpool value<br />
+                Octet 2: Maximum Bitpool value<br />
+                Octet 3: Sampling Frequency | Channel Mode<br />
+                Octet 4-31: reserved
+              </p>
+              <p><strong>AAC Codec:</strong></p>
+              <p>
+                Refer to AAC Codec specific information elements in A2DP v1.3<br />
+                Octet 0: Object Type<br />
+                Octet 1; b7: VBR<br />
+                Octet 2-31: reserved
+              </p>
+              <p>
+                <strong>LDAC Codec:</strong>
+              </p>
+              <p>
+                Octet 0-3: Vendor ID<br />
+                0x0000012D
+              </p>
+              <p>
+                Octet 4-5: Codec ID<br />
+                0x00AA - LDAC<br />
+                All other values are reserved
+              </p>
+              <p>
+                Octet 6: Bitrate Index:<br />
+                0x00 - High<br />
+                0x01 - Mid<br />
+                0x02 - Low<br />
+                0x03 - 0x7E - Reserved<br />
+                0x7F - ABR (Adaptive Bit Rate)<br />
+                0x80 - 0xFF - Reserved
+              </p>
+              <p>
+                Octet 7: L2DC Channel Mode<br />
+                0x01 - Stereo<br />
+                0x02 - Dual<br />
+                0x04 - Mono<br />
+                Others are reserved
+              </p>
+              <p>
+                Octet 8-31: reserved
+              </p>
+              <p>
+                <strong>All other codecs:</strong>
+              </p>
+              <p>
+                Octet 0-31: reserved
+              </p>
+            </td>
+          </tr>
+        </table>
+
+        <p>
+          A Command Complete event will be generated for this command.
+        </p>
+
+        <table>
+          <tr>
+            <th>Return parameter</th>
+            <th>Size</th>
+            <th>Purpose</th>
+          </tr>
+          <tr>
+            <td>Status</td>
+            <td>1 octet</td>
+            <td>Command Complete status</td>
+          </tr>
+          <tr>
+            <td>Sub_Opcode</td>
+            <td>1 octet</td>
+            <td>0x0­- Start A2DP Offload</td>
+          </tr>
+        </table>
+
+      <h3 id="stop-a2dp-offload">Stop A2DP Offload</h3>
+
+        <p>Sub OCF: 0x02</p>
+
+        <p>This command is used to stop the A2DP Offload stream.</p>
+
+        <table>
+          <tr>
+            <th>Command parameter</th>
+            <th>Size</th>
+            <th>Purpose</th>
+          </tr>
+          <tr>
+            <td></td>
+            <td>N/A</td>
+            <td>Empty command parameter list.</td>
+          </tr>
+        </table>
+
+        <p>No parameters are defined for this command.</p>
+
+        <p>A Command Complete event will be generated for this command.</p>
+
+        <table>
+          <tr>
+            <th>Return parameter</th>
+            <th>Size</th>
+            <th>Purpose</th>
+          </tr>
+          <tr>
+            <td>Status</td>
+            <td>1 octet</td>
+            <td>Command Complete status</td>
+          </tr>
+          <tr>
+            <td>Sub_Opcode</td>
+            <td>1 octet</td>
+            <td>0x02 - Stop A2DP Offload</td>
+          </tr>
+        </table>
+
+    <h2 id="bluetooth-quality-report-command">Bluetooth Quality Report command</h2>
+
+      <p>
+        The BT Quality Report command feature starts the mechanism in the Bluetooth
+        controller to report Bluetooth Quality events to the host. You can enable
+        four options:
+      </p>
+
+      <ul>
+        <li>
+          Quality Monitoring Mode: The controller periodically sends a BT Quality
+          Report sub-event to the host.
+        </li>
+        <li>
+          Approaching LSTO: If no packets are received from the connected BT device
+          for longer than half of the Link Supervision TimeOut (LSTO) value, the
+          controller reports an Approaching LSTO event to the host.
+        </li>
+        <li>
+          A2DP Audio Choppy: When the controller detects factors that cause choppy
+          audio, the controller reports an A2DP Audio Choppy event to the host.
+        </li>
+        <li>
+          (e)SCO Voice Choppy: When the controller detects factors that cause choppy
+          voice, the controller reports an (e)SCO Voice Choppy event to the host.
+        </li>
+      </ul>
+
+      <p>OCF: 0x15E</p>
+
+      <table>
+        <tr>
+          <th>Command parameter</th>
+          <th>Size</th>
+          <th>Purpose</th>
+        </tr>
+        <tr>
+          <td>BQR_Report_Action</td>
+          <td>1 octet</td>
+          <td>
+            Action to add / delete reporting of quality event(s) set in
+            BQR_Quality_Event_Mask parameter, or clear all.
+            <p>
+              0x00 - Add<br />
+              0x01 - Delete<br />
+              0x02 - Clear
+            </p>
+            <p>
+              Delete will clear specific quality event(s) reporting.<br />
+              Clear will clear all quality events reporting
+              (BQR_Quality_Event_Mask parameter can be ignored).
+            </p>
+          </td>
+        </tr>
+        <tr>
+          <td>BQR_Quality_Event_Mask</td>
+          <td>4 octets</td>
+          <td>Bit masks for the selected quality event reporting.
+            <p>
+              Bit 0: Set to enable quality monitoring mode.<br />
+              Bit 1: Set to enable Approaching LSTO event.<br />
+              Bit 2: Set to enable A2DP Audio Choppy event.<br />
+              Bit 3: Set to enable (e)SCO Voice Choppy event.<br />
+              Bit 4 ~ 31: Reserved.
+            </p>
+          </td>
+        </tr>
+        <tr>
+          <td>BQR_Minimum_Report_Interval</td>
+          <td>2 octets</td>
+          <td>
+            Define the minimum time interval of quality event reporting for the
+            selected quality event(s). The controller Firmware should not report
+            the next event within the defined time interval. The interval setting
+            shall be respective and dedicated for the quality event(s) which are
+            being added.
+            <p>
+              Unit: ms<br />
+              Default: 0 (No limitation for the interval.)<br />
+              Range: 0 ~ 65535 ms
+          </td>
+        </tr>
+      </table>
+
+      <p>
+        A Command Complete event will be generated for this command.
+      </p>
+
+      <table>
+        <tr>
+          <th>Return parameter</th>
+          <th>Size</th>
+          <th>Purpose</th>
+        </tr>
+        <tr>
+          <td>Status</td>
+          <td>1 octet</td>
+          <td>Command Complete status</td>
+        </tr>
+        <tr>
+          <td>Current_Quality_Event_Mask</td>
+          <td>4 octets</td>
+          <td>Indicates current bit mask setting.<br />
+            Bit 0: Quality monitoring mode is enabled.<br />
+            Bit 1: Approaching LSTO event reporting is enabled.<br />
+            Bit 2: A2DP Audio Choppy event reporting is enabled.<br />
+            Bit 3: (e)SCO Voice Choppy event reporting is enabled.<br />
+            Bit 4 ~ 31: Reserved.
+          </td>
+        </tr>
+      </table>
+
+
+    <h2 id="hci-event-vendor-specific">HCI event (vendor-specific)</h2>
         <p>Vendor-specific HCI events are required in some cases. Refer to
-        Figure 5.4 on page 486 of the BT Core 4.1 Specification. Event
+        Figure 5.4 on page 776 of the BT Core 5.1 Specification. Event
         parameter 0 will always contain the first sub-event code, based on
         which the rest of the HCI event is decoded.</p>
         <table>
@@ -2348,6 +1983,982 @@
               <td>Debug data of <code>cur_payload_sz</code></td>
             </tr>
           </table>
+
+        <h3 id="bluetooth-quality-report-sub-event">
+          Bluetooth Quality Report sub-event
+        </h3>
+
+          <p>
+            This event indicates that a Bluetooth
+            audio&hairsp;/&hairsp;voice&hairsp;/&hairsp;link quality event happened.
+          </p>
+
+          <p>Sub-event code = 0x58</p>
+
+          <table>
+            <tr>
+              <th>Sub-event Parameter</th>
+              <th>Size</th>
+              <th>Purpose</th>
+            </tr>
+            <tr>
+              <td>Quality_Report_Id</td>
+              <td>1 octet</td>
+              <td>
+                0x01: Quality reporting on the monitoring mode.<br />
+                0x02: Approaching LSTO.<br />
+                0x03: A2DP Audio Choppy.<br />
+                0x04: (e)SCO Voice Choppy.<br />
+                0x05 ~ 0xFF: Reserved.
+              </td>
+            </tr>
+            <tr>
+              <td>Packet_Types</td>
+              <td>1 octet</td>
+              <td>
+                0x01: ID<br />
+                0x02: NULL<br />
+                0x03: POLL<br />
+                0x04: FHS<br />
+                0x05: HV1<br />
+                0x06: HV2<br />
+                0x07: HV3<br />
+                0x08: DV<br />
+                0x09: EV3<br />
+                0x0A: EV4<br />
+                0x0B: EV5<br />
+                0x0C: 2-EV3<br />
+                0x0D: 2-EV5<br />
+                0x0E: 3-EV3<br />
+                0x0F: 3-EV5<br />
+                0x11: DH1<br />
+                0x12: DM3<br />
+                0x13: DH3<br />
+                0x14: DM5<br />
+                0x15: DH5<br />
+                0x16: AUX1<br />
+                0x17: 2-DH1<br />
+                0x18: 2-DH3<br />
+                0x19: 2-DH5<br />
+                0x1A: 3-DH1<br />
+                0x1B: 3-DH3<br />
+                0x1C: 3-DH5<br />
+                0x1D ~ 0xFF: Reserved.
+              </td>
+            </tr>
+            <tr>
+              <td>Connection_Handle</td>
+              <td>2 octets</td>
+              <td>Connection Handle.</td>
+            </tr>
+            <tr>
+              <td>Connection_Role</td>
+              <td>1 octet</td>
+              <td>Performing Role for the connection.<br />
+                0x00: Master<br />
+                0x01: Follower<br />
+                0x02 ~ 0xFF: Reserved.
+              </td>
+            </tr>
+            <tr>
+              <td>TX_Power_Level</td>
+              <td>1 octet</td>
+              <td>Current transmit power level for the specified Connection_Handle.
+                <p>This value shall be the same as the controller's responding to
+                  the HCI_Read_Transmit_Power_Level HCI command.</p>
+              </td>
+            </tr>
+            <tr>
+              <td>RSSI</td>
+              <td>1 octet</td>
+              <td>[in dBm]
+                <p>
+                  Received Signal Strength Indication (RSSI) value for the
+                  specified Connection_Handle.<br />
+                  This value shall be an absolute receiver signal strength value.<br />
+                  Range: -127 to +20
+                </p>
+              </td>
+            </tr>
+            <tr>
+              <td>SNR</td>
+              <td>1 octet</td>
+              <td>[in dB]
+                <p>
+                  Signal-to-Noise Ratio (SNR) value for the specified
+                  Connection_Handle.<br />
+                  The controller shall provide the average SNR of all the
+                  channels currently used by the link currently.
+                </p>
+              </td>
+            </tr>
+            <tr>
+              <td>Unused_AFH_Channel_Count</td>
+              <td>1 octet</td>
+              <td>Indicates the number of unused channels in AFH_channel_map.<br />
+                0x4F ~ 0xFF: Reserved.
+              </td>
+            </tr>
+            <tr>
+              <td>AFH_Select_Unideal_Channel_Count</td>
+              <td>1 octet</td>
+              <td>
+                Indicates the number of the channels which are interfered and have
+                bad quality, but they are still selected for AFH.<br />
+                The minimum number of channels allowed by the Bluetooth specification
+                is 20, so even if all 79 channels are interfered and have bad quality,
+                the controller still needs to choose at least 20 channels for AFH.
+              </td>
+            </tr>
+            <tr>
+              <td>LSTO</td>
+              <td>2 octets</td>
+              <td>Current Link Supervision Timeout Setting.<br />
+                Time = N * 0.625 ms<br />
+                Time Range: 0.625 ms to 40.9 s
+              </td>
+            </tr>
+            <tr>
+              <td>Connection_Piconet_Clock</td>
+              <td>4 octets</td>
+              <td>Piconet Clock for the specified Connection_Handle.<br />
+                This value shall be the same as the controller's responding to
+                HCI_Read_Clock HCI command with parameter "Which_Clock" of 0x01
+                (Piconet Clock).<br />
+                Unit: N * 0.3125 ms (1 Bluetooth Clock)
+              </td>
+            </tr>
+            <tr>
+              <td>Retransmission_Count</td>
+              <td>4 octets</td>
+              <td>The number of retransmissions since the last event.<br />
+                This count shall be reset after reporting to the host.
+              </td>
+            </tr>
+            <tr>
+              <td>No_RX_Count</td>
+              <td>4 octets</td>
+              <td>No RX count since the last event.<br />
+                The count increases when no packet is received at the scheduled
+                time slot or the received packet is corrupted.<br />
+                This count shall be reset after reporting to the host.
+              </td>
+            </tr>
+            <tr>
+              <td>NAK_Count</td>
+              <td>4 octets</td>
+              <td>NAK (Negative Acknowledge) count since the last event.<br />
+                This count shall be reset after reporting to the host.
+              </td>
+            </tr>
+            <tr>
+              <td>Last_TX_ACK_Timestamp</td>
+              <td>4 octets</td>
+              <td>Timestamp of last TX ACK. It is based on the Bluetooth Clock
+                of the piconet master (CLK).<br />
+                Unit: N * 0.3125 ms (1 Bluetooth Clock)
+              </td>
+            </tr>
+            <tr>
+              <td>Flow_Off_Count</td>
+              <td>4 octets</td>
+              <td>The number of times the controller receives Flow-off (STOP)
+                since the last event.<br />
+                This count shall be reset after reporting to the host.
+              </td>
+            </tr>
+            <tr>
+              <td>Last_Flow_On_Timestamp</td>
+              <td>4 octets</td>
+              <td>Timestamp of last Flow-on (GO). It is based on the Bluetooth Clock
+                of the piconet master (CLK).<br />
+                Unit: N * 0.3125 ms (1 Bluetooth Clock)
+              </td>
+            </tr>
+            <tr>
+              <td>Buffer_Overflow_Bytes</td>
+              <td>4 octets</td>
+              <td>[in Byte]
+                <p>Buffer overflow count since the last event.<br />
+                  The controller counts how many bytes of data are dropped.<br />
+                  This count shall be reset after reporting to host.
+                </p>
+              </td>
+            </tr>
+            <tr>
+              <td>Buffer_Underflow_Bytes</td>
+              <td>4 octets</td>
+              <td>[in Byte]
+                <p>
+                  Buffer underflow count since the last event.<br />
+                  This count shall be reset after reporting to host.
+                </p>
+              </td>
+            </tr>
+            <tr>
+              <td>Vendor Specific Parameter</td>
+              <td>(Parameter Total Length - 48) * octets</td>
+              <td>For the controller vendor to obtain more vendor specific parameters.</td>
+            </tr>
+          </table>
+
+    <h2 id="multi-advertiser-support">Multi-advertiser support</h2>
+
+      <aside class="warning">
+        <strong>Warning:</strong> The
+        <a href="#multi-advertiser-support">Multi-advertiser support</a> content
+        is deprecated in the Google feature spec v0.98 and higher. Use the
+        standard in the Bluetooth Core 5.0 Specification instead.
+      </aside>
+
+        <p>The objectives of multi-advertiser support are the following:</p>
+
+        <ul>
+          <li>Ability to support multiple advertisements
+            (<code>max_advt_instances</code>)</li> <li>Different transmit powers
+            to allow for a varying range</li> <li>Different advertising
+            content</li>
+          <li>An individualized response for each advertiser</li>
+          <li>Privacy (non-trackable) for each advertiser</li>
+          <li>Connectable</li>
+        </ul>
+
+        <p>To keep this specification close to existing standards, the
+        following vendor-specific commands are provided. They are derived from
+        the Bluetooth Core 4.1 Specification.</p>
+
+        <h3 id="le_multi_advt_command">LE_Multi_Advt_Command</h3>
+          <p>OCF: 0x154</p>
+
+          <table>
+            <tr>
+              <th>Command parameter</th>
+              <th>Size</th>
+              <th>Purpose</th>
+            </tr>
+            <tr>
+              <td><code>Multi_advt_opcode</code></td>
+              <td>1 octet</td>
+              <td>0x01 - <code>Set_Advt_Param_Multi_Sub_Cmd</code><br/>
+                0x02 - <code>Set_Advt_Data_Multi_Sub_Cmd</code><br/>
+                0x03 - <code>Set_Scan_Resp_Data_Multi_Sub_Cmd</code><br/>
+                0x04 - <code>Set_Random_Addr_Multi_Sub_Cmd</code><br/>
+                0x05 - <code>Set_Advt_Enable_Multi_Sub_Cmd</code></td>
+            </tr>
+          </table>
+
+          <p>A Command Complete event will be generated for this command.</p>
+
+          <table>
+            <tr>
+              <th>Return parameter</th>
+              <th>Size</th>
+              <th>Purpose</th>
+            </tr>
+            <tr>
+              <td><code>Status</code></td>
+              <td>1 octet</td>
+              <td>Command Complete status</td>
+            </tr>
+            <tr>
+              <td><code>Multi_advt_opcode</code></td>
+              <td>1 octet</td>
+              <td>0x01 - <code>Set_Advt_Param_Multi_Command</code><br/>
+                0x02 - <code>Set_Advt_Data_Multi_Command</code><br/>
+                0x03 - <code>Set_Scan_Resp_Data_Multi_Command</code><br/>
+                0x04 - <code>Set_Random_Addr_Multi_Command</code><br/>
+                0x05 - <code>Set_Advt_Enable_Multi_Command</code></td>
+            </tr>
+          </table>
+
+          <h4
+            id="le_multi_advt_command-set_advt_param_multi_sub_cmd">
+            LE_Multi_Advt_Command: Set_Advt_Param_Multi_Sub_Cmd</h4>
+
+            <p>Base reference:
+            Bluetooth Core 4.1 Specification, page 964 (LE Set Advertising
+            Parameter Command)</p>
+
+            <p>Sub OCF: 0x01</p>
+
+            <table>
+              <tr>
+                <th>Sub-command parameter</th>
+                <th>Size</th>
+                <th>Purpose</th>
+              </tr>
+              <tr>
+                <td><code>Advertising_Interval_Min</code></td>
+                <td>Per spec</td>
+                <td>Per spec</td>
+              </tr>
+              <tr>
+                <td><code>Advertising_Interval_Max</code></td>
+                <td>Per spec</td>
+                <td>Per spec</td>
+              </tr>
+              <tr>
+                <td><code>Advertising_Type</code></td>
+                <td>Per spec</td>
+                <td>Per spec</td>
+              </tr>
+              <tr>
+                <td><code>Own_Address_Type</code></td>
+                <td>Per spec</td>
+                <td>Per spec</td>
+              </tr>
+              <tr>
+                <td><code>Own_Address</code></td>
+                <td>Per spec</td>
+                <td>Per spec</td>
+              </tr>
+              <tr>
+                <td><code>Direct_Address_Type</code></td>
+                <td>Per spec</td>
+                <td>Per spec</td>
+              </tr>
+              <tr>
+                <td><code>Direct_Address</code></td>
+                <td>Per spec</td>
+                <td>Per spec</td>
+              </tr>
+              <tr>
+                <td><code>Advertising_Channel_Map</code></td>
+                <td>Per spec</td>
+                <td>Per spec</td>
+              </tr>
+              <tr>
+                <td><code>Adverstising_Filter_Policy</code></td>
+                <td>Per spec</td>
+                <td>Per spec</td>
+              </tr>
+              <tr>
+                <td><code>Advertising_Instance</code></td>
+                <td>1 octet</td>
+                <td>Specifies the applicability of the above parameters to an
+                  instance</td>
+              </tr>
+              <tr>
+                <td><code>Tx_power</code></td>
+                <td>1 octet</td>
+                <td>Transmit_Power<br/>
+                  Unit - in dBm (signed integer)<br/>
+                  Range (-70 to +20)</td>
+              </tr>
+            </table>
+
+            <p>The <code>Own_Address</code> parameter could be a
+            host-configured address at the time of setting up this
+            multi-advertisement instance. This provides the ability to  have a
+            resolvable private address at the time of the transmit of the first
+            beacon. Advertisement on an instance will continue irrespective of
+            the connection. The host BT stack could issue a command to start
+            advertisement on an instance, post connection.</p>
+
+            <p> A Command Complete event will be generated for this command as
+            specified in the Bluetooth Core 4.1 Specification, per the above
+            command. The controller will respond with a non-success (invalid
+            parameter) code if the advertising instance or <code>Tx_Power</code>
+            parameters are invalid.</p>
+
+            <table>
+              <tr>
+                <th>Return parameter</th>
+                <th>Size</th>
+                <th>Purpose</th>
+              </tr>
+              <tr>
+                <td><code>Status</code></td>
+                <td>1 octet</td>
+                <td>Command Complete status</td>
+              </tr>
+              <tr>
+                <td><code>Multi_advt_opcode</code></td>
+                <td>1 octet</td>
+                <td>0x01 [<code>Set_Advt_Param_Multi_Sub_Cmd]</code></td>
+              </tr>
+            </table>
+
+          <h4
+            id="le_multi_advt_command-set_advt_data_multi_sub_cmd">LE_Multi_Advt_Command:
+            Set_Advt_Data_Multi_Sub_Cmd</h4>
+
+            <p>Base reference: Bluetooth Core 4.1 Specification, page 969
+              (LE Set Advertising Data Command)</p>
+
+            <p>Sub OCF: 0x02</p>
+
+            <table>
+              <tr>
+                <th>Sub-command parameter</th>
+                <th>Size</th>
+                <th>Purpose</th>
+              </tr>
+              <tr>
+                <td><code>Advertising_Data_Length</code></td>
+                <td>Per spec</td>
+                <td>Per spec</td>
+              </tr>
+              <tr>
+                <td><code>Advertising_Data</code></td>
+                <td>Per spec</td>
+                <td>Per spec</td>
+              </tr>
+              <tr>
+                <td><code>Advertising_Instance</code></td>
+                <td>1 octet</td>
+                <td>Specifies the applicability of the above parameters to an
+                  instance</td>
+              </tr>
+            </table>
+
+            <p>A Command Complete event will be generated for this command as
+            specified in the Bluetooth Core 4.1 Specification, per the above
+            command. The controller will respond with a non-success code if the
+            advertising instance or <code>Tx_Power</code> parameters are
+            invalid.  </p>
+
+            <table>
+              <tr>
+                <th>Return parameter</th>
+                <th>Size</th>
+                <th>Purpose</th>
+              </tr>
+              <tr>
+                <td><code>Status</code></td>
+                <td>1 octet</td>
+                <td>Command Complete status</td>
+              </tr>
+              <tr>
+                <td><code>Multi_advt_opcode</code></td>
+                <td>1 octet</td>
+                <td>0x02 [<code>Set_Advt_Data_Multi_Sub_Cmd]</code></td>
+              </tr>
+            </table>
+
+          <h4
+            id="le_multi_advt_command-set_scan_resp_data_multi_sub_cmd">LE_Multi_Advt_Command:
+            Set_Scan_Resp_Data_Multi_Sub_Cmd</h4>
+
+            <p>Base reference: Bluetooth Core 4.1 Specification, page 970
+            (LE Set Scan Response Data Command)</p>
+
+            <p>Sub OCF: 0x03</p>
+
+            <table>
+              <tr>
+                <th>Sub-command parameter</th>
+                <th>Size</th>
+                <th>Purpose</th>
+              </tr>
+              <tr>
+                <td><code>Scan_Response_Data_Length</code></td>
+                <td>Per spec</td>
+                <td>Per spec</td>
+              </tr>
+              <tr>
+                <td><code>Scan_Response_Data</code></td>
+                <td>Per spec</td>
+                <td>Per spec</td>
+              </tr>
+              <tr>
+                <td><code>Advertising_Instance</code></td>
+                <td>1 octet</td>
+                <td>Specifies the applicability of the above
+                parameters to an instance</td>
+              </tr>
+            </table>
+
+            <p>A Command Complete event will be generated for this command as
+            specified in the Bluetooth Core 4.1 Specification, per the above
+            command. The controller will respond with a non-success code
+            (invalid parameter) if the advertising instance or
+            <code>Tx_Power</code> parameters are invalid.</p>
+
+            <table>
+              <tr>
+                <th>Return parameter</th>
+                <th>Size</th>
+                <th>Purpose</th>
+              </tr>
+              <tr>
+                <td><code>Status</code></td>
+                <td>1 octet</td>
+                <td>Command Complete status</td>
+              </tr>
+              <tr>
+                <td><code>Multi_advt_opcode</code></td>
+                <td>1 octet</td>
+                <td>0x03 [<code>Set_Scan_Resp_Data_Multi_Sub_Cmd]</code></td>
+              </tr>
+            </table>
+
+          <h4
+            id="le_multi_advt_command-set_random_addr_multi_sub_cmd">LE_Multi_Advt_Command:
+            Set_Random_Addr_Multi_Sub_Cmd</h4>
+            <p>Base reference: Bluetooth Core 4.1 Specification, page 963
+              (LE Set Random Address Command)</p>
+
+            <p>Sub OCF: 0x04</p>
+
+            <table>
+              <tr>
+                <th>Sub-command parameter</th>
+                <th>Size</th>
+                <th>Purpose</th>
+              </tr>
+              <tr>
+                <td><code>Random Address</code></td>
+                <td>Per spec</td>
+                <td>Per spec</td>
+              </tr>
+              <tr>
+                <td><code>Advertising_Instance</code></td>
+                <td>1 octet</td>
+                <td>Specifies the applicability of the above parameters to an
+                instance</td>
+              </tr>
+            </table>
+
+            <p>A Command Complete event will be generated for this command.</p>
+
+            <table>
+              <tr>
+                <th>Return parameter</th>
+                <th>Size</th>
+                <th>Purpose</th>
+              </tr>
+              <tr>
+                <td><code>Status</code></td>
+                <td>1 octet</td>
+                <td>Command Complete status</td>
+              </tr>
+              <tr>
+                <td><code>Multi_advt_opcode</code></td>
+                <td>1 octet</td>
+                <td>0x04 [<code>Set_Random_Addr_Multi_Sub_Cmd]</code></td>
+              </tr>
+            </table>
+
+          <h4
+            id="le_multi_advt_command-set_advt_enable_multi_sub_cmd">LE_Multi_Advt_Command:
+            Set_Advt_Enable_Multi_Sub_Cmd</h4>
+            <p>Base reference: Bluetooth Core 4.1 Specification, page 971
+              (LE Set Advertise Enable Command in that core specification)</p>
+
+            <p>OCF: 0x05</p>
+
+            <table>
+              <tr>
+                <th>Sub-command parameter</th>
+                <th>Size</th>
+                <th>Purpose</th>
+              </tr>
+              <tr>
+                <td><code>Advertising_Enable</code></td>
+                <td>1 octet</td>
+                <td>A value of 1 means enable. Any other value means disable.</td>
+              </tr>
+              <tr>
+                <td><code>Advertising_Instance</code></td>
+                <td>1 octet</td>
+                <td>Specifies the applicability of the above
+                  parameters to an instance. Instance 0 means a standard HCI
+                  instance.</td>
+              </tr>
+            </table>
+
+            <p>A Command Complete event will be generated for this command.</p>
+
+            <table>
+              <tr>
+                <th>Return parameter</th>
+                <th>Size</th>
+                <th>Purpose</th>
+              </tr>
+              <tr>
+                <td><code>Status</code></td>
+                <td>1 octet</td>
+                <td>Command Complete status</td>
+              </tr>
+              <tr>
+                <td><code>Multi_advt_opcode</code></td>
+                <td>1 octet</td>
+                <td>0x05 [<code>Set_Advt_Enable_Multi_Sub_Cmd]</code></td>
+              </tr>
+            </table>
+
+      <h2 id="offloaded-resolution-of-private-address">
+        Offloaded resolution of private address
+      </h2>
+
+        <aside class="warning">
+          <strong>Warning:</strong> The
+          <a href="#offloaded-resolution-of-private-address">Offloaded
+          resolution of private address</a> content is deprecated in the Google feature spec v0.98
+          and higher. Use the standard in the Bluetooth Core 4.2 Specification instead.
+        </aside>
+
+        <p> This feature resolves a private address in the controller firmware
+          or hardware, which provides the following benefits:
+        </p>
+
+        <ul>
+          <li>Latency involved with the host in resolving a private
+            address</li>
+          <li>Saving power by refraining from waking up the host</li>
+        </ul>
+
+        <h3 id="le_set_rpa_timeout">LE_Set_RPA_Timeout</h3>
+          <p>OCF: 0x15C</p>
+
+          <table>
+            <tr>
+              <th>Command parameter</th>
+              <th>Size</th>
+              <th>Purpose</th>
+            </tr>
+            <tr>
+              <td><code>LE_local_IRK</code></td>
+              <td>16 octet</td>
+              <td>The local device IRK used to generate the random resolvable
+                address(es).</td>
+            </tr>
+            <tr>
+              <td><code>tRPA_min</code></td>
+              <td>2 octets</td>
+              <td>The minimum RPA generation timeout in seconds.
+                The controller must generate new resolvable addresses
+                for any advertising/scanning/connection events on or after this
+                timeout.<br/>
+                Valid range: 300-1800</td>
+            </tr>
+            <tr>
+              <td><code>tRPA_max</code></td>
+              <td>2 octets</td>
+              <td>The maximum RPA generation timeout in seconds.
+                The controller must generate new resolvable addresses for
+                any advertising/scanning/connection
+                events on or before this timeout.<br/>
+                Valid range: <code>tRPA_min</code>-1800</td>
+            </tr>
+          </table>
+
+          <table>
+            <tr>
+              <th>Return parameter</th>
+              <th>Size</th>
+              <th>Purpose</th>
+            </tr>
+            <tr>
+              <td><code>Status</code></td>
+              <td>1 octet</td>
+              <td>The status of the command.<br/>
+                <br/>
+                Suggested HCI status values:<br/>
+                0x00 Success<br/>
+                0x01 Unknown command (if not supported)<br/>
+                0x12 Invalid command parameters (if any parameters are outside
+              the given range)</td>
+            </tr>
+          </table>
+
+        <h3 id="le_rpa_offload_command">LE_RPA_offload_Command</h3>
+          <p>OCF: 0x155</p>
+
+          <table>
+            <tr>
+              <th>Command parameter</th>
+              <th>Size</th>
+              <th>Purpose</th>
+            </tr>
+            <tr>
+              <td><code>RPA_offload_opcode</code></td>
+              <td>1 octet</td>
+              <td>0x1 - Enable customer specific feature<br/>
+                0x2 - Add IRK to the list<br/>
+                0x3 - Remove IRK from the list<br/>
+                0x4 - Clear IRK list<br/>
+                0x5 - Read IRK list entry</td>
+            </tr>
+          </table>
+
+          <p>A Command Complete event will be generated for this command.</p>
+
+          <table>
+            <tr>
+              <th>Return parameter</th>
+              <th>Size</th>
+              <th>Purpose</th>
+            </tr>
+            <tr>
+              <td><code>Status</code></td>
+              <td>1 octet</td>
+              <td>Command Complete status</td>
+            </tr>
+            <tr>
+              <td><code>Event_RPA_offload_opcode</code></td>
+              <td>1 octet</td>
+              <td>0x1 - Enable customer specific feature<br/>
+                0x2 - Add IRK to the list<br/>
+                0x3 - Remove IRK from the list<br/>
+                0x4 - Clear IRK list<br/>
+                0x5 - Read IRK list entry</td>
+            </tr>
+          </table>
+
+          <h4
+            id="le_rpa_offload-enable_cust_specific_sub_command">LE_RPA_offload:
+            Enable_cust_specific_sub_Command</h4>
+            <p>Sub OCF: 0x01</p>
+
+            <table>
+              <tr>
+                <th>Sub-command parameter</th>
+                <th>Size</th>
+                <th>Purpose</th>
+              </tr>
+              <tr>
+                <td><code>enable_customer_specific_feature_set</code></td>
+                <td>1 octet</td>
+                <td>0x01 - Enable offloaded RPA feature<br/>
+                  0x00 - Disable offloaded RPA feature</td>
+              </tr>
+            </table>
+
+            <p>RPA offload is required to be enabled by the host, based on the
+            chip capability. Refer to the
+            <code>LE_Get_Vendor_Capabilities_Command</code>. Each chip can have
+            a varying <code>max_irk_list_sz</code> in the firmware.</p>
+
+            <p>A Command Complete event will be generated for this command.
+            </p>
+
+            <table>
+              <tr>
+                <th>Return parameter</th>
+                <th>Size</th>
+                <th>Purpose</th>
+              </tr>
+              <tr>
+                <td><code>Status</code></td>
+                <td>1 octet</td>
+                <td>Command Complete status</td>
+              </tr>
+              <tr>
+                <td><code>Event_cust_specific_feature_opcode</code></td>
+                <td>1 octet</td>
+                <td>0x01 [Enable customer-specific feature]</td>
+              </tr>
+            </table>
+
+          <h4 id="le_rpa_offload-add_irk_to_list_sub_command">LE_RPA_offload:
+            Add_IRK_to_list_sub_Command</h4>
+            <p>Sub OCF: 0x02</p>
+            <table>
+              <tr>
+                <th>Sub-command parameter</th>
+                <th>Size</th>
+                <th>Purpose</th>
+              </tr>
+              <tr>
+                <td><code>LE_IRK</code></td>
+                <td>16 octets</td>
+                <td>LE IRK (1st byte LSB)</td>
+              </tr>
+              <tr>
+                <td><code>Address_Type</code></td>
+                <td>1 octet</td>
+                <td>0: Public address<br/>
+                1: Random address</td>
+              </tr>
+              <tr>
+                <td><code>LE_Device_Address</code></td>
+                <td>6 octets</td>
+                <td>Public or random address associated to the IRK (1st byte
+                  LSB)</td>
+              </tr>
+            </table>
+
+            <p>A Command Complete event will be generated for this command.</p>
+
+            <table>
+              <tr>
+                <th>Return parameter</th>
+                <th>Size</th>
+                <th>Purpose</th>
+              </tr>
+              <tr>
+                <td><code>Status</code></td>
+                <td>1 octet</td>
+                <td>Command Complete status</td>
+              </tr>
+              <tr>
+                <td><code>Event_cust_specific_feature_opcode</code></td>
+                <td>1 octet</td>
+                <td>0x02 [Add IRK to the list]</td>
+              </tr>
+              <tr>
+                <td><code>LE_IrkList_AvailableSpaces</code></td>
+                <td>1 octet</td>
+                <td>Available IRL list entries after current operation</td>
+              </tr>
+            </table>
+
+          <h4 id="le_rpa_offload-remove_irk_to_list_sub_command">LE_RPA_offload:
+            Remove_IRK_to_list_sub_Command</h4>
+            <p>Sub OCF: 0x03</p>
+
+            <table>
+              <tr>
+                <th>Sub-command parameter</th>
+                <th>Size</th>
+                <th>Purpose</th>
+              </tr>
+              <tr>
+                <td><code>Address_Type</code></td>
+                <td>1 octet</td>
+                <td>0: Public address<br/>
+                  1: Random address</td>
+              </tr>
+              <tr>
+                <td><code>LE_Device_Address</code></td>
+                <td>6 octets</td>
+                <td>Public or random address that associates to the IRK</td>
+              </tr>
+            </table>
+
+            <p>A Command Complete event will be generated for this command.</p>
+
+            <table>
+              <tr>
+                <th>Return parameter</th>
+                <th>Size</th>
+                <th>Purpose</th>
+              </tr>
+              <tr>
+                <td><code>Status</code></td>
+                <td>1 octet</td>
+                <td>Command Complete status</td>
+              </tr>
+              <tr>
+                <td><code>Event_cust_specific_feature_opcode</code></td>
+                <td>1 octet</td>
+                <td> 0x03 [Remove IRK from the list]</td>
+              </tr>
+              <tr>
+                <td><code>LE_IrkList_AvailableSpaces</code></td>
+                <td>1 octet</td>
+                <td>Available IRL list entries after current operation</td>
+              </tr>
+            </table>
+
+          <h4 id="le_rpa_offload-clear_irk_list_sub_command">LE_RPA_offload:
+            Clear_IRK_list_sub_Command</h4>
+            <p>Sub OCF: 0x04</p>
+            <table>
+              <tr>
+                <th>Sub-command parameter</th>
+                <th>Size</th>
+                <th>Purpose</th>
+              </tr>
+              <tr>
+                <td>None</td>
+                <td></td>
+                <td></td>
+              </tr>
+            </table>
+
+            <p> A Command Complete event will be generated for this command.</p>
+
+            <table>
+              <tr>
+                <th>Return parameter</th>
+                <th>Size</th>
+                <th>Purpose</th>
+              </tr>
+              <tr>
+                <td><code>Status</code></td>
+                <td>1 octet</td>
+                <td>Command Complete status</td>
+              </tr>
+              <tr>
+                <td><code>Event_cust_specific_feature_opcode</code></td>
+                <td>1 octet</td>
+                <td>0x04 [Clear IRK List]</td>
+              </tr>
+              <tr>
+                <td><code>LE_IrkList_AvailableSpaces</code></td>
+                <td>1 octet</td>
+                <td>Available IRL list entries after current
+                  operation [<code>max_irk_list_sz]</code></td>
+              </tr>
+            </table>
+
+          <h4 id="le_rpa_offload-read_irk_list_sub_command">LE_RPA_offload:
+            Read_IRK_list_sub_Command</h4>
+            <p>Sub OCF: 0x05</p>
+
+            <table>
+              <tr>
+                <th>Sub-command parameter</th>
+                <th>Size</th>
+                <th>Purpose</th>
+              </tr>
+              <tr>
+                <td><code>LE_read_IRK_list_entry-index</code></td>
+                <td>1 octet</td>
+                <td>Index of the  IRK list [0, <code>max_irk_list_sz-1]</code></td>
+              </tr>
+            </table>
+
+            <p> A Command Complete event will be generated for this command.
+            </p>
+
+            <table>
+              <tr>
+                <th>Return parameter</th>
+                <th>Size</th>
+                <th>Purpose</th>
+              </tr>
+              <tr>
+                <td><code>Status</code></td>
+                <td>1 octet</td>
+                <td>Command Complete status</td>
+              </tr>
+              <tr>
+                <td><code>Event_cust_specific_feature_opcode</code></td>
+                <td>1 octet</td>
+                <td> 0x05 [Read IRK List Entry]</td>
+              </tr>
+              <tr>
+                <td><code>LE_Read_IRK_List_entry</code></td>
+                <td>1 octet</td>
+                <td>Index of the IRK that the host wants to read back (maximum
+                IRK list size is 32)</td>
+              </tr>
+              <tr>
+                <td><code>LE_IRK</code></td>
+                <td>16 octets</td>
+                <td>IRK value</td>
+            </tr>
+            <tr>
+              <td><code>Address_Type</code></td>
+              <td>1 octet</td>
+              <td>0: Public address<br/>
+                1: Random address</td>
+            </tr>
+            <tr>
+              <td><code>LE_Device_Address</code></td>
+              <td>6 octets</td>
+              <td>Public or random address associated to the IRK</td>
+            </tr>
+            <tr>
+              <td><code>LE_Resolved_Private_Address</code></td>
+              <td>6 octets</td>
+              <td>Current resolved resolvable private address of this IRK</td>
+            </tr>
+            </table>
   </body>
 
 </html>

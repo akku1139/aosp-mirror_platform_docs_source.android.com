@@ -50,7 +50,7 @@ VNDK 是供应商模块可以关联到的一组受限库，用于实现仅针对
 </ul>
 
 <p>
-<em></em>共享库的公开标头是指通过以下属性提供给其他库/二进制文件使用的标头：与共享库对应的模块的 <code>Android.bp</code> 定义中的 <code>export_include_dirs</code>、<code>export_header_lib_headers</code>、<code>export_static_lib_headers</code>、<code>export_shared_lib_headers</code> 和 <code>export_generated_headers</code> 属性。
+共享库的公开头文件是指通过以下属性提供给其他库/二进制文件使用的头文件：<code>export_include_dirs</code>、<code>export_header_lib_headers</code>、<code>export_static_lib_headers</code>、<code>export_shared_lib_headers</code> 和 <code>export_generated_headers</code> 属性（位于与共享库对应的模块的 <code>Android.bp</code> 定义中）。<em></em>
 </p>
 
 <h3 id="about-reachable-types">关于可到达类型</h3>
@@ -252,15 +252,33 @@ cc_library {
   <td>结构和类</td>
   <td>
   <ul>
-    <li>移除非静态数据成员。</li>
-    <li>会导致类/结构体大小发生变化的更改。</li>
-    <li>会导致虚表布局发生变化的更改。</li>
-    <li>添加/移除基类。</li>
-    <li>更改基类的顺序。</li>
+    <li>更改类类型或结构类型的大小。</li>
+    <li>基类
+      <ul>
+        <li>添加或移除基类。</li>
+        <li>添加或移除虚拟继承的基类。</li>
+        <li>更改基类的顺序。</li>
+      </ul>
+    </li>
+    <li>成员函数
+      <ul>
+        <li>移除成员函数*。</li>
+        <li>将参数添加到成员函数或从中移除参数。</li>
+        <li>更改成员函数的参数类型或返回类型*。</li>
+        <li>更改虚表布局。</li>
+      </ul>
+    </li>
+    <li>数据成员
+      <ul>
+        <li>移除静态数据成员。</li>
+        <li>添加或移除非静态数据成员。</li>
+        <li>更改数据成员的类型。</li>
+        <li>将偏移量更改为非静态数据成员**。</li>
+        <li>更改数据成员的 <code>const</code>、<code>volatile</code> 和/或 <code>restricted</code> 限定符***。</li>
+        <li>对数据成员的访问权限说明符进行降级***。</li>
+      </ul>
+    </li>
     <li>更改模板参数。</li>
-    <li>会导致数据成员的内存偏移发生变化的更改<sup>**</sup>。</li>
-    <li>更改成员的 const-volatile-restricted 限定符<sup>*</sup>。</li>
-    <li>对数据成员的访问权限指定符进行降级<sup>*</sup>。</li>
   </ul>
   </td>
   </tr>
@@ -268,10 +286,10 @@ cc_library {
   <td>联合</td>
   <td>
   <ul>
-    <li>添加/移除字段。</li>
-    <li>会导致大小发生变化的更改。</li>
-    <li>更改字段顺序。</li>
-    <li>更改字段类型。</li>
+    <li>添加或移除数据成员。</li>
+    <li>更改联合类型的大小。</li>
+    <li>更改数据成员的类型。</li>
+    <li>更改数据成员的顺序。</li>
   </ul>
    </td>
   </tr>
@@ -279,9 +297,9 @@ cc_library {
   <td>枚举</td>
   <td>
   <ul>
-    <li>更改成员的值。</li>
-    <li>更改成员的名称。</li>
     <li>更改基础类型。</li>
+    <li>更改枚举器的名称。</li>
+    <li>更改枚举器的值。</li>
   </ul>
    </td>
   </tr>
@@ -289,19 +307,19 @@ cc_library {
   <td>全局符号</td>
   <td>
   <ul>
-    <li>移除通过公开标头导出的符号。</li>
+    <li>移除通过公开头文件导出的符号。</li>
     <li>对于类型 FUNC 的全局符号
       <ul>
-      <li>添加/移除参数。</li>
-      <li>以任何方式更改任何参数的类型。</li>
-      <li>以任何方式更改返回值类型。</li>
-      <li>对访问权限指定符进行降级<sup>*</sup>。</li>
+      <li>添加或移除参数。</li>
+      <li>更改参数类型。</li>
+      <li>更改返回类型。</li>
+      <li>对访问权限说明符进行降级***。</li>
     </ul>
     </li>
     <li>对于类型 OBJECT 的全局符号
     <ul>
-      <li>以任何方式更改相应的 C/C++ 类型。</li>
-      <li>对访问权限指定符进行降级<sup>*</sup>。</li>
+      <li>更改相应的 C/C++ 类型。</li>
+      <li>对访问权限说明符进行降级***。</li>
     </ul>
     </li>
     </ul>
@@ -310,11 +328,14 @@ cc_library {
 </tbody></table>
 
 <p>
- <strong><sup>**</sup></strong>不限于对公开字段的偏移进行更改（因为内联函数可以在内部使用不公开字段）。
+  <strong>*</strong> 不得更改或移除公共和私有成员函数，因为公共内联函数可以引用私有成员函数。私有成员函数的符号引用可保存在调用程序二进制文件中。从共享库更改或移除私有成员函数会导致二进制文件向后不兼容。
 </p>
 
 <p>
-  <strong><sup>*</sup></strong>虽然这些并不代表对类型的内存布局进行更改，但它们是语义差异，可能导致库无法按预期正常运行。
+  <strong>**</strong> 不得更改公共或私有数据成员的偏移量，因为内联函数可以在其函数主体中引用这些数据成员。更改数据成员偏移量会导致二进制文件向后不兼容。
+</p>
+<p>
+  <strong>***</strong> 虽然这些操作不会更改类型的内存布局，但它们之间存在语义差异，可能导致库无法按预期正常运行。
 </p>
 
 <h2 id="using-abi-compliance-tools">使用 ABI 合规性工具</h2>
@@ -410,7 +431,7 @@ $ header-abi-dumper foo.cpp -I exported -o foo.sdump -- -x c++
 </pre>
 
 <p>
-该命令指示 <code>header-abi-dumper</code> 解析 <code>foo.cpp</code> 并发出 ABI 信息（显示在 <code>exported</code> 目录内的公开标头中）。下面是 <code>header-abi-dumper</code> 生成的 <strong><code>foo.sdump</code></strong> 中的一部分（并非完整内容表示）：
+该命令指示 <code>header-abi-dumper</code> 解析 <code>foo.cpp</code> 并发出 ABI 信息（显示在 <code>exported</code> 目录内的公开头文件中）。下面是 <code>header-abi-dumper</code> 生成的 <strong><code>foo.sdump</code></strong> 中的一部分（并非完整表示）：
 </p>
 
 <pre class="prettyprint">

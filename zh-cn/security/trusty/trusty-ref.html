@@ -1,9 +1,10 @@
 <html devsite><head>
-    <title>Trusty API 参考</title>
+    <title>Trusty API 参考文档</title>
     <meta name="project_path" value="/_project.yaml"/>
     <meta name="book_path" value="/_book.yaml"/>
   </head>
   <body>
+
   <!--
       Copyright 2017 The Android Open Source Project
 
@@ -437,16 +438,16 @@ long nanosleep(uint32_t clock_id, uint32_t flags, uint64_t sleep_time)
 <p>以下示例应用展示了上述 API 的用法。该示例会创建一项“回传”服务，该服务可处理多个外来连接，并会将从位于安全端或非安全端的客户端收到的所有消息回传给调用程序。</p>
 
 <pre class="prettyprint">
-#include &lt; stddef.h &gt;
-#include &lt; stdio.h &gt;
-#include &lt; stdlib.h &gt;
-#include &lt; string.h &gt;
-#include &lt; trusty_std.h &gt;
-#include &lt; app / echo / uuids.h &gt;
+#include &lt;uapi/err.h&gt;
+#include &lt;stdbool.h&gt;
+#include &lt;stddef.h&gt;
+#include &lt;stdio.h&gt;
+#include &lt;stdlib.h&gt;
+#include &lt;string.h&gt;
+#include &lt;trusty_ipc.h&gt;
 #define LOG_TAG "echo_srv"
-#define TLOGE(fmt, ...)\
-fprintf(stderr, "%s: %d: "
-  fmt, LOG_TAG, __LINE__, ##__VA_ARGS__)
+#define TLOGE(fmt, ...) \
+    fprintf(stderr, "%s: %d: " fmt, LOG_TAG, __LINE__, ##__VA_ARGS__)
 
 # define MAX_ECHO_MSG_SIZE 64
 
@@ -460,20 +461,20 @@ static uint8_t msg_buf[MAX_ECHO_MSG_SIZE];
  */
 static int handle_msg(handle_t chan) {
   int rc;
-  iovec_t iov;
+  struct iovec iov;
   ipc_msg_t msg;
   ipc_msg_info_t msg_inf;
 
-  iov.base = msg_buf;
-  iov.len = sizeof(msg_buf);
+  iov.iov_base = msg_buf;
+  iov.iov_len = sizeof(msg_buf);
 
   msg.num_iov = 1;
-  msg.iov = &amp; iov;
+  msg.iov = &amp;iov;
   msg.num_handles = 0;
   msg.handles = NULL;
 
   /* get message info */
-  rc = get_msg(chan, &amp; msg_inf);
+  rc = get_msg(chan, &amp;msg_inf);
   if (rc == ERR_NO_MSG)
     return NO_ERROR; /* no new messages */
 
@@ -484,7 +485,7 @@ static int handle_msg(handle_t chan) {
   }
 
   /* read msg content */
-  rc = read_msg(chan, msg_inf.id, 0, &amp; msg);
+  rc = read_msg(chan, msg_inf.id, 0, &amp;msg);
   if (rc &lt; 0) {
     TLOGE("failed (%d) to read_msg for chan (%d)\n",
       rc, chan);
@@ -492,10 +493,10 @@ static int handle_msg(handle_t chan) {
   }
 
   /* update number of bytes received */
-  iov.len = (size_t) rc;
+  iov.iov_len = (size_t) rc;
 
   /* send message back to the caller */
-  rc = send_msg(chan, &amp; msg);
+  rc = send_msg(chan, &amp;msg);
   if (rc &lt; 0) {
     TLOGE("failed (%d) to send_msg for chan (%d)\n",
       rc, chan);
@@ -519,19 +520,19 @@ static int handle_msg(handle_t chan) {
 static void handle_channel_event(const uevent_t * ev) {
   int rc;
 
-  if (ev - &gt; event &amp; IPC_HANDLE_POLL_MSG) {
-    rc = handle_msg(ev - &gt; handle);
+  if (ev-&gt;event &amp; IPC_HANDLE_POLL_MSG) {
+    rc = handle_msg(ev-&gt;handle);
     if (rc != NO_ERROR) {
       /* report an error and close channel */
       TLOGE("failed (%d) to handle event on channel %d\n",
-        rc, ev - &gt; handle);
-      close(ev - &gt; handle);
+        rc, ev-&gt;handle);
+      close(ev-&gt;handle);
     }
     return;
   }
-  if (ev - &gt; event &amp; IPC_HANDLE_POLL_HUP) {
+  if (ev-&gt;event &amp; IPC_HANDLE_POLL_HUP) {
     /* closed by peer. */
-    close(ev - &gt; handle);
+    close(ev-&gt;handle);
     return;
   }
 }
@@ -540,82 +541,80 @@ static void handle_channel_event(const uevent_t * ev) {
  *  Port event handler
  */
 static void handle_port_event(const uevent_t * ev) {
-    uuid_t peer_uuid;
+  uuid_t peer_uuid;
 
-    if ((ev - &gt; event &amp; IPC_HANDLE_POLL_ERROR) ||
-      (ev - &gt; event &amp; IPC_HANDLE_POLL_HUP) ||
-      (ev - &gt; event &amp; IPC_HANDLE_POLL_MSG) ||
-      (ev - &gt; event &amp; IPC_HANDLE_POLL_SEND_UNBLOCKED)) {
-      /* should never happen with port handles */
-      TLOGE("error event (0x%x) for port (%d)\n",
-        ev - &gt; event, ev - &gt; handle);
-      abort();
+  if ((ev-&gt;event &amp; IPC_HANDLE_POLL_ERROR) ||
+    (ev-&gt;event &amp; IPC_HANDLE_POLL_HUP) ||
+    (ev-&gt;event &amp; IPC_HANDLE_POLL_MSG) ||
+    (ev-&gt;event &amp; IPC_HANDLE_POLL_SEND_UNBLOCKED)) {
+    /* should never happen with port handles */
+    TLOGE("error event (0x%x) for port (%d)\n",
+      ev-&gt;event, ev-&gt;handle);
+    abort();
+  }
+  if (ev-&gt;event &amp; IPC_HANDLE_POLL_READY) {
+    /* incoming connection: accept it */
+    int rc = accept(ev-&gt;handle, &amp;peer_uuid);
+    if (rc &lt; 0) {
+      TLOGE("failed (%d) to accept on port %d\n",
+        rc, ev-&gt;handle);
+      return;
     }
-    if (ev - &gt; event &amp; IPC_HANDLE_POLL_READY) {
-      /* incoming connection: accept it */
-      int rc = accept(ev - &gt; handle, &amp;peer_uuid);
-    if (ev - &gt; event &amp; IPC_HANDLE_POLL_READY) {
-      /* incoming connection: accept it */
-      int rc = accept(ev - &gt; handle, &amp;peer_uuid);
+    handle_t chan = rc;
+    while (true){
+      struct uevent cev;
+
+      rc = wait(chan, &amp;cev, INFINITE_TIME);
       if (rc &lt; 0) {
-        TLOGE("failed (%d) to accept on port %d\n",
-          rc, ev - &gt; handle);
-        return;
-      }
-      handle_t chan = rc;
-      while (true){
-        struct uevent cev;
-
-        rc = wait(handle, &amp;cev, -1);
-        if (rc &lt; 0) {
-          TLOGE("wait returned (%d)\n", rc);
-          abort();
-        }
-        handle_channel_event(&amp;cev);
-        if (cev.event &amp; IPC_HANDLE_POLL_HUP) {
-          return;
-        }
-      }
-    }
-
-    /*
-     *  Main application entry point
-     */
-    int main(void) {
-      int rc;
-      handle_t port;
-
-      /* Initialize service */
-      rc = port_create(srv_name, 1, MAX_ECHO_MSG_SIZE,
-        IPC_PORT_ALLOW_NS_CONNECT |
-        IPC_PORT_ALLOW_TA_CONNECT);
-      if (rc &lt; 0) {
-        TLOGE("Failed (%d) to create port %s\n",
-          rc, srv_name);
+        TLOGE("wait returned (%d)\n", rc);
         abort();
       }
-      port = (handle_t) rc;
-
-      /* enter main event loop */
-      while (true) {
-        uevent_t ev;
-
-        ev.handle = INVALID_IPC_HANDLE;
-        ev.event = 0;
-        ev.cookie = NULL;
-
-        /* wait forever */
-        rc = wait(port, &amp;ev, -1)
-        if (rc == NO_ERROR) {
-          /* got an event */
-          handle_port_event(&amp;ev);
-        } else {
-          TLOGE("wait returned (%d)\n", rc);
-          abort();
-        }
+      handle_channel_event(&amp;cev);
+      if (cev.event &amp; IPC_HANDLE_POLL_HUP) {
+        return;
       }
-      return 0;
     }
+  }
+}
+
+/*
+ *  Main application entry point
+ */
+int main(void) {
+  int rc;
+  handle_t port;
+
+  /* Initialize service */
+  rc = port_create(srv_name, 1, MAX_ECHO_MSG_SIZE,
+    IPC_PORT_ALLOW_NS_CONNECT |
+    IPC_PORT_ALLOW_TA_CONNECT);
+  if (rc &lt; 0) {
+    TLOGE("Failed (%d) to create port %s\n",
+      rc, srv_name);
+    abort();
+  }
+  port = (handle_t) rc;
+
+  /* enter main event loop */
+  while (true) {
+    uevent_t ev;
+
+    ev.handle = INVALID_IPC_HANDLE;
+    ev.event = 0;
+    ev.cookie = NULL;
+
+    /* wait forever */
+    rc = wait(port, &amp;ev, INFINITE_TIME);
+    if (rc == NO_ERROR) {
+      /* got an event */
+      handle_port_event(&amp;ev);
+    } else {
+      TLOGE("wait returned (%d)\n", rc);
+      abort();
+    }
+  }
+  return 0;
+}
 </pre>
 
 <p><code>run_end_to_end_msg_test()</code> 方法可向“回传”服务异步发送 10000 条消息并处理回复。</p>

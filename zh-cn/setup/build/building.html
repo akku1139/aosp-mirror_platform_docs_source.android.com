@@ -1,9 +1,10 @@
 <html devsite><head>
-    <title>准备编译</title>
+    <title>编译 Android</title>
     <meta name="project_path" value="/_project.yaml"/>
     <meta name="book_path" value="/_book.yaml"/>
   </head>
   <body>
+
   <!--
       Copyright 2017 The Android Open Source Project
 
@@ -20,28 +21,10 @@
       limitations under the License.
   -->
 
-<p>以下关于编译 Android 源代码树的说明适用于所有分支，包括 <code>master</code>。编译命令的基本顺序如下：</p>
+<p>请参阅 Android 开源项目 (AOSP) 中的 <a href="https://android.googlesource.com/platform/build/+/master/README.md" class="external">Android Make 编译系统</a>说明，了解相关<a href="https://android.googlesource.com/platform/build/+/master/Usage.txt" class="external">说明</a>以及 <a href="https://android.googlesource.com/platform/build/+/master/Changes.md" class="external">Android.mk 编写人员须知的编译系统更改</a>。
+</p>
 
-<h2 id="obtaining-proprietary-binaries">下载专有二进制文件</h2>
-
-<p>您不能只通过纯源代码来使用 AOSP，还需要运行与硬件相关的其他专有库（例如用于硬件图形加速的专有库）。如需其他资源的下载链接和<a href="requirements.html#binaries">设备二进制文件</a>，请参阅以下各部分。</p>
-
-<aside class="note">部分设备会将这些专有二进制文件打包到其 <code>/vendor</code> 分区。</aside>
-
-<h3 id="downloading-proprietary-binaries">下载专有二进制文件</h3>
-
-<p>对于运行带标记的 AOSP 版本分支的受支持设备，您可以从 <a href="https://developers.google.com/android/drivers" class="external">Google 的驱动程序</a>下载相关的官方二进制文件。有了这些二进制文件，您将有权使用采用非开源代码的其他硬件功能。要编译 AOSP 的 master 分支，请使用<a href="https://developers.google.com/android/blobs-preview" class="external">二进制文件预览</a>。在针对某种设备编译 master 分支时，请使用适用于<a href="/setup/start/build-numbers.html">最新编号版本</a>的二进制文件或具有最新日期的二进制文件。</p>
-
-<h3 id="extracting-proprietary-binaries">解压专有二进制文件</h3>
-
-<p>每组二进制文件都是压缩包中的一个自解压脚本。解压每个压缩包，从源代码树的根目录运行附带的自解压脚本，然后确认您同意附带的许可协议的条款。二进制文件及其对应的 Makefile 将会安装在源代码树的 <code>vendor/</code> 层次结构中。</p>
-
-<h3 id="cleaning-up">清理</h3>
-
-<p>为了确保新安装的二进制文件在解压后会被适当考虑在内，请使用以下命令删除所有以前编译操作的已有输出：</p>
-<pre class="devsite-terminal devsite-click-to-copy">
-make clobber
-</pre>
+<p><a href="https://android.googlesource.com/platform/build/soong/+/refs/heads/master/README.md" class="external">Soong 编译系统</a>是在 Android 8.0 (Oreo) 中引入的。如需查看示例的 Soong 配置（Blueprint 或 <code>.bp</code>）文件，请参阅<a href="/compatibility/tests/development/blueprints">简单的编译配置</a>；您还可以查看 <a href="https://ci.android.com/builds/latest/branches/aosp-build-tools/targets/linux/view/soong_build.html" class="external">Soong 参考文件</a>以了解完整详情。</p>
 
 <h2 id="initialize">设置环境</h2>
 <p>使用 <code>envsetup.sh</code> 脚本初始化环境。请注意，将 <code>source</code> 替换成 <code>.</code>（一个点）可以省去一些字符，这种简写形式在文档中更为常用。</p>
@@ -53,14 +36,33 @@ source build/envsetup.sh
 . build/envsetup.sh
 </pre>
 
+<p class="note">您将需要在每次运行 <code>repo sync</code> 后重新发出此命令，以获取对该脚本所做的任何更改。</p>
+
+<p><code>envsetup.sh</code> 脚本导入了一些命令，可让您使用 Android 源代码，其中包括本练习中使用的命令。以下是一些重要的命令示例：</p>
+
+<ul>
+<li><strong><code>lunch</code></strong> - <code>lunch
+  <var>product_name</var>-<var>build_variant</var></code> 会选择“product_name”作为要编译的产品，并选择“build_variant”作为要编译的变体，然后将这些选择存储在可被后续对 <code>m</code> 和其他类似命令的调用读取的环境中。<var></var><var></var></li>
+<li><strong><code>m</code></strong> - 从树的顶部运行编译。这很有用，因为您可以在子目录中运行 <code>make</code>。如果您设置了 <code>TOP</code> 环境变量，它便会使用此变量。如果您未设置此变量，它便会从当前目录中查找相应的树，以尝试找到树的顶层。您可以通过运行不包含参数的 <code>m</code> 来编译整个源代码树，也可以通过指定相应名称来编译特定目标。</li>
+<li><strong><code>mma</code></strong> - 编译当前目录中的所有模块及其依赖项。</li>
+<li><strong><code>mmma</code></strong> - 编译提供的目录中的所有模块及其依赖项。</li>
+<li><strong><code>croot</code></strong> - <code>cd</code> 到树顶部。</li>
+</ul>
+
+<p>要查看可用命令的完整列表，请运行以下命令：</p>
+
+<pre class="devsite-terminal devsite-click-to-copy">
+hmm
+</pre>
+
 <h2 id="choose-a-target">选择目标</h2>
-<p>使用 <code>lunch</code> 选择要编译的目标。确切的配置可作为参数进行传递。例如，以下命令表示针对模拟器进行完整编译，并且所有调试功能均处于启用状态。</p>
+<p>使用 <code>lunch</code> 选择要编译的目标。确切的配置可作为参数进行传递。例如，以下命令表示针对模拟器进行完整编译，并且启用所有调试功能.</p>
 <pre class="devsite-terminal devsite-click-to-copy">
 lunch aosp_arm-eng
 </pre>
-<p>如果您没有提供任何参数就运行命令，<code>lunch</code> 将提示您从菜单中选择一个目标。要了解所有现有设备的编译配置，请参阅<a href="running#selecting-device-build">选择设备版本</a>一文。</p>
+<p>如果在没有参数的情况下运行，则 <code>lunch</code> 会提示您从菜单中选择目标。要了解所有现有设备的编译配置，请参阅<a href="/setup/build/running#selecting-device-build">选择设备编译系统</a>一文。</p>
 
-<p>所有编译目标都采用 <code>BUILD-BUILDTYPE</code> 形式，其中 <code>BUILD</code> 是表示特定功能组合的代号。<code>BUILDTYPE</code> 是以下类型之一：</p>
+<p>所有编译目标都采用 <code>BUILD-BUILDTYPE</code> 形式，其中 <code>BUILD</code> 是表示特定功能组合的代号。<code>BUILDTYPE</code> 是以下类型之一。</p>
 <table>
   <thead>
     <tr>
@@ -75,7 +77,7 @@ lunch aosp_arm-eng
     </tr>
     <tr>
       <td>userdebug</td>
-      <td>与“user”类似，但具有 root 权限和可调试性；是进行调试时的首选编译类型</td>
+      <td>与“user”类似，但具有 root 权限和调试功能；是进行调试时的首选编译类型</td>
     </tr>
     <tr>
       <td>eng</td>
@@ -84,31 +86,41 @@ lunch aosp_arm-eng
   </tbody>
 </table>
 
-<p>userdebug 版本应和 user 版本以相同的方式运行，且能够启用通常会破坏平台安全模型的额外调试。这可让 userdebug 版本具有更强大的诊断功能，从而成为进行 user 测试的最佳选择。使用 userdebug 版本进行开发时，您应遵循 <a href="../develop/new-device.html#userdebug-guidelines">userdebug 准则</a>。</p>
+<p>userdebug 版本的运行方式应该与 user 版本一样，且能够启用通常不符合平台安全模型的额外调试功能。这就使得 userdebug 版本具有更强大的诊断功能，因此是进行 user 测试的最佳选择。使用 userdebug 编译系统进行开发时，请遵循 <a href="/setup/develop/new-device#userdebug-guidelines">userdebug 指南</a>。</p>
 
-<p>eng 版本会优先考虑平台负责工程师的工程生产力。eng 版本会关闭用于提供良好用户体验的各种优化。否则，eng 版本的运行方式将类似于 user 和 userdebug 版本，以便设备开发者看到代码在这些环境下的运行方式。</p>
+<p>eng 编译系统会优先考虑在平台上工作的工程师的工程生产率。eng 编译系统会关闭用于提供良好用户体验的各种优化。除此之外，eng 编译系统的运行方式类似于 user 和 userdebug 编译系统，以便设备开发者能够看到代码在这些环境下的运行方式。</p>
 
-<p>要详细了解如何针对实际硬件进行编译以及如何在实际硬件上运行编译系统，请参阅<a href="running.html">运行编译系统</a>。</p>
+<p>要详细了解如何针对实际硬件进行编译以及如何在实际硬件上运行编译系统，请参阅<a href="/setup/build/running">运行编译系统</a>。</p>
 
 <h2 id="build-the-code">编译代码</h2>
 
-<p>本部分只是一个摘要，用于确保设置已完成。如需关于编译 Android 的详细说明，请参阅<a href="running.html">运行编译系统</a>。</p>
+<p>本部分是一个简短摘要，用于确保设置已完成。</p>
 
-    <p>您可以使用 <code>make</code> 编译任何代码。GNU <code>make</code> 可以借助 <code>-jN</code> 参数处理并行任务，通常使用的任务数 N 介于编译时所用计算机上硬件线程数的 1-2 倍之间。例如，在一台双核 E5520 计算机（2 个 CPU，每个 CPU 4 个内核，每个内核 2 个线程）上，要实现最快的编译速度，可以使用介于 <code>make -j16</code> 到 <code>make -j32</code> 之间的命令。</p>
+<p>请使用 <code>m</code> 进行所有编译。<code>m</code> 可以使用 <code>-jN</code> 参数处理并行任务。如果您未提供 <code>-j</code> 参数，编译系统便会自动选择其认为对您的系统最佳的并行任务计数。</p>
 
 <pre class="devsite-terminal devsite-click-to-copy">
-make -j4
+m
 </pre>
+
+<p>如上所述，您可以通过在 <code>m</code> 命令行中列出相应名称来编译特定模块，而不是编译完整的设备映像。此外，<code>m</code> 还针对各种特殊目的提供了一些伪目标。以下是一些示例：</p>
+
+<ul>
+<li><strong><code>droid</code></strong> - <code>m droid</code> 是正常编译。此目标在此处，因为默认目标需要名称。</li>
+<li><strong><code>all</code></strong> - <code>m all</code> 可以编译 <code>m droid</code> 能够编译的所有元素，以及没有 <code>droid</code> 标记的所有元素。编译服务器会运行此命令，以确保包含在树中且包含 <code>Android.mk</code> 文件的所有元素都会进行编译。</li>
+<li><strong><code>clean</code></strong> - <code>m clean</code> 可以删除此配置的所有输出文件和中间文件。这与 <code>rm -rf out/</code> 相同。</li>
+</ul>
+
+<p>运行 <code>m help</code> 即可查看 <code>m</code> 提供的其他伪目标。</p>
 
 <h2 id="run-it">开始运行！</h2>
 
-<p>您可以在模拟器上运行自己的版本，也可以将其刷到设备上。请注意，因为您之前已使用 <code>lunch</code> 选择编译目标，因此很可能无法在编译目标之外的目标上运行您的编译系统。</p>
+<p>您可以在模拟器上运行编译系统，也可以将其刷到设备上。请注意，您已经使用 <code>lunch</code> 选择了编译目标，并且编译系统不可能在与编译目标不同的目标上运行。</p>
 
-<aside class="note"><strong>注意：</strong>请记得<a href="#obtaining-proprietary-binaries">下载专有二进制文件</a>，否则您的编译系统将无法在目标硬件上成功启动。如果您在此时下载二进制 Blob，则需要将其解压、<code>make clobber</code> 并重新编译。</aside>
+<aside class="note"><strong>注意</strong>：请注意获取专有二进制文件，否则编译系统将无法在目标硬件上成功启动。如果此时获取二进制 Blob，则需要解压缩这些 Blob 并执行 <code>make clobber</code> 命令，然后重新编译。</aside>
 
 <h3 id="flash-a-device">使用 fastboot 刷机</h3>
 
-<p>要对设备进行刷机，您需要使用 <code>fastboot</code>（编译成功后，它应该会包含在您的路径中）。如需相关说明，请参阅<a href="running.html#flashing-a-device">对设备进行刷机</a>。</p>
+<p>要刷写设备，请使用 <code>fastboot</code>；在成功编译后，它应该会包含在您的路径中。如需相关说明，请参阅<a href="/setup/build/running#flashing-a-device">刷写设备</a>。</p>
 
 <h3 id="emulate-an-android-device">模拟 Android 设备</h3>
 
@@ -122,7 +134,8 @@ emulator
 
 <h3 id="wrong-java-version">Java 版本不正确</h3>
 
-<p>如果您尝试编译的 Android 版本与您的 Java 版本不一致，<code>make</code> 将会终止并显示诸如以下消息：</p>
+<p>如果您试图编译与 Java 版本不一致的 Android 版本，则 <code>make</code> 会终止并显示如下消息：</p>
+
 <pre>
 ************************************************************
 You are attempting to build with the incorrect version
@@ -139,13 +152,13 @@ Please follow the machine setup instructions at
 <p>以下是可能的原因和解决方案：</p>
 
 <ul>
-<li>未能安装 <a href="requirements.html#jdk">JDK 要求</a>中指定的正确 JDK。确保您已按照<a href="building.html#initialize">设置环境</a>和<a href="building.html#choose-a-target">选择目标</a>中的步骤操作。</li>
+<li>无法按照 <a href="/setup/build/requirements#jdk">JDK 要求</a>中指定的方式安装正确的 JDK。请确保您已按照<a href="/setup/build/building#initialize">设置环境</a>和<a href="/setup/build/building#choose-a-target">选择目标</a>中的步骤操作。</li>
 <li>之前安装的另一个 JDK 出现在您的路径中。将正确的 JDK 附加到路径开头，或者移除有问题的 JDK。</li>
 </ul>
 
 <h3 id="python-version-3">Python 版本 3</h3>
 
-<p>Repo 是基于 Python 2.x 中的特定功能构建的，但遗憾的是与 Python 3 不兼容。要使用 Repo，请安装 Python 2.x：</p>
+<p>Repo 是基于 Python 2.x 中的特定功能构建的，与 Python 3 不兼容。要使用 Repo，请安装 Python 2.x：</p>
 
 <pre class="devsite-terminal devsite-click-to-copy">
 apt-get install python
@@ -153,19 +166,19 @@ apt-get install python
 
 <h3 id="case-insensitive-filesystem">不区分大小写的文件系统</h3>
 
-<p>在 Mac OS 中的 HFS 文件系统上进行编译时，可能会遇到诸如以下错误：</p>
+<p>在 macOS 中的 HFS 文件系统上进行编译时，可能会遇到如下错误：</p>
 <pre>
 ************************************************************
 You are building on a case-insensitive filesystem.
 Please move your source tree to a case-sensitive filesystem.
 ************************************************************
 </pre>
-<p>请按照<a href="initializing.html#creating-a-case-sensitive-disk-image">创建区分大小写的磁盘映像</a>中的说明进行操作。</p>
+<p>请按照<a href="/setup/build/initializing#creating-a-case-sensitive-disk-image">创建区分大小写的磁盘映像</a>中的说明操作。</p>
 
 <h3 id="no-usb-permission">没有 USB 权限</h3>
 
-<p>在大多数 Linux 系统中，无特权的用户默认情况下无法使用 USB 端口。如果您看到权限遭拒错误，请按照<a href="initializing.html#configuring-usb-access">配置 USB 使用权限</a>中的说明操作。</p>
+<p>默认情况下，在大多数 Linux 系统中，无特权的用户无法使用 USB 端口。如果您看到权限遭拒错误，请按照<a href="/setup/build/initializing#configuring-usb-access">配置 USB 使用权限</a>中的说明操作。</p>
 
-<p>如果 adb 已在运行，并且在这些规则设置完成后无法连接到设备，您可以使用 <code>adb kill-server</code> 将其终止。这将使 adb 采用新的配置进行重启。</p>
+<p>如果上述规则设置完成后，adb 已在运行且无法连接到设备，您可以使用 <code>adb kill-server</code> 将其终止。此命令将使 adb 重启并采用新配置。</p>
 
 </body></html>

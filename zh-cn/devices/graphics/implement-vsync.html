@@ -28,7 +28,7 @@
 int (waitForVsync*) (int64_t *timestamp)
 </pre>
 
-<p>在发生 VSYNC 并返回实际 VSYNC 的时间戳之前，这个函数会处于阻塞状态。每次发生 VSYNC 时，都必须发送一条消息。客户端会以指定的间隔收到 VSYNC 时间戳，或者以 1 为间隔连续收到 VSYNC 时间戳。您必须实现最大延迟时间为 1 毫秒（建议 0.5 毫秒或更短）的 VSYNC；返回的时间戳必须非常准确。</p>
+<p>在发生 VSYNC 并返回实际 VSYNC 的时间戳之前，这个函数会处于阻塞状态。每次发生 VSYNC 时，都必须发送一条消息。客户端会以指定的间隔收到 VSYNC 时间戳，或者以 1 为间隔连续收到 VSYNC 时间戳。实现 VSYNC 的最大延迟时间为 1 毫秒（建议 0.5 毫秒或更短）；返回的时间戳必须非常准确。</p>
 
 <h2 id="explicit_synchronization">显式同步</h2>
 
@@ -42,12 +42,12 @@ int (waitForVsync*) (int64_t *timestamp)
 
 <p><code>sync_timeline</code> 是一个单调递增的时间轴，应为每个驱动程序实例（如 GL 上下文、显示控制器或 2D 位块传送器）实现该时间轴。这本质上是提交到内核的针对特定硬件的作业的计数器。它为相关操作的顺序提供了保证，并允许特定于硬件的实现。</p>
 
-<p>sync_timeline 作为仅限 CPU 的参考实现进行提供（称为 <code>sw_sync</code>（软件同步））。如果可能，请使用它而不是 <code>sync_timeline</code>，以节省资源并避免复杂性。如果您没有使用硬件资源，则 <code>sw_sync</code> 应该就够了。</p>
+<p>sync_timeline 作为仅限 CPU 的参考实现（称为 <code>sw_sync</code>，即软件同步）提供。尽量避免使用 <code>sync_timeline</code>，以节省资源并避免复杂性。如果您没有使用硬件资源，则 <code>sw_sync</code> 应该就够了。</p>
 
 <p>如果必须实现 <code>sync_timeline</code>，请使用 <code>sw_sync</code> 驱动程序作为起点，并遵循以下准则：</p>
 
 <ul>
-<li>为所有驱动程序、时间轴和栅栏指定实用的名称。这可简化调试。</li>
+<li>为所有驱动程序、时间轴和栅栏指定实用的名称。这样可以简化调试。</li>
 <li>在时间轴中实现 <code>timeline_value_str</code> 和 <code>pt_value_str</code> 运算符，使调试输出更易于理解。</li>
 <li>如果您希望用户空间库（如 GL 库）可以访问时间轴的私有数据，请实现填充 driver_data 运算符。这能让您获得不可变 sync_fence 和 <code>sync_pts</code> 的相关信息，从而在其基础上构建命令行。</li>
 </ul>
@@ -55,7 +55,7 @@ int (waitForVsync*) (int64_t *timestamp)
 <p>实现 <code>sync_timeline</code> 时，<strong>请勿</strong>：</p>
 
 <ul>
-<li>使其基于任何实际的时间。例如，当一个挂钟到达某个时间点或其他工作可能结束时的时间点。最好创建一个您可以控制的抽象时间轴。</li>
+<li>使其基于任何实际的时间，例如，当一个挂钟到达某个时间点或其他工作可能结束时的时间点。最好创建一个您可以控制的抽象时间轴。</li>
 <li>允许用户空间明确创建栅栏或发出栅栏信号。这可导致用户管道组件发起可阻塞所有功能的拒绝服务攻击。这是因为用户空间不能代表内核做出承诺。</li>
 <li>明确访问 <code>sync_timeline</code>、<code>sync_pt</code> 或 <code>sync_fence</code> 元素，因为 API 应该提供所有必需的函数。</li>
 </ul>
@@ -128,7 +128,7 @@ struct sync_fence* display_buffer(struct dma_buf *buf, struct sync_fence
 
 <ul>
 <li>如果您从同步框架收到栅栏文件描述符，就必须将其关闭。</li>
-<li>如果您将栅栏文件描述符返回到同步框架，框架将关闭它。</li>
+<li>如果您将栅栏文件描述符返回到同步框架，框架会将其关闭。</li>
 <li>要继续使用栅栏文件描述符，您必须复制该描述符。</li>
 </ul>
 

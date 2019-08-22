@@ -23,9 +23,10 @@ automated test system for both wide field of view (WFoV) and regular field of
 view (RFoV) camera systems in the Camera Image Test Suite (ITS). Revision 1 was
 designed to test mobile device cameras with an FoV less than 90 degrees
 (RFoV). Revision
-2 is designed to also test cameras that have an FoV greater 90 degrees (WFoV),
-enabling you to use one ITS-in-a-box system to test different cameras with
-varying FoVs.
+
+Revision 2 is designed to also test cameras that have an FoV greater 90 degrees
+(WFoV), enabling you to use one ITS-in-a-box system to test different cameras
+with varying FoVs.
 
 The ITS-in-a-box system consists of a plastic box laser cut from computer-aided
 design (CAD) drawings, an internal lighting system, a chart tablet, and a device
@@ -40,35 +41,38 @@ only), see
 We recommend purchasing a WFoV ITS-in-a-box from one of the following qualified
 vendors.
 
-* *Acu Spec, Inc.*  
-  990 Richard Ave, Ste 103, Santa Clara, CA 95050  
-  fred@acuspecinc.com  
-* *MYWAY, Inc*  
-  4F., No. 163, Fu Ying Rd., New Taipei City, Taiwan  
+* *Acu Spec, Inc.*
+  990 Richard Ave, Ste 103, Santa Clara, CA 95050
+  fred@acuspecinc.com
+* *MYWAY, Inc*
+  4F., No. 163, Fu Ying Rd., New Taipei City, Taiwan
   sales@myway.tw
 
 ## Building a WFoV ITS-in-a-box
 
+Instead of purchasing a WFoV ITS-in-a-box (revision 2), you may build your own.
 This section includes step-by-step instructions for assembling a WFoV
 ITS-in-a-box (revision 2) that can test cameras with a wide field of view
 (greater than 90 degrees).
 
-### Overview
+### Mechanical drawings
 
 The WFoV ITS-in-a-box consists of a device under test (DUT), a chart tablet, an
 internal lighting system, and a plastic box that is laser cut from CAD drawings
 (shown in Figure 1).
 
+To get started, download the latest [mechanical drawings for the WFoV ITS-in-a-box](/compatibility/cts/wfov_its_box_assembly_2_7.zip)
+
 ![CAD drawing of WFOV ITS-in-a-box](/compatibility/cts/images/wfov-cad-wfov-box.png){: width="800"}
 
 **Figure 1.** Mechanical drawing of WFoV ITS-in-a-box
 
+Purchase the hardware from the bill of materials (BOM). Cut the plastic and
+vinyl pieces.
+
 ### Required tools
 
-To get started, download the latest
-[technical drawings for the WFoV ITS-in-a-box](/compatibility/cts/wfov_its_box_assembly_2_7.zip),
-cut the plastic and vinyl pieces, purchase the hardware from the bill of
-materials (BOM), and gather these tools:
+Have the following tools available:
 
 +   Phillips head screwdriver
 +   Pliers

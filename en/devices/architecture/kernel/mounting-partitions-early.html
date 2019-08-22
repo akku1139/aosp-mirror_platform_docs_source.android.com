@@ -1,0 +1,352 @@
+<html devsite>
+  <head>
+    <title>Mounting Partitions Early</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  {% include "_versions.html" %}
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>
+  Treble-enabled devices must enable first stage mount to make sure
+  <code>init</code> can load Security-Enhanced Linux (SELinux) policy fragments
+  that are spread across <code>system</code> and <code>vendor</code> partitions.
+  This access also enables the loading of kernel modules as soon as possible
+  after kernel boot.
+</p>
+
+<aside class="note"><strong>Note:</strong>
+  For details on SELinux, see <a href="/security/selinux">Security-Enhanced
+  Linux (SELinux) in Android</a>.
+</aside>
+
+<p>
+  To perform early mounting, Android must have access to the file systems on
+  which the modules reside. Android 8.x and higher supports mounting
+  <code>/system</code>, <code>/vendor</code>, or <code>/odm</code> as early as
+  <code>init</code>'s first stage (that is, before SElinux is initialized).
+  Device makers can use <a href="/devices/architecture/dto/index">device tree
+  overlays</a> to specify <code>fstab</code> entries for early mounted
+  partitions.
+</p>
+
+<p>
+  Summary of AOSP early mount changes:
+</p>
+
+<ul>
+  <li>
+  <a href="https://android-review.googlesource.com/#/q/topic:pre-early-mount"
+  class="external">Pre-early mount v1</a> and
+  <a href="https://android-review.googlesource.com/#/q/status:merged+project:platform/system/core+branch:master+topic:pre-early-mount-2"
+  class="external">v2</a></li>
+  <li>
+  <a href="https://android-review.googlesource.com/#/c/339471/"
+  class="external">Miscellaneous partition lookup removal</a></li>
+  <li>
+  <a href="https://android-review.googlesource.com/#/q/branch:master+topic:early-mount-support"
+  class="external">Early mount support</a></li>
+  <li>
+  <a href="https://android-review.googlesource.com/#/q/branch:master+topic:early-mount-support"
+  class="external">Early mount with VBoot 2.0 (AVB)</a></li>
+</ul>
+
+<h2 id="early-mount-partitions-vboot1">Mounting partitions early, VBoot 1.0</h2>
+
+<p>
+  Requirements to early mount partitions with VBoot 1.0 include:
+</p>
+
+<ol>
+  <li>Device node paths must use their <code>by-name</code> symlinks in
+  <code>fstab</code> and devicetree entries. For example, instead of specifying
+  partitions using <code>/dev/block/mmcblk0pX</code>, ensure that partitions are
+  named and the device node is
+  <code>/dev/block/…./by-name/{system,vendor,odm}</code>.</li>
+  <li>Paths given for <code>PRODUCT_{SYSTEM,VENDOR}_VERITY_PARTITION</code> and
+  <code>CUSTOM_IMAGE_VERITY_BLOCK_DEVICE</code> in the device configuration for
+  the product (that is, in
+  <code>device/<em>oem</em>/<em>project</em>/device.mk</code>) must match the
+  corresponding block device nodes specified <code>by-name</code> in the
+  <code>fstab</code>/devicetree entries. Example:
+<pre class="prettyprint">
+PRODUCT_SYSTEM_VERITY_PARTITION := /dev/block/…./by-name/system
+PRODUCT_VENDOR_VERITY_PARTITION := /dev/block/…./by-name/vendor
+CUSTOM_IMAGE_VERITY_BLOCK_DEVICE := /dev/block/…./by-name/odm
+</pre>
+  </li>
+  <li>Entries provided through device tree overlays must not repeat in the
+  <code>fstab</code> file fragments. For example, when specifying an entry to
+  mount <code>/vendor</code> in the devicetree, the <code>fstab</code> file
+  must not repeat that entry.</li>
+  <li>Partitions requiring <code>verifyatboot</code> <strong>must not</strong>
+  be early mounted (doing so is unsupported).</li>
+  <li>The verity mode/state for verified partitions must be specified in
+  <code>kernel_cmdline</code> using <code>androidboot.veritymode</code> option
+  (existing requirement).</li>
+</ol>
+
+<h2 id="early-mount-dt-vboot1">Mounting devicetree early, VBoot 1.0</h2>
+
+<p>
+  In Android 8.x and higher, <code>init</code> parses the devicetree and
+  creates <code>fstab</code> entries to mount the partition early during its
+  first stage. An <code>fstab</code> entry takes the form:
+</p>
+
+<pre class="prettyprint">src mnt_point type mnt_flags fs_mgr_flags</pre>
+
+<p>
+  Devicetree properties are defined to mimic that format:
+</p>
+
+<ul>
+  <li><code>fstab</code> entries must be under
+  <code>/firmware/android/fstab</code> in the devicetree and must have a
+  compatible string set to <code>android,fstab</code>.</li>
+  <li>Each node under <code>/firmware/android/fstab</code> is treated as a
+  single early mount <code>fstab</code> entry. A node must have the following
+  properties defined:
+  <ul>
+    <li><code>dev</code> must point to the device node representing the
+    partition <code>by-name</code></li>
+    <li><code>type</code> must be the file system type (as in the
+    <code>fstab</code> files)</li>
+    <li><code>mnt_flags</code> must be the comma-separated list of mount flags
+    (as in <code>fstab</code> files)</li>
+    <li><code>fsmgr_flags</code> must be the list of Android <code>fs_mgr
+    flags</code> (as in <code>fstab</code> files)</li>
+  </ul>
+  </li>
+  <li>A/B partitions must have a <code>slotselect fs_mgr</code> option.</li>
+  <li>dm-verity enabled partitions must have a <code>verify fs_mgr</code>
+  option.</li>
+  </ul>
+
+<h3><strong>Example:</strong> /system and /vendor on N6P</h3>
+
+<p>
+  The following example shows devicetree early mount for <code>system</code>
+  and <code>vendor</code> partitions on Nexus 6P:
+</p>
+
+<pre class="prettyprint">
+/ {
+  firmware {
+    android {
+      compatible = "android,firmware";
+  fstab {
+    compatible = "android,fstab";
+    system {
+      compatible = "android,system";
+      dev = "/dev/block/platform/soc.0/f9824900.sdhci/by-name/system";
+      type = "ext4";
+      mnt_flags = "ro,barrier=1,inode_readahead_blks=8";
+      fsmgr_flags = "wait,verify";
+    };
+    vendor {
+      compatible = "android,vendor";
+      dev = "/dev/block/platform/soc.0/f9824900.sdhci/by-name/vendor";
+      type = "ext4";
+      mnt_flags = "ro,barrier=1,inode_readahead_blks=8";
+      fsmgr_flags = "wait";
+    };
+      };
+    };
+  };
+};
+</pre>
+
+<h3><strong>Example:</strong> /vendor on Pixel</h3>
+
+<p>
+  The following example shows devicetree early mount for <code>/vendor</code>
+  on Pixel (remember to add <code>slotselect</code> for partitions subject to
+  A/B):
+</p>
+
+<pre class="prettyprint">
+/ {
+  firmware {
+    android {
+      compatible = "android,firmware";
+      fstab {
+        compatible = "android,fstab";
+        vendor {
+          compatible = "android,vendor";
+          dev = "/dev/block/platform/soc/624000.ufshc/by-name/vendor";
+          type = "ext4";
+          mnt_flags = "ro,barrier=1,discard";
+          fsmgr_flags = "wait,slotselect,verify";
+        };
+      };
+    };
+  };
+};
+</pre>
+
+<h2 id="early-mount-partitions-vboot2">Mounting partitions early, VBoot 2.0</h2>
+
+<p>
+  VBoot 2.0 is <a href="https://android.googlesource.com/platform/external/avb/"
+  class="external">Android Verified Boot (AVB)</a>. The requirements to early
+  mount partitions with VBoot 2.0 are:
+</p>
+
+<ol>
+  <li>The device node paths must use their <code>by-name</code> symlinks in
+  <code>fstab</code> and devicetree entries. For example, instead of specifying
+  partitions using <code>/dev/block/mmcblk0pX</code>, ensure that the partitions
+  are named and the device node is
+  <code>/dev/block/…./by-name/{system,vendor,odm}</code>.</li>
+  <li>Build system variables (such as
+  <code>PRODUCT_{SYSTEM,VENDOR}_VERITY_PARTITION</code> and
+  <code>CUSTOM_IMAGE_VERITY_BLOCK_DEVICE</code>) used for VBoot 1.0 are NOT
+  required for VBoot 2.0. Instead, build variables introduced in VBoot 2.0
+  (including <code>BOARD_AVB_ENABLE := true</code>) should be defined; for a
+  full configuration, refer to
+  <a href="https://android.googlesource.com/platform/external/avb/#Build-System-Integration"
+  class="external">Build System Integration for AVB</a>.</li>
+  <li>Entries provided through device tree overlays must not repeat in the
+  <code>fstab</code> file fragments. For example, if you specify an entry to
+  mount <code>/vendor</code> in the devicetree, the <code>fstab</code> file
+  must not repeat that entry.</li>
+  <li>VBoot 2.0 doesn't support <code>verifyatboot</code>, whether early mount
+  is enabled or not.</li>
+  <li>The verity mode/state for verified partitions must be specified in
+  <code>kernel_cmdline</code> using the <code>androidboot.veritymode</code>
+  option (existing requirement). Make sure to include the following fixes for
+  AVB:
+  <ul>
+    <li>
+    <a href="https://android-review.googlesource.com/#/q/topic:libavb-api-rev-for-verity-modes+(status:open+OR+status:merged)"
+    class="external">https://android-review.googlesource.com/#/q/topic:libavb-api-rev-for-verity-modes+(status:open+OR+status:merged)</a></li>
+    <li><a href="https://android-review.googlesource.com/#/c/394215/"
+    class="external">https://android-review.googlesource.com/#/c/394215/</a>
+    </li>
+  </ul>
+  </li>
+</ol>
+
+<h2 id="early-mount-dt-vboot2">Mounting devicetree early, VBoot 2.0</h2>
+
+<p>
+  The configuration in devicetree for VBoot 2.0 is the same as that in
+  <a href="#early-mounting-device-tree-vboot-1-0">VBoot 1.0</a>, with the
+  following exceptions:
+</p>
+
+<ul>
+  <li>The <code>fsmgr_flag</code> is switched from <code>verify</code> to
+  <code>avb</code>.</li>
+  <li>All partitions with AVB metadata must be in the VBMeta entry in the
+  devicetree, even when the partition isn't mounting early (for example,
+  <code>/boot</code>).</li>
+</ul>
+
+<h3><strong>Example:</strong> /system and /vendor on N5X</h3>
+
+<p>
+  The following example shows a devicetree early mount for the
+  <code>system</code> and <code>vendor</code> partitions on Nexus 5X. Note that:
+</p>
+
+<ul>
+  <li><code>/system</code> is mounted with AVB and <code>/vendor</code> is
+  mounted without integrity verification.</li>
+  <li>As the Nexus 5X has no <code>/vbmeta</code> partition, so the top-level
+  vbmeta resides at the end of the <code>/boot</code> partition (for details,
+  refer to the <a href="https://android-review.googlesource.com/#/c/344907/"
+  class="external">AOSP changelist</a>).
+
+<pre class="prettyprint">
+/ {
+  firmware {
+    android {
+      compatible = "android,firmware";
+      vbmeta {
+      compatible = "android,vbmeta";
+      parts = "boot,system,vendor";
+      };
+  fstab {
+    compatible = "android,fstab";
+    system {
+      compatible = "android,system";
+      dev = "/dev/block/platform/soc.0/f9824900.sdhci/by-name/system";
+      type = "ext4";
+      mnt_flags = "ro,barrier=1,inode_readahead_blks=8";
+      fsmgr_flags = "wait,avb";
+        };
+    vendor {
+      compatible = "android,vendor";
+      dev = "/dev/block/platform/soc.0/f9824900.sdhci/by-name/vendor";
+      type = "ext4";
+      mnt_flags = "ro,barrier=1,inode_readahead_blks=8";
+      fsmgr_flags = "wait";
+        };
+      };
+    };
+  };
+};
+</pre>
+</li>
+</ul>
+
+<h3><strong>Example:</strong> /vendor on Pixel</h3>
+
+<p>
+  The following example shows mounting <code>/vendor</code> early on a Pixel.
+  Note that:
+</p>
+
+<ul>
+  <li>More partitions are specified in the vbmeta entry because those partitions
+  are
+  <a href="https://android.googlesource.com/platform/external/avb/#The-VBMeta-struct"
+  class="external">protected by AVB</a>.</li>
+  <li>All AVB partitions must be included, even if only <code>/vendor</code> is
+  early mounted.</li>
+  <li>Remember to add <code>slotselect</code> for partitions subject to A/B.
+<pre class="prettyprint">
+/ {
+  vbmeta {
+      compatible = "android,vbmeta";
+  parts = "vbmeta,boot,system,vendor,dtbo";
+  };
+  firmware {
+    android {
+      compatible = "android,firmware";
+      fstab {
+        compatible = "android,fstab";
+        vendor {
+          compatible = "android,vendor";
+          dev = "/dev/block/platform/soc/624000.ufshc/by-name/vendor";
+          type = "ext4";
+          mnt_flags = "ro,barrier=1,discard";
+          fsmgr_flags = "wait,slotselect,avb";
+        };
+      };
+    };
+  };
+};
+</pre>
+</li>
+</ul>
+
+</body>
+</html>

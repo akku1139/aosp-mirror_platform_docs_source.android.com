@@ -5,7 +5,6 @@
   <meta name="project_path" value="/_project.yaml"/>
 </head>
 <body>
-
 <!--
   Copyright 2018 The Android Open Source Project
 
@@ -181,7 +180,7 @@ public static final String ACTION_RESOLVE_CONFIRMATION_CODE =
         pkgRefDo [PRIVATE 10] OCTET STRING (SIZE(0..127)) OPTIONAL  -- Tag CA
     },
     arDo [PRIVATE 3] SEQUENCE {  -- Tag E3
-        permArDo [PRIVATE 27] BIT STRING (SIZE(8))  -- Tag DB
+        permArDo [PRIVATE 27] OCTET STRING (SIZE(8))  -- Tag DB
     }
 }
 </code></pre>
@@ -211,7 +210,7 @@ public static final String ACTION_RESOLVE_CONFIRMATION_CODE =
 
 <p>LPA 由两个独立的组件组成（可在同一 APK 中实现）：LPA 后端和 LPA 界面或 LUI。</p>
 
-<p>要实现 LPA 后端，您必须扩展 <a href="https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/service/euicc/EuiccService.java" class="external"><code>EuiccService</code></a> 并在清单文件中声明此服务。该服务必须请求获得 <code>android.permission.BIND_EUICC_SERVICE</code> 系统权限，以确保只有该系统才能与之绑定。该服务还必须包含具有 <code>android.service.euicc.EuiccService</code> 操作的 intent 过滤器。如果设备上存在多个实现，则应将 intent 过滤器的优先级设置为非零值。例如：</p>
+<p>要实现 LPA 后端，您必须扩展 <a href="https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/service/euicc/EuiccService.java" class="external"><code>EuiccService</code></a> 并在清单文件中声明此服务。该服务必须请求获得 <code>android.permission.BIND_EUICC_SERVICE</code> 系统权限，以确保只有系统才能与之绑定。该服务还必须包含具有 <code>android.service.euicc.EuiccService</code> 操作的 intent 过滤器。如果设备上存在多个实现，则应将 intent 过滤器的优先级设置为非零值。例如：</p>
 <pre class="prettyprint"><code>&lt;service
     android:name=".EuiccServiceImpl"
     android:permission="android.permission.BIND_EUICC_SERVICE"&gt;
@@ -229,7 +228,7 @@ public static final String ACTION_RESOLVE_CONFIRMATION_CODE =
 <li><code>android.service.euicc.action.PROVISION_EMBEDDED_SUBSCRIPTION</code></li>
 </ul>
 
-<p>与服务一样，每个操作组件都必须获得 <code>android.permission.BIND_EUICC_SERVICE</code> 系统权限，而且都应当包含具有适当操作的 intent 过滤器、<code>android.service.euicc.category.EUICC_UI</code> 类别以及非零优先级。选择这些操作组件的实现与选择 <a href="https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/service/euicc/EuiccService.java" class="external"><code>EuiccService</code></a> 实现所使用的逻辑是类似的。例如：</p>
+<p>与服务一样，每个 Activity 都必须获得 <code>android.permission.BIND_EUICC_SERVICE</code> 系统权限，而且都应当包含具有适当操作的 intent 过滤器、<code>android.service.euicc.category.EUICC_UI</code> 类别以及非零优先级。选择这些 Activity 的实现与选择 <a href="https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/service/euicc/EuiccService.java" class="external"><code>EuiccService</code></a> 实现所使用的逻辑是类似的。例如：</p>
 <pre class="prettyprint"><code>&lt;activity android:name=".MyLuiActivity"
           android:exported="true"
           android:permission="android.permission.BIND_EUICC_SERVICE"&gt;
@@ -241,7 +240,7 @@ public static final String ACTION_RESOLVE_CONFIRMATION_CODE =
     &lt;/intent-filter&gt;
 &lt;/activity&gt;
 </code></pre>
-<p>这意味着，实现这些屏幕的界面的 APK 可以与实现 <a href="https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/service/euicc/EuiccService.java" class="external"><code>EuiccService</code></a> 的 APK 不同。使用单个 APK 还是多个 APK（例如一个用于实现 <a href="https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/service/euicc/EuiccService.java" class="external"><code>EuiccService</code></a>，另一个用于提供 LUI 操作组件）取决于设计时的选择。</p>
+<p>这意味着，实现这些屏幕的界面的 APK 可以与实现 <a href="https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/service/euicc/EuiccService.java" class="external"><code>EuiccService</code></a> 的 APK 不同。使用单个 APK 还是多个 APK（例如一个用于实现 <a href="https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/service/euicc/EuiccService.java" class="external"><code>EuiccService</code></a>，另一个用于提供 LUI Activity）取决于设计时的选择。</p>
 
 <h3 id="euicccardmanager">EuiccCardManager</h3>
 
@@ -273,7 +272,7 @@ public static final String ACTION_RESOLVE_CONFIRMATION_CODE =
 
 cardMgr.requestAllProfiles(eid, AsyncTask.THREAD_POOL_EXECUTOR, callback);
 </code></pre>
-<p>在内部，<code>EuiccCardManager</code> 会通过 AIDL 接口绑定到 <code>EuiccCardController</code>（在电话进程中运行），而且每个 <code>EuiccCardManager</code> 方法均可以通过不同的专用 AIDL 接口从电话进程接收回调。使用 <code>EuiccCardManager</code> API 时，调用程序 (LPA) 必须通过所调用的回调提供 <a href="https://developer.android.com/reference/java/util/concurrent/Executor" class="external"><code>Executor</code></a>。该 <code>Executor</code> 可以在单个线程上运行，也可以在线程池上运行，具体取决于您的选择。</p>
+<p>在内部，<code>EuiccCardManager</code> 会通过 AIDL 接口绑定到 <code>EuiccCardController</code>（在电话进程中运行），而且每个 <code>EuiccCardManager</code> 方法均可以通过不同的专用 AIDL 接口从电话进程接收回调。使用 <code>EuiccCardManager</code> API 时，调用程序 (LPA) 必须提供 <a href="https://developer.android.com/reference/java/util/concurrent/Executor" class="external"><code>Executor</code></a>（通过它可以调用回调）。该 <code>Executor</code> 可以在单个线程上运行，也可以在线程池上运行，具体取决于您的选择。</p>
 
 <p>大多数 <code>EuiccCardManager</code> API 都具有相同的使用模式。例如，要将绑定的配置文件包加载到 eUICC，请执行以下命令：</p>
 <pre class="prettyprint"><code>...

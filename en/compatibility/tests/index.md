@@ -26,6 +26,9 @@ Before understanding how testing is done on the Android platform,
 please refer to the [Android platform architecture](/devices/architecture)
 for an overview.
 
+Also note the [security-specific testing](/devices/tech/debug/fuzz-sanitize)
+mechanisms available to detect and harden your devices against vulnerabilities.
+
 ## What's new
 
 ### Test development workflow
