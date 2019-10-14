@@ -1,0 +1,234 @@
+<html devsite>
+  <head>
+    <title>OTA for A/B Devices with Dynamic Partitions</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2019 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+  {% include "_versions.html" %}
+
+    <p>
+      Android {{ androidQVersionNumber }} supports dynamic partitions, a
+      userspace partitioning system that can create, resize, and destroy
+      partitions during an over-the-air (OTA) update. This document describes
+      how OTA clients resize dynamic partitions during an update for A/B
+      devices that launched with dynamic partitions support.
+    </p>
+
+    <h2 id="background">Background</h2>
+
+      <p>
+        There is one <code>super</code> partition on the device. This
+        partition is not slot-suffixed. The block device must exist along
+        with the <code>blk_device</code> entry for <code>/misc</code> in
+        <code>fstab</code>. For example, if the <code>fstab</code> file lists:
+      </p>
+
+<pre class="prettyprint">
+/dev/block/bootdevice/by-name/misc    /misc    # Other fields
+</pre>
+
+      <p>
+        Then the block device for <code>super</code> must exist in
+        <code>/dev/block/bootdevice/by-name/super</code>, but the
+        <code>super</code> partition doesn't need to be listed in the
+        <code>fstab</code> file.
+      </p>
+
+      <p>
+        In the <code>super</code> partition, there are two
+        <em>metadata slots</em>, numbered 0 and 1, corresponding to
+        A/B slots for partitions. In this document, the metadata slots are
+        called Metadata S (source) and Metadata T (target). Similarly,
+        partitions are referred to as <code>system_s</code>,
+        <code>vendor_t</code>, and so on.
+      </p>
+
+      <p>
+        Before the upgrade, Metadata S contains the information for the
+        dynamic partitions being used (typically, <code>system_s</code>,
+        <code>vendor_s</code>, <code>product_s</code>, and so on). The system
+        reads the extents for these partitions during the update, so they
+        can't be deleted.
+      </p>
+
+      <p>
+        Partitions belong to <em>update groups</em>. See
+        <a href="/devices/tech/ota/dynamic_partitions/implement">Implementing
+        Dynamic Partitions</a> for details.
+      </p>
+
+      <p>
+        An example of metadata on a device is as follows.
+      </p>
+
+      <ul>
+        <li>Metadata 0
+          <ul>
+            <li>Group <code>foo_a</code>
+              <ul>
+                <li>Partition <code>system_a</code></li>
+                <li>Partition <code>product_services_a</code></li>
+                <li>Other partitions updated by Foo</li>
+              </ul>
+            </li>
+            <li>Group bar_a
+              <ul>
+                <li>Partition <code>vendor_a</code></li>
+                <li>Partition <code>product_a</code></li>
+                <li>Other partitions updated by Bar</li>
+              </ul>
+            </li>
+            <li>Group <code>foo_b</code> (leftover from previous upgrade)</li>
+            <li>Group <code>bar_b</code> (leftover from previous upgrade)</li>
+          </ul>
+        </li>
+        <li>Metadata 1
+          <ul>
+            <li>Group <code>foo_a</code> (leftover from previous upgrade)</li>
+            <li>Group <code>bar_a</code> (leftover from previous upgrade)</li>
+            <li>Group <code>foo_b</code>
+              <ul>
+                <li>Partition <code>system_b</code></li>
+                <li>Partition <code>product_services_b</code></li>
+                <li>Other partitions updated by Foo</li>
+              </ul>
+            </li>
+            <li>Group <code>bar_b</code>
+              <ul>
+                <li>Partition <code>vendor_b</code></li>
+                <li>Partition <code>product_b</code></li>
+                <li>Other partitions updated by Bar</li>
+              </ul>
+            </li>
+          </ul>
+        </li>
+      </ul>
+
+      <p>
+        You can use the <code>lpdump</code> tool (source code under
+        <code>system/extras/partition_tools</code>) to dump the metadata on
+        your device. For example:
+      </p>
+
+<pre class="devsite-click-to-copy">
+<code class="devsite-terminal">lpdump --slot 0 /dev/block/bootdevice/by-name/super</code>
+<code class="devsite-terminal">lpdump --slot 1 /dev/block/bootdevice/by-name/super</code>
+</pre>
+
+    <h2 id="update-flow">Update flow</h2>
+
+      <ol>
+        <li><strong>Initialize <code>super</code> partition metadata.</strong>
+          <ol>
+            <li>
+              Load the extents for the source dynamic partitions from Metadata
+              S. Let M be the loaded metadata.
+            </li>
+            <li>
+              Remove target groups and partitions (for example,
+              <code>foo_t</code>, <code>bar_t</code>) from M so that M contains
+              only partitions and groups with the <code>_s</code> suffix.
+            </li>
+            <li>
+              Add target groups and partitions according to the
+              <code>dynamic_partition_metadata</code> field in the update
+              manifest.<br />
+              The size of each partition can be found in
+              <code>new_partition_info</code>.
+            </li>
+            <li>
+              Write M to Metadata T.
+            </li>
+            <li>
+              Map the added partitions on the device mapper as writable.
+            </li>
+          </ol>
+        </li>
+        <li><strong>Apply the update on the block devices.</strong>
+          <ol>
+            <li>
+              If necessary, map the source partitions on the device mapper as
+              read-only. This is necessary for sideloading because the source
+              partitions aren't mapped prior to the update.
+            </li>
+            <li>
+              Apply a full or delta update to all block devices at the target
+              slot.
+            </li>
+            <li>
+              Mount the partitions to run the post-install script, and then
+              unmount the partitions.
+            </li>
+          </ol>
+        </li>
+        <li><strong>Unmap the target partitions.</strong></li>
+      </ol>
+
+      <aside class="note">
+        <strong>Note:</strong> Since the extents for both source and target
+        dynamic partitions span across the entire <code>super</code> partition.
+        As a result, you must load the source metadata so that these extents
+        aren't used as part of any target partitions.
+      </aside>
+
+      <p>
+        Before and after the update, the following system properties should have
+        the respective values:
+      </p>
+
+<pre class="prettyprint">
+ro.boot.dynamic_partitions=true
+ro.boot.dynamic_partitions_retrofit=true
+</pre>
+
+    <h2 id="update-manifest">
+      Adding groups and partitions to the
+      update manifest
+    </h2>
+
+      <p>
+        When performing an OTA update on an A/B device with dynamic partitions,
+        or an A/B device that is adding support for dynamic partitions, you
+        need to add groups and partitions to the update manifest. The snippet
+        below shows additional information on the update manifest to support
+        dynamic partitions. See
+        <a href="https://android.googlesource.com/platform/system/update_engine/+/master/update_metadata.proto">update_metadata.proto</a>
+        for detailed documentation on each field.
+      </p>
+
+
+<pre
+class="prettyprint">message DeltaArchiveManifest {
+    optional DynamicPartitionMetadata dynamic_partition_metadata;
+}
+
+message DynamicPartitionMetadata {
+    repeated DynamicPartitionGroup groups;
+}
+
+message DynamicPartitionGroup {
+    required string name;
+    optional uint64 size; // maximum size of group
+    repeated string partition_names;
+}
+</pre>
+
+  </body>
+</html>

@@ -1,0 +1,78 @@
+<html devsite><head>
+    <title>输入路由</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+
+  <!--
+      Copyright 2019 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>在 Android 9 及更低版本中，无法通过轻触与多个屏幕进行交互，因为屏幕和输入设备之间没有关联机制。例如，触摸屏幕可以提供 HDMI 视频输出（将在 Android 上注册为屏幕）以及用于触摸屏的 USB 输出（将注册为输入设备）。如果以这种方式连接多个设备，则无法确定哪个输入设备属于哪个屏幕。对于具有多个内置屏幕的可折叠设备，也同样存在该问题。</p>
+
+<p>Android 10 增加了一种机制来指定哪些输入设备属于哪些屏幕。这种关联由端口号完成，其中端口是指与屏幕连接的物理端口。<em></em></p>
+
+<p>例如，如果 Android 设备有两个标记为 <code>hdmi1</code> 和 <code>hdmi2</code> 的 HDMI 端口，则屏幕端口值可能是 <code>1</code> 和 <code>2</code>。即使将不同的屏幕（例如不同的屏幕型号或制造商）连接到同一物理 HDMI 端口，端口值也保持不变。这样一来，设备制造商就能够提供组装和升级屏幕的说明。</p>
+
+<p>这种关联在 <code>/vendor/etc/input-port-associations.xml</code> 中配置。例如：</p>
+
+<pre class="prettyprint">
+<code>&lt;ports&gt;</code>
+    &lt;port display="0" input="usb-xhci-hcd.0.auto-1.1/input0" /&gt;
+    &lt;port display="1" input="usb-xhci-hcd.0.auto-1.2/input0" /&gt;
+&lt;/ports&gt;
+</pre>
+
+<p>在上面的示例中，<code>display="0"</code> 指定与屏幕连接的端口。<code>input="usb-xhci-hcd.0.auto-1.1/input0"</code> 指定与输入设备连接的端口。要确定与特定设备关联的端口，请使用以下终端命令，然后在 Event Hub 状态中查看这些设备的 <code>location</code> 属性。</p>
+
+<pre class="external">adb shell dumpsys input</pre>
+
+<p>如果连接了很多设备，请点按特定设备，以在 Input Dispatcher 状态中检查 <code>RecentQueue</code> 数组。然后，您可以确定生成最新事件的设备。之后，您可以在 Event Hub 状态中找到相应的设备。</p>
+
+<p>要确定分配给连接的屏幕的屏幕端口，请使用 <code>adb shell dumpsys display</code>，然后在 Display Devices 下针对每个屏幕查找 <code>DisplayDeviceInfo</code> 的 <code>address</code> 属性。或者，使用 <code>adb shell dumpsys SurfaceFlinger --display-id</code> 转储所有已连接屏幕的标识信息。另请参阅<a href="/devices/tech/display/multi_display/displays#static">静态屏幕标识符</a>。</p>
+
+<p>如果为特定输入设备指定关联，并且系统中不存在相应的屏幕，则该输入设备会被禁用，直到出现相应的屏幕为止。这种关联仅对触摸屏设备执行。</p>
+
+<h2 id="dynamic">动态多屏幕的路由</h2>
+
+<p>您可以通过 Android 10 设置静态多屏幕设备。动态关联尚未启用。不过，某些用例可以通过为并非始终存在的屏幕和输入面板提供路由信息，或者使用虚拟输入设备，然后向这些虚拟设备提供其他路由信息加以解决。如果设备实现支持：</p>
+
+<ul>
+
+<li>使用扩展坞的桌面式体验，则可以为从连接到插入基座的输入附件（由端口唯一标识）到外部屏幕（由端口标识）的目标输入提供路由配置。</li>
+
+<li>主屏幕在连接到外部屏幕时充当输入源（例如触控板），则可以为从虚拟触摸面板（由唯一虚拟 ID 标识）到外部屏幕（由端口标识）的目标输入提供路由配置。</li>
+</ul>
+
+<h3 id="implementation-routing">实现</h3>
+
+<ul>
+<li>对于物理设备，与输入设备连接的端口以及与屏幕连接的端口用于将屏幕与触摸屏匹配。</li>
+
+<li>映射存储在 <code>InputReaderConfiguration</code> 中。</li>
+
+<li>系统会将 <code>TouchInputMapper.mViewport</code> 设置为与为 <code>InputDevice.location</code> 指定的端口相匹配的视口。</li>
+
+<li>如果在映射文件中指定了输入设备端口，并且当前没有具有匹配屏幕端口的视口，则该端口上的输入设备会被禁用。</li>
+
+<li>如果没有为特定输入设备指定端口，则根据现有规则设置视口。</li>
+
+<li>输入驱动程序中不需要任何内核更改。</li>
+
+<li>输入设备端口通过使用 EVIOCGPHYS ioctl 确定。</li>
+</ul>
+
+</body></html>

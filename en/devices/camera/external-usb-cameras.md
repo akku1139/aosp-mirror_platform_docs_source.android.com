@@ -19,29 +19,29 @@ Book: /_book.yaml
 
 # External USB Cameras
 
-The Android platform supports the use of plug-and-play USB cameras (i.e.
+The Android platform supports the use of plug-and-play USB cameras (that is,
 webcams) using the standard
 [Android Camera2 API](https://developer.android.com/reference/android/hardware/camera2/package-summary.html){: .external}
 and the camera
-[HIDL](/reference/hidl/android/hardware/camera/provider/2.4/ICameraProvider){: .external}
+[HIDL](https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/master/camera/provider/2.4/ICameraProvider.hal){: .external}
 interface. Webcams generally support
 [USB video class (UVC)](https://en.wikipedia.org/wiki/USB_video_device_class){: .external}
-drivers and on Linux the standard
+drivers and on Linux, the standard
 [Video4Linux (V4L)](https://en.wikipedia.org/wiki/Video4Linux){: .external}
 driver is used to control UVC cameras.
 
 With support for webcams, devices can be used in lightweight use cases such as
-video chatting and photo kiosks. This feature does not serve as a replacement
-for typical internal camera HALs on Android phones and is not designed to
+video chatting and photo kiosks. This feature doesn't replace typical internal
+camera HALs on Android phones and isn't designed to
 support performance-intensive, complex tasks involving high-resolution and
 high-speed streaming, AR, and manual ISP/sensor/lens control.
 
-The new USB camera HAL process is part of the external camera provider that
+The USB camera HAL process is part of the external camera provider that
 listens to USB device availability and enumerates external camera devices
 accordingly. The process has permissions and an SE policy similar to the
-built-in camera HAL process. Third party webcam applications that communicate
+built-in camera HAL process. Third-party webcam apps that communicate
 directly with USB devices require the same camera permissions to access UVC
-devices as with any regular camera application.
+devices as with any regular camera app.
 
 ## Examples and sources
 
@@ -52,7 +52,7 @@ The external camera device and session implementations are included in
 [`ExternalCameraDevice`](https://android.googlesource.com/platform/hardware/interfaces/+/master/camera/device/3.4/default/ExternalCameraDevice.cpp){: .external}
 and
 [`ExternalCameraDeviceSession`](https://android.googlesource.com/platform/hardware/interfaces/+/master/camera/device/3.4/default/ExternalCameraDeviceSession.cpp){: .external}.
-The Java client API includes a new
+Starting in API level 28, the Java client API includes the
 [`EXTERNAL`](https://developer.android.com/reference/android/hardware/camera2/CameraMetadata?authuser=3#INFO_SUPPORTED_HARDWARE_LEVEL_EXTERNAL){: .external}
 hardware level.
 
@@ -72,13 +72,14 @@ adding the following to the respective kernel `deconfig` files.
 
 Note: Make sure you also have this
 [patch](https://patchwork.kernel.org/patch/6874491/){: .external}
-for uvcvideo.
+for UVC video.
 
 To enable the external camera provider in the respective device build, which
 adds the necessary SELinux permissions, external camera configuration, and
 external camera provider dependency, complete the following steps:
 
-+   Add external camera config file and external camera library to `device.mk`
++   Add the external camera config file and external camera library to
+    `device.mk`.
 
     ```
     +PRODUCT_PACKAGES += android.hardware.camera.provider@2.4-impl
@@ -88,7 +89,7 @@ external camera provider dependency, complete the following steps:
     +device/manufacturerX/productY/external_camera_config.xml:$(TARGET_COPY_OUT_VENDOR)/etc/external_camera_config.xml
     ```
 
-+   Add external camera provider name to device Treble HAL manifest
++   Add the external camera provider name to the device Treble HAL manifest.
 
     ```
     <hal format="hidl">
@@ -105,7 +106,7 @@ external camera provider dependency, complete the following steps:
     ```
 
 +   (Optional) If the device runs in Treble passthrough mode, update `sepolicy`
-    so `cameraserver` can access UVC camera
+    so `cameraserver` can access the UVC camera.
 
     ```
     +# for external camera
@@ -114,7 +115,7 @@ external camera provider dependency, complete the following steps:
     +allow cameraserver video_device:chr_file rw_file_perms;
     ```
 
-Here is an example of `external_camera_config.xml` (copyright lines omitted)
+Here's an example of `external_camera_config.xml` (copyright lines omitted).
 
 ```
 <ExternalCamera>
@@ -160,7 +161,7 @@ You can customize the external camera provider by modifying the
 `external_camera_config.xml` file. Specifically, clients can customize the
 following parameters:
 
-+   Excluding video nodes of internal camera(s)
++   Excluding video nodes of internal cameras
 +   Supported image size and frame rate upper bound
 +   Number of inflight buffers (jank vs memory tradeoff)
 
@@ -180,8 +181,8 @@ device-specific optimizations.
 
 Generic implementations use the following output formats:
 
-+   YUV_420_888 for video IMPLEMENTATION_DEFINED buffers.
-+   YV12 for all other IMPLEMENTATION_DEFINED buffers.
++   `YUV_420_888` for video `IMPLEMENTATION_DEFINED` buffers
++   `YUV12` for all other `IMPLEMENTATION_DEFINED` buffers
 
 To improve performance, you can replace output formats with device-specific
 efficient formats. You can also support additional formats in a customized
@@ -194,6 +195,6 @@ Devices with external camera support must pass
 webcam must remain plugged in the specific device during the entire test run,
 otherwise some test cases will fail.
 
-Note: `media_profiles` entries are not available for external USB webcams, so
+Note: `media_profiles` entries aren't available for external USB webcams, so
 [camcorder profiles](https://developer.android.com/reference/android/media/CamcorderProfile){: .external}
 are absent.

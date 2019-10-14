@@ -117,7 +117,8 @@
 
       <ul>
         <li>
-          implement a compliant BT 4.2 or higher controller.
+          implement a compliant BT 4.2 or higher controller. LE Secure Connections is
+          highly recommended.
         </li>
         <li>
           have the central support at least 2 simultaneous LE links with parameters as
@@ -131,17 +132,17 @@
         </li>
         <li>
           have an LE credit based flow control [BT Vol 3, Part A, Sec 10.1].
-          Devices shall support an MTU and MPS size of at least 241 bytes on
+          Devices shall support an MTU and MPS size of at least 167 bytes on
           CoC and be able to buffer up to 8 packets.
         </li>
         <li>
           have an LE data length extension [BT Vol 6, Part B, Sec 5.1.9] with
-          a payload of at least 167 bytes. For peripherals that support the
-          codec G.722 @ 24 kHz, the length is at least 247 bytes.
+          a payload of at least 167 bytes.
         </li>
         <li>
           have the central device support the HCI LE Connection Update Command
-          and comply with the non-zero minimum_CE_Length parameter.
+          and comply with the non-zero <code>maximum_CE_Length</code> and
+          <code>minimum_CE_Length</code> parameters.
         </li>
         <li>
           have the central maintain the data throughput for two LE CoC connections to two
@@ -160,12 +161,10 @@
       </ul>
 
       <p>
-        The peripheral and central may implement 2M PHY as specified in
-        BT 5. The central shall support audio links up to 64 kbit/s on both 1M
-        and 2M PHY but can choose to limit support for links
-        requiring more than 64 kbit/s to the 2M PHY in order to improve
-        coexistence with other 2.4 GHz devices. The BLE long range PHY shall
-        not be used.
+        It is strongly recommended that the central and peripheral support 2MB PHY as
+        specified in the BT 5.0 specification.
+        The central shall support audio links of
+        at least 64 kbit/s on both 1M and 2M PHYs. The BLE long range PHY shall not be used.
       </p>
 
       <p>
@@ -197,7 +196,7 @@
         </tr>
         <tr>
           <td>AudioControlPoint</td>
-          <td>Write without Response</td>
+          <td>Write and Write without Response</td>
           <td>
             Control point for audio stream. See
             <a href="#audiocontrolpoint">AudioControlPoint</a>.
@@ -219,12 +218,14 @@
           <td>Volume</td>
           <td>Write without Response</td>
           <td>
-            Byte between -128 and 0 indicating volume in dB. -128 shall be
-            interpreted as mute. 0 dB with a rail-to-rail sine tone streamed
-            shall represent a 100 dBSPL input equivalent on the hearing
-            instrument. The central shall stream in nominal full scale and
-            use this variable to set the desired presentation level in the
-            peripheral.
+            Byte between -128 and 0 indicating the amount of attenuation to apply to
+            the streamed audio signal, ranging from -48&nbsp;dB to 0&nbsp;dB. Setting
+            -128 shall be interpreted as fully muted, i.e. the lowest non-muted volume
+            level is -127 which is equivalent to -47.625&nbsp;dB attenuation. At setting 0,
+            a rail-to-rail sine tone streamed shall represent a 100&nbsp;dBSPL input
+            equivalent on the hearing instrument. The central shall stream in nominal
+            full scale and use this variable to set the desired presentation level in
+            the peripheral.
           </td>
         </tr>
         <tr>
@@ -311,11 +312,7 @@
           <tr>
             <td>13-14</td>
             <td>
-              PreparationDelay. This is the time, in milliseconds, the
-              peripheral needs in order to render audio after the start
-              command has been issued,such as for loading codecs. The
-              PreparationDelay can be used by the central to delay audio
-              playback of short messages.
+              Reserved for future use. Initialize to zeros.
             </td>
           </tr>
           <tr>
@@ -323,7 +320,8 @@
             <td>
               Supported <a href="#codec-ids">Codec IDs</a>. This is a bitmask
               of supported codec IDs. A 1 in a bit location corresponds to a
-              supported codec. All other bits shall be set to 0.
+              supported codec. For example, 0x0002 indicates that G.722 at 16 kHz
+              is supported. All other bits shall be set to 0.
             </td>
           </tr>
         </table>
@@ -355,6 +353,11 @@
             </table>
 
           <h4 id="hisyncid">HiSyncID</h4>
+
+            <p>
+              This field must be unique for all binaural devices but it must be the
+              same for the left and right set.
+            </p>
 
             <table>
               <tr>
@@ -401,7 +404,7 @@
 
             <table>
               <tr>
-                <th>Bit number</th>
+                <th>ID&hairsp;/&hairsp;Bit number</th>
                 <th>Codec and sample rate</th>
                 <th>Required bitrate</th>
                 <th>Frame time</th>
@@ -422,16 +425,9 @@
                 <td>C and P</td>
               </tr>
               <tr>
-                <td>2</td>
-                <td>G.722 @ 24 kHz</td>
-                <td>96 kbit/s</td>
-                <td>Variable</td>
-                <td>C</td>
-              </tr>
-              <tr>
               <tr>
                 <td colspan="5">
-                  3-15 are reserved.<br />
+                  2-15 are reserved.<br />
                   0 is also reserved.
                 </td>
               </tr>
@@ -458,12 +454,14 @@
                   <li><code>uint8_t codec</code></li>
                   <li><code>uint8_t audiotype</code></li>
                   <li><code>int8_t volume</code></li>
+                  <li><code>int8_t otherstate</code></li>
                 </ul>
               </td>
               <td>
                 Instructs the peripheral to reset the codec and start the
-                playback of frame 0. The codec field indicates the bit number
-                of the Codec ID to use for this playback.<br /><br />
+                playback of frame 0. The codec field indicates the codec ID to use
+                for this playback.
+                For example, the codec field is "1" for G.722 at 16k Hz.<br /><br />
                 The audio type bit field indicates the audio type(s) present
                 in the stream:
                 <ul>
@@ -472,6 +470,11 @@
                   <li><strong>2</strong> - Phonecall</li>
                   <li><strong>3</strong> - Media</li>
                 </ul>
+                The <i>otherstate</i> field indicates whether the other side of the binaural
+          devices is connected.
+                The field value is 1 when the other peripheral device is connected,
+                otherwise the value is 0.
+                <br /><br />
                 The peripheral shall not request connection updates before a
                 <code>«Stop»</code> opcode has been received.
               </td>
@@ -483,6 +486,24 @@
                 Instructs the peripheral to stop rendering audio. A new audio
                 setup sequence should be initiated following this stop in order
                 to render audio again.
+              </td>
+            </tr>
+            <tr>
+              <td>3 <code>«Status»</code></td>
+              <td>
+                <ul>
+                  <li><code>uint8_t connected</code></li>
+                </ul>
+              </td>
+              <td>
+                Informs the connected peripheral that there is a status update on the
+                other peripheral. The connected field indicates the type of update:
+                <ul>
+                  <li><strong>0</strong> - Other peripheral disconnected</li>
+                  <li><strong>1</strong> - Other peripheral connected</li>
+                  <li><strong>2</strong> - A LE Connection Parameter Update occurred
+                    on either connection</li>
+                </ul>
               </td>
             </tr>
           </table>
@@ -544,7 +565,7 @@
           <td>Truncated <a href="#hisyncid">HiSyncID</a></td>
           <td>
             Four least significant bytes of the
-            <a href="#hisyncid">HiSyncId</a>.
+            <a href="#hisyncid">HiSyncId</a>. These bytes should be the most random part of the ID.
           </td>
         </tr>
       </table>
@@ -584,10 +605,10 @@
 
       <p>
         Peripheral devices can synchronize their time by using a sequence
-        number prepended to each packet of the audio payload. The central will
-        guarantee that audio packets that are meant to be played at the same
+        number prepended to each packet of the audio payload. The central
+        guarantees that audio packets that are meant to be played at the same
         time on each peripheral have the same sequence number. The sequence
-        number is incremented by one after each audio packet. Each sequence
+        number increments by one after each audio packet. Each sequence
         number is 8-bit long, so the sequence numbers will repeat after 256
         audio packets. Since each audio packet size and sample rate is fixed
         for each connection, the two peripherals can deduce the relative
@@ -595,7 +616,26 @@
         <a href="#audio-packet-format-and-timing">Audio packet format and
           timing</a>.
       </p>
-
+      <p>
+        The central assists by providing triggers to the binaural devices when the synchronization
+        may need to happen. These triggers inform each peripheral of the status of its
+        paired peripheral device whenever there is an operation that
+        may affect the synchronization.
+        The triggers are:
+      </p>
+      <ul>
+        <li>
+          As part of the <code>«Start»</code> command of AudioControlPoint,
+          the current connection state of the other side of the binaural
+          devices is given.
+        </li>
+        <li>
+          Whenever there is a connection, disconnection, or
+          connection parameter update operation on one peripheral,
+          the <code>«Status»</code> command of AudioControlPoint is sent to
+          the other side of the binaural devices.
+        </li>
+      </ul>
     <h2 id="audio-packet-format-and-timing">Audio packet format and timing</h2>
 
       <p>
@@ -607,8 +647,8 @@
       <ul>
         <li>
           An audio frame should always match the connection interval in time.
-          For example, if the connection interval is 10ms and sample rate is
-          16 kHz, then the audio frame shall contain 160 samples.
+          For example, if the connection interval is 20ms and sample rate is
+          16 kHz, then the audio frame shall contain 320 samples.
         </li>
         <li>
           Sample rates in the system are restricted to multiples of 8kHz to
@@ -630,7 +670,9 @@
         <li>
           A connection event should always be large enough to contain 2 audio
           packets and 2 empty packets for an ACK to reserve bandwidth for
-          retransmissions.
+          retransmissions. Note that the audio packet may be fragmented by
+          the central's Bluetooth controller. The peripheral must be able to receive
+          more than 2 fragmented audio packets per connection event.
         </li>
       </ul>
 
@@ -638,6 +680,11 @@
         To give the central some flexibility, the G.722 packet length is not
         specified. The G.722 packet length can change based on the connection
         interval that the central sets.
+      </p>
+
+      <p>
+        The G.722 output octet format references the
+        <a href="https://www.itu.int/rec/T-REC-G.722-201209-I/en" class="external">Rec. ITU-T G.722 (09/2012) section 1.4.4 "Multiplexer"</a>
       </p>
 
       <p>
@@ -657,30 +704,9 @@
         <tr>
           <td>G.722 @ 16 kHz</td>
           <td>64 kbit/s</td>
-          <td>10 ms</td>
-          <td>2500 / 2500 us</td>
-          <td>80 bytes</td>
-        </tr>
-        <tr>
-          <td>G.722 @ 16 kHz</td>
-          <td>64 kbit/s</td>
           <td>20 ms</td>
           <td>5000/3750 us</td>
           <td>160 bytes</td>
-        </tr>
-        <tr>
-          <td>G.722 @ 24 kHz</td>
-          <td>96 kbit/s</td>
-          <td>10 ms</td>
-          <td>3750 / 2500 us</td>
-          <td>120 bytes</td>
-        </tr>
-        <tr>
-          <td>G.722 @ 24 kHz</td>
-          <td>96 kbit/s</td>
-          <td>20 ms</td>
-          <td>5000 / 3750 us</td>
-          <td>240 bytes</td>
         </tr>
       </table>
 
@@ -690,9 +716,9 @@
 
       <aside class="note">
         <strong>Note:</strong> This section is based on simulations with an
-        audio frame buffer depth of 6. This depth is enough to prevent
+        audio frame buffer depth of 8. This depth is enough to prevent
         underflow on the peripheral in most packet loss scenarios. With this
-        depth, the network delay in the system is six times the connection
+        depth, the network delay in the system is eight times the connection
         interval. To keep delays down, a short connection interval is
         preferred.
       </aside>
@@ -700,11 +726,11 @@
       <p>
         Before starting an audio stream, the central queries the peripherals
         and establishes a common denominator codec. The stream
-        setup then proceeds through sequence:
+        setup then proceeds through the following sequence:
       </p>
 
       <ol>
-        <li>PSM, and optionally, PreparationDelay and RenderDelay are read. These values
+        <li>PSM, and optionally, RenderDelay is read. These values
           may be cached by the central.
         </li>
         <li>
@@ -723,7 +749,10 @@
         <li>
           Restart the audio encoder, and reset the packet sequence count to 0.
           A <code>«Start»</code> command with the relevant parameters is
-          issued on the AudioControlPoint. During audio streaming, the replica
+          issued on the AudioControlPoint. The central waits for a successful status notification
+          of the prior <code>«Start»</code> command from the peripheral before streaming.
+          This wait gives the peripheral
+          time to prepare its audio playback pipeline. During audio streaming, the replica
           should be available at every connection event even though the current
           replica latency may be non-zero.
         </li>
@@ -735,9 +764,9 @@
 
       <p>
         The central issues the <strong>«Stop»</strong> command to close the
-        audio stream. Once the audio stream is closed, the peripheral may ask
-        for more relaxed connection parameters. Go through the sequence above
-        again to restart the audio streaming. When the central is not
+        audio stream. After this command, the peripheral does not need to be available on every
+        connection event. To restart the audio streaming, go through the above sequence, starting
+        from step 5. When the central is not
         streaming audio, it should still maintain a LE connection for GATT
         services.
       </p>
@@ -747,5 +776,6 @@
         To save power, the central may issue a connection update to the
         peripheral when it is not streaming audio.
       </p>
+
   </body>
 </html>

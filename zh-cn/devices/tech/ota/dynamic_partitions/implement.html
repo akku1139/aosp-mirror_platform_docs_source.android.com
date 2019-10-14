@@ -1,0 +1,412 @@
+<html devsite><head>
+    <title>实现动态分区</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+
+  <!--
+      Copyright 2019 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+  <p>动态分区是使用 Linux 内核中的 dm-linear device-mapper 模块实现的。<code>super</code> 分区中包含列出 <code>super</code> 内每个动态分区的名称和块范围的元数据。在第一阶段 <code>init</code> 执行期间，系统会解析和验证这些元数据，并创建虚拟块设备来表示每个动态分区。
+  </p>
+
+  <p>应用 OTA 时，系统会根据需要自动创建/删除动态分区，或者调整动态分区的大小。若是 A/B 设备，将存在两个元数据副本，而更改仅会应用到表示目标槽位的副本。
+  </p>
+
+  <p>由于动态分区是在用户空间中实现的，因此引导加载程序所需的分区不能是动态的。例如，引导加载程序会读取 <code>boot</code>、<code>dtbo</code> 和 <code>vbmeta</code>，因此这些分区必须仍保持为物理分区。
+  </p>
+
+  <p>每个动态分区都可以属于一个更新组。<em></em>这些组会限制组内的分区可以使用的最大空间。例如，<code>system</code> 和 <code>vendor</code> 可以同属于一个组，而该组会限制 <code>system</code> 和 <code>vendor</code> 的总大小。
+  </p>
+
+  <h2 id="implement-dynamic-partitions-new-devices">在新设备上实现动态分区</h2>
+
+    <p>本部分详细介绍了如何在搭载 Android 10 及更高版本的新设备上实现动态分区。要更新现有设备，请参阅<a href="#upgrading-devices">升级 Android 设备</a>。
+    </p>
+
+    <h3 id="partitioning-changes">分区更改</h3>
+
+      <p>对于搭载 Android 10 的设备，请创建名为 <code>super</code> 的分区。<code>super</code> 分区在内部处理 A/B 槽位，因此 A/B 设备不需要单独的 <code>super_a</code> 和 <code>super_b</code> 分区。引导加载程序未使用的所有只读 AOSP 分区都必须是动态的，并且必须从 GUID 分区表 (GPT) 中移除。供应商专用分区则可以不是动态的，并且可以放在 GPT 中。</p>
+
+      <aside class="note">
+        <strong>注意：</strong>应避免将 <code>userdata</code> 或任何其他可读写的永久性分区放在 <code>super</code> 中。
+    </aside>
+
+      <p>要估算 <code>super</code> 的大小，需加上要从 GPT 中删除的分区的大小。若是 A/B 设备，应包括两个槽位的大小。<strong>图 1</strong> 显示了转换为动态分区前后的分区表示例。
+      </p>
+
+      <figure>
+        <img src="/devices/tech/ota/images/dynamic_partitions_table.png" alt="分区表布局"/>
+        <figcaption>
+          <strong>图 1.</strong> 转换为动态分区时的新物理分区表布局</figcaption>
+      </figure>
+
+      <p>支持的动态分区包括：</p>
+
+      <ul>
+        <li>System</li>
+        <li>Vendor</li>
+        <li>Product</li>
+        <li>System Ext</li>
+        <li>ODM</li>
+      </ul>
+
+      <p>对于搭载 Android 10 的设备，内核命令行选项 <code>androidboot.super_partition</code> 必须为空，以使命令 sysprop <code>ro.boot.super_partition</code> 也为空。
+      </p>
+
+    <h3 id="partition-alignment">分区对齐</h3>
+
+      <p>如果 <code>super</code> 分区未正确对齐，device-mapper 模块的运行效率可能会降低。<code>super</code> 分区必须与最小 I/O 请求大小保持一致，该大小由块层决定。<em></em>默认情况下，编译系统（通过生成 <code>super</code> 分区映像的 <code>lpmake</code>）认为对每个动态分区应用 1 MiB 的对齐就已经足够。不过，供应商应确保 <code>super</code> 分区正确对齐。
+      </p>
+
+      <p>您可以通过检查 <code>sysfs</code> 来确定块设备的最小请求大小。例如：</p>
+
+<pre class="prettyprint">
+# ls -l /dev/block/by-name/super
+lrwxrwxrwx 1 root root 16 1970-04-05 01:41 /dev/block/by-name/super -&gt; /dev/block/sda17
+# cat /sys/block/sda/queue/minimum_io_size
+786432
+</pre>
+
+      <p>您可以使用类似的方法验证 <code>super</code> 分区的对齐：</p>
+
+<pre class="prettyprint">
+# cat /sys/block/sda/sda17/alignment_offset
+</pre>
+
+      <p>对齐偏移必须为 0。
+      </p>
+
+    <h3 id="device-configuration-changes">设备配置更改</h3>
+
+      <p>要支持动态分区，请在 <code>device.mk</code> 中添加以下标记：</p>
+
+<pre class="prettyprint">PRODUCT_USE_DYNAMIC_PARTITIONS := true</pre>
+
+    <h3 id="board-configuration-changes">板级配置更改</h3>
+
+      <p>您需要设置 <code>super</code> 分区的大小：</p>
+
+<pre class="prettyprint">
+BOARD_SUPER_PARTITION_SIZE := &lt;size-in-bytes&gt;
+</pre>
+
+      <p>在 A/B 设备上，如果动态分区映像的总大小超过 <code>super</code> 分区大小的一半，编译系统就会发生错误。
+      </p>
+
+      <p>您可以按以下方式配置动态分区列表。对于使用更新组的设备，请在 <code>BOARD_SUPER_PARTITION_GROUPS</code> 变量中列出这些组。然后，每个组名都会有 <code>BOARD_<var>group</var>_SIZE</code> 和 <code>BOARD_<var>group</var>_PARTITION_LIST</code> 变量。对于 A/B 设备，组的大小上限应仅包含一个槽位，因为组名在内部以槽位为后缀。
+      </p>
+
+      <p>下面的设备示例将所有分区放入名为 <code>example_dynamic_partitions</code> 的组中：</p>
+
+<pre class="prettyprint">
+BOARD_SUPER_PARTITION_GROUPS := example_dynamic_partitions
+BOARD_EXAMPLE_DYNAMIC_PARTITIONS_SIZE := 6442450944
+BOARD_EXAMPLE_DYNAMIC_PARTITIONS_PARTITION_LIST := system vendor product
+</pre>
+
+      <p>下面的设备示例将系统和产品服务放入 <code>group_foo</code>，并将 <code>vendor</code>、<code>product</code> 和 <code>odm</code> 放入 <code>group_bar</code>：</p>
+
+<pre class="prettyprint">
+BOARD_SUPER_PARTITION_GROUPS := group_foo group_bar
+BOARD_GROUP_FOO_SIZE := 4831838208
+BOARD_GROUP_FOO_PARTITION_LIST := system product_services
+BOARD_GROUP_BAR_SIZE := 1610612736
+BOARD_GROUP_BAR_PARTITION_LIST := vendor product odm
+</pre>
+
+      <aside class="note">
+        <strong>注意：</strong>请勿选择可能会与编译变量冲突的名称，例如 <em>super</em> 和 <em>super_partition</em>。为了便于查看，请选择诸如 <em>foo_dp</em>、<em>foo_dynamic_partitions</em>、<em>foo_dp_group</em>、<em>super_foo</em> 或 <em>group_foo</em> 这样的名称，其中 foo 表示更新指定组的操作方的名称）。例如，<code>group_OEM</code> 或 <code>group_VENDOR</code>。</aside>
+
+      <aside class="note">
+        <strong>注意：</strong>您的设备上可能有一个或多个更新组。
+      </aside>
+
+      <ul>
+        <li>对于 A/B 启动设备，所有组的大小上限总和必须为：<br />
+          <em><code>BOARD_SUPER_PARTITION_SIZE</code> / 2 - 开销</em>
+        </li>
+        <li>对于非 A/B 设备和改造的 A/B 设备，所有组的大小上限总和必须为：<br />
+          <em><code>BOARD_SUPER_PARTITION_SIZE</code> - 开销</em>
+        </li>
+        <li>在编译时，更新组中每个分区的映像大小总和不得超过组的大小上限。
+        </li>
+        <li>在计算时需要扣除开销，因为要考虑元数据、对齐等。合理的开销是 4 MiB，但您可以根据设备的需要选择更大的开销。
+        </li>
+      </ul>
+
+    <h3 id="dyanimic-partitions-sizing">调整动态分区的大小</h3>
+
+      <p>在采用动态分区之前，会为分区分配富余的空间，以确保它们有足够的空间满足将来的更新。分区会按分配的大小占用实际空间，大多数只读分区的文件系统中都会有一些空闲空间。在动态分区中，这些空闲空间是无法使用的，但可在 OTA 期间用于增加分区容量。确保分区没有浪费空间并尽可能为分区分配更少的空间，这两点至关重要。
+      </p>
+
+      <p>对于只读的 ext4 映像，如果未指定硬编码分区大小，则编译系统会自动分配最小的空间。编译系统会适配映像，以尽可能减少文件系统中的未使用空间。这样可以确保设备不会浪费可用于 OTA 的空间。
+      </p>
+
+      <p>此外，通过启用块级重复信息删除，可以进一步压缩 ext4 映像。要启用此功能，请使用以下配置：</p>
+
+<pre class="prettyprint">
+BOARD_EXT4_SHARE_DUP_BLOCKS := true
+</pre>
+
+      <p>如果不希望自动分配最小分区大小，则可以通过两种方法来控制分区大小。您可以使用 <code>BOARD_<var>partition</var>IMAGE_PARTITION_RESERVED_SIZE</code> 指定最小可用空间，也可以指定 <code>BOARD_<var>partition</var>IMAGE_PARTITION_SIZE</code>，强制将动态分区设为特定大小。除非必要，这两种方法都不建议使用。
+      </p>
+
+      <p>例如：</p>
+
+<pre class="prettyprint">
+BOARD_PRODUCTIMAGE_PARTITION_RESERVED_SIZE := 52428800
+</pre>
+
+      <p>这会强制 <code>product.img</code> 中的文件系统保留 50 MiB 的未使用空间。
+      </p>
+
+      <aside class="note">
+        <strong>注意：</strong>编译系统<strong>只能</strong>最佳适配 ext4 文件系统映像，且只能适配编译生成的映像。若是预编译的映像或使用其他文件系统的映像，则必须手动确保文件系统没有浪费磁盘空间。
+      </aside>
+
+    <h3 id="system-as-root-changes">System-as-root 更改</h3>
+
+      <p>搭载 Android 10 的设备不得使用 system-as-root。
+      </p>
+
+      <p>具有动态分区的设备（无论是搭载动态分区还是改造动态分区）不得使用 system-as-root。Linux 内核无法解读 <code>super</code> 分区，因此无法自行装载 <code>system</code>。现在 <code>system</code> 由 ramdisk 中的第一阶段 <code>init</code> 装载。
+      </p>
+
+      <p>请勿设置 <code>BOARD_BUILD_SYSTEM_ROOT_IMAGE</code>。在 Android 10 中，<code>BOARD_BUILD_SYSTEM_ROOT_IMAGE</code> 标记仅用于区分系统是由内核装载，还是由 ramdisk 中的第一阶段 <code>init</code> 装载。
+      </p>
+
+      <p>如果将 <code>BOARD_BUILD_SYSTEM_ROOT_IMAGE</code> 设置为 <code>true</code>，则当 <code>PRODUCT_USES_DYNAMIC_PARTITIONS</code> 也为 <code>true</code> 时，就会导致编译错误。
+      </p>
+
+      <p>将 <code>BOARD_USES_RECOVERY_AS_BOOT</code> 设置为 true 时，恢复映像将被编译为 boot.img，其中包含恢复的 ramdisk。以前，引导加载程序使用 <code>skip_initramfs</code> 内核命令行参数来决定启动到哪种模式。而对于 Android 10 设备，引导加载程序不能向内核命令行传递 <code>skip_initramfs</code>，而应传递 <code>androidboot.force_normal_boot=1</code> 来跳过恢复并正常启动 Android。
+      </p>
+
+    <h3 id="avb-configuration-changes">AVB 配置更改</h3>
+
+      <aside class="caution">
+        <strong>警告：</strong>动态分区需要使用 Android 启动时验证 (AVB)，但不能与启动时验证 1.0 搭配使用。
+      </aside>
+
+      <p>使用 <a href="https://source.android.com/security/verifiedboot/avb">Android 启动时验证 2.0</a> 时，如果设备未使用链式分区描述符，则不需要进行更改。<em></em>但如果使用了链式分区，并且其中一个已验证分区是动态分区，则需要进行更改。
+      </p>
+
+      <p>下面的设备配置示例链接 <code>system</code> 和 <code>vendor</code> 分区所对应的 <code>vbmeta</code>。
+      </p>
+
+<pre class="prettyprint">
+BOARD_AVB_SYSTEM_KEY_PATH := external/avb/test/data/testkey_rsa2048.pem
+BOARD_AVB_SYSTEM_ALGORITHM := SHA256_RSA2048
+BOARD_AVB_SYSTEM_ROLLBACK_INDEX := $(PLATFORM_SECURITY_PATCH_TIMESTAMP)
+BOARD_AVB_SYSTEM_ROLLBACK_INDEX_LOCATION := 1
+
+BOARD_AVB_VENDOR_KEY_PATH := external/avb/test/data/testkey_rsa2048.pem
+BOARD_AVB_VENDOR_ALGORITHM := SHA256_RSA2048
+BOARD_AVB_VENDOR_ROLLBACK_INDEX := $(PLATFORM_SECURITY_PATCH_TIMESTAMP)
+BOARD_AVB_VENDOR_ROLLBACK_INDEX_LOCATION := 1
+</pre>
+
+      <p>使用该配置，引导加载程序可以在 <code>system</code> 和 <code>vendor</code> 分区的末尾找到 <a href="https://android.googlesource.com/platform/external/avb/+/master/README.md">vbmeta 页脚</a>。由于这两个分区对引导加载程序不再可见（它们位于 <code>super</code> 中），因此需要进行两项更改。
+      </p>
+
+      <ul>
+        <li>在设备的分区表中添加 <code>vbmeta_system</code> 和 <code>vbmeta_vendor</code> 分区。若是 A/B 设备，请添加 <code>vbmeta_system_a</code>、<code>vbmeta_system_b</code>、<code>vbmeta_vendor_a</code> 和 <code>vbmeta_vendor_b</code>。如果添加上述一个或多个分区，则它们的大小应与 <code>vbmeta</code> 分区相同。
+        </li>
+        <li>通过添加 <code>VBMETA_</code> 来重命名配置标记，并指定链接扩展到的分区：<pre class="prettyprint">
+BOARD_AVB_VBMETA_SYSTEM := system
+BOARD_AVB_VBMETA_SYSTEM_KEY_PATH := external/avb/test/data/testkey_rsa2048.pem
+BOARD_AVB_VBMETA_SYSTEM_ALGORITHM := SHA256_RSA2048
+BOARD_AVB_VBMETA_SYSTEM_ROLLBACK_INDEX := $(PLATFORM_SECURITY_PATCH_TIMESTAMP)
+BOARD_AVB_VBMETA_SYSTEM_ROLLBACK_INDEX_LOCATION := 1
+
+BOARD_AVB_VBMETA_VENDOR := vendor
+BOARD_AVB_VBMETA_VENDOR_KEY_PATH := external/avb/test/data/testkey_rsa2048.pem
+BOARD_AVB_VBMETA_VENDOR_ALGORITHM := SHA256_RSA2048
+BOARD_AVB_VBMETA_VENDOR_ROLLBACK_INDEX := $(PLATFORM_SECURITY_PATCH_TIMESTAMP)
+BOARD_AVB_VBMETA_VENDOR_ROLLBACK_INDEX_LOCATION := 1
+</pre>
+        </li>
+      </ul>
+
+      <p>一个设备可能会其中的一个或两个分区，也可能一个也不使用。只有在链接到逻辑分区时才需要进行更改。
+      </p>
+
+    <h3 id="avb-bootloader-changes">AVB 引导加载程序更改</h3>
+
+      <p>如果引导加载程序已嵌入 <a href="https://android.googlesource.com/platform/external/avb/">libavb</a>，请包含以下补丁程序：</p>
+
+      <ul>
+        <li>
+          <a href="https://android.googlesource.com/platform/external/avb/+/818cf56740775446285466eda984acedd4baeac0" class="external">818cf56740775446285466eda984acedd4baeac0</a> -“libavb：仅在 cmdline 需要时才查询分区 GUID。”</li>
+        <li>
+          <a href="https://android.googlesource.com/platform/external/avb/+/5abd6bc2578968d24406d834471adfd995a0c2e9" class="external">5abd6bc2578968d24406d834471adfd995a0c2e9</a> -”允许不存在 system 分区”</li>
+        <li>
+          <a href="https://android.googlesource.com/platform/external/avb/+/9ba3b6613b4e5130fa01a11d984c6b5f0eb3af05" class="external">9ba3b6613b4e5130fa01a11d984c6b5f0eb3af05</a> -“修复 AvbSlotVerifyData-&gt;cmdline 可能为 NULL”</li>
+      </ul>
+
+      <p>如果使用链式分区，请包含一个额外的补丁程序：</p>
+
+      <ul>
+        <li>
+          <a href="https://android.googlesource.com/platform/external/avb/+/49936b4c0109411fdd38bd4ba3a32a01c40439a9">49936b4c0109411fdd38bd4ba3a32a01c40439a9</a> -“libavb：支持在分区开头存放 vbmeta blob。”<aside class="note">
+            <strong>注意：</strong>以前，在 <code>AvbOps</code> 中实现 <code>get_size_of_partition</code> 是可选的。在此更改之后，则变成了必需的，并且引导加载程序也必须实现此函数。
+          </aside>
+        </li>
+      </ul>
+
+    <h3 id="kernel-command-line-changes">内核命令行更改</h3>
+
+      <p>必须在内核命令行中添加新参数 <code>androidboot.boot_devices</code>。<code>init</code> 使用它来启用 <code>/dev/block/by-name</code> 符号链接。该参数应该是由 <code>ueventd</code> 创建的底层 by-name 符号链接（即 <code>/dev/block/platform/<var>device-path</var>/by-name/<var>partition-name</var></code>）中的设备路径部分。
+      </p>
+
+      <p>例如，如果 super 分区的 by-name 符号链接是 <code>/dev/block/platform/<strong>soc/100000.ufshc</strong>/by-name/super</code>，则您可以在 BoardConfig.mk 文件中按以下方式添加该命令行参数：</p><pre class="prettyprint">
+BOARD_KERNEL_CMDLINE += androidboot.boot_devices=soc/100000.ufshc
+</pre>
+
+    <h3 id="fstab-changes">fstab 更改</h3>
+
+      <p>设备树和设备树叠加层不得包含 fstab 条目。使用将成为 ramdisk 一部分的 fstab 文件。
+      </p>
+
+      <p>必须对逻辑分区的 fstab 文件进行以下更改：</p>
+
+      <ul>
+        <li>fs_mgr 标记字段中必须包含 <code>logical</code> 标记和 <code>first_stage_mount</code> 标记。first_stage_mount 标记在 Android 10 中引入，指示将在第一阶段装载分区。
+        </li>
+        <li>分区可以将 <code>avb=<var>vbmeta partition name</var></code> 作为 <code>fs_mgr</code> 标记进行指定，随后该指定的 <code>vbmeta</code> 分区将先由第一阶段 <code>init</code> 初始化，然后再尝试装载设备。
+        </li>
+        <li><code>dev</code> 字段必须是分区名称。
+        </li>
+      </ul>
+
+      <p>以下 fstab 条目按照上述规则设置 system、vendor 和 product 逻辑分区。
+      </p>
+
+<pre class="prettyprint">
+#&lt;dev&gt;  &lt;mnt_point&gt; &lt;type&gt;  &lt;mnt_flags options&gt; &lt;fs_mgr_flags&gt;
+system   /system     ext4    ro,barrier=1        wait,slotselect,avb=vbmeta,logical,first_stage_mount
+vendor   /vendor     ext4    ro,barrier=1        wait,slotselect,avb,logical,first_stage_mount
+product  /product    ext4    ro,barrier=1        wait,slotselect,avb,logical,first_stage_mount</pre>
+
+      <aside class="note">
+        <strong>注意：</strong>对于非 A/B 设备，请勿包含 <code>slotselect</code>。
+      </aside>
+
+      <p>将 fstab 文件复制到第一阶段 ramdisk。
+      </p>
+
+    <h3 id="selinux-launch">SELinux 更改</h3>
+      <p>必须使用 <code>super_block_device</code> 标签标记 super 分区块设备。例如，如果 super 分区的 by-name 符号链接是 <code>/dev/block/platform/<strong>soc/100000.ufshc</strong>/by-name/super</code>，请将以下行添加到 <code>file_contexts</code>：</p>
+
+<pre class="prettyprint">
+/dev/block/platform/soc/10000\.ufshc/by-name/super   u:object_r:super_block_device:s0
+</pre>
+
+    <h3 id="fastbootd">fastbootd</h3>
+
+      <p>引导加载程序（或任何非用户空间刷写工具）无法理解动态分区，因此无法对其进行刷写。为解决此问题，设备必须使用 fastboot 协议的用户空间实现，称为 fastbootd。
+      </p>
+
+      <p>要详细了解如何实现 fastbootd，请参阅<a href="/devices/bootloader/fastbootd">将 Fastboot 移至用户空间</a>。
+      </p>
+
+    <h3 id="adb-remount">adb remount</h3>
+
+      <p>对于使用 eng 或 userdebug 编译的开发者，<code>adb remount</code> 对于实现快速迭代非常有用。动态分区给 <code>adb remount</code> 造成了问题，因为每个文件系统中都不再有空闲空间。为解决此问题，设备可以启用 overlayfs。只要 super 分区中有空闲空间，<code>adb remount</code> 就会自动创建临时的动态分区，并使用 overlayfs 进行写入。该临时分区的名称为 <code>scratch</code>，因此请勿将此名称用于其他分区。
+      </p>
+
+      <p>要详细了解如何启用 overlayfs，请参阅 AOSP 中的 <a href="https://android.googlesource.com/platform/system/core/+/a9a3b73163fda5abf237cc0f0cee97ff33e6254d/fs_mgr/README.overlayfs.md">overlayfs 自述文件</a>。</p>
+
+  <h2 id="upgrading-devices">升级 Android 设备</h2>
+
+    <p>如果您想将设备升级到 Android 10，并且希望在 OTA 中包含动态分区支持，则不需要更改内置分区表。需要进行一些额外的配置。
+    </p>
+
+    <h3 id="device-configuration-changes-retrofit">设备配置更改</h3>
+
+      <p>要改造动态分区，请在 <code>device.mk</code> 中添加以下标记：</p>
+
+<pre class="prettyprint">
+PRODUCT_USE_DYNAMIC_PARTITIONS := true
+PRODUCT_RETROFIT_DYNAMIC_PARTITIONS := true
+</pre>
+
+    <h3 id="board-configuration-changes-retrofit">板级配置更改</h3>
+
+      <p>您需要设置以下板级变量：</p>
+        <ul>
+          <li>将 <code>BOARD_SUPER_PARTITION_BLOCK_DEVICES</code> 设置为用于存储动态分区区段的块设备的列表。这是设备上现有物理分区的名称列表。</li>
+          <li>通过 <code>BOARD_SUPER_PARTITION_<var>partition</var>_DEVICE_SIZE</code> 分别设置 <code>BOARD_SUPER_PARTITION_BLOCK_DEVICES</code> 中的每个块设备的大小。这是设备上现有物理分区的大小列表。在现有的板级配置中，这通常为 <code>BOARD_<var>partition</var>IMAGE_PARTITION_SIZE</code>。</li>
+          <li>为 <code>BOARD_SUPER_PARTITION_BLOCK_DEVICES</code> 中的所有分区取消现有的 <code>BOARD_<var>partition</var>IMAGE_PARTITION_SIZE</code> 设置。</li>
+          <li>将 <code>BOARD_SUPER_PARTITION_SIZE</code> 设置为 <code>BOARD_SUPER_PARTITION_<var>partition</var>_DEVICE_SIZE</code> 的总和。</li>
+          <li>将 <code>BOARD_SUPER_PARTITION_METADATA_DEVICE</code> 设置为存储动态分区元数据的块设备。它必须是 <code>BOARD_SUPER_PARTITION_BLOCK_DEVICES</code> 中的一个。通常，将其设置为 <code>system</code>。</li>
+          <li>分别设置 <code>BOARD_SUPER_PARTITION_GROUPS</code>、<code>BOARD_<var>group</var>_SIZE</code> 和 <code>BOARD_<var>group</var>_PARTITION_LIST</code>。如需了解详情，请参阅<a href="#board-configuration-changes">新设备上的板级配置更改</a>。</li>
+        </ul>
+      <p>例如，如果设备已经有 system 和 vendor 分区，并且您希望在更新期间将它们转换为动态分区并添加新的 product 分区，请设置以下板级配置：</p>
+<pre class="prettyprint">
+BOARD_SUPER_PARTITION_BLOCK_DEVICES := system vendor
+BOARD_SUPER_PARTITION_METADATA_DEVICE := system
+
+# Rename BOARD_SYSTEMIMAGE_PARTITION_SIZE to BOARD_SUPER_PARTITION_SYSTEM_DEVICE_SIZE.
+BOARD_SUPER_PARTITION_SYSTEM_DEVICE_SIZE := &lt;size-in-bytes&gt;
+
+# Rename BOARD_VENDORIMAGE_PARTITION_SIZE to BOARD_SUPER_PARTITION_VENDOR_DEVICE_SIZE
+BOARD_SUPER_PARTITION_VENDOR_DEVICE_SIZE := &lt;size-in-bytes&gt;
+
+# This is BOARD_SUPER_PARTITION_SYSTEM_DEVICE_SIZE + BOARD_SUPER_PARTITION_VENDOR_DEVICE_SIZE
+BOARD_SUPER_PARTITION_SIZE := &lt;size-in-bytes&gt;
+
+# Configuration for dynamic partitions. For example:
+BOARD_SUPER_PARTITION_GROUPS := group_foo
+BOARD_GROUP_FOO_SIZE := &lt;size-in-bytes&gt;
+BOARD_GROUP_FOO_PARTITION_LIST := system vendor product
+</pre>
+
+    <h3 id="selinux-legacy">SELinux 更改</h3>
+      <p>必须使用 <code>super_block_device_type</code> 属性标记 super 分区块设备。例如，如果设备已经有 <code>system</code> 和 <code>vendor</code> 分区，并且您希望将它们作为存储动态分区区段的块设备，则应将它们的 by-name 符号链接标记为 <code>system_block_device</code>：</p>
+
+<pre class="prettyprint">
+/dev/block/platform/soc/10000\.ufshc/by-name/system   u:object_r:system_block_device:s0
+/dev/block/platform/soc/10000\.ufshc/by-name/vendor   u:object_r:system_block_device:s0
+</pre>
+
+      <p>然后，将以下行添加到 <code>device.te</code>：</p>
+
+<pre class="prettyprint">
+typeattribute system_block_device super_block_device_type;
+</pre>
+
+    <p>要了解其他配置，请参阅<a href="#implement-dynamic-partitions-new-devices">在新设备上实现动态分区</a>。
+    </p>
+
+    <p>要详细了解改造更新，请参阅<a href="/devices/tech/ota/dynamic_partitions/ab_legacy">没有动态分区的 A/B 设备的 OTA</a>。
+    </p>
+
+  <h2 id="factory-images">出厂映像</h2>
+
+    <p>对于搭载动态分区支持的设备，请勿使用用户空间 fastboot 来刷写出厂映像，因为启动到用户空间比其他刷写方法慢。
+    </p>
+
+    <p>为了解决此问题，<code>make dist</code> 现在会编译一个额外的 <code>super.img</code> 映像，该映像可以直接刷写到 super 分区。它会自动捆绑逻辑分区的内容，这意味着除了 <code>super</code> 分区元数据外，它还包含 <code>system.img</code>、<code>vendor.img</code> 等。此映像可以直接刷写到 <code>super</code> 分区，无需进行任何其他加工，也无需使用 fastbootd。编译之后，<code>super.img</code> 会存放在 <code>${ANDROID_PRODUCT_OUT}</code> 中。
+    </p>
+
+    <p>对于搭载动态分区的 A/B 设备，<code>super.img</code> 包含 A 槽位中的映像。直接刷写 super 映像后，在重启设备之前将槽位 A 标记为可启动。
+    </p>
+
+    <p>对于改造设备，<code>make dist</code> 会编译一组可以直接刷写到相应物理分区的 <code>super_*.img</code> 映像。例如，当 <code>BOARD_SUPER_PARTITION_BLOCK_DEVICES</code> 是“system vendor”时，<code>make dist</code> 会编译 <code>super_system.img</code> 和 <code>super_vendor.img</code>。系统会将这些映像存放在 <code>target_files.zip</code> 的 OTA 文件夹中。
+    </p>
+
+</body></html>

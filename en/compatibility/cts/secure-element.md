@@ -24,7 +24,7 @@ Book: /_book.yaml
 To provide better security, some devices have an embedded Secure Element (SE),
 which is dedicated, separate tamper-resistant hardware to store cryptographic
 data. Open Mobile API is a
-[standard API](https://globalplatform.org/specs-library/open-mobile-api-specification-v3-2/){: .external}
+[standard API](https://globalplatform.org/specs-library/open-mobile-api-specification-v3-3/){: .external}
 used to communicate with a device's Secure Element. Android
 {{ androidPVersionNumber }}
 introduces support for this API and provides a backend implementation including

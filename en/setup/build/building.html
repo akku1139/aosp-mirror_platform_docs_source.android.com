@@ -1,6 +1,6 @@
 <html devsite>
   <head>
-    <title>Preparing to Build</title>
+    <title>Building Android</title>
     <meta name="project_path" value="/_project.yaml" />
     <meta name="book_path" value="/_book.yaml" />
   </head>
@@ -22,49 +22,7 @@
   -->
 
 
-
-<p>The following instructions to build the Android source tree apply to all
-branches, including <code>master</code>. The basic sequence of build commands
-is as follows.</p>
-
-<h2 id="obtaining-proprietary-binaries">Obtain proprietary binaries</h2>
-
-<p>AOSP cannot be used from pure source code only and requires additional
-hardware-related proprietary libraries to run, such as for hardware
-graphics acceleration. See the sections below for download links and <a
-href="requirements.html#binaries">Device binaries</a> for additional
-resources.</p>
-
-<aside class ="note">Some devices package these proprietary binaries on their
-<code>/vendor</code> partition.</aside>
-
-<h3 id="downloading-proprietary-binaries">Download proprietary binaries</h3>
-
-<p>You can download official binaries for the supported devices running tagged
-AOSP release branches from <a
-href="https://developers.google.com/android/drivers" class="external">Google's
-drivers</a>. These binaries add access to additional hardware capabilities
-with non-open source code. To build the AOSP master branch, use the
-<a href="https://developers.google.com/android/blobs-preview" class="external">
-Binaries Preview</a> instead. When building the master branch for a device, use
-the binaries for the <a href="/setup/start/build-numbers.html">most recent
-numbered release</a> or with the most recent date.</p>
-
-<h3 id="extracting-proprietary-binaries">Extract proprietary binaries</h3>
-
-<p>Each set of binaries comes as a self-extracting script in a compressed
-archive. Uncompress each archive, run the included self-extracting script from
-the root of the source tree, then confirm you agree to the terms of the enclosed
-license agreement. The binaries and their matching makefiles will be installed
-in the <code>vendor/</code> hierarchy of the source tree.</p>
-
-<h3 id="cleaning-up">Clean up</h3>
-
-<p>To ensure the newly installed binaries are properly taken into account after
-being extracted, delete the existing output of any previous build using:</p>
-<pre class="devsite-terminal devsite-click-to-copy">
-make clobber
-</pre>
+<p>Follow these instructions to begin building Android.</p>
 
 <h2 id="initialize">Set up environment</h2>
 <p>Initialize the environment with the <code>envsetup.sh</code> script. Note
@@ -78,6 +36,40 @@ source build/envsetup.sh
 . build/envsetup.sh
 </pre>
 
+<p class="note">You will need to re-issue this command after every <code>repo sync</code> to pick up
+any changes to that script.</p>
+
+<p>The <code>envsetup.sh</code> script imports several commands that enable
+you to work with the Android source code, including the commands used in this
+exercise. Here are some important command examples:</p>
+
+<ul>
+<li><strong><code>lunch</code></strong> - <code>lunch
+  <var>product_name</var>-<var>build_variant</var></code> selects
+  <var>product_name</var> as the product to build, and <var>build_variant</var>
+  as the variant to build, and stores those selections in the environment to be
+  read by subsequent invocations of <code>m</code> and other similar commands.</li>
+<li><strong><code>m</code></strong> - Runs builds from the top of the tree.
+This is useful
+because you can run <code>make</code> from within subdirectories. If you have
+the <code>TOP</code> environment variable set, it uses that. If you don't, it
+looks up the tree from the current directory, trying to find the top of the
+tree. You can either build the whole source code tree by running <code>m</code>
+without arguments or build specific targets by specifying their names.</li>
+<li><strong><code>mma</code></strong> - Builds all of the modules in the
+current directory, and their dependencies.</li>
+<li><strong><code>mmma</code></strong> - Builds all of the modules in the
+supplied directories, and their dependencies.</li>
+<li><strong><code>croot</code></strong> - <code>cd</code> to the top of the
+tree.</li>
+</ul>
+
+<p>To see the full list of available commands, run:</p>
+
+<pre class="devsite-terminal devsite-click-to-copy">
+hmm
+</pre>
+
 <h2 id="choose-a-target">Choose a target</h2>
 <p>Choose which target to build with <code>lunch</code>. The exact configuration
 can be passed as an argument. For example, the following command refers to a
@@ -85,13 +77,14 @@ complete build for the emulator, with all debugging enabled:</p>
 <pre class="devsite-terminal devsite-click-to-copy">
 lunch aosp_arm-eng
 </pre>
-<p>If run with no arguments, <code>lunch</code> will prompt you to choose a
-target from the menu. See <a href="running#selecting-device-build">Selecting a device build</a> for the build
-  configurations of all existing devices.</p>
+<p>If run with no arguments, <code>lunch</code> prompts you to choose a
+target from the menu. See <a href="/setup/build/running#selecting-device-build">
+Selecting
+a device build</a> for the build configurations of all existing devices.</p>
 
 <p>All build targets take the form <code>BUILD-BUILDTYPE</code>, where the
 <code>BUILD</code> is a codename referring to the particular feature
-  combination. The <code>BUILDTYPE</code> is one of the following:</p>
+  combination. The <code>BUILDTYPE</code> is one of the following.</p>
 <table>
   <thead>
     <tr>
@@ -102,16 +95,16 @@ target from the menu. See <a href="running#selecting-device-build">Selecting a d
   <tbody>
     <tr>
       <td>user</td>
-      <td>limited access; suited for production</td>
+      <td>Limited access; suited for production</td>
     </tr>
     <tr>
       <td>userdebug</td>
-      <td>like user but with root access and debuggability; preferred for
+      <td>Like user but with root access and debug capability; preferred for
       debugging</td>
     </tr>
     <tr>
       <td>eng</td>
-      <td>development configuration with additional debugging tools</td>
+      <td>Development configuration with additional debugging tools</td>
     </tr>
   </tbody>
 </table>
@@ -120,57 +113,77 @@ target from the menu. See <a href="running#selecting-device-build">Selecting a d
 ability to enable additional debugging that normally violates the security
 model of the platform. This makes the userdebug build good for user testing
 with greater diagnosis capabilities. When developing
-with the userdebug build, you should follow the
-<a href="../develop/new-device.html#userdebug-guidelines">userdebug guidelines</a>.</p>
+with the userdebug build, follow the
+<a href="/setup/develop/new-device#userdebug-guidelines">userdebug guidelines</a>.</p>
 
 <p>The eng build prioritizes engineering productivity for engineers who work on
 the platform. The eng build turns off various optimizations used to provide a
-good user experience. Otherwise, the eng build behaves similar to the user and
-userdebug builds so that device developers can see how the code behaves in
+good user experience. Otherwise, the eng build has behavior similar to the user
+and userdebug builds so that device developers can see how the code behaves in
 those environments.</p>
 
 <p>For more information about building for and running on actual hardware, see
-<a href="running.html">Running Builds</a>.</p>
+<a href="/setup/build/running">Running Builds</a>.</p>
 
-<h2 id="build-the-code">Build the code</h2>
+<h2 id="build-the-code">Building the code</h2>
 
-<p>This section is merely a summary to ensure setup is complete. See
-<a href="running.html">Running Builds</a> for detailed instructions on building
-Android.</p>
+<p>This section is a quick summary to ensure that setup is complete.</p>
 
-    <p>Build everything with <code>make</code>. GNU <code>make</code> can handle parallel
-tasks with a <code>-jN</code> argument, and it's common to use a number of
-tasks N that's between 1 and 2 times the number of hardware
-threads on the computer being used for the build. For example, on a
-dual-E5520 machine (2 CPUs, 4 cores per CPU, 2 threads per core),
-the fastest builds are made with commands between <code>make -j16</code> and
-<code>make -j32</code>.</p>
+<p>Build everything with <code>m</code>. <code>m</code> can handle parallel
+tasks with a <code>-jN</code> argument. If you don't provide a <code>-j</code>
+argument, the build system automatically selects a parallel task count that it
+thinks is optimal for your system.</p>
 
 <pre class="devsite-terminal devsite-click-to-copy">
-make -j4
+m
 </pre>
+
+<p>As explained above, you can build specific modules instead of the full
+device image by listing their names in your <code>m</code> command line. In
+addition, <code>m</code> provides some pseudotargets for special purposes. Some
+examples are:</p>
+
+<ul>
+<li><strong><code>droid</code></strong> - <code>m droid</code> is the normal
+build. This target is here because the default target requires a name.</li>
+<li><strong><code>all</code></strong> - <code>m all</code> builds everything
+that <code>m droid</code> does, plus everything that doesn't have the
+<code>droid</code> tag. The build server runs this to make sure that everything
+that is in the tree and has an <code>Android.mk</code> file builds.</li>
+<li><strong><code>clean</code></strong> - <code>m clean</code> deletes all of
+the output and intermediate files for this configuration. This is the same as
+<code>rm -rf out/</code>.</li>
+</ul>
+
+<p>Run <code>m help</code> to see what other pseudotargets <code>m</code>
+provides.</p>
 
 <h2 id="run-it">Run it!</h2>
 
-<p>You can either run your build on an emulator or flash it on a device. Please
-note that you have already selected your build target with <code>lunch</code>,
-and it is unlikely to run on a different target than it was built
-for.</p>
+<p>You can either run your build on an emulator or flash it on a device.
+ Because you've already selected your build target with <code>lunch</code>,
+ it's unlikely to run on a different target than it was built for.</p>
 
-<aside class="note"><strong>Note:</strong> Remember to <a
-href="#obtaining-proprietary-binaries">obtain proprietary binaries</a> or your
-build will not boot successfully on your target hardware. If you obtain binary
-blobs at this point you will need to unpack them, <code>make clobber</code> and
-rebuild.</aside>
+<aside class="note">
+  <p><strong>Note:</strong> Remember to obtain proprietary binaries or your
+    build won't boot successfully on your target hardware. Sometimes the source
+    might have different binaries for different builds and branches. If you
+    obtain binary blobs at this point, you need to unpack them,
+    <code>m installclean</code>, and rebuild. For more information on this
+    process, see
+    <a href="/setup/build/downloading#obtaining-proprietary-binaries">Downloading
+      the source</a>.
+  </p>
+</aside>
 
-<h3 id="flash-a-device">Flash with fastboot</h3>
+<h3 id="flash-a-device">Flashing with fastboot</h3>
 
-<p>To flash a device, you will need to use <code>fastboot</code>, which should
+<p>To flash a device, use <code>fastboot</code>, which should
 be included in your path after a successful build. See <a
-href="running.html#flashing-a-device">Flashing a device</a> for
+href="/setup/build/running#flashing-a-device">Flashing a device</a> for
 instructions.</p>
 
-<h3 id="emulate-an-android-device">Emulate an Android device</h3>
+<h3 id="emulate-an-android-device">Emulating an Android device</h3>
 
 <p>The emulator is added to your path automatically by the build process. To
 run the emulator, type:</p>
@@ -184,8 +197,9 @@ errors</h2>
 
 <h3 id="wrong-java-version">Wrong Java version</h3>
 
-<p>If you are attempting to build a version of Android inconsistent with your
-version of Java, <code>make</code> will abort with a message such as</p>
+<p>If you're attempting to build a version of Android that's inconsistent with
+your version of Java, <code>make</code> aborts with a message such as:</p>
+
 <pre>
 ************************************************************
 You are attempting to build with the incorrect version
@@ -202,45 +216,48 @@ Please follow the machine setup instructions at
 <p>Here are the likely causes and solutions:</p>
 
 <ul>
-<li>Failing to install the correct JDK as specified in <a
-href="requirements.html#jdk">JDK Requirements</a>. Make sure you have followed
-the steps in <a href="building.html#initialize">Set up environment</a> and
-<a href="building.html#choose-a-target">Choose a target</a>.</li>
+<li>Failure to install the correct JDK as specified in <a
+href="/setup/build/requirements#jdk">JDK Requirements</a>. Make sure you've
+followed the steps in <a href="/setup/build/building#initialize">
+Setting up the environment</a> and
+<a href="/setup/build/building#choose-a-target">Choosing a target</a>.</li>
 <li>Another JDK previously installed appearing in your path. Prepend the
-correct JDK to the beginning of your PATH or remove the problematic JDK.</li>
+correct JDK to the beginning of your path or remove the problematic JDK.</li>
 </ul>
 
 <h3 id="python-version-3">Python version 3</h3>
 
 <p>Repo is built on particular functionality from Python 2.x and is
-unfortunately incompatible with Python 3. In order to use repo, please install
-Python 2.x:</p>
+incompatible with Python 3. To use Repo, install Python 2.x:</p>
 
 <pre class="devsite-terminal devsite-click-to-copy">
 apt-get install python
 </pre>
 
-<h3 id="case-insensitive-filesystem">Case insensitive filesystem</h3>
+<h3 id="case-insensitive-filesystem">Case-insensitive file system</h3>
 
-<p>If you are building on an HFS filesystem on Mac OS, you may encounter an
-error such as</p>
+<p>If you're building on an HFS file system on macOS, you may encounter an
+error such as:</p>
 <pre>
 ************************************************************
 You are building on a case-insensitive filesystem.
 Please move your source tree to a case-sensitive filesystem.
 ************************************************************
 </pre>
-<p>Please follow the instructions in <a href="initializing.html#creating-a-case-sensitive-disk-image">Creating a case-sensitive disk image</a>.</p>
+<p>Follow the instructions in
+<a href="/setup/build/initializing#creating-a-case-sensitive-disk-image">
+Creating a case-sensitive disk image</a>.</p>
 
 <h3 id="no-usb-permission">No USB permission</h3>
 
-<p>On most Linux systems, unprivileged users cannot access USB ports by
-default. If you see a permission denied error, follow the instructions in
-<a href="initializing.html#configuring-usb-access">Configuring USB access</a>.</p>
+<p>By default on most Linux systems, unprivileged users can't access USB ports.
+If you see a permission denied error, follow the instructions in
+<a href="/setup/build/initializing#configuring-usb-access">
+Configuring USB access</a>.</p>
 
-<p>If adb was already running and cannot connect to the device after
-getting those rules set up, it can be killed with <code>adb kill-server</code>.
-That will cause adb to restart with the new configuration.</p>
+<p>If adb was already running and can't connect to the device after
+getting those rules set up, you can kill it with <code>adb kill-server</code>.
+That command causes adb to restart with the new configuration.</p>
 
   </body>
 </html>

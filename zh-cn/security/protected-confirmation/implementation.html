@@ -1,0 +1,66 @@
+<html devsite><head>
+    <title>实现受保护的确认</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+
+  <!--
+      Copyright 2019 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<aside class="key-point"><b>要点</b>：受保护的确认可保证用户已查看交易信息并确认。此保证依赖于正确的实现。本部分介绍的注意事项有助于确保安全实现。即使会解锁引导加载程序且已安装自定义 Android 映像，也请查看与此类保证相关的设备架构。</aside>
+
+<h2 id="considerations">注意事项</h2>
+<p>必须留意以下注意事项，以确保 Android 受保护的确认的完整性。如果这些注意事项得不到圆满的处理，则无法在设备上实现受保护的确认。</p>
+
+<h3 id="kernel-considerations">Linux 内核注意事项</h3>
+<p>受保护的确认旨在确保安全运行，即使在设备的内核受到攻击后也不例外。当“受保护的确认”对话框处于启用状态时，内核无法干扰屏幕内容的完整性、用户输入的完整性以及用户输入和输出之间的原子性。在架构方面，必须首先防止内核扩充用户的决定和冒用用户事件。对于这种使用情形，内核会被视为不可信，因为它可能会受到攻击者的控制或被完全不同的内容所取代。</p>
+
+<h3 id="Firmware-considerations">固件注意事项</h3>
+<p>只有当一个设备的所有相关组件均具有可信固件时，才可以在该设备上实现受保护的确认。“受保护的确认”旨在确保用户有机会看到可信界面上显示的消息，从而就是否继续进行交易做出明智决定。显示面板驱动程序尤为重要，因为它可能会导致用户无法查看可信界面。</p>
+
+<h3 id="input-considerations">输入注意事项</h3>
+<p>选择使用安全的输入法，以确保所选输入法生成的输入事件只有在以下情况下才会传递到“受保护的确认”对话框：用户在该对话框处于启用状态时生成事件。</p>
+
+<h4 id="physical-considerations">物理硬件</h4>
+<p>不得让可由 Android 内核控制的任何组件（例如系统芯片 (SoC) 或电源管理集成电路 (PMIC)）驱动与物理确认按钮的有线连接。</p>
+
+<h4 id="touch-considerations">触摸控制器注意事项</h4>
+<p>受保护的确认可以将屏幕上的软件按钮用作输入。只要触摸控制器由 TEE 驱动，就必须采取措施来清理触摸控制器的状态。</p>
+
+<aside class="note"><b>注意</b>：此功能的可用性无法保证。也就是说，遭到入侵的 Android 系统或 Android 内核可能会阻止该对话框显示。在这种情况下，不得发出确认令牌。
+</aside>
+
+<h2 id="expected-behavior">预期行为</h2>
+
+<h3 id="interruptions">中断</h3>
+<p>如果系统因来电或电源事件中断确认会话，则 HAL 必须报告 <code>ResponseCode::Aborted</code>。应用会获得 <code>onCanceled()</code> 回调，并获知用户没有选择操作。闹钟无需中止会话，但需要通知用户。当对话框处于启用状态时，不允许出现任何类型的通知叠加层。</p>
+
+<h3 id="grace-period">输入宽限期</h3>
+<p>启动受保护的确认后，输入需要在至少 1 秒的时间内处于非活动状态，然后再变为可响应用户互动的状态。此宽限期可确保用户有机会对意外确认对话框作出反应。此宽限期必须由受信任的应用强制执行。</p>
+
+<h3 id="Screen-rotation">屏幕旋转</h3>
+<p>纵向是唯一的指定模式，不支持屏幕旋转。屏幕旋转可能会导致该功能在遭到入侵的系统被滥用，例如按钮位置具有误导性或正文文本被操纵。</p>
+
+<h3 id="rendering-failures">正文文本呈现失败</h3>
+<p>正文文本有一个 <a href="/reference/hidl/android/hardware/confirmationui/1.0/types#messagesize">6144 (0x1800) 字节的硬边界</a>，其中包括其他未显示数据和 CBOR 标题信息。此外，它还有一个必须强制执行的软边界。如果呈现的消息无法完全放入可用的屏幕空间，请确保“受保护的确认”会中止并取消相应交易。如果 <code>MessageSize</code> 超出所允许的大小上限，您的实现必须在 <code>promptUserConfirmation</code> 上返回 <code>UIErrorMessageTooLong</code>。</p>
+
+<p>最佳做法是在收到 API 调用后格式化正文文本。必须向用户显示完整的正文文本。</p>
+
+<h3 id="secondary-displays">辅助显示屏</h3>
+<p>在某些情况下支持使用辅助显示屏。必须保持输出和用户输入的完整性，且不得通过其他方式显示具有误导性的信息。否则，该对话框只能显示在主显示屏上，所有其他显示屏都应被禁用或处于空白状态。流式传输和屏幕共享解决方案不得显示该对话框或生成“确认”消息。</p>
+
+</body></html>

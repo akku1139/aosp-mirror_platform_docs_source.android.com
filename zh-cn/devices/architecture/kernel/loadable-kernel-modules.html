@@ -1,0 +1,181 @@
+<html devsite><head>
+    <title>可加载的内核模块</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>Android 8.0 中引入的模块化内核要求规定，所有系统芯片 (SoC) 内核都必须支持可加载的内核模块。
+
+</p><h2 id="kernel-config-option">内核配置选项</h2>
+
+<p>为了支持可加载的内核模块，所有常见内核中的 <a href="https://android.googlesource.com/kernel/common/+/android-4.4-o/android/configs/android-base.cfg" class="external">android-base.cfg</a> 都包含以下内核配置选项（或其内核版本等效选项）：</p>
+
+<pre class="prettyprint">
+CONFIG_MODULES=y
+CONFIG_MODULE_UNLOAD=y
+CONFIG_MODVERSIONS=y
+</pre>
+
+<p>所有设备内核都必须启用这些选项。内核模块还应尽可能支持卸载和重新加载。
+</p>
+
+<aside class="note"><strong>注意</strong>：<code>CONFIG_MODULE_SRCVERSION_ALL</code> 是可选的，并且未经过测试。
+</aside>
+
+<h2 id="module-signing">模块签名</h2>
+
+<p>原始设计制造商 (ODM) 可以选择性启用以下内核配置选项，以在其内核配置中启用模块签名：</p>
+
+<pre class="prettyprint">
+CONFIG_MODULE_SIG=y
+CONFIG_MODULE_SIG_FORCE=y
+</pre>
+
+<p>在需要支持验证启动的设备上，Android 要求内核模块位于启用 dm-verity 的分区中。模块签名并非强制性要求，也不会进行测试；不过，如有需要，ODM 也可以启用模块签名，但前提是 ODM 拥有所需的密钥签名及其他基础架构，以确保未来可进行独立的内核和文件系统 OTA 更新。
+</p>
+
+<h2 id="file-locations">文件位置</h2>
+
+<p>Android 7.x 及更低版本对内核模块（包括对 <code>insmod</code> 和 <code>rmmod</code> 的支持）没有强制要求，而 Android 8.x 及更高版本建议在生态系统中使用内核模块。下表显示了 Android 的 3 种启动模式所需的潜在板专属外设支持：
+</p>
+
+<table>
+<tbody><tr>
+<th>启动模式</th>
+<th>存储</th>
+<th>显示</th>
+<th>拨号键盘</th>
+<th>电池</th>
+<th>PMIC</th>
+<th>触摸屏</th>
+<th>NFC、WLAN、<br />蓝牙</th>
+<th>传感器</th>
+<th>相机</th>
+</tr>
+<tr>
+<td>恢复</td>
+<td><span class="compare-yes"></span></td>
+<td><span class="compare-yes"></span></td>
+<td><span class="compare-yes"></span></td>
+<td><span class="compare-yes"></span></td>
+<td><span class="compare-yes"></span></td>
+<td><span class="compare-no"></span></td>
+<td><span class="compare-no"></span></td>
+<td><span class="compare-no"></span></td>
+<td><span class="compare-no"></span></td>
+</tr>
+<tr>
+<td>充电</td>
+<td><span class="compare-yes"></span></td>
+<td><span class="compare-yes"></span></td>
+<td><span class="compare-yes"></span></td>
+<td><span class="compare-yes"></span></td>
+<td><span class="compare-yes"></span></td>
+<td><span class="compare-no"></span></td>
+<td><span class="compare-no"></span></td>
+<td><span class="compare-no"></span></td>
+<td><span class="compare-no"></span></td>
+</tr>
+<tr>
+<td>Android</td>
+<td><span class="compare-yes"></span></td>
+<td><span class="compare-yes"></span></td>
+<td><span class="compare-yes"></span></td>
+<td><span class="compare-yes"></span></td>
+<td><span class="compare-yes"></span></td>
+<td><span class="compare-yes"></span></td>
+<td><span class="compare-yes"></span></td>
+<td><span class="compare-yes"></span></td>
+<td><span class="compare-yes"></span></td>
+</tr>
+</tbody></table>
+
+<p>除了按 Android 启动模式的可用情况对内核模块进行分类之外，还可以按照所有者（SoC 供应商或 ODM）进行分类。如果使用了内核模块，则它们在文件系统中的放置位置的要求如下：</p>
+
+<ul>
+  <li>所有内核都应内置对启动和装载分区的支持。</li>
+  <li>必须从只读分区加载内核模块。</li>
+  <li>对于需要支持验证启动的设备，应从验证分区加载内核模块。</li>
+  <li>内核模块不应位于 <code>/system</code> 中。</li>
+  <li>完整 Android 模式或充电模式所需的 SoC 供应商内核模块应该位于 <code>/vendor/lib/modules</code> 中。</li>
+  <li>如果存在 ODM 分区，则完整 Android 模式或充电模式所需的 ODM 内核模块应该位于 <code>/odm/lib/modules</code> 中。如果不存在，则这些模块应该位于 <code>/vendor/lib/modules</code> 中。</li>
+  <li>来自 SoC 供应商和 ODM 且恢复模式所需的内核模块应该位于 <code>/lib/modules</code> 下的恢复 <code>ramfs</code> 中。</li>
+  <li>恢复模式和完整 Android/充电模式所需的内核模块应同时位于恢复 <code>rootfs</code> 以及 <code>/vendor</code> 或 <code>/odm</code> 分区中（如上所述）。</li>
+  <li>恢复模式所用的内核模块不应依赖仅位于 <code>/vendor</code> 或 <code>/odm</code> 中的模块，因为这些分区在恢复模式下没有装载。</li>
+  <li>SoC 供应商内核模块不应依赖 ODM 内核模块。</li>
+</ul>
+
+<p>在 Android 7.x 及更低版本中，<code>/vendor</code> 和 <code>/odm</code> 分区<strong>不会</strong>提前装载。在 Android 8.x 及更高版本中，为使模块能够从这些分区加载，已进行相关配置，以便为<a href="/devices/tech/ota/ab_updates">非 A/B 和 A/B 设备</a>提前装载分区。这还确保了在 Android 和充电模式下均装载分区。
+</p>
+
+<h2 id="android-build-system-support">Android 编译系统支持</h2>
+
+<p>在 <code>BoardConfig.mk</code> 中，Android 编译系统定义了 <code>BOARD_VENDOR_KERNEL_MODULES</code> 变量，此变量提供了用于供应商映像的内核模块的完整列表。此变量中列出的模块会被复制到位于 <code>/lib/modules/</code> 的供应商映像中，在 Android 中装载后会显示在 <code>/vendor/lib/modules</code> 中（根据上述要求）。下面是一个供应商内核模块的配置示例：</p>
+
+<pre class="prettyprint">
+vendor_lkm_dir := device/$(vendor)/lkm-4.x
+BOARD_VENDOR_KERNEL_MODULES := \
+  $(vendor_lkm_dir)/vendor_module_a.ko \
+  $(vendor_lkm_dir)/vendor_module_b.ko \
+  $(vendor_lkm_dir)/vendor_module_c.ko
+</pre>
+
+<p>在此示例中，供应商内核模块预编译代码库会映射到 Android 编译系统中的上述位置。
+</p>
+
+<p>恢复映像可能包含供应商模块的子集。Android 编译系统定义了这些模块的变量 <code>BOARD_RECOVERY_KERNEL_MODULES</code>。示例：</p>
+
+<pre class="prettyprint">
+vendor_lkm_dir := device/$(vendor)/lkm-4.x
+BOARD_RECOVERY_KERNEL_MODULES := \
+  $(vendor_lkm_dir)/vendor_module_a.ko \
+  $(vendor_lkm_dir)/vendor_module_b.ko
+</pre>
+
+<p>Android 编译系统负责运行 <code>depmod</code> 以在 <code>/vendor/lib/modules</code> 和 <code>/lib/modules</code> (<code>recovery ramfs</code>) 中生成所需的 <code>modules.dep</code> 文件。
+</p>
+
+<h2 id="module-loading-&-versioning">模块加载和版本管理</h2>
+
+<p>通过调用 <code>modprobe -a</code> 从 <code>init.rc*</code> 一次加载所有内核模块。这样可以避免重复初始化 <code>modprobe</code> 二进制文件的 C 运行时环境产生的开销。您可以修改 <code>early-init</code> 事件来调用 <code>modprobe</code>：</p>
+
+<pre class="prettyprint">
+on early-init
+    exec u:r:modprobe:s0 -- /vendor/bin/modprobe -a -d \
+        /vendor/lib/modules module_a module_b module_c ...
+</pre>
+
+<p>通常，内核模块必须使用将与此模块结合使用的内核进行编译，否则，内核会拒绝加载此模块。
+  <code>CONFIG_MODVERSIONS</code> 通过检测应用二进制接口 (ABI) 中的损坏情况提供一种解决方法。此功能会为内核中导出的每个符号的原型计算循环冗余校验 (CRC) 值，并将这些值作为内核的一部分存储起来；对于内核模块所使用的符号，相应的值也会存储在内核模块中。模块加载完成后，模块所用符号的值将与内核中的相应值进行比较。如果这些值相互匹配，则加载模块；如果不匹配，则模块加载会失败。
+</p>
+
+<aside class="note"><strong>注意</strong>：如需在比较、跟踪和缓解内核 ABI 更改（会影响与内核模块的兼容性）方面获得帮助，请参阅 <a href="https://android.googlesource.com/kernel/build/+/refs/heads/master/abi/" class="external">ABI 监控实用程序</a>中的脚本和实用程序。
+</aside>
+
+<p>要使内核映像的更新独立于供应商映像，请启用 <code>CONFIG_MODVERSIONS</code>。这样做可以在确保与供应商映像中的现有内核模块保持兼容的同时，对内核进行小幅度更新（例如 LTS 提供的问题修复）。不过，<code>CONFIG_MODVERSIONS</code> 本身并不会修复 ABI 损坏。如果内核中某个导出的符号的原型由于源代码的修改或内核配置更改而发生变化，则会破坏与使用此符号的内核模块的兼容性。在此类情况下，必须重新编译内核模块。
+</p>
+
+<p>例如，内核中的 <code>task_struct</code> 结构（在 <code>include/linux/sched.h</code> 中定义）包含很多字段，具体包含的字段根据相关条件取决于内核配置。<code>sched_info</code> 字段仅在 <code>CONFIG_SCHED_INFO</code> 启用（启用 <code>CONFIG_SCHEDSTATS</code> 或 <code>CONFIG_TASK_DELAY_ACCT</code> 时发生）时才显示。如果这些配置选项的状态发生变化，<code>task_struct</code> 结构的布局也将发生变化，同时，从内核导出的使用 <code>task_struct</code> 的所有接口都会发生变化（如 <code>kernel/sched/core.c</code> 中的 <code>set_cpus_allowed_ptr</code>）。与使用这些接口的之前编译的内核模块的兼容性将会被破坏，这就需要使用新的内核配置重新编译这些模块。
+</p>
+
+<p>要详细了解 <code>CONFIG_MODVERSIONS</code>，请参阅位于 <code>Documentation/kbuild/modules.txt</code> 的内核树中的相关文档。
+</p>
+
+</body></html>

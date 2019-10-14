@@ -1,0 +1,62 @@
+<html devsite><head>
+
+  <meta name="book_path" value="/_book.yaml"/>
+
+  <meta name="project_path" value="/_project.yaml"/>
+</head>
+<body>
+
+<!--
+  Copyright 2019 The Android Open Source Project
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+<h1 id="check_system_status" class="page-title">检查系统状态</h1>
+
+<p>系统状态检查工具 (SSC) 在套件级配置中定义，并在每个模块之间运行。它们执行检查以确定模块是否已更改且未恢复某些给定状态，例如更改系统属性值。</p>
+
+<p>SSC 主要用于确保模块编写者不会在测试后忘记清理。但是，如果他们忘记了清理，那么应提供跟踪记录，以便可以解决该问题。</p>
+
+<p>次要用途是还要尽可能恢复原始状态，例如在忘了关掉锁屏时将其关闭。</p>
+
+<h2 id="system_status_checker_xml_definition">系统状态检查工具 XML 定义</h2>
+<pre class="prettyprint lang-xml"><code>&lt;system_checker class="com.android.tradefed.suite.checker.KeyguardStatusChecker" /&gt;
+&lt;system_checker class="com.android.tradefed.suite.checker.LeakedThreadStatusChecker" /&gt;
+&lt;system_checker class="com.android.tradefed.suite.checker.SystemServerStatusChecker" /&gt;
+</code></pre>
+<p>SSC 在 Tradefed 配置 XML 中的 <code>system_checker</code> 标记下定义。</p>
+
+<h2 id="implementation">实现</h2>
+
+<p>每个 SSC 都必须实现 <a href="https://android.googlesource.com/platform/tools/tradefederation/+/refs/heads/master/src/com/android/tradefed/suite/checker/ISystemStatusChecker.java">ISystemStatusChecker 接口</a>，该接口提供了两种主要方法，即 <code>preExecutionCheck</code> 和 <code>postExecutionCheck</code>，它们分别在每个模块执行之前和之后运行。</p>
+
+<p>检查工具可以仅实现这两种方法其中之一，如果需要检查模块执行之前的状态并将其与模块执行之后的状态进行比较，也可以同时实现这两种方法。</p>
+
+<p>Tradefed 中存在多个<a href="https://android.googlesource.com/platform/tools/tradefederation/+/refs/heads/master/src/com/android/tradefed/suite/checker">实现示例</a>。建议每个实现专注于单项检查，以提高可重用性。 例如，<a href="https://android.googlesource.com/platform/tools/tradefederation/+/refs/heads/master/src/com/android/tradefed/suite/checker/SystemServerStatusChecker.java">SystemServerStatusCheck</a> 将检查 <code>system_server</code> 流程是否会在测试套件执行期间在设备上重启。在 <code>postExecutionCheck</code> 中，它会调用在 <a href="https://android.googlesource.com/platform/tools/tradefederation/+/refs/heads/master/src/com/android/tradefed/device/NativeDevice.java">NativeDevice</a> 中定义的 <code>deviceSoftRestarted</code> 以检查 <code>system_server</code> 流程是否已重启。</p>
+
+<p>每项操作都会返回 <a href="https://android.googlesource.com/platform/tools/tradefederation/+/refs/heads/master/src/com/android/tradefed/suite/checker/StatusCheckerResult.java">StatusCheckerResult</a>，这使自动化测试框架能够决定是否应捕获附加信息，如错误报告。</p>
+
+<h2 id="where_are_they_defined_in_cts">它们在 CTS 中的定义位置在哪里？</h2>
+
+<p>CTS 系统状态检查工具的定义位置如下：<a href="https://android.googlesource.com/platform/test/suite_harness/+/refs/heads/master/tools/cts-tradefed/res/config/cts-system-checkers.xml">/test/suite_harness/tools/cts-tradefed/res/config/cts-system-checkers.xml</a></p>
+
+<h2 id="how_to_find_checker_failures">如何查找检查工具发现的故障</h2>
+
+<p>默认情况下，系统检查工具发现的故障仅显示在日志中，并且作为针对调用捕获的错误报告，其名称遵循以下格式：<code>bugreport-checker-post-module-&lt;module name&gt;.zip</code></p>
+
+<p>根据此名称，您可以弄清是在哪个模块后生成的错误报告。</p>
+
+<p>通过将 <code>--report-system-checkers</code> 选项设为 <code>true</code>，可以将系统检查工具报告当作测试失败本身。这将导致测试运行显示为失败，并且失败的原因是状态检查工具的特定检查。</p>
+
+</body></html>

@@ -1,9 +1,10 @@
 <html devsite><head>
-    <title>签名版本以供发布</title>
+    <title>对要发布的版本进行签名</title>
     <meta name="project_path" value="/_project.yaml"/>
     <meta name="book_path" value="/_book.yaml"/>
   </head>
   <body>
+
   <!--
       Copyright 2017 The Android Open Source Project
 
@@ -20,17 +21,17 @@
       limitations under the License.
   -->
 
-<p>Android OS 映像在两个地方使用加密签名：</p>
+<p>Android 操作系统映像在两个地方使用加密签名：</p>
 <ol>
-<li>映像中的所有 .apk 文件都必须经过签名。Android 软件包管理器通过下列两种方式使用 .apk 签名：<ul>
-<li>更换应用时，必须使用与旧应用相同的密钥对其签名，才能存取旧应用的数据。无论是通过覆盖 .apk 来更新用户应用，还是使用安装在 <code>/data</code> 下的新版本应用来覆盖系统应用，这一点都适用。</li>
+<li>映像中的所有 <code>.apk</code> 文件都必须经过签名。Android 软件包管理器通过下列两种方式使用 <code>.apk</code> 签名：<ul>
+<li>更换应用时，必须使用与旧应用相同的密钥对其签名，才能存取旧应用的数据。无论是通过覆盖 <code>.apk</code> 来更新用户应用，还是使用安装在 <code>/data</code> 下的新版本应用来覆盖系统应用，这一点都适用。</li>
 <li>如果两个或多个应用想要共享同一个用户 ID（方便共享数据等），则必须使用相同的密钥对它们进行签名。</li></ul>
 </li><li>必须使用符合系统预期的密钥对 OTA 更新包进行签名，否则在安装过程中 OTA 更新包将被拒绝。</li>
 </ol>
 
 <h2 id="release-keys">发布密钥</h2>
 
-<p><i></i>Android 树的 <code>build/target/product/security</code> 目录中提供了测试密钥。使用 <code>make</code> 编译 Android OS 映像便可使用这些测试密钥对所有 .apk 文件进行签名。由于这些测试密钥是公开的，任何人都可以使用相同的密钥对他们自己的 .apk 文件签名，这样他们就能够替换或盗用您的操作系统映像中编译的系统应用。因此，您必须使用只有您自己才能访问的特殊“发布密钥”<i></i>集对公开发布或部署的 Android OS 映像进行签名。</p>
+<p>Android 树的 <code>build/target/product/security</code> 目录中提供了测试密钥。<i></i>使用 <code>make</code> 编译 Android 操作系统映像便可使用这些测试密钥对所有 <code>.apk</code> 文件进行签名。由于这些测试密钥是公开的，任何人都可以使用相同的密钥对他们自己的 .apk 文件签名，这样他们就能够替换或盗用您的操作系统映像中编译的系统应用。因此，您必须使用只有您自己才能访问的特殊“发布密钥”集对公开发布或部署的 Android 操作系统映像进行签名。<i></i></p>
 
 <p>要生成您自己的唯一发布密钥集，请在 Android 树的根目录下运行以下命令：</p>
 
@@ -50,11 +51,11 @@
 <code class="devsite-terminal">make dist</code>
 <code class="devsite-terminal">./build/tools/releasetools/sign_target_files_apks \
     -o \    # explained in the next section
-    -d ~/.android-certs out/dist/*-target_files-*.zip \
+    --default_key_mappings ~/.android-certs out/dist/*-target_files-*.zip \
     signed-target_files.zip</code>
 </pre>
 
-<p><code>sign_target_files_apks</code> 脚本将目标文件 .zip 作为输入文件，并生成一个新的目标文件 .zip，其中所有的 .apk 都已使用新密钥签名。您可以在 <code>signed-target_files.zip</code> 中的 <code>IMAGES/</code> 目录下找到新签名的映像。</p>
+<p><code>sign_target_files_apks</code> 脚本将目标文件 <code>.zip</code> 作为输入文件，并生成一个新的目标文件 <code>.zip</code>，其中所有的 <code>.apk</code> 文件都已使用新密钥签名。您可以在 <code>signed-target_files.zip</code> 中的 <code>IMAGES/</code> 目录下找到新签名的映像。</p>
 
 <h2 id="sign-ota-packages">对 OTA 更新包进行签名</h2>
 
@@ -62,7 +63,7 @@
 
 <pre class="devsite-click-to-copy">
 <code class="devsite-terminal">./build/tools/releasetools/ota_from_target_files \
-    -k ~/.android-certs/releasekey \
+    --key_mapping ~/.android-certs/releasekey \
     signed-target_files.zip \
     signed-ota_update.zip</code>
 </pre>
@@ -74,7 +75,7 @@
 <p>从主系统收到的更新包通常要经过两次验证：一次是由主系统使用 Android API 中的 <code><a href="http://developer.android.com/reference/android/os/RecoverySystem.html#verifyPackage">RecoverySystem.verifyPackage()</a></code> 方法进行验证，另一次是通过 Recovery 进行验证。RecoverySystem API 对照存储在主系统 <code>/system/etc/security/otacerts.zip
 </code> 文件（默认情况下）中的公钥对签名进行检查。Recovery 对照存储在 Recovery 分区 RAM 磁盘中的 <code>/res/keys</code> 文件中的公钥对签名进行检查。</p>
 
-<p>默认情况下，由此版本生成的目标文件 .zip 会将 OTA 证书设置为与测试密钥相匹配。在发布的映像上，必须使用不同的证书，这样设备才能验证更新包的真实性。如前面一部分所示，将 <code>-o</code> 标志传递到 <code>sign_target_files_apks</code> 即可将测试密钥证书替换成您的证书目录中的发布密钥证书。</p>
+<p>默认情况下，由此版本生成的目标文件 <code>.zip</code> 会将 OTA 证书设置为与测试密钥相匹配。在发布的映像上，必须使用不同的证书，这样设备才能验证更新包的真实性。如前面一部分所示，将 <code>-o</code> 标志传递到 <code>sign_target_files_apks</code> 即可将测试密钥证书替换成您的证书目录中的发布密钥证书。</p>
 
 <p>通常情况下，系统映像和 Recovery 映像存储的是相同的 OTA 公钥集。通过将密钥仅<i></i>添加至 Recovery 密钥集，可对只能通过旁加载安装的 apk 包（假设主系统的更新下载机制正确地对照 otacerts.zip 进行验证）签名。您可以通过在产品定义中设置 PRODUCT_EXTRA_RECOVERY_KEYS 变量来指定其他仅可纳入 Recovery 中的密钥：</p>
 
@@ -119,8 +120,16 @@ LOCAL_CERTIFICATE := device/yoyodyne/security/special
 </code> 密钥来对 SpecialApp.apk 进行签名。此版本仅可使用不受<i></i>密码保护的私钥。</p>
 
 <h2 id="advanced-signing-options">高级签名选项</h2>
-<p>运行 <code>sign_target_files_apks</code> 脚本时，必须在命令行中指定在编译版本中使用的每个密钥的替换密钥。<code>-k <i>src_key</i>=<i>
-dest_key</i></code> 标记每次指定一个替换密钥。<code>-d <i>dir</i></code> 标记可让您指定一个包含四个密钥（以替换 <code>build/target/product/security</code> 中的所有密钥）的目录；这相当于使用四次 <code>-k</code> 来指定映射关系：</p>
+
+<h3 id="apk-signing-key-replacement">APK 签名密钥替换</h3>
+
+<p>签名脚本 <code>sign_target_files_apks</code> 适用于为某个版本生成的目标文件。编译时使用的证书和私钥的所有相关信息都包含在目标文件中。在运行签名脚本以针对发布进行签名时，可以基于密钥名称或 APK 名称替换签名密钥。</p>
+
+<p>使用 <code>--key_mapping</code> 和 <code>--default_key_mappings</code> 标记可基于密钥名称指定替换密钥：</p>
+<ul>
+<li><code>--key_mapping <var>src_key</var>=<var>dest_key</var></code> 标记用于每次指定一个替换密钥。</li>
+<li><code>--default_key_mappings <var>dir</var></code> 标记用于指定一个包含四个密钥的目录，以替换 <code>build/target/product/security</code> 中的所有密钥；这相当于使用四次 <code>--key_mapping</code> 来指定映射关系。</li>
+</ul>
 
 <pre class="devsite-click-to-copy">
 build/target/product/security/testkey  = dir/releasekey
@@ -129,7 +138,9 @@ build/target/product/security/shared   = dir/shared
 build/target/product/security/media    = dir/media
 </pre>
 
-<p>对于假定的 tardis 产品，您需要五个受密码保护的密钥：四个用于替换 <code>build/target/product/security</code> 中的四个密钥，其余一个用于替换 SpecialApp 所需的另外一个 <code>keydevice/yoyodyne/security/special</code>（请参见上面的示例）。如果密钥位于以下文件中：</p>
+<p>使用 <code>--extra_apks <var>apk_name1,apk_name2,...</var>=<var>key</var></code> 标记可基于 APK 名称指定替换签名密钥。如果 <code><var>key</var></code> 留空，则脚本会将指定的 APK 视为已预签名。</p>
+
+<p>对于假定的 tardis 产品，您需要五个受密码保护的密钥：四个用于替换 <code>build/target/product/security</code> 中的四个密钥，其余一个用于替换 SpecialApp 所需的另外一个密钥 <code>device/yoyodyne/security/special</code>（请参见上面的示例）。如果密钥位于以下文件中：</p>
 
 <pre class="devsite-click-to-copy">
 vendor/yoyodyne/security/tardis/releasekey.x509.pem
@@ -149,7 +160,12 @@ vendor/yoyodyne/security/special-release.pk8   # password protected
 <p>那么您将对所有应用签名，如下所示：</p>
 
 <pre class="devsite-click-to-copy">
-<code class="devsite-terminal">./build/tools/releasetools/sign_target_files_apks -d vendor/yoyodyne/security/tardis -k vendor/yoyodyne/special=vendor/yoyodyne/special-release -o tardis-target_files.zip signed-tardis-target_files.zip</code>
+<code class="devsite-terminal">./build/tools/releasetools/sign_target_files_apks \
+    --default_key_mappings vendor/yoyodyne/security/tardis \
+    --key_mapping vendor/yoyodyne/special=vendor/yoyodyne/special-release \
+    --extra_apks PresignedApp= \
+    -o tardis-target_files.zip \
+    signed-tardis-target_files.zip</code>
 </pre>
 
 <p>此时会显示以下内容：</p>
@@ -166,6 +182,8 @@ Enter password for vendor/yoyodyne/security/tardis/shared key&gt;
         [...]
     signing: ContactsProvider.apk (vendor/yoyodyne/security/tardis/shared)
     signing: Launcher.apk (vendor/yoyodyne/security/tardis/shared)
+NOT signing: PresignedApp.apk
+        (skipped due to special cert string)
 rewriting SYSTEM/build.prop:
   replace:  ro.build.description=tardis-user Eclair ERC91 15449 test-keys
      with:  ro.build.description=tardis-user Eclair ERC91 15449 release-keys
@@ -183,8 +201,63 @@ for OTA package verification
 done.
 </pre>
 
-<p>在提示用户输入所有受密码保护的密钥的密码后，脚本会使用发布密钥对输入目标 .zip 中的所有 .apk 文件重新签名。在运行该命令之前，您还可以将 ANDROID_PW_FILE 环境变量设置为临时文件名；然后脚本会调用您的编辑器，允许您输入所有密钥的密码（采用该方式输入密码可能较为简便）。</p><p>
-</p><p><code>sign_target_files_apks</code> 还会在版本属性文件中重写版本描述和指纹，表明这是一个已签名的版本。<code>-t</code> 标志可以控制对指纹所做的编辑。使用 <code>-h</code> 运行脚本来查看所有标志上的文档。</p>
+<p>在提示用户输入所有受密码保护的密钥的密码后，脚本会使用发布密钥对输入目标 <code>.zip</code> 中的所有 APK 文件重新签名。在运行该命令之前，您还可以将 <code>ANDROID_PW_FILE</code> 环境变量设置为临时文件名；然后脚本会调用您的编辑器，允许您输入所有密钥的密码（采用该方式输入密码可能较为简便）。</p>
+
+<h3 id="apex-signing-key-replacement">APEX 签名密钥替换</h3>
+
+<p>Android 10 引入了 <a href="/devices/tech/ota/apex.md">APEX 文件格式</a>，用于安装较低级别的系统模块。如 <a href="/devices/tech/ota/apex.md#signing">APEX 签名</a>中所述，每个 APEX 文件都会用两个密钥签名：一个用于 APEX 中的迷你文件系统映像，另一个用于整个 APEX。</p>
+
+<p>针对发布进行签名时，APEX 文件的两个签名密钥会被替换为发布密钥。文件系统负载密钥用 <code>--extra_apex_payload</code> 标记指定，整个 APEX 文件签名密钥用 <code>--extra_apks</code> 标记指定。
+</p>
+
+<p>对于 tardis 产品，假设对于 <code>com.android.conscrypt.apex</code>、<code>com.android.media.apex</code> 和 <code>com.android.runtime.release.apex</code> APEX 文件，您拥有以下密钥配置。
+</p>
+
+<pre class="devsite-click-to-copy">
+name="com.android.conscrypt.apex" public_key="PRESIGNED" private_key="PRESIGNED" container_certificate="PRESIGNED" container_private_key="PRESIGNED"
+name="com.android.media.apex" public_key="PRESIGNED" private_key="PRESIGNED" container_certificate="PRESIGNED" container_private_key="PRESIGNED"
+name="com.android.runtime.release.apex" public_key="vendor/yoyodyne/security/testkeys/com.android.runtime.avbpubkey" private_key="vendor/yoyodyne/security/testkeys/com.android.runtime.pem" container_certificate="vendor/yoyodyne/security/testkeys/com.google.android.runtime.release_container.x509.pem" container_private_key="vendor/yoyodyne/security/testkeys/com.google.android.runtime.release_container.pk8"
+</pre>
+
+<p>并且您拥有以下包含发布密钥的文件：</p>
+
+<pre class="devsite-click-to-copy">
+vendor/yoyodyne/security/runtime_apex_container.x509.pem
+vendor/yoyodyne/security/runtime_apex_container.pk8
+vendor/yoyodyne/security/runtime_apex_payload.pem
+</pre>
+
+<p>在对发布进行签名的过程中，以下命令会覆盖 <code>com.android.runtime.release.apex</code> 和 <code>com.android.tzdata.apex</code> 的签名密钥。特别是，系统会使用指定的发布密钥（对于 APEX 文件，为 <code>runtime_apex_container</code>；对于文件映像负载，则为 <code>runtime_apex_payload</code>）为 <code>com.android.runtime.release.apex</code> 签名。
+<code>com.android.tzdata.apex</code> 会被视为已预签名。所有其他 APEX 文件都由目标文件中列出的默认配置处理。
+</p>
+
+<pre class="devsite-click-to-copy">
+<code class="devsite-terminal">./build/tools/releasetools/sign_target_files_apks \
+    --default_key_mappings   vendor/yoyodyne/security/tardis \
+    --extra_apks             com.android.runtime.release.apex=vendor/yoyodyne/security/runtime_apex_container \
+    --extra_apex_payload_key com.android.runtime.release.apex=vendor/yoyodyne/security/runtime_apex_payload.pem \
+    --extra_apks             com.android.media.apex= \
+    --extra_apex_payload_key com.android.media.apex= \
+    -o tardis-target_files.zip \
+    signed-tardis-target_files.zip</code>
+</pre>
+
+<p>运行以上命令会生成以下日志：</p>
+<pre class="devsite-click-to-copy">
+        [...]
+    signing: com.android.runtime.release.apex                  container (vendor/yoyodyne/security/runtime_apex_container)
+           : com.android.runtime.release.apex                  payload   (vendor/yoyodyne/security/runtime_apex_payload.pem)
+NOT signing: com.android.conscrypt.apex
+        (skipped due to special cert string)
+NOT signing: com.android.media.apex
+        (skipped due to special cert string)
+        [...]
+</pre>
+
+<h3 id="other-options">其他选项</h3>
+
+<p><code>sign_target_files_apks</code> 签名脚本会在版本属性文件中重写版本描述和指纹，表明这是一个已签名的版本。<code>--tag_changes</code> 标记可以控制对指纹所做的编辑。使用 <code>-h</code> 运行脚本可以查看所有标记上的文档。
+</p>
 
 <h2 id="manually-generating-keys">手动生成密钥</h2>
 <p>Android 使用公开指数为 3 的 2048 位 RSA 密钥。您可以使用 <a href="https://www.openssl.org/">openssl.org</a> 提供的 openssl 工具来生成证书/私钥对：</p>
@@ -219,11 +292,7 @@ e is 3 (0x3)
 ./build/tools/releasetools/img_from_target_files signed-target-files.zip signed-img.zip
 </pre>
 
-生成的文件 <code>signed-img.zip</code> 中包含所有 .img 文件。
-
-要将映像加载到设备上，请使用 fastboot，如下所示：
-
-<pre class="devsite-terminal devsite-click-to-copy">
+生成的文件 <code>signed-img.zip</code> 中包含所有 .img 文件。要将映像加载到设备上，请使用 fastboot，如下所示：<pre class="devsite-terminal devsite-click-to-copy">
 fastboot update signed-img.zip
 </pre>
 

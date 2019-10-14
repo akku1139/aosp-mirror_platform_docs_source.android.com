@@ -4,6 +4,7 @@
     <meta name="book_path" value="/_book.yaml"/>
   </head>
   <body>
+
   <!--
       Copyright 2018 The Android Open Source Project
 
@@ -19,56 +20,75 @@
       See the License for the specific language governing permissions and
       limitations under the License.
   -->
-<p>
-Android 9 及更高版本包含一个 <a href="https://developer.android.com/reference/android/hardware/biometrics/BiometricPrompt" class="external">BiometricPrompt API</a>，应用开发者可以使用该 API 采用与设备和模态无关的方式将生物识别身份验证集成到其应用中。只有极为安全的生物识别技术才能与 <code>BiometricPrompt</code> 集成。如需了解详情，请参阅<a href="/security/biometric/measure#strong-weak-unlocks">衡量生物识别解锁模式的安全性</a>。
-</p>
 
-<h2 id="source">源代码</h2>
-<p>
-Android 9 仅包含适用于 <a href="https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/hardware/biometrics" class="external">BiometricPrompt</a> 的指纹集成。但是，我们即将提供对其他生物识别模态的集成支持。
-</p>
-<p>
-在 Android 9 及更高版本中，<a href="https://developer.android.com/reference/android/hardware/fingerprint/FingerprintManager" class="external">FingerprintManager</a> API 已被弃用。如果您的捆绑式应用和系统应用使用此 API，请更新这些应用以改用 <code>BiometricPrompt</code>。
-</p>
+<p>借助生物识别因素，可在 Android 平台上实现安全的身份验证。Android 框架包含了人脸和指纹生物识别身份验证方式。您可对 Android 进行自定义以支持其他形式的生物识别身份验证方式（例如虹膜）。所有生物识别实现都必须符合安全规范且具有<strong>较高的</strong>安全评级才能使用 <a href="https://developer.android.com/reference/android/hardware/biometrics/BiometricPrompt.html" class="external"><code>BiometricPrompt</code> 类</a>。衡量生物识别的指标有<a href="https://source.android.com/security/biometric/measure#metrics">冒名接受率 (IAR)</a> 和<a href="https://source.android.com/security/biometric/measure#metrics">欺骗接受率 (SAR)</a>。</p>
+
+<p>如需详细了解生物识别安全规范，请参阅<a href="https://source.android.com/security/biometric/measure#strong-weak-unlocks">衡量生物识别解锁模式的安全性</a>。</p>
+
+<h2 id="source">来源</h2>
+
+<h3 id="android10">Android 10</h3>
+
+<ul>
+<li>引入了 <a href="https://developer.android.com/reference/android/hardware/biometrics/BiometricManager"><code>BiometricManager</code> 类</a>，开发者可用其查询生物识别身份验证的可用性。</li>
+<li>引入了 <a href="https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/hardware/biometrics" class="external"><code>BiometricPrompt</code></a> 指纹和人脸识别身份验证集成。</li>
+</ul>
+
+<h3 id="android9">Android 9</h3>
+
+<ul>
+<li>仅包含 <a href="https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/hardware/biometrics"><code>BiometricPrompt</code></a> 指纹集成。</li>
+<li>弃用了 FingerprintManager 类。如果您的捆绑式应用和系统应用使用此类，请更新这些应用以改用 <code>BiometricPrompt</code> 和 <code>BiometricManager</code>。</li>
+<li>更新了 <code>FingerprintManager</code> CTS 验证程序测试，以使用 <a href="https://android.googlesource.com/platform/cts/+/master/apps/CtsVerifier/src/com/android/cts/verifier/security/BiometricPromptBoundKeysTest.java"><code>BiometricPromptBoundKeysTest</code></a> 来测试 <code>BiometricPrompt</code>。</li>
+</ul>
 
 <h2 id="implementation">实现</h2>
-<p>
-为确保用户和开发者获享无缝的生物识别体验，请将生物识别堆栈与 <code>BiometricPrompt</code> 集成。为任何模态（包括面部、指纹和虹膜）启用 <code>BiometricPrompt</code> API 的设备必须符合这些<a href="/security/biometric/measure#strong-weak-unlocks">安全程度要求</a>。如果它们不符合这些安全程度要求，就无法实现此 API。
-</p>
-<p>
-要将生物识别堆栈与 <code>BiometricPrompt</code> 集成，请执行以下操作：
-</p>
-<ol>
-  <li>在 <code><a href="https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/hardware/biometrics/BiometricPrompt.java" class="external">/frameworks/base/core/java/android/hardware/biometrics/BiometricPrompt.java</a></code> 中添加一个 <code><var>Biometric</var>Manager</code> 类的实例</li>
-  <li>确保您的实例与 <code>BiometricPrompt</code> 提供的 <code><a href="https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/hardware/biometrics/BiometricPrompt.java#467" class="external">authenticate()</a></code> 方法挂钩。</li>
-  <li>更新框架以为添加的生物识别技术采用 <a href="https://developer.android.com/reference/android/app/admin/DevicePolicyManager#KEYGUARD_DISABLE_FACE" class="external"><code>KEYGUARD_DISABLE_*</code></a> 标记。</li>
-</ol>
+
+<p>为确保用户和开发者获享无缝的生物识别体验，请将生物识别堆栈与 <code>BiometricPrompt</code> 集成。为任何模态（包括人脸、指纹和虹膜）启用 <code>BiometricPrompt</code> 的设备必须符合这些<a href="https://source.android.com/security/biometric/measure#strong-weak-unlocks">安全程度要求</a>。如果它们不符合这些安全程度要求，就无法实现此类。<br />要将生物识别堆栈与 <code>BiometricPrompt</code> 和 <code>BiometricManager</code> 集成，请执行以下操作：</p>
+
+<ul>
+<li>确保您的 &lt;Modality&gt; 服务已正确挂钩到 <code>BiometricService</code> 并挂钩 <a href="https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/hardware/biometrics/BiometricPrompt.java#467"><code>authenticate()</code></a> 方法。常见的模态（指纹、人脸）从共同的<a href="https://android.googlesource.com/platform/frameworks/base/+/refs/heads/master/services/core/java/com/android/server/biometrics/BiometricServiceBase.java" class="external">父类</a>扩展。如果您需要集成不受支持的模态，请遵循<a href="https://android.googlesource.com/platform/frameworks/base/+/refs/heads/master/services/core/java/com/android/server/biometrics/fingerprint/FingerprintService.java" class="external">指纹</a>/<a href="https://android.googlesource.com/platform/frameworks/base/+/refs/heads/master/services/core/java/com/android/server/biometrics/face/FaceService.java" class="external">人脸</a>识别示例及针对生物识别的 <a href="compatibility/android-cdd#7_3_10_biometric_sensorsCDD guidelines for biometrics">CDD 指南</a>。</li>
+<li>确保您的新模态在 <a href="https://android.googlesource.com/platform/frameworks/base/+/refs/heads/master/packages/SystemUI/src/com/android/systemui/biometrics" class="external">SystemUI</a> 中得到了相应支持。系统提供了适用于指纹和人脸识别的 <code>BiometricPrompt</code> 默认界面。</li>
+<li>更新框架，让添加的生物识别技术遵循 <a href="https://developer.android.com/reference/android/app/admin/DevicePolicyManager#KEYGUARD_DISABLE_FACE"><code>KEYGUARD_DISABLE_*</code></a> 标记。</li>
+<li>对于您已集成到 <code>BiometricPrompt</code>/<code>BiometricManager</code> 中的每种模态，确保您的设备可通过 CTS 和 CtsVerifier 测试。例如，如果您同时支持指纹和人脸识别身份验证，则必须通过针对每项身份验证方式的各项测试。</li>
+</ul>
+
+<aside class="note"><b>注意</b>：请使用 <code>androidx.biometric</code> 支持库<a href="https://android.googlesource.com/platform/frameworks/support/+/androidx-master-dev/samples/BiometricDemos/" class="external">演示应用</a>来测试您的实现。该库会定期添加新的用例。</aside>
+
 <figure>
   <img src="/security/images/biometricprompt-architecture.png" alt="BiometricPrompt 架构"/>
   <figcaption>
-    <strong>图 1</strong>. <code>BiometricPrompt</code> 架构。</figcaption>
+    <strong>图 1.</strong> BiometricPrompt 架构</figcaption>
 </figure>
 
 <h2 id="hal-implementation">HAL 实现指南</h2>
-<p>
-遵循以下生物识别 HAL 准则，以确保生物识别数据<strong>不会泄露</strong>，并会随用户从设备中移除时一并<strong>移除</strong>：
-</p>
-<ol>
- <li>确保在任何情况下都无法从传感器驱动程序或安全隔离环境（例如 TEE 或安全元件）以外访问原始生物识别数据或衍生内容（例如模板）。</li>
- <li>如果硬件支持，则限制硬件对安全隔离环境的访问权限，并使用 SELinux 政策对其进行保护。使用针对所有设备文件的明确 SELinux 政策，确保信道（例如 SPI、I2C 等）只能供安全隔离环境访问。</li>
- <li>为防止意外数据泄露，攻击免疫、指纹采集、注册和识别必须在安全隔离环境内部进行。</li>
- <li>仅在文件系统上存储加密形式的生物识别数据或衍生内容（即使文件系统本身已加密）。</li>
- <li>要防范重播攻击，请使用设备专用私钥对生物识别模板进行签名。对于高级加密标准 (AES)，模板必须至少通过绝对文件系统路径、群组和生物识别 ID 进行签名，这样一来，相应模板文件便无法在其他设备上使用，并且无法用于在同一设备上注册的任何其他用户。例如，您将无法复制同一设备上其他用户的生物识别数据，也无法从其他设备复制生物识别数据。</li>
- <li>使用 <code>set_active_group()</code> 函数提供的文件系统路径，或提供另一种能够在移除用户时一并清空所有用户模板数据的方法。强烈建议将生物识别模板文件以加密形式存储在提供的路径中。如果因安全隔离环境的存储要求导致这种做法不可行，请添加一些钩子，以确保在移除用户或清空设备数据时一并移除相关数据。</li>
-</ol>
+
+<p>遵循以下生物识别 HAL 准则，以确保生物识别数据<strong>不会泄露</strong>，并在从设备中移除用户时一并<strong>移除</strong>：</p>
+
+<ul>
+<li>确保在任何情况下都无法从传感器驱动程序或安全隔离环境（例如 TEE 或安全元件）以外访问原始生物识别数据或衍生内容（例如模板）。</li>
+<li>如果硬件支持，则限制硬件对安全隔离环境的访问权限，并使用 SELinux 政策对其进行保护。使用针对所有设备文件的明确 SELinux 政策，确保信道（例如 SPI、I2C 等）只能供安全隔离环境访问。</li>
+<li>生物识别信息的采集、注册和识别必须在安全隔离环境内部进行，以防范数据泄露和其他攻击。此要求仅适用于<strong>安全程度高的</strong>生物识别技术。</li>
+<li>仅在文件系统上存储加密形式的生物识别数据或衍生内容（即使文件系统本身已加密）。</li>
+<li>要防范重播攻击，请使用设备专用私钥对生物识别模板进行签名。对于高级加密标准 (AES)，模板必须至少通过绝对文件系统路径、群组和生物识别 ID 进行签名，这样一来，相应模板文件便无法在其他设备上使用，并且无法用于在同一设备上注册的任何其他用户。例如，您将无法复制同一设备上其他用户的生物识别数据，也无法从其他设备复制生物识别数据。</li>
+<li>使用 <code>set_active_group()</code> 函数提供的文件系统路径，或提供另一种能够在移除用户时一并清空所有用户模板数据的方法。强烈建议将生物识别模板文件以加密形式存储在提供的路径中。如果因安全隔离环境的存储要求而导致这种做法不可行，请添加一些钩子，以确保在移除用户或清空设备数据时一并移除相关数据。</li>
+</ul>
 
 <h2 id="customization">自定义</h2>
-<p>
-如果您的设备支持多种生物识别技术，您可以指定默认值。但是，您必须允许用户在“设置”中更改其首选生物识别技术。
-</p>
+
+<p>如果您的设备支持多种生物识别技术，用户应可以在设置中指定默认值。您的 <code>BiometricPrompt</code> 实现应该默认首选<strong>安全程度高的</strong>生物识别技术（除非用户明确替换该选项），并需要显示一条警告消息来说明与生物识别相关的风险（例如照片可能能够解锁设备）<em></em>。</p>
 
 <h2 id="validation">验证</h2>
-<p>
-Android 9 更新了 <code>FingerprintManager</code> CTS 验证程序测试，以通过 <code><a href="https://android.googlesource.com/platform/cts/+/master/apps/CtsVerifier/src/com/android/cts/verifier/security/BiometricPromptBoundKeysTest.java">BiometricPromptBoundKeysTest</a></code> 测试 <code>BiometricPrompt</code>。对于其他生物识别技术，还没有正式的 CTS 或 CTS 验证程序测试。</p>
+
+<p>您的生物识别实现必须通过以下测试：</p>
+
+<ul>
+  <li>CTS <a href="https://android.googlesource.com/platform/cts/+/refs/heads/master/tests/tests/hardware/src/android/hardware/biometrics/cts/BiometricManagerTest.java" class="external">BiometricManager</a></li>
+  <li>CTS <a href="https://android.googlesource.com/platform/cts/+/refs/heads/master/tests/tests/hardware/src/android/hardware/biometrics/cts/BiometricPromptTest.java" class="external">BiometricPrompt</a>（健全性方面的深入测试依赖于验证程序）</li>
+  <li>CtsVerifier <a href="https://android.googlesource.com/platform/cts/+/refs/heads/master/apps/CtsVerifier/src/com/android/cts/verifier/security/BiometricPromptBoundKeysTest.java" class="external">BiometricPromptBoundKeysTest</a>：必须通过针对设备支持的每种模态的各项测试</li>
+  <li>CtsVerifier <a href="https://android.googlesource.com/platform/cts/+/refs/heads/master/apps/CtsVerifier/src/com/android/cts/verifier/biometrics/BiometricTest.java" class="external">BiometricTest</a>：必须通过针对设备支持的每种模态的各项测试</li>
+</ul>
+
+<p>此外，如果您的设备支持具有 AOSP HIDL 的生物识别技术（<a href="https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/master/biometrics/fingerprint/2.1/IBiometricsFingerprint.hal" class="external">fingerprint@2.1</a>、<a href="https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/master/biometrics/face/1.0/IBiometricsFace.hal" class="external">face1.0</a>），则必须通过与之相关的 VTS 测试（<a href="https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/master/biometrics/fingerprint/2.1/vts/functional/VtsHalBiometricsFingerprintV2_1TargetTest.cpp" class="external">fingerprint</a>、<a href="https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/master/biometrics/face/1.0/vts/functional/VtsHalBiometricsFaceV1_0TargetTest.cpp" class="external">face</a>）。</p>
 
 </body></html>

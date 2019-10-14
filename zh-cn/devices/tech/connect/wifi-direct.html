@@ -1,0 +1,103 @@
+<html devsite><head>
+
+  <meta name="book_path" value="/_book.yaml"/>
+
+  <meta name="project_path" value="/_project.yaml"/>
+</head>
+<body>
+
+<!--
+  Copyright 2019 The Android Open Source Project
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+<h1 id="wi-fi_direct" class="page-title">WLAN 直连</h1>
+
+<p><a href="https://developer.android.com/guide/topics/connectivity/wifip2p.html" class="external">WLAN 直连</a>功能又称“WLAN 点对点”，它允许支持设备直接使用 WLAN 直连协议发现其他设备并与之互连（无需连接到互联网或移动网络）。此功能是基于 <a href="https://www.wi-fi.org/" class="external">Wi-Fi 联盟</a> (WFA) <a href="https://www.wi-fi.org/wi-fi-direct" class="external">WLAN 直连规范</a>构建的，它支持在断开网络的情况下，在可信设备与应用之间共享高吞吐量数据。</p>
+
+<h2 id="examples_and_source">示例和来源</h2>
+
+<p>要使用此功能，设备制造商必须实现在 Android 开源项目 (AOSP) 中提供的 WLAN <a href="/devices/architecture/hidl">硬件接口设计语言 (HIDL)</a>。HIDL 取代了之前使用的<a href="/devices/architecture/hal">硬件抽象层 (HAL)</a> 结构，以便通过指定收集到接口和软件包的类型和方法调用来简化实现流程。</p>
+
+<p>以下是采用 WLAN 直连功能所需的 WLAN HAL 表面：+ <code>hardware/interfaces/wifi/1.3</code> 或更高版本 + <code>hardware/interfaces/wifi/supplicant/1.2</code> 或更高版本</p>
+
+<h2 id="implementation">实现</h2>
+
+<p>设备制造商需要提供框架和 HAL/固件支持：</p>
+
+<ul>
+<li>框架：
+<ul>
+<li>AOSP 代码</li>
+<li>启用 WLAN 直连：需要功能标记</li>
+</ul></li>
+<li>WLAN 直连（点对点）HAL 支持（意味着固件支持）</li>
+</ul>
+
+<p>为实现此功能，设备制造商需要实现 WLAN HIDL，还要为 WLAN 直连启用功能标记。在位于 <code>device/&lt;oem&gt;/&lt;device&gt;</code> 的 <code>device.mk</code> 中，修改 <code>PRODUCT_COPY_FILES</code> 环境变量，以便支持 WLAN 直连功能：</p>
+<pre class="prettyprint"><code>```
+PRODUCT_COPY_FILES +=
+frameworks/native/data/etc/android.hardware.wifi.direct.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.wifi.direct.xml
+```
+</code></pre>
+<p>支持 WLAN 直连的所有其他要求都包含在 AOSP 中。</p>
+
+<h2 id="mac_randomization">随机分配 MAC 地址</h2>
+
+<p>Android 要求 WLAN 直连设备地址和接口地址是随机分配的。<em></em><em></em>它们必须不同于设备的真实 MAC 地址，并且必须满足以下要求：</p>
+
+<ul>
+<li>如果没有保存任何永久性群组，则 WLAN 直连设备地址必须是在创建接口时随机分配的；否则设备地址必须继续使用最后生成的 MAC 地址。</li>
+<li>每次建立连接时，WLAN 直连接口地址（也称为群组地址）必须是随机分配的。</li>
+</ul>
+
+<p>WLAN 直连随机分配 MAC 地址是在“wpa_supplicant”中实现的，并由两项配置控制：<code>p2p_device_random_mac_addr</code> 和 <code>p2p_interface_random_mac_addr</code>。</p>
+
+<p>为启用此功能，设备制造商必须：+ 实现 <code>hardware/interface/wifi/supplicant/1.2</code> 中的 WLAN 客户端 HIDL API <code>ISupplicantP2pIface::setMacRandomization</code>。</p>
+
+<ul>
+<li>在设备自定义叠加层中将 <code>config_wifi_p2p_mac_randomization_supported</code> 设为“true”。</li>
+</ul>
+
+<h2 id="validation">验证</h2>
+
+<p>Android 提供了一组单元测试、集成测试（Android Connectivity Test Suite 或 ACTS）、<a href="/compatibility/cts">兼容性测试套件 (CTS)</a> 测试和 <a href="/compatibility/cts/verifier">CTS 验证程序</a>测试，以验证 WLAN 直连功能。您也可以使用<a href="/compatibility/vts">供应商测试套件 (VTS)</a> 来测试 WLAN 直连功能。</p>
+
+<h3 id="unit_tests">单元测试</h3>
+
+<p>使用以下测试验证 WLAN 直连软件包。</p>
+
+<p>服务测试：</p>
+<pre class="prettyprint"><code>% ./frameworks/opt/net/wifi/tests/wifitests/runtests.sh -e package
+com.android.server.wifi.p2p
+</code></pre>
+<p>Manager 测试：</p>
+<pre class="prettyprint"><code>% ./frameworks/base/wifi/tests/runtests.sh -e package android.net.wifi.p2p
+</code></pre>
+<h3 id="integration_tests_acts">集成测试 (ACTS)</h3>
+
+<p>ACTS WLAN 直连测试套件（位于 <code>tools/test/connectivity/acts/tests/google/wifi/p2p</code>）实现 WLAN 直连的功能测试。</p>
+
+<h3 id="compatibility_test_suite_cts_tests">兼容性测试套件 (CTS) 测试</h3>
+
+<p>使用 CTS 测试来验证 WLAN 直连功能。CTS 会检测何时启用了这项功能，并会自动包含相关测试。</p>
+
+<p>要触发 CTS 测试，请运行以下命令：</p>
+<pre class="prettyprint"><code>% atest android.net.wifi.p2p.cts
+</code></pre>
+<h3 id="cts_verifier_tests">CTS 验证程序测试</h3>
+
+<p>CTS 验证程序测试使用以下两种设备验证 WLAN 直连行为：测试设备和已知良好的设备。<em></em>要运行测试，请打开 CTS 验证程序并转到“WLAN 直连测试”部分。</p>
+
+</body></html>

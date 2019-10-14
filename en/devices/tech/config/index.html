@@ -1,0 +1,160 @@
+<html devsite>
+  <head>
+    <title>Android Permissions</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+
+{% include "_versions.html" %}
+
+<!--
+  Copyright 2018 The Android Open Source Project
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+<p>Android permissions provide controls that increase user awareness and limit
+an app’s access to sensitive data. Configuring permissions on Android 8.0 and
+lower includes whitelisting, without which privileged apps are disabled, even
+if they’re in the <code>priv-app</code> path. On Android 9 and higher, a device
+that tries to use apps that aren’t properly whitelisted won’t boot.</p>
+
+<p>The increased protections against <a href=
+"https://developers.google.com/android/play-protect/potentially-harmful-applications" class="external">
+Potentially Harmful Apps</a> (PHAs) improve</p>
+
+<ul>
+<li>Transparency into potentially harmful app behavior.</li>
+<li>User control over app behavior.</li>
+<li>App developers' discretion when using private data, protected by
+permissions.</li>
+</ul>
+
+<h3 id="package-install-and-permission">Package install and permission</h3>
+
+<p>In Android 9 and lower, the package install and permission control
+functionalities were contained in the <code>PackageInstaller</code> package
+(<code>//packages/apps/PackageInstaller</code>). In Android {{
+androidQVersionNumber }} and higher, the permission control functionality
+resides in a separate package, <code>PermissionController</code>
+(<code>//packages/apps/PermissionController</code>). <a href="#package-install">Figure 1</a>
+illustrates where the two packages reside in Android {{ androidQVersionNumber }}.</p>
+
+<figure id="package-install"><img src="/devices/tech/config/images/package-install.png"
+width="90%" alt="Separation of package install
+and permission control functionalities for system apps and as used by user-
+installed apps"> <figcaption><strong>Figure 1.</strong> Package install and
+permission-control functionalities in Android {{ androidQVersionNumber
+}}</figcaption></figure>
+
+<h3 id="whitelists-and-access">Whitelists and access</h3>
+
+<p>In Android 6.0 and higher, apps request access to dangerous permissions at
+
+  <a href="/devices/tech/config/runtime_perms">runtime</a>.
+Android {{ androidQVersionNumber }} adds activity recognition (AR) runtime
+permissions, which prompt the user to modify or allow dangerous
+permissions.</p>
+
+<p>Android 8.0 required you to explicitly whitelist privileged apps in the
+system configuration XML files in the <code>/etc/permissions</code> directory.
+In Android 9 and higher, privileged permissions must be <a href=
+"/devices/tech/config/perms-whitelist">whitelisted</a>
+or the device can’t boot.</p>
+
+<p>To limit internal API visibility and prevent apps from accidentally
+accessing platform libraries, Android 7.0 introduced <a href=
+"/devices/tech/config/namespaces_libraries">Namespaces
+for Native Libraries</a>. This separates system libraries from application
+libraries, and device manufacturers can add their own native libraries.</p>
+
+<p>Starting in Android {{ androidQVersionNumber }} apps must have both
+signature permissions and user consent to <a href=
+"/devices/tech/config/restricted-screen-reading">
+access a device’s screen content</a>. Privileged apps that rely on the silent
+capture functionality, such as taking a screenshot, should use the <a href=
+"https://developer.android.com/reference/android/media/projection/MediaProjection" class="external">
+MediaProjection</a> class instead.</p>
+
+<h3 id="transparency-and-privacy">Transparency and privacy</h3>
+
+<p>In Android 6.0 and higher, a device factory MAC address is protected from
+access by Wi-Fi service providers and packet analyzers. Additional restrictions as
+of Android {{ androidQVersionNumber }} limit apps from accessing the <a href=
+"/devices/tech/config/immutable-device-ids">immutable
+device identifiers (IDs)</a> unless they’re <a href=
+"/devices/tech/config/perms-whitelist">whitelisted
+  for privileged permissions</a>. (The <a href="/devices/tech/connect"><strong>Connectivity</strong></a> section
+provides a related discussion about <a href=
+"/devices/tech/config/device-identifiers">Device
+Identifiers</a>, as this impacts carriers.)</p>
+
+<p>On Android 9 and lower, users make persistent choices when granting location
+access to apps. Starting in Android {{ androidQVersionNumber }}, a <a href=
+"/devices/tech/config/tristate-perms">tristate
+location permissions</a> feature gives users three options to allow app access
+to a device’s location. These permission requirements are applied to apps in
+Android {{ androidQVersionNumber }} regardless of target SDK.</p>
+
+<p>Configure permissions for other transparency and privacy features starting
+in Android {{ androidQVersionNumber }}</p>
+
+<ul>
+
+  <li>The <a href=
+"/devices/tech/config/background-location-access">
+background access location</a> reminder shows users when an app accesses their
+device location using <code><a href=
+"https://developer.android.com/reference/android/Manifest.permission#ACCESS_FINE_LOCATION" class="external">
+ACCESS_FINE_LOCATION</a></code> permission in the background.</li>
+
+  <li>Contacts-affinity related data, managed by the Contacts Provider component,
+is accessed differently: Apps can’t write to or read from the <a href=
+"/devices/tech/config/contacts-affinities">contact
+affinities</a> data in the database. This impacts <a href=
+"/devices/tech/config/contacts-affinities#APIchanges">
+ caller-related APIs</a>.</li>
+</ul>
+
+<h3 id="streamlined-configurations">Streamlined configurations</h3>
+
+<p>Permissions configurations have been streamlined for Android 6.0 and
+higher.</p>
+
+<ul>
+
+  <li><a href=
+"/devices/tech/config/ambient">Ambient
+capabilities</a> for services launched by <code>init</code> keeps all aspects
+of the service configuration in a single <code>.rc</code> file. When setting
+capabilities for services not launched by <code>init</code>, configure file
+system capabilities using <code>fs_config.c</code> instead.</li>
+
+  <li>Android 7.x and lower extend the Android IDs (AIDs) mechanism, using a
+device-specific <code>android_filesystem_config.h</code> file to specify
+filesystem capabilities and/or custom device-manufacturer AIDs. Android 8.0 and
+higher supports a <a href=
+"/devices/tech/config/filesystem">new method
+to extend filesystem capabilities</a>.</li>
+
+  <li>In Android 8.0, handling USB commands moved out of device-specific
+<code>init</code> scripts (a substitution for HAL layers) and into a native USB
+daemon. The <a href=
+"/devices/tech/config/usb-hal">USB HAL</a>
+interface must be implemented on every device launching on Android 8.0 and
+higher.</li>
+</ul>
+
+</body>
+</html>

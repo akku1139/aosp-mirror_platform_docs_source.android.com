@@ -1,6 +1,6 @@
 <html devsite>
 <head>
-  <title>Including DTBO in Recovery for Non-A/B Devices</title>
+  <title>Recovery Images for Non-A/B Devices</title>
   <meta name="project_path" value="/_project.yaml">
   <meta name="book_path" value="/_book.yaml">
 </head>
@@ -21,28 +21,43 @@
       See the License for the specific language governing permissions and
       limitations under the License.
   -->
-   To prevent OTA failures on non-A/B devices, the recovery partition must be
-  self-sufficient and cannot depend on other partitions.
+   <p>To prevent over-the-air (OTA) failures on non-A/B devices, the recovery
+     partition must be self-sufficient and can't depend on other partitions.
+     Device manufacturers can use <a href="https://www.devicetree.org/"
+                                     class="external">DeviceTree</a> or
+     <a href="https://uefi.org/acpi/specs" class="external">Advanced
+     Configuration and Power Interface (ACPI)</a> to describe all
+     nondiscoverable devices.</p>
 
-  <p>While booting into recovery, the bootloader must load the DTBO image that
-  is compatible with the recovery image. During an OTA, if a problem occurs
-  after the DTBO image has been updated (but prior to completing the full
-  update), the device will try to boot into recovery mode to complete the OTA.
-  However, because the DTBO partition has already been updated, a mismatch
-  could occur with the recovery image (which has not yet been updated).</p>
+  <p>While booting into recovery, the bootloader must load the Device Tree Blob
+    for Overlay (DTBO) or Advanced Configuration and Power Interface for
+    Overlay (ACPIO) image (overlay image) that is compatible with the recovery
+    image. During an OTA update, if a problem occurs after the overlay image
+    has been updated (but prior to completing the full update), the device
+    tries to boot into recovery mode to complete the OTA update. However,
+    because the overlay partition has already been updated, a mismatch could
+    occur with the recovery image (which hasn't been updated yet).</p>
 
 
-  <p>To prevent this situation, in Android {{ androidPVersionNumber }} the recovery
-  image must also contain information from the DTBO image. The recovery image for a
-  non-A/B device must also contain the device's DTB appended to kernel so as to not
-  depend on the DTB partition during an update.</p>
+  <p>To prevent this situation, in Android {{ androidPVersionNumber }} and
+    higher the recovery image must also contain information from the overlay
+    image. The recovery image for a non-A/B device must also contain the
+    device's overlay blob appended to kernel so it doesn't depend on the
+    overlay partition during an update.</p>
+
+  <p>
+    Android {{ androidQVersionNumber }} and higher includes support for
+    architectures that use ACPI instead of DTBO.
+  </p>
 
 
   <h2 id="boot-image-changes">Boot image changes</h2>
 
 
-  <p>To allow the recovery image to contain the recovery DTBO, the format of
-  boot image in Android {{ androidPVersionNumber }} is:</p>
+  <p>To allow the recovery image to contain the recovery DTBO or ACPIO, the
+    format of the boot image in Android {{ androidPVersionNumber }} and higher
+    is:
+  </p>
 
 
   <table>
@@ -73,7 +88,7 @@
 
 
   <p>In addition, the <code>mkbootimg</code> tool that creates boot images
-  includes the following new arguments:</p>
+    includes the following arguments to support these overlays.</p>
 
 
   <table>
@@ -102,22 +117,28 @@
 
       <td>Path to the recovery DTBO image.</td>
     </tr>
+        <tr>
+      <td><code>recovery_acpio</code>
+      </td>
+
+      <td>Path to the recovery ACPIO image.</td>
+    </tr>
   </table>
 
 
   <p>For details on modifications to the legacy boot image header, refer to
   <em><a href="/devices/bootloader/boot-image-header">Boot Image Header
-  Versioning in Android {{ androidPVersionNumber }}</a></em>.</p>
+  Versioning</a></em>.</p>
 
 
-  <h2 id="implementation">Implementation</h2>
+  <h2 id="dtbo-implementation">DTBO implementation</h2>
 
 
   <p>Although all devices launching with Android {{ androidPVersionNumber }}
-  must use the new boot image header (version 1), only non-A/B devices are
-  required to populate the <code>recovery_dtbo</code> section of the recovery
-  image. To include the <code>recovery_dtbo</code> image in <code>recovery.img</code>,
-  in the device <code>BoardConfig.mk</code>:</p>
+    and higher must use the new boot image header (version 1), only non-A/B
+    devices are required to populate the <code>recovery_dtbo</code> section of
+    the recovery image. To include the <code>recovery_dtbo</code> image in
+    <code>recovery.img</code>, in the device <code>BoardConfig.mk</code>:</p>
 
 
   <ul>
@@ -140,9 +161,9 @@
 
 
   <ul>
-    <li>Ensure the <code>BOARD_PREBUILT_DTBOIMAGE</code> variable is set to the
+    <li>Ensure that the <code>BOARD_PREBUILT_DTBOIMAGE</code> variable is set to the
     path of the DTBO image. The Android build system uses the variable to set
-    the argument <code>recovery_dtbo</code> of mkbootimg tool during the
+      the argument <code>recovery_dtbo</code> of the <code>mkbootimg</code> tool during the
     creation of recovery image.</li>
   </ul>
 
@@ -156,12 +177,58 @@
     <code>recovery.img</code>.</li>
   </ul>
 
+  <h2 id="acpio-implementation">ACPIO implementation</h2>
+
+
+  <p>Although all devices launching with Android {{ androidQVersionNumber }}
+    and higher must use the new boot image header (version 1), only non-A/B
+    devices are required to populate the <code>recovery_acpio</code> section of
+    the recovery image. To include the <code>recovery_acpio</code> image in
+    <code>recovery.img</code>, in the device <code>BoardConfig.mk</code>:</p>
+
+
+  <ul>
+    <li>Set the config <code>BOARD_INCLUDE_RECOVERY_ACPIO</code> to
+    <code>true</code>:
+
+      <pre class="prettyprint">BOARD_INCLUDE_RECOVERY_ACPIO := true</pre>
+    </li>
+  </ul>
+
+
+  <ul>
+    <li>Extend the <code>BOARD_MKBOOTIMG_ARGS</code> variable to specify the
+      boot image header version. The variable must be greater than or equal to
+      1 to support recovery ACPIO.
+
+      <pre class="prettyprint">BOARD_MKBOOTIMG_ARGS += --header_version $(BOARD_BOOTIMG_HEADER_VERSION)</pre>
+    </li>
+  </ul>
+
+
+  <ul>
+    <li>Ensure that the <code>BOARD_RECOVERY_ACPIO</code> variable is set to the
+      path of the ACPIO image. The Android build system uses the variable to
+      set the argument <code>recovery_acpio</code> of the
+      <code>mkbootimg</code> tool during the creation of the recovery image.</li>
+  </ul>
+
+
+  <ul>
+    <li>If the variables <code>BOARD_INCLUDE_RECOVERY_ACPIO</code>,
+    <code>BOARD_MKBOOTIMG_ARGS</code>, and
+    <code>BOARD_RECOVERY_ACPIO</code> are set correctly, the Android build
+    system uses the ACPIO specified by the variable
+    <code>BOARD_RECOVERY_ACPIO</code> to include in
+    <code>recovery.img</code>.</li>
+  </ul>
+
 
   <h2 id="validation">Validation</h2>
 
 
-  <p>For all devices launching with Android {{ androidPVersionNumber }}, the <a href=
+  <p>For all devices launching with Android {{ androidPVersionNumber }} and higher, the <a href=
   "/compatibility/vts/">Vendor Test Suite (VTS)</a> checks the format of the
-  boot/recovery image to ensure the boot image header uses version 1.</p>
+  boot/recovery image to ensure that the boot image header uses version 1.</p>
 </body>
 </html>

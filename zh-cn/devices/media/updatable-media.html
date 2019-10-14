@@ -1,0 +1,147 @@
+<html devsite><head>
+  <title>可更新的媒体组件</title>
+  <meta name="project_path" value="/_project.yaml"/>
+  <meta name="book_path" value="/_book.yaml"/>
+</head>
+
+<body>
+
+  <!--
+      Copyright 2019 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+<p>Android 10 提供可更新的媒体组件，支持通过 Google Play 商店基础架构或通过合作伙伴提供的 OTA 机制更新框架组件。借助该功能，您无需进行完整的系统映像更新，即可提供安全更新和功能更新。
+</p>
+<p>可更新的媒体组件如下：</p><ul>
+<li>媒体提取器</li>
+<li>Media2 API (<code>MediaSession2</code>)</li>
+<li>媒体编解码器</li></ul>
+
+<h2 id="package-format">软件包格式</h2>
+
+<p>软件包格式为 Android Pony EXpress (APEX)。
+</p>
+
+<h2 id="media-components-are-updatable">可更新的媒体组件</h2>
+
+<p>本部分介绍了为使媒体提取器、Media2 API 和媒体编解码器等媒体组件可更新，Android 10 中引入的更改。
+</p>
+<h3 id="media-extractors">媒体提取器</h3>
+
+<p>为了为实现可更新性做准备，媒体提取器已成为单独的组件（而不是像在 Android 9 之前的版本中一样编译到 <code>libstagefright.so</code>）。它们进一步更新为仅依赖 NDK API。</p>
+<p>每个提取器都有自己的 <code>.so</code> 文件。<code>.so</code> 有一个入口点，该入口点提供一个嗅探器函数（用于确定提取器是否可以处理给定媒体文件），和一个工厂函数（用于为给定媒体文件创建提取器实例）。每个提取器都会进行命名和版本控制。命名有助于调试，而版本控制可以指示哪个提取器是最新的。由于 Android 会加载所有可用的提取器 <code>.so</code> 文件，因此 OEM 只需添加新的 <code>.so</code> 文件即可添加自己的提取器，而无需修改 libstagefright 或其他媒体框架库。如果 OEM 更新提取器，Google 会找到并使用它们（如果需要，有多种方法可以确保系统会首选 OEM 的提取器而不是 Google 提供的提取器）。
+</p>
+<h3 id="media2-apis-mediasession2">Media2 API (MediaSession2)</h3>
+
+<p>本部分介绍了添加到可更新媒体组件的 Media2 组件，具体而言，即 MediaSession2。
+</p>
+<p>Android 10 中添加的 MediaSession2 API 使用了一个进程，该进程可让媒体应用向其他进程（包括 Android 框架和其他应用）公开其传输控件和播放信息。
+</p>
+<h3 id="mediacodecs">媒体编解码器</h3>
+
+<p>现有的 OMX 编解码器 API 不可更新，但 OEM 仍然可以在 Android 10 的供应商分区中使用它。在 Android 10 中，SW Codec2 组件是可更新的。
+</p>
+<h2 id="customization-options-and-update-mechanism">自定义选项和更新机制</h2>
+
+<p>本部分概述了更新机制以及添加供应商扩展的方法。
+</p>
+<h3 id="update-mechanism">更新机制</h3>
+
+<p>APEX 是一种新的容器格式，用于通过 Play 商店更新系统组件。更新通过 APEX 软件包提供。该软件包中包含更新的 Java 代码和原生代码，这些代码由设备上已存在的框架组件加载。
+</p>
+<p>
+<img src="/devices/media/images/mainline_media_components.png" alt="Mainline 媒体组件" id="figure1"/>
+</p><figcaption><strong>图 1.</strong> Mainline 媒体组件</figcaption>
+
+<p>安装 APEX 软件包并在启动时装载磁盘映像后，媒体系统进程（<code>media.extractor</code> 和 <code>media.codec</code>）会从装载点加载更新后的模块。
+</p>
+
+<h3 id="vendor-extensions">供应商扩展</h3>
+
+<h4 id="mediaextractor">媒体提取器</h4>
+
+<p>对于媒体提取器，如果合作伙伴认为 Google 的默认提取器不能满足其要求，可以使用他们自己的提取器插件。自定义提取器插件可以放在 <code>/system/lib[64]/extractors/</code> 下，提取器进程会从 Google 的 APEX 软件包以及 <code>/system/lib[64]/extractors/</code> 加载提取器插件。
+</p>
+<h4 id="mediacodec">媒体编解码器</h4>
+
+<p>对于媒体编解码器，合作伙伴需要设置供应商编解码器服务。服务的框架实现在 <code>frameworks/av/media/codec2/hidl/services/</code> 中提供。服务需要使用 Codec 2.0 接口（在 <code>frameworks/av/media/codec2/core/</code> 中定义）来调用其组件的实现。库的入口点是 C2ComponentStore 接口，您可以引用 <code>frameworks/av/media/codec2/vndk/C2Store.cpp</code> 中的 Android 默认软件编解码器存储实现。
+</p>
+<p>合作伙伴可以使用与 mediaswcodec 服务中的加载行为类似的 APEX 加载行为。供应商编解码器服务进程可以采用与 mediaswcodec 类似的方式构建。负责注册所有 C2 组件的顶级共享库可以与传递依赖项一起定义并打包到位于供应商分区上的 APEX 软件包。然后，供应商编解码器服务进程便可以在启动时加载该顶级入口点。
+</p>
+
+<h4 id="media2-apis-mediasession2">Media2 API (MediaSession2)</h4>
+
+<p>对于 <code>MediaSession2</code>，如果代码已针对 AOSP 设备开源，则不允许进行供应商修改。对于旧版 <code>MediaPlayer</code> 和 <code>MediaSession</code> API 上的现有修改，供应商应尽可能将其更改上游化。如果无法上游化，Google 会考虑通过逐一查看相应更改，提供扩展。
+</p>
+<h2 id="life-of-a-customization">自定义的生命周期</h2>
+
+<p>在添加对 AVI 文件中的 Windows Media 视频的支持这一示例中，需要有以下两个主要组件才能在 Android 媒体框架中支持其他媒体类型：AVI <a href="#extractor">提取器</a>和 Windows Media 视频<a href="#decoder">解码器</a>。
+</p>
+<h3 id="extractor">提取器</h3>
+
+<p>提取器应该实现由 <code>frameworks/av/include/media/MediaExtractorPluginApi.h</code> 定义的 API，并且可以使用 <code>frameworks/av/include/media/MediaExtractorPluginHelper.h</code> 中的 C++ 便捷封装容器。
+</p>
+<p>有关提取器插件 API，请参阅 AOSP 代码中的最新版本。</p>
+<p>提取器应仅依赖稳定的 NDK API，不应依赖私有 API。</p>
+<p>供应商提取器应位于 <code>/system/lib/64/extractors</code> 或供应商 APEX 中，后者会随包含 Google 提取器的 Google APEX 一起打开。
+</p>
+<p>您可以检查框架是否加载了您的提取器，方法是运行 <code>adb shell
+dumpsys media.extractor</code>，运行后会生成如下内容。
+</p>
+
+<pre class="prettyprint">Available extractors:
+AAC Extractor: plugin_version(2), uuid(4fd80eae03d24d729eb948fa6bb54613), version(1), path(/system/lib64/extractors/libaacextractor.so)
+AMR Extractor: plugin_version(2), uuid(c86639c92f3140aca715fa01b4493aaf), version(1), path(/system/lib64/extractors/libamrextractor.so)
+FLAC Extractor: plugin_version(2), uuid(1364b048cc454fda9934327d0ebf9829), version(1), path(/system/lib64/extractors/libflacextractor.so)
+MIDI Extractor: plugin_version(2), uuid(ef6cca0af8a243e6ba5fdfcd7c9a7ef2), version(1), path(/system/lib64/extractors/libmidiextractor.so)
+MP3 Extractor: plugin_version(2), uuid(812a3f6cc8cf46deb5293774b14103d4), version(1), path(/system/lib64/extractors/libmp3extractor.so)
+MP4 Extractor: plugin_version(2), uuid(27575c6744174c548d3d8e626985a164), version(2), path(/system/lib64/extractors/libmp4extractor.so)
+MPEG2-PS/TS Extractor: plugin_version(1), uuid(3d1dcfebe40a436da574c2438a555e5f), version(1), path(/system/lib64/extractors/libmpeg2extractor.so)
+Matroska Extractor: plugin_version(2), uuid(abbedd9238c44904a4c1b3f45f899980), version(1), path(/system/lib64/extractors/libmkvextractor.so)
+Ogg Extractor: plugin_version(2), uuid(8cc5cd06f772495e8a62cba9649374e9), version(1), path(/system/lib64/extractors/liboggextractor.so)
+WAV Extractor: plugin_version(3), uuid(7d61385858374a3884c5332d1cddee27), version(1), path(/system/lib64/extractors/libwavextractor.so)
+</pre>
+
+<p>Android 10 仅支持最高版本的提取器 API。在查看当前提取器以便之后对您自己的提取器建模时，请使用 API 版本号最高的提取器。
+</p>
+<p>您可以扩展现有的提取器（例如，以支持在 MP4 文件中打包的新视频编码格式），而不是为全新格式添加提取器。实现这一目的的首选方式是将更改上游化。这样，您的更改就会成为平台的一部分，您也无需再维护自己的提取器。如果您无法或不愿意将更改上游化，则必须创建一个单独的提取器（如上所述）。唯一的不同之处在于，您的提取器支持的格式已有其他提取器支持。为确保系统会使用您的提取器，相比 Google 提供的提取器，应让其 <code>Sniff()</code> 函数返回更高的置信水平。
+</p>
+
+<h3 id="decoder">解码器</h3>
+
+<p>当您的提取器就位并由媒体框架加载时，媒体框架可以识别该文件并获取有关其内容的信息。
+</p>
+<p>下一步是针对您要添加支持的格式添加解码器。</p>
+
+<aside class="note"><strong>注意</strong>：仅在相应格式尚不受支持的情况下才需要添加解码器。例如，如果您添加了对包含 MP3 的 AVI 文件的支持，则只需要添加 AVI 提取器，因为 MP3 解码器已经存在。</aside>
+
+<p>在我们的 Windows-Media-in-AVI 示例中，需要添加 Windows Media 解码器。
+</p>
+<p>添加新解码器的方式与针对 AVC 或 HEVC（举例来说）添加自己的硬件解码器的方式大致相同。
+</p>
+<aside class="note"><strong>注意</strong>：虽然提取器会发布它包含的媒体轨道的 MIME 类型，但是也需要存在支持这些 MIME 类型的编解码器，这样，该文件才会完全受支持。严格来说，使用的实际 MIME 类型字符串是提取器和编解码器之间的一种协议。它不一定需要添加到 <code>MediaDefs.h</code> 文件中。</aside>
+
+<h3 id="media-scanner">媒体扫描器</h3>
+
+<p>如果您希望媒体扫描器找出新支持的文件类型并将其添加到媒体数据库，则媒体扫描器必须了解相应文件类型。
+</p>
+<p>从 Android 10 开始，<code>MediaFile.java</code> 文件不再包含从 MIME 到扩展的映射。相反，该映射由 <code>libcore</code> 中的 <code>MimeUtils</code> 维护。MIME 类型列表包含当前映射的列表。
+</p>
+<p>
+<code>MediaFile</code> 仍包含从 MIME 类型到 MTP 格式常量的映射。我们的示例 AVI 已包括在该映射中。
+</p>
+<p>提取器可以导出它们支持的文件扩展名列表（MP3、MP4 等）。但是，仅当使用 <code>LegacyMediaScanner</code> 时才会使用该列表。它对默认使用的 <code>ModernMediaScanner</code> 没有影响。
+</p>
+
+</body></html>

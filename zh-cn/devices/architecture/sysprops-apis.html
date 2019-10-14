@@ -1,0 +1,324 @@
+<html devsite><head>
+
+  <meta name="book_path" value="/_book.yaml"/>
+
+  <meta name="project_path" value="/_project.yaml"/>
+</head>
+<body>
+
+<!--
+  Copyright 2019 The Android Open Source Project
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+<h1 id="implementing_system_properties_as_apis" class="page-title">将系统属性作为 API 实现</h1>
+
+<p>系统属性是在系统范围内共享信息（通常是配置）的一种便捷方式。每个分区都可以在内部使用自己的系统属性。跨分区访问属性时可能会出现问题，例如 <code>/vendor</code> 访问 <code>/system</code> 定义的属性。从 Android 8.0 开始，可以升级某些分区（如 <code>/system</code>），而 <code>/vendor</code> 保持不变。由于系统属性只是不具有架构的字符串键/值对的全局字典，因此很难稳定属性。<code>/system</code> 分区可以更改或移除 <code>/vendor</code> 分区所依赖的属性，而不会另行通知。</p>
+
+<p>从 Android 10 版本开始，跨分区访问的系统属性系统化为 Sysprop 说明文件，并且访问属性的 API 会生成为 C++ 具体函数和 Java 类。这些 API 便于使用，因为访问不需要 magic 字符串（如 <code>ro.build.date</code>），它们可以静态输入。在编译时也需要检查 ABI 稳定性；如果发生不兼容的更改，则编译会中断。此检查充当各个分区之间明确定义的接口。这些 API 还可以在 Java 和 C ++ 之间实现一致性。</p>
+
+<h2 id="defining_system_properties_as_apis">将系统属性定义为 API</h2>
+
+<p>使用 Sysprop 说明文件 (<code>.sysprop</code>) 将系统属性定义为 API，该文件使用 protobuf 的 TextFormat，其架构如下：</p>
+<pre class="prettyprint"><code>// File: sysprop.proto
+
+syntax = "proto3";
+
+package sysprop;
+
+enum Access {
+  Readonly = 0;
+  Writeonce = 1;
+  ReadWrite = 2;
+}
+
+enum Owner {
+  Platform = 0;
+  Vendor = 1;
+  Odm = 2;
+}
+
+enum Scope {
+  Public = 0;
+  System = 1;
+  Internal = 2;
+}
+
+enum Type {
+  Boolean = 0;
+  Integer = 1;
+  Long = 2;
+  Double = 3;
+  String = 4;
+  Enum = 5;
+
+  BooleanList = 20;
+  IntegerList = 21;
+  LongList = 22;
+  DoubleList = 23;
+  StringList = 24;
+  EnumList = 25;
+}
+
+message Property {
+  string api_name = 1;
+  Type type = 2;
+  Access access = 3;
+  Scope scope = 4;
+  string prop_name = 5;
+  string enum_values = 6;
+  bool integer_as_bool = 7;
+}
+
+message Properties {
+  Owner owner = 1;
+  string module = 2;
+  repeated Property prop = 3;
+}
+</code></pre>
+<p>一个 Sysprop 说明文件包含一个属性消息，该消息描述一组属性。其字段的含义如下。</p>
+
+<table>
+  <tbody><tr>
+   <th>字段</th>
+   <th>含义</th>
+  </tr>
+  <tr>
+  <td><code>owner</code>
+   </td>
+   <td>设置为具有以下属性的分区：<code>Platform</code>、<code>Vendor</code> 或 <code>Odm</code>。
+   </td>
+  </tr>
+  <tr>
+  <td><code>module</code>
+   </td>
+   <td>用于创建放置生成的 API 的命名空间 (C++) 或静态最终类 (Java)。例如，<code>com.android.sysprop.BuildProperties</code> 将是 C ++ 中的命名空间 <code>com::android::sysprop::BuildProperties</code>，并且也是 Java 中 <code>com.android.sysprop</code> 中的软件包中的 <code>BuildProperties</code> 类。
+   </td>
+  </tr>
+  <tr>
+  <td><code>prop</code>
+   </td>
+   <td>属性列表。
+   </td>
+  </tr>
+</tbody></table>
+
+<p><code>Property</code> 消息字段的含义如下。</p>
+
+<table>
+  <tbody><tr>
+   <th>字段</th>
+   <th>含义</th>
+  </tr>
+  <tr>
+  <td><code>api_name</code>
+   </td>
+   <td>生成的 API 的名称。</td>
+  </tr>
+  <tr>
+  <td><code>type</code>
+   </td>
+   <td>此属性的类型。
+   </td>
+  </tr>
+  <tr>
+   <td><code>access<code>
+   </code></code></td>
+   <td><code>Readonly</code>：仅生成 getter API<p>
+<code>Writeonce</code>、<code>ReadWrite</code>：生成具有内部范围的 setter API</p><p>注意：前缀为 <code>ro.</code> 的属性可能不会使用 <code>ReadWrite</code> 访问权限。
+   </p></td>
+  </tr>
+  <tr>
+  <td><code>scope</code>
+   </td>
+   <td><code>Internal</code>：只有所有者才能访问。
+<p>
+<code>System</code>：仅捆绑模块（不是针对 SDK 或 NDK 编译的）才能访问。
+</p><p>
+<code>Public</code>：除 NDK 模块外的所有人都可以访问。
+   </p></td>
+  </tr>
+  <tr>
+  <td><code>prop_name</code>
+   </td>
+   <td>底层系统属性的名称，例如 <code>ro.build.date</code>。
+   </td>
+  </tr>
+  <tr>
+   <td><code>enum_values</code>
+   </td>
+   <td>（仅 <code>Enum</code>、<code>EnumList</code>）一个竖条 (|) 分隔的字符串，包含可能的枚举值。例如，<code>value1|value2</code>。
+   </td>
+  </tr>
+  <tr>
+   <td><code>integer_as_bool</code>
+   </td>
+   <td>（仅 <code>Boolean</code>、<code>BooleanList</code>）允许 setter 使用 <code>0</code> 和 <code>1</code> 而不是 <code>false</code> 和 true。
+   </td>
+  </tr>
+</tbody></table>
+
+<p>每种类型的属性都映射到 C ++ 和 Java 中的以下类型。</p>
+
+<table>
+  <tbody><tr>
+   <th>类型</th>
+   <th>C++</th>
+   <th>Java</th>
+  </tr>
+  <tr>
+   <td>Boolean</td>
+   <td><code>std::optional&lt;bool&gt;</code>
+   </td>
+   <td><code>Optional&lt;Boolean&gt;</code>
+   </td>
+  </tr>
+  <tr>
+   <td>Integer</td>
+   <td><code>std::optional&lt;std::int32_t&gt;</code>
+   </td>
+   <td><code>Optional&lt;Integer&gt;</code>
+   </td>
+  </tr>
+  <tr>
+   <td>Long</td>
+   <td><code>std::optional&lt;std::int64_t&gt;</code>
+   </td>
+   <td><code>Optional&lt;Long&gt;</code>
+   </td>
+  </tr>
+  <tr>
+   <td>Double</td>
+   <td><code>std::optional&lt;double&gt;</code>
+   </td>
+   <td><code>Optional&lt;Double&gt;</code>
+   </td>
+  </tr>
+  <tr>
+   <td>String</td>
+   <td><code>std::optional&lt;std::string&gt;</code>
+   </td>
+   <td><code>Optional&lt;String&gt;</code>
+   </td>
+  </tr>
+  <tr>
+   <td>Enum</td>
+   <td><code>std::optional&lt;{api_name}_values&gt;</code>
+   </td>
+   <td><code>Optional&lt;{api_name}_values&gt;</code>
+   </td>
+  </tr>
+  <tr>
+   <td>T List</td>
+   <td><code>std::vector&lt;std::optional&lt;T&gt;</code>
+   </td>
+   <td><code>List&lt;T&gt;</code>
+   </td>
+  </tr>
+</tbody></table>
+
+<p>下面的示例展示了定义三个属性的 Sysprop 说明文件：</p>
+<pre class="prettyprint"><code># File: android/sysprop/PlatformProperties.sysprop
+
+owner: Platform
+module: "android.sysprop.PlatformProperties"
+prop {
+    api_name: "build_date"
+    type: String
+    prop_name: "ro.build.date"
+    scope: System
+    access: Readonly
+}
+prop {
+    api_name: "date_utc"
+    type: Integer
+    prop_name: "ro.build.date_utc"
+    scope: Internal
+    access: Readonly
+}
+prop {
+    api_name: "device_status"
+    type: Enum
+    enum_values: "on|off|unknown"
+    prop_name: "device.status"
+    scope: Public
+    access: ReadWrite
+}
+</code></pre>
+<h2 id="defining_system_properties_libraries">定义系统属性库</h2>
+
+<p>您现在可以使用 Sysprop 说明文件定义 <code>sysprop_library</code> 模块。
+<code>sysprop_library</code> 用作 C ++ 和 Java 的 API。编译系统在内部为 <code>cc_library</code> 的每个实例生成一个 <code>java_sdk_library</code> 和一个 <code>sysprop_library</code>。</p>
+<pre class="prettyprint"><code>// File: Android.bp
+sysprop_library {
+    name: "PlatformProperties",
+    srcs: ["android/sysprop/PlatformProperties.sysprop"],
+    property_owner: "Platform",
+    api_packages: ["android.sysprop"],
+    vendor_available: true,
+}
+</code></pre>
+<p>您必须在源代码中包含 API 列表文件以进行 API 检查。为此，请创建 API 文件和一个 <code>api</code> 目录。将 <code>api</code> 目录放到与 <code>Android.bp</code> 相同的目录中。API 文件名包括 <code>current.txt</code>、<code>removed.txt</code>、<code>system-current.txt</code>、<code>system-removed.txt</code>、<code>test-current.txt</code> 和 <code>test-removed.txt</code>。您可以通过运行 <code>make
+update-api</code> 命令来更新 API 文件。编译系统通过在编译时将这些 API 文件与生成的 API 文件进行比较来检查 API 是否发生更改。下面是一个目录和文件单位示例：</p>
+<pre class="prettyprint"><code>├── api
+│   ├── current.txt
+│   ├── removed.txt
+│   ├── system-current.txt
+│   ├── system-removed.txt
+│   ├── test-current.txt
+│   └── test-removed.txt
+└── Android.bp
+</code></pre>
+<p>Java 和 C ++ 客户端模块都可以链接到 <code>sysprop_library</code> 以使用生成的 API。编译系统会创建从客户端到生成的 C ++ 和 Java 库的链接，从而使客户端能够访问生成的 API。</p>
+<pre class="prettyprint"><code>java_library {
+    name: "JavaClient",
+    srcs: ["foo/bar.java"],
+    libs: ["PlatformProperties"],
+}
+
+cc_binary {
+    name: "cc_client",
+    srcs: ["baz.cpp"],
+    shared_libs: ["PlatformProperties"],
+}
+</code></pre>
+<p>在上面的示例中，您可以按如下方式访问定义的属性。</p>
+
+<p>Java 示例：</p>
+<pre class="prettyprint"><code>import android.sysprop.PlatformProperties;
+
+…
+
+static void foo() {
+    …
+    Integer dateUtc = PlatformProperties.date_utc().orElse(-1);
+    …
+}
+…
+</code></pre>
+<p>C ++ 示例：</p>
+<pre class="prettyprint"><code>#include &lt;android/sysprop/PlatformProperties.sysprop.h&gt;
+using namespace android::sysprop;
+
+…
+
+void bar() {
+    …
+    std::string build_date = PlatformProperties::build_date().value_or("(unknown)");
+    …
+}
+…
+</code></pre>
+
+</body></html>

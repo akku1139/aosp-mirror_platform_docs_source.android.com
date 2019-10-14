@@ -160,8 +160,8 @@ sufficient. See [Simple Test Configuration](blueprints.md) for details.
 Important: The instructions in this section are needed only for CTS tests or those
 that require special setup, such as disabling Bluetooth or collecting sample data.
 All other cases can be covered through the
-[Simple Test Configuration](blueprints.md). See the
-[Complex Test Configuration](compatibility/tests/development/test-config) for
+[Simple Test Configuration](/compatibility/tests/development/blueprints). See the
+[Complex Test Configuration](/compatibility/tests/development/test-config) for
 more details applicable to this section.
 
 To use Trade Federation instead, write a test configuration

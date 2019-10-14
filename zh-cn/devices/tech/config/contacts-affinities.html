@@ -1,0 +1,159 @@
+<html devsite><head>
+    <title>联系人提供程序和亲密程度信息</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+
+  <!--
+      Copyright 2019 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>从 Android 10 开始，由<a href="https://developer.android.com/guide/topics/providers/contacts-
+provider.html" class="external">联系人提供程序</a>组件管理的联系人亲密程度相关数据（设备的“通讯录”应用中显示的数据源）的访问方式与在 Android 9 及更低版本不同。</p>
+
+<p>在 Android 10 之前，应用使用联系人提供程序访问数据并在设备和在线服务之间传输数据。Android {{androidQVersionNumber}} 中引入了有关数据可访问性的变更，以确保在使用联系人提供程序的所有 Android 10 设备中增强用户隐私保护。例如，底层数据库中不包含联系人亲密程度数据。因此，应用无法将内容写入该数据库或从中读取内容。变更包括：</p>
+
+<ul>
+  <li>联系人提供程序不记录联系人亲密程度相关数据，例如某位用户被联系的次数、上次联系时间、使用的应用、进行联系的人或任何相关历史数据。</li>
+
+  <li>Contacts Provider autocomplete API 中的 <code><a href="https://developer.android.com/reference/android/widget/MultiAutoCompleteTe
+xtView" class="external">MultiAutoCompleteTextView</a></code> 类不会按互动计数器对查询结果进行排序。</li>
+
+  <li>Android 框架不提供隐式联系人排名（但是，用户控制的显式联系人排名（例如已加星标的联系人）仍然提供）。<em><em></em></em></li>
+</ul>
+
+<p>要实施这些变更，请执行以下操作之一：</p>
+
+<ul>
+  <li>使用最新的联系人提供程序。</li>
+
+  <li>更新您的版本（如果您使用的是派生版本）。</li>
+</ul>
+
+<p>此外，请更新任何依赖于<a href="#fields">已弃用的联系人提供程序功能</a>的应用。<strong>不允许</strong>使用旨在针对已弃用的功能给出解决方案的 API 版本。</p>
+
+<p>在 Android 9 及更低版本中，联系人提供程序中的联系人互动数据尚未移除，而在 Android {{androidQVersionNumber}} 中，系统会定期清除联系人互动数据（大约每天一次），以模拟同等效果。联系人提供程序会存储此类信息，但只是暂时存储。
+</p>
+
+<h3 id="APIchanges">API 变更</h3>
+
+<p>预计这些变更会对 API 产生很大影响。例如，自动填充排名也将无法执行。对 API 行为的潜在影响包括：</p>
+
+<ul>
+  <li>联系人提供程序不会在 <code><a href="https://developer.android.com/reference/android/provider/ContactsContract.
+Contacts.html" class="external">ContactsContract.Contacts</a></code> 表格列中存储用户对联系人的偏好或与联系人的互动信息。</li>
+  <li>Autocomplete API 不会按互动计数器对结果进行排序。</li>
+  <li><code>TIMES_CONTACTED</code> / <code>TIMES_USED</code> 和 <code>LAST_TIME_CONTACTED</code> / <code>LAST_TIME_USED</code> 列不会更新。</li>
+
+<ul>
+  <li>升级到 Android 10 后，这些列要么清空为 <code>null</code>，要么设置为 0，具体取决于受影响的列。</li>
+  <li>Autocomplete query API 中的排名将返回按字母顺序（而非按亲密程度信息）排序的结果。</li>
+  <li>对常用联系人的 API 调用（例如，使用过滤器字符串 <code>CONTENT_FREQUENT_URI</code>）不会返回任何结果。</li></ul></ul>
+
+<p>通常，如果任何已弃用的 Contacts Provider API 元素使用计数器，则这些计数器（在 Android 10 中使用时）包含 0，且在查询时会返回 0。系统会忽略来自受影响 API 的更新请求。例如，<code><a href="https://developer.android.com/reference/android/provider/ContactsContract.
+DataUsageFeedback.html" class="external">ContactsContract.DataUsageFeedback</a></code> 类已被弃用，因此系统会忽略对此类的更新和删除调用。</p>
+
+<h4 id="fields">影响 API 的字段</h4>
+
+<p>在 Android 10 中，以下字段已发生更改：</p>
+
+<ul>
+  <li><code><a href="https://developer.android.com/reference/android/provider/ContactsContract.ContactOptionsColumns.html#TIMES_CONTACTED" class="external">ContactsContract.ContactOptionsColumns#TIMES_CONTACTED</a></code></li>
+  <li><code><a href="https://developer.android.com/reference/android/provider/ContactsContract.ContactOptionsColumns.html#LAST_TIME_CONTACTED" class="external">ContactsContract.ContractOptionsColumns.LAST_TIME_CONTACTED</a></code></li>
+  <li><code><a href="https://developer.android.com/reference/android/provider/ContactsContract.DataUsageStatColumns.html#TIMES_USED" class="external">ContactsContract.DataUsageStatColumns#TIMES_USED</a></code></li>
+  <li><code><a href="https://developer.android.com/reference/android/provider/ContactsContract.DataUsageStatColumns.html#LAST_TIME_USED" class="external">ContactsContract.DataUsageStatColumns#LAST_TIME_USED</a></code></li>
+  <li><code><a href="https://developer.android.com/reference/android/provider/ContactsContract.Contacts.html?hl=ro#CONTENT_STREQUENT_FILTER_URI" class="external">ContactsContract#CONTENT_STREQUENT_FILTER_URI</a></code></li>
+  <li><code><a href="https://developer.android.com/reference/android/provider/ContactsContract.Contacts.html?hl=ro#CONTENT_STREQUENT_URI" class="external">ContactsContract.Contacts#CONTENT_STREQUENT_URI</a></code></li>
+  <li><code><a href="https://developer.android.com/reference/android/provider/ContactsContract.Contacts.html?hl=ro#CONTENT_FREQUENT_URI" class="external">ContactsContract.Contacts#CONTENT_FREQUENT_URI</a></code></li>
+  <li><code><a href="https://developer.android.com/reference/android/provider/ContactsContract.Contacts.html#ENTERPRISE_CONTENT_FILTER_URI" class="external">ContactsContract.Contacts#ENTERPRISE_CONTENT_FILTER_URI</a></code></li>
+  <li><code><a href="https://developer.android.com/reference/android/provider/ContactsContract.Contacts#CONTENT_FILTER_URI" class="external">ContactsContract.Contacts#CONTENT_FILTER_URI</a></code></li>
+</ul>
+
+<p>Android 10 中受影响的字段可能存在于不同的 API 中，如下表所示。已弃用的 API 字段会返回所列的行为。由于这些已弃用字段中的某一个可能会在您的多个 API 中使用，因此请验证您的用例。</p>
+
+<table>
+  <tbody>
+    <tr>
+      <th>类</th>
+      <th>API 字段</th>
+      <th>10 返回</th>
+    </tr>
+    <tr>
+      <td>
+      <code><a href="https://developer.android.com/reference/android/provider/ContactsContract.Contacts" class="external">ContactsContract.Contacts</a></code><br />
+      <code><a href="https://developer.android.com/reference/android/provider/ContactsContract.RawContacts" class="external">ContactsContract.RawContacts</a></code><br />
+      <code><a href="https://developer.android.com/reference/android/provider/ContactsContract.Data" class="external">ContactsContract.Data</a></code><br />
+      <code><a href="https://developer.android.com/reference/android/provider/ContactsContract.Contacts.Entity" class="external">ContactsContract.Entity</a></code>
+      </td>
+      <td><code>ContactOptionsColumns</code><br />
+        <code>TIMES_CONTACTED</code><br />
+        <code>LAST_TIME_CONTACTED</code>
+      </td>
+      <td>无论这些列的使用方式如何，它们始终包含 0。对它们做出的修改尝试将被忽略。</td>
+    </tr>
+    <tr>
+      <td><code><a href="https://developer.android.com/reference/android/provider/ContactsContract.Contacts" class="external">Contacts</a></code>
+      </td>
+      <td><code>markAsContacted()</code></td>
+      <td>无操作。</td>
+    </tr>
+    <tr>
+      <td><code><a href="https://developer.android.com/reference/android/provider/ContactsContract.DataUsageFeedback" class="external">ContactsContract.DataUsageFeedback</a></code>
+      </td>
+      <td><p><code>update</code><br />
+        <code>delete</code></p>
+     </td>
+      <td>无操作。</td>
+    </tr>
+    <tr>
+      <td><code><a href="https://developer.android.com/reference/android/provider/ContactsContract.Contacts" class="external">ContactsContract.Contacts</a></code>
+      </td>
+      <td>Strequent（已加星标 + 常用）<em></em><br />
+         <code>CONTENT_STREQUENT_FILTER_URI</code><br />
+         <code>CONTENT_STREQUENT_URI</code><br />
+         <code>CONTENT_FREQUENT_URI</code>
+      </td>
+      <td>仅返回已加星标的联系人。<em></em>不会返回常用联系人。</td>
+    </tr>
+    <tr>
+      <td><code><a href="https://developer.android.com/reference/android/provider/ContactsContract.CommonDataKinds.Email" class="external">ContactsContract.CommonDataKinds.Email</a></code><br />
+      <code><a href="https://developer.android.com/reference/android/provider/ContactsContract.CommonDataKinds.Phone" class="external">ContactsContract.CommonDataKinds.Phone</a></code><br />
+      <code><a href="https://developer.android.com/reference/android/provider/ContactsContract.CommonDataKinds.Callable" class="external">ContactsContract.CommonDataKinds.Callable</a></code>
+      </td>
+      <td>Filter API（也称为 Autocomplete API）
+        <p><code>CONTENT_FILTER_URI</code><br />
+        <code>ENTERPRISE_CONTENT_FILTER_URI</code></p>
+      </td>
+      <td>结果并不按亲密程度排序，而是按已加星标和名称排序。<em></em><em></em></td>
+    </tr>
+  </tbody>
+</table>
+
+<h4 id="alternatives">替代选项</h4>
+
+<p>已弃用的 API 字段没有替代选项。不允许使用旨在规避这些限制的解决方法（无论是以新 API 还是新字段的形式）。
+</p>
+
+<h3 id="implementation">实现</h3>
+
+<p>您无需执行任何操作即可实施这些变更。它们是旨在增强 Android 操作系统平台上用户隐私保护的计划的组成部分。但是，如果您的应用依赖于已弃用的功能，则您可能需要更新应用以抵补任何变更带来的差异。此外，如果您使用联系人提供程序的派生版本，则必须更新联系人提供程序。</p>
+
+<h3 id="nocustomize">禁止自定义</h3>
+
+<p>请勿自定义或解决联系人亲密程度信息变更。这些变更内置在框架中，如果您对其做出任何更改，将违反相关规定。切勿改动默认设置或提供后门替代选项。
+</p>
+
+</body></html>

@@ -1,0 +1,81 @@
+
+<html devsite>
+  <head>
+    <title>Safe Union</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2019 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+{% include "_versions.html" %}
+
+<p><code>safe_union</code> in HIDL represents an explicitly tagged union type.
+This is similar to a <code>union</code> except <code>safe_union</code> keeps
+track of the underlying type and is compatible with Java. The
+<code>safe_union</code> type is available in Android {{ androidQVersionNumber }}
+and higher for new and upgraded devices.</p>
+
+<h2 id="syntax">Syntax</h2>
+<p>A <code>safe_union</code> is expressed in HIDL exactly like a
+<code>union</code> or <code>struct</code>.</p>
+
+<pre class="prettyprint">
+safe_union MySafeUnion {
+     TypeA a;
+     TypeB b;
+     ...
+};
+</pre>
+
+<h2 id="usage">Usage</h2>
+<p>At runtime, a <code>safe_union</code> is only ever one type. By default, it
+will be the first type in the union. For instance, above,
+<code>MySafeUnion</code> is by default <code>TypeA</code>.</p>
+
+<p><code>hidl-gen</code> generates a custom class or struct for a
+<code>safe_union</code> in both C++ and Java. This class includes a
+discriminator for each member (in <code>hidl_discriminator</code>), a method to
+get the current discriminator (<code>getDiscriminator</code>), and setters and
+getters for each member. Each setter and getter is named exactly as its member.
+For instance, the getter for <code>TypeA a</code> will be called "a", and it
+will return something of <code>TypeA</code>. The corresponding setter will also
+be called "a" and take a parameter of <code>TypeA</code>. Setting the value in
+a <code>safe_union</code> will update the value of the discriminator as
+returned by <code>getDiscriminator</code>. Accessing a value from a
+discriminator that is not the current discriminator aborts the program. For
+instance, if calling <code>getDiscriminator</code> on an instance of
+<code>MySafeUnion</code> returns <code>hidl_discriminator::b</code>, then
+trying to retrieve <code>a</code> will abort the program.</p>
+
+<h2 id="monostate">Monostate</h2>
+
+<p>A <code>safe_union</code> always has a value, but if it is desired to not
+have a value, use <code>android.hidl.safe_union@1.0::Monostate</code> as a
+placeholder. For instance, the following union can either be
+<code>noinit</code> (empty) or <code>foo</code>:</p>
+
+<pre class="prettyprint">
+import android.hidl.safe_union@1.0::Monostate;
+
+safe_union OptionalFoo {
+     Monostate noinit;
+     Foo foo;
+};
+</pre>
+
+  </body>
+</html>

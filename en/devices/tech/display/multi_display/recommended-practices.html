@@ -1,0 +1,144 @@
+<html devsite>
+  <head>
+    <title>Recommended Practices</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+{% include "_versions.html" %}
+
+  <!--
+      Copyright 2019 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<h2 id="foldable">Apps for foldable and multi-screen devices</h2>
+
+<p>Generally, apps should not rely on static identifiers or logic that depends on
+some display IDs. In most cases, apps should resize and work on different displays
+and the system should control where to locate apps. For example, to build a
+new and unique experience for foldable devices and launch a special app on the
+external screen when the device is folded.</p>
+
+<p>In this case, SystemUI (or another system component) should detect the
+fold, determine if it's appropriate to perform an action, and then launch the
+target activity and specify an external display ID as the launch target.
+
+Apps shouldn't detect this action or perform any action in response and then
+perform the launch on a specific display. In other words, do not assume that
+what works on one device will work on other devices. In short, device-specific
+code increases fragmentation.</p>
+
+<h2 id="restriction">Restricting access to displays</h2>
+
+<p>If the device configuration requires the restriction of access to one or more
+displays, the recommendation is to use the <code>Display#FLAG_PRIVATE</code> flag
+to designate such displays as <em>private</em>. Doing so restricts all but the
+owner from adding content to the display. Any attempt to launch an activity or to
+add a window by anyone but the owner results in a <code>SecurityException</code>.
+If the system owns the display, the system can add windows and launch activities.</p>
+
+<p>In addition, entities placed on a display can always access that display.
+If the owner launches an activity on a display, then the activity can launch other
+activities on this display. As a result, the owner is responsible for restricting
+access and allowing trusted apps <em>only</em>.</p>
+
+<p>In addition, more restrictions are added to virtual displays because any app can
+create one without making it visible to the user. If the virtual display isn't
+owned by the system, then only activities with
+<code><a
+         href="https://developer.android.com/guide/topics/manifest/activity-element#embedded"
+         class="external">allowEmbedded</a></code>
+are permitted and the caller should have the <code>ACTIVITY_EMBEDDING</code>
+permission.</p>
+
+<p>For more information, see:
+
+<ul>
+  <li><code>ActivityStackSupervisor#isCallerAllowedToLaunchOnDisplay()</code></li>
+  <li><code>ActivityDisplay#isUidPresent()</code></li>
+  <li><code>DisplayManagerService#isUidPresentOnDisplay()</code></li>
+</ul>
+
+<p>To conditionally control activity launches, use <code>LaunchParamsController</code>,
+which intercepts all activity launches and allows a system component to modify the
+parameters used for launch. This is available in <code>system_server</code>.</p>
+
+<h2 id="windowing">Configuring display windowing settings and system decorations</h2>
+
+<p><a href="/devices/tech/display/multi_display/system-decorations#decorations">System decorations</a> can
+be configured per display in <code>DisplayWindowSettings</code>. A device
+implementation can provide a default configuration in
+<code>/data/system/display_settings.xml</code>.</p>
+
+<p>This value determines whether system decorations (launcher, wallpaper,
+navigation bar, and other decor windows) and the IME appear on a display.
+For details, see <code>DisplayWindowSettings#shouldShowSystemDecorsLocked()</code>
+and <code>DisplayWindowSettings#shouldShowImeLocked()</code>.</p>
+
+<p>To identify the display, use either a unique ID (this default uses
+<code>DisplayInfo#uniqueId</code>) or a physical port ID for hardware
+displays (see <code>DisplayInfo#address</code>).</p>
+
+<p>For example, the following display config example enables system decorations and the
+IME on a simulated display:</p>
+
+<pre class="prettyprint">
+&lt;?xml version='1.0' encoding='utf-8' standalone='yes' ?&gt;
+&lt;display-settings&gt;
+&lt;config identifier="0" /&gt;
+&lt;display
+  name="overlay:1"
+  shouldShowSystemDecors="true"
+  shouldShowIme="true" /&gt;
+&lt;/display-settings&gt;</pre>
+
+<p>In the example above, <code>uniqueId</code> is used for display identification
+in the name attribute, which for a simulated display is <code>overlay:1</code>.
+For a built-in display, a sample value may be <code>"local:45354385242535243453"</code>.
+Another option is to use hardware port information and set <code>identifier="1"</code>
+to correspond to <code>DisplayWindowSettings#IDENTIFIER_PORT</code> and then update the
+name to use the <code>"port:&lt;port_id&gt;"</code> format:</p>
+
+<pre class="prettyprint">
+&lt;?xmlversion='1.0' encoding='utf-8' standalone='yes' ?&gt;
+&lt;display-settings&gt;
+&lt;config identifier="1" /&gt;
+&lt;display
+  name="port:12345"
+  shouldShowSystemDecors="true"
+  shouldShowIme="true" /&gt;
+&lt;/display-settings&gt;
+</pre>
+
+<p>For details, see <a href="/devices/tech/display/multi_display/displays#static">Static display identifiers</a>.</p>
+
+<aside class="key-point"><b>Key Point:</b> Because some settings are read once per system boot,
+updating a value at runtime may not take effect until the system is next rebooted.
+<code>display_settings.xml</code> is persisted in the <code>/data/</code> directory. A
+factory wipe can erase this file. Therefore, if a device implementation provides a default
+configuration in <code>display_settings.xml</code>, be sure to provide the configuration
+before WindowManager is initialized.</aside>
+
+<p>For more information, see:
+
+<ul>
+<li><a href="/devices/tech/display/multi_display/display#windows">Display window settings</a></li>
+<li><a href="/devices/tech/display/multi_display/display#static">Static display identifiers</a></li>
+  <li><a href="/devices/tech/display/multi_display/system-decorations">System decorations support</a></li>
+</ul>
+
+
+  </body>
+</html>

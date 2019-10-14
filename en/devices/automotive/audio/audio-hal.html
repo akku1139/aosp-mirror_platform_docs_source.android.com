@@ -1,6 +1,6 @@
 <html devsite>
   <head>
-    <title>Implementing the Audio HAL</title>
+    <title>Implementing Automotive Audio HAL</title>
     <meta name="project_path" value="/_project.yaml" />
     <meta name="book_path" value="/_book.yaml" />
   </head>
@@ -22,10 +22,9 @@
       limitations under the License.
   -->
 
-
 <p>
   Automotive audio implementations rely on the standard
-  <a href="/devices/audio/implement"> Android Audio HAL</a>, which includes the
+  <a href="/devices/audio/implement">Android Audio HAL</a>, which includes the
   following:
 </p>
 
@@ -41,14 +40,14 @@
   </ul>
   <li><code><strong>IStream</code></strong>
   (<code>hardware/interfaces/audio/2.0/IStream.hal</code>). Along with its In
-  and Out variants, manages the actual streaming of audio samples to and from
+  and Out variants, manages the streaming of audio samples to and from
   the hardware.</li>
 </ul>
 
 <h2 id="automotive-device-types">Automotive device types</h2>
 
 <p>
-The following device types are relevant for automotive platforms:
+The following device types are relevant for automotive platforms.
 </p>
 
 <table>
@@ -60,37 +59,37 @@ The following device types are relevant for automotive platforms:
 </thead>
 <tbody>
 <tr>
-<td>AUDIO_DEVICE_OUT_BUS</td>
+<td><code>AUDIO_DEVICE_OUT_BUS</code></td>
 <td>Primary output from Android (this is how all audio from Android is
 delivered to the vehicle). Used as the address for disambiguating streams
-for each Context.</td>
+for each context.</td>
 </tr>
 <tr>
-<td>AUDIO_DEVICE_OUT_TELEPHONY_TX</td>
+<td><code>AUDIO_DEVICE_OUT_TELEPHONY_TX</code></td>
 <td>Used for audio routed to the cellular radio for transmission.</td>
 </tr>
 <tr>
-<td>AUDIO_DEVICE_IN_BUS</td>
+<td><code>AUDIO_DEVICE_IN_BUS</code></td>
 <td>Used for inputs not otherwise classified.</td>
 </tr>
 <tr>
-<td>AUDIO_DEVICE_IN_FM_TUNER</td>
+<td><code>AUDIO_DEVICE_IN_FM_TUNER</code></td>
 <td>Used only for broadcast radio input.</td>
 </tr>
 <tr>
-<td>AUDIO_DEVICE_IN_TV_TUNER</td>
-<td>May be used for a TV device if present.</td>
+<td><code>AUDIO_DEVICE_IN_TV_TUNER</code></td>
+<td>Used for a TV device if present.</td>
 </tr>
 <tr>
-<td>AUDIO_DEVICE_IN_LINE</td>
+<td><code>AUDIO_DEVICE_IN_LINE</code></td>
 <td>Used for AUX input jack.</td>
 </tr>
 <tr>
-<td>AUDIO_DEVICE_IN_BLUETOOTH_A2DP</td>
+<td><code>AUDIO_DEVICE_IN_BLUETOOTH_A2DP</code></td>
 <td>Music received over Bluetooth.</td>
 </tr>
 <tr>
-<td>AUDIO_DEVICE_IN_TELEPHONY_RX</td>
+<td><code>AUDIO_DEVICE_IN_TELEPHONY_RX</code></td>
 <td>Used for audio received from the cellular radio associated with a phone
 call.</td>
 </tr>
@@ -102,10 +101,11 @@ call.</td>
 <p>
   Most audio sources should be captured using <code>AudioRecord</code> or a
   related Android mechanism. The data can then be assigned
-  <a href="/devices/audio/attributes">AudioAttributes</a> and played through
-  <code>AndroidTrack</code> either by relying on the default Android routing
+  <a href="/devices/audio/attributes">audio attributes through the <code>AudioAttributes</code>
+  class</a> and played through
+  <code>AudioTrack</code> either by relying on the default Android routing
   logic or by explicitly calling <code>setPreferredDevice()</code> on the
-  <code>AudioRecord</code> and/or <code>AudioTrack</code> objects.
+  <code>AudioRecord</code> or <code>AudioTrack</code> objects.
 <p>
 
 <p>
@@ -120,30 +120,29 @@ call.</td>
 
 <p>
   Audio devices visible to Android must be defined in
-  <code>system/etc/audio_policy_configuration.xml</code>, which includes the
+  <code>/audio_policy_configuration.xml</code>, which includes the
   following components:
 </p>
 
 <ul>
-  <li><strong>module name</strong>. Supports "primary" (used for automotive
+  <li><strong>module name.</strong> Supports "primary" (used for automotive
   use cases), "A2DP", "remote_submix", and "USB". The module name and the
   corresponding audio driver should be compiled to
   <code>audio.primary.$(variant).so</code>.</li>
-  <li><strong>devicePorts</strong>. Contains a list of device descriptors for
+  <li><strong>devicePorts.</strong> Contains a list of device descriptors for
   all input and output devices (includes permanently attached devices and
   removable devices) that are accessible from this module.
   <ul>
     <li>For each output device, you can define gain control that consists of
-      min/value/step/default values in millibel (1 millibel = 1/100 dB = 1/1000
-      bel).</li>
-      <li>The address attribute on a <code>devicePort</code> can be used to find
+      min/value/step/default values in millibel (1 millibel = 1/100&nbsp;dB = 1/1000&nbsp;bel).</li>
+      <li>The address attribute on a <code>devicePort</code> instance can be used to find
       the device, even if there are multiple devices with the same device type
       as <code>AUDIO_DEVICE_OUT_BUS</code>.</li>
   </ul>
-  <li><strong>mixPorts</strong>. Contains a list of all output and input streams
-  exposed by the audio HAL. Each <code>mixPort</code> can be considered as a
+  <li><strong>mixPorts.</strong> Contains a list of all output and input streams
+  exposed by the audio HAL. Each <code>mixPort</code> instance can be considered as a
   physical stream to Android <code>AudioService</code>.</li>
-  <li><strong>routes</strong>. Defines a list of possible connections between
+  <li><strong>routes.</strong> Defines a list of possible connections between
   input and output devices or between stream and device.</li>
 </ul>
 
@@ -162,7 +161,7 @@ call.</td>
                 &lt;item&gt;bus0_phone_out&lt;/item&gt;
 &lt;defaultOutputDevice&gt;bus0_phone_out&lt;/defaultOutputDevice&gt;
             &lt;mixPorts&gt;
-                &lt;mixPort name="mixport_bus0_phone_out" 
+                &lt;mixPort name="mixport_bus0_phone_out"
                          role="source"
                          flags="AUDIO_OUTPUT_FLAG_PRIMARY"&gt;
                     &lt;profile name="" format="AUDIO_FORMAT_PCM_16_BIT"
@@ -171,7 +170,7 @@ call.</td>
                 &lt;/mixPort&gt;
             &lt;/mixPorts&gt;
             &lt;devicePorts&gt;
-                &lt;devicePort tagName="bus0_phone_out" 
+                &lt;devicePort tagName="bus0_phone_out"
                             role="sink"
                             type="AUDIO_DEVICE_OUT_BUS"
                             address="BUS00_PHONE"&gt;
@@ -180,9 +179,9 @@ call.</td>
                             channelMasks="AUDIO_CHANNEL_OUT_STEREO"/&gt;
                     &lt;gains&gt;
                         &lt;gain name="" mode="AUDIO_GAIN_MODE_JOINT"
-                                minValueMB="-8400" 
-                                maxValueMB="4000" 
-                                defaultValueMB="0" 
+                                minValueMB="-8400"
+                                maxValueMB="4000"
+                                defaultValueMB="0"
                                 stepValueMB="100"/&gt;
                     &lt;/gains&gt;
                 &lt;/devicePort&gt;
@@ -199,11 +198,11 @@ call.</td>
 <h2 id="device-ports">Specifying devicePorts</h2>
 
 <p>
-  Automotive platforms should specify a <code>devicePort</code> for each
+  Automotive platforms should specify a <code>devicePort</code> instance for each
   physical stream that is input to and output from Android. For output,
-  <code>devicePorts</code> should be of type <code>AUDIO_DEVICE_OUT_BUS</code>,
-  and addressed by integers (i.e., Bus 0, Bus 1, etc.). <code>mixPort</code>s
-  should be created in 1:1 relation to the <code>devicePorts</code> and should
+  each <code>devicePort</code> instance should be of type <code>AUDIO_DEVICE_OUT_BUS</code>,
+  and addressed by integers (that is, Bus 0, Bus 1, etc.). <code>mixPort</code> instances
+  should be created in 1:1 relation to the <code>devicePort</code> instances and should
   allow specification of the data formats that can be routed to each bus.
 </p>
 
@@ -211,21 +210,21 @@ call.</td>
   Automotive implementations can use multiple input device types, including
   <code>FM_TUNER</code> (reserved for broadcast radio input), <code>MIC</code>
   device for handling microphone input, and <code>TYPE_AUX_LINE</code> for
-  representing analog line input. All other input streams are assigned to the
-  <code>AUDIO_DEVICE_IN_BUS</code> and discovered by enumerating the devices via
+  representing analog line input. All other input streams are assigned to
+  <code>AUDIO_DEVICE_IN_BUS</code> and discovered by enumerating the devices with
   a <code>AudioManager.getDeviceList()</code> call. Individual sources can be
-  differentiated by their <code>AudioDeviceInfo.getProductName()</code>.
+  differentiated by <code>AudioDeviceInfo.getProductName()</code>.
   <p>
 
 <p>
   You can also define external devices as ports, then use those ports to
   interact with external hardware with the
-  <code>IDevice::createAudioPatch</code> method of the Audio HAL (exposed via a
+  <code>IDevice::createAudioPatch</code> method of the Audio HAL (exposed through a
     new <code>CarAudioManager</code> entry point).
 </p>
 
 <p>
-  When the BUS-based audio driver is present, you must set the
+  When the bus-based audio driver is present, you must set the
   <code>audioUseDynamicRouting</code> flag to <code>true</code>:
 </p>
 

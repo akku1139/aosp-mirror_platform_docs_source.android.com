@@ -1,0 +1,173 @@
+<html devsite>
+  <head>
+    <title>Implementing OpenGL ES and EGL</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+    {% include "_versions.html" %}
+  <!--
+      Copyright 2019 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+
+<p>OpenGL is a cross-platform graphics API that specifies a standard software
+interface for 3D graphics processing hardware. OpenGL ES is a subset of the
+OpenGL specification for embedded devices.</p>
+
+<p>To be Android <a href="/compatibility/overview">compatible</a>, devices
+need to provide drivers for EGL, OpenGL ES 1.x, and OpenGL ES 2.0. Support
+for OpenGL ES 3.x is optional. Key considerations include:</p>
+
+<ul>
+  <li>Ensuring that the GL driver is robust and conforms to OpenGL ES standards.
+  </li>
+  <li>Allowing an unlimited number of GL contexts. Because Android allows
+    apps in the background and tries to keep GL contexts alive, you shouldn't
+    limit the number of contexts in your driver.</li>
+  <li>Being mindful of the amount of memory allocated for each context, because
+    it's common to have 20&ndash;30 active GL contexts at once.</li>
+  <li>Supporting the YV12 image format and other YUV image formats that come
+    from other components in the system, such as media codecs or the camera.</li>
+  <li>Supporting the mandatory extensions
+    <code>EGL_KHR_wait_sync</code>,
+    <code>GL_OES_texture_external</code>,
+    <code>EGL_ANDROID_image_native_buffer</code>, and
+    <code>EGL_ANDROID_recordable</code>. Additionally, Hardware Composer v1.1
+    and higher require the <code>EGL_ANDROID_framebuffer_target</code>
+    extension.</li>
+</ul>
+
+<p>It's highly recommended to also support <code>EGL_ANDROID_blob_cache</code>,
+<code>EGL_KHR_fence_sync</code>, and
+<code>EGL_ANDROID_native_fence_sync</code>.</p>
+
+<p> Android {{ androidQVersionNumber }} implements the <a
+href="https://www.khronos.org/registry/EGL/specs/eglspec.1.5.pdf"
+class="external">EGL 1.5 interface</a>. For information on new features in
+EGL 1.5, see the <a
+href="https://www.khronos.org/news/press/khronos-releases-egl-1.5-specification"
+class="external">Khronos Releases 1.5 Specification</a>.</p>
+
+<aside class="note"><strong>Note:</strong> The OpenGL API exposed to app
+developers differs from the OpenGL implemented on the device. Apps can't
+directly access the GL driver layer and must go through the interface provided
+by the APIs.</aside>
+
+<h2 id="driver_emun">Driver loading</h2>
+
+<p>Android expects the GPUs available to the system to be known when the system
+image is built. The preferred paths for 32-bit and 64-bit OpenGL ES drivers are
+<code>/vendor/lib/egl</code> and <code>/vendor/lib64/egl</code> respectively.
+The <a href="https://android.googlesource.com/platform/frameworks/native/+/refs/heads/master/opengl/libs/EGL/Loader.h"
+class="external">loader</a> uses two system properties,
+<code>ro.hardware.egl</code> and <code>ro.board.platform</code>, or the exact
+name to discover and load the system drivers. The OpenGL ES driver must be
+shipped in either one binary or split into three binaries. If the OpenGL ES
+driver is shipped in one binary, use one of the following names:</p>
+
+<pre class="prettyprint">
+libGLES_${ro.hardware.egl}.so
+libGLES_${ro.board.platform}.so
+libGLES.so</pre>
+
+<p>If the OpenGL ES driver is shipped into three binaries, use one of the
+following name sets:</p>
+
+<pre class="prettyprint">
+libEGL_${ro.hardware.egl}.so
+libGLESv1_CM_${ro.hardware.egl}.so
+libGLESv2_${ro.hardware.egl}.so
+
+libEGL_${ro.board.platform}.so
+libGLESv1_CM_${ro.board.platform}.so
+libGLESv2_${ro.board.platform}.so
+
+libEGL.so
+libGLESv1_CM.so
+libGLESv2.so</pre>
+
+<h2 id="gles_layers">OpenGL ES layers</h2>
+
+<p>Android {{ androidQVersionNumber }} introduces a layering system for GLES
+2.0+. GLES layers are shared objects available from within apps or provided by
+tools. GLES layers enable debuggable apps to discover and load layers using the
+same setup mechanisms as
+<a href="https://developer.android.com/ndk/guides/graphics/validation-layer#vl-adb"
+   class="external">Vulkan</a>.</p>
+
+<aside class="caution"><strong>Caution:</strong> When layering is enabled,
+GLES 1.x exclusive functions continue to route to GLES 1.x drivers,
+but functions shared with GLES 2.0+ are routed to 2.0+ drivers.</aside>
+
+<p>GLES LayerLoader, a component within the EGL loader, identifies GLES layers.
+For each layer the GLES LayerLoader finds, the GLES LayerLoader
+calls <code>AndroidGLESLayer_Initialize</code>, walks libEGL's function lists,
+and calls <code>AndroidGLESLayer_GetProcAddress</code> for all known functions.
+If the layer intercepts a function, it tracks the function's address.
+If the layer doesn't intercept a function,
+<code>AndroidGLESLayer_GetProcAddress</code> returns the same function
+address it was passed. The LayerLoader then updates the function hook list to
+point to the layer's entry point.</p>
+
+<h3 id="enable_layers">Enabling layers</h3>
+
+<aside class="note"><strong>Note:</strong> Android's security model and policies
+differ significantly from other platforms. Android only enables those who have
+root access to load GLES layers from a device's local storage. Without
+root access, GLES layers can only be loaded for debuggable apps.</aside>
+
+<p>You can enable GLES layers either per app or globally. Per-app settings
+persist across reboots, while global properties are cleared on reboot.</p>
+
+<p>To enable layers <em>per app</em>:</p>
+
+<pre class="prettyprint">
+# Enable layers
+<code class="devsite-terminal">adb shell settings put global enable_gpu_debug_layers 1</code>
+
+# Specify target app
+<code class="devsite-terminal">adb shell settings put global gpu_debug_app <var>package_name</var></code>
+
+# Specify layer list (from top to bottom)
+<code class="devsite-terminal">adb shell settings put global gpu_debug_layers_gles <var>layer1</var>:<var>layer2</var>:<var>...</var>:<var>layerN</var></code>
+
+# Specify packages to search for layers
+<code class="devsite-terminal">adb shell settings put global gpu_debug_layer_app <var>package1</var>:<var>package2</var>:<var>...</var>:<var>packageN</var></code>
+</pre>
+
+<p>To disable layers <em>per app</em>:</p>
+
+<pre class="prettyprint">
+<code class="devsite-terminal">adb shell settings delete global enable_gpu_debug_layers</code>
+<code class="devsite-terminal">adb shell settings delete global gpu_debug_app</code>
+<code class="devsite-terminal">adb shell settings delete global gpu_debug_layer_app</code>
+</pre>
+
+<p>To enable layers <em>globally</em>:</p>
+
+<pre class="prettyprint">
+# Attempts to load layers for all applications, including native executables
+<code class="devsite-terminal">adb shell setprop debug.gles.layers <var>layer1</var>:<var>layer2</var>:<var>...</var>:<var>layerN</var></code>
+</pre>
+
+<h3 id="test_layers">Testing layers</h3>
+
+<p>GLES layers are backed by Android CTS and are required to pass CTS tests for
+<a href="/compatibility/overview">compatible devices</a>. To identify if layers
+are working on a device, run <code>$ atest CtsGpuToolsHostTestCases</code>.</p>
+
+  </body>
+</html>

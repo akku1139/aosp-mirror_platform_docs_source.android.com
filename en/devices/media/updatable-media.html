@@ -1,0 +1,271 @@
+<html devsite>
+<head>
+  <title>Updatable Media Components</title>
+  <meta name="project_path" value="/_project.yaml" />
+  <meta name="book_path" value="/_book.yaml" />
+</head>
+
+<body>
+  <!--
+      Copyright 2019 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+  {% include "_versions.html" %}
+
+<p>
+Android {{ androidQVersionNumber }} provides updatable media components that enable updating
+framework components through Google Play Store infrastructure or through a partner-provided OTA
+mechanism. The feature allows providing security updates and feature updates without
+requiring a full system image update.
+</p>
+<p>
+The updatable media components are as follows:
+</p><ul>
+<li>Media extractors</li>
+<li>Media2 APIs (<code>MediaSession2</code>)</li>
+<li>Media codecs</li></ul>
+
+<h2 id="package-format">Package format</h2>
+
+<p>
+The package format is Android Pony EXpress (APEX).
+</p>
+
+<h2 id="media-components-are-updatable">Updatable media components</h2>
+
+<p>
+This section describes changes introduced with Android {{ androidQVersionNumber }} to make media
+components, such as media extractors, Media2 APIs, and media codecs, updatable.
+</p>
+<h3 id="media-extractors">Media extractors</h3>
+
+
+<p>
+To prepare for updatability, media extractors have been made separate components (as opposed to
+being compiled into <code>libstagefright.so</code>, as they were before Android 9). They are further
+updated to rely only on NDK APIs.
+</p>
+<p>
+Each extractor has its own <code>.so</code> file. The <code>.so</code> has an entrypoint that provides a sniffer function
+to determine whether the extractor can handle the given media file, and a factory function that
+creates an instance of the extractor for the given media file. Each extractor is named and
+versioned. The naming helps with debugging, while the versioning indicates which
+extractor is the newest. Because Android loads all available extractor <code>.so</code> files,
+OEMs can add their own extractors simply by adding a new <code>.so</code> file, without any
+need to modify libstagefright or other media framework libraries. If the OEM updates the
+extractors, then
+Google finds them and uses them (there are various ways to ensure that the OEM extractor is
+preferred over the Google-provided extractor, if needed).
+</p>
+<h3 id="media2-apis-mediasession2">Media2 APIs (MediaSession2)</h3>
+
+
+<p>
+This section covers the Media2 component being added to updatable media components, specifically
+MediaSession2.
+</p>
+<p>
+The MediaSession2 API added in Android {{ androidQVersionNumber }} uses a process to allow a media
+app to expose its transport controls and playback information to other processes
+including the Android framework and other apps.
+</p>
+<h3 id="mediacodecs">Media codecs</h3>
+
+
+<p>
+The existing OMX codec API isn't updatable, but OEMs can still use it in the vendor partition in
+{{ androidQVersionNumber }}. In {{ androidQVersionNumber }}, SW Codec2 components are updatable.
+</p>
+<h2 id="customization-options-and-update-mechanism">Customization options and update mechanism</h2>
+
+
+<p>
+This section outlines the update mechanism and the way to add vendor extensions.
+</p>
+<h3 id="update-mechanism">Update mechanism</h3>
+
+
+<p>
+APEX is a
+new container format designed for updating system components through Play Store.
+Updates are provided through an APEX package. This package contains the Java and native code being
+updated, which are loaded by framework components already present on the device.
+</p>
+<p>
+<img src="/devices/media/images/mainline_media_components.png" alt="Mainline
+media components" id="figure1"/>
+<figcaption><strong>Figure 1.</strong> Mainline media components</figcaption>
+
+
+<p>
+After the APEX package is installed and the disk image is mounted on reboot, media system processes
+(<code>media.extractor</code> and <code>media.codec</code>) load the updated modules from the
+mount point.
+</p>
+
+<h3 id="vendor-extensions">Vendor extensions</h3>
+
+
+<h4 id="mediaextractor">Media extractor</h4>
+
+
+<p>
+For media extractor, the partners can use their own extractor plugins if Google’s
+default extractors don’t meet their requirements. Custom extractor plugins can be placed
+under <code>/system/lib[64]/extractors/</code> and the extractor process loads the extractor
+plugins from Google’s APEX package and from <code>/system/lib[64]/extractors/</code>.
+</p>
+<h4 id="mediacodec">Media codec</h4>
+
+
+<p>
+For media codec, partners need to set up vendor codec services. A skeleton implementation of a
+service is provided at <code>frameworks/av/media/codec2/hidl/services/</code>. The service
+needs to invoke the implementation of their components using the Codec 2.0 interface defined in
+<code>frameworks/av/media/codec2/core/</code>. The entry point of the library is the C2ComponentStore
+interface, and you can reference Android’s default software codec store implementation at
+<code>frameworks/av/media/codec2/vndk/C2Store.cpp</code>.
+</p>
+<p>
+Partners can use an APEX loading behavior similar to that in the mediaswcodec service. The vendor
+codec service process can be structured similarly to mediaswcodec. A top-level shared library
+responsible for registering all C2 components can be defined and packaged (with transitive
+dependencies) onto an APEX package residing on the vendor partition. The vendor codec service process
+can then load this top-level entrypoint when it starts.
+</p>
+
+<h4 id="media2-apis-mediasession2">Media2 APIs (MediaSession2)</h4>
+
+<p>
+For <code>MediaSession2</code>, vendor modification isn't allowed while the code is open sourced
+for AOSP devices. For existing modifications on legacy <code>MediaPlayer</code> and
+<code>MediaSession</code> APIs, vendors are expected to upstream their changes as much as they
+can. When upstreaming isn't possible, Google considers providing extensions by
+reviewing them case by case.
+</p>
+<h2 id="life-of-a-customization">Life of a customization</h2>
+
+
+<p>
+In an example of adding support for Windows Media video in AVI files, two main components are
+needed to support additional media types in the Android media framework: an AVI
+<a href="#extractor">Extractor</a> and a Windows Media video <a href="#decoder">Decoder</a>.
+</p>
+<h3 id="extractor">Extractor</h3>
+
+
+<p>
+The extractor should implement the API defined by
+<code>frameworks/av/include/media/MediaExtractorPluginApi.h</code>, and may use the C++
+convenience wrappers in <code>frameworks/av/include/media/MediaExtractorPluginHelper.h</code>.
+</p>
+<p>
+See the latest version in the AOSP code for the extractor plugin API.
+</p>
+<p>
+Extractors should only depend on stable NDK APIs, not private APIs.
+</p>
+<p>
+Vendor extractors should be in <code>/system/lib/64/extractors</code> or the vendor APEX, which is
+opened along with the Google APEX containing the Google extractors.
+</p>
+<p>
+You can check whether your extractor was loaded by the framework by running <code>adb shell
+dumpsys media.extractor</code>, which generates something like this.
+</p>
+
+
+
+<pre class="prettyprint">Available extractors:
+AAC Extractor: plugin_version(2), uuid(4fd80eae03d24d729eb948fa6bb54613), version(1), path(/system/lib64/extractors/libaacextractor.so)
+AMR Extractor: plugin_version(2), uuid(c86639c92f3140aca715fa01b4493aaf), version(1), path(/system/lib64/extractors/libamrextractor.so)
+FLAC Extractor: plugin_version(2), uuid(1364b048cc454fda9934327d0ebf9829), version(1), path(/system/lib64/extractors/libflacextractor.so)
+MIDI Extractor: plugin_version(2), uuid(ef6cca0af8a243e6ba5fdfcd7c9a7ef2), version(1), path(/system/lib64/extractors/libmidiextractor.so)
+MP3 Extractor: plugin_version(2), uuid(812a3f6cc8cf46deb5293774b14103d4), version(1), path(/system/lib64/extractors/libmp3extractor.so)
+MP4 Extractor: plugin_version(2), uuid(27575c6744174c548d3d8e626985a164), version(2), path(/system/lib64/extractors/libmp4extractor.so)
+MPEG2-PS/TS Extractor: plugin_version(1), uuid(3d1dcfebe40a436da574c2438a555e5f), version(1), path(/system/lib64/extractors/libmpeg2extractor.so)
+Matroska Extractor: plugin_version(2), uuid(abbedd9238c44904a4c1b3f45f899980), version(1), path(/system/lib64/extractors/libmkvextractor.so)
+Ogg Extractor: plugin_version(2), uuid(8cc5cd06f772495e8a62cba9649374e9), version(1), path(/system/lib64/extractors/liboggextractor.so)
+WAV Extractor: plugin_version(3), uuid(7d61385858374a3884c5332d1cddee27), version(1), path(/system/lib64/extractors/libwavextractor.so)
+</pre>
+
+
+<p>
+Only the highest version of the extractor API is supported in Android
+{{ androidQVersionNumber }}. When
+looking at current extractors to model your own extractor after, use the one with the highest
+API version number.
+</p>
+<p>
+Instead of adding an extractor for a completely new format, you can extend an existing
+extractor, for example, to support new video encoding packaged in MP4 files. The preferred
+way to do this is to upstream your changes. This way your changes become part of the
+platform, and you no longer need to maintain your own extractor. If you can't or prefer not
+to upstream your changes, you have to create a separate extractor as described above. The
+only difference is that your extractor supports a format that is already supported by another
+extractor. To ensure that your extractor is used, its <code>Sniff()</code> function should
+return a higher confidence level than the Google-provided one.
+</p>
+
+<h3 id="decoder">Decoder</h3>
+
+<p>
+When your extractor is in place and loaded by the media framework, the media framework can
+recognize the file and get information about its content.
+</p>
+<p>
+The next step is to add a decoder for the format you're adding support for.</p>
+
+<aside class="note"><strong>Note:</strong> The decoder is only needed if the format isn't already
+supported. If, for example, you added support for AVI files containing MP3, then only the AVI
+extractor is needed, because an MP3 decoder already exists.</aside>
+
+<p>
+In our Windows-Media-in-AVI example, a Windows Media decoder is needed.
+</p>
+<p>
+Adding a new decoder is done in much the same way as adding your own hardware decoders
+for AVC or HEVC, for example.
+</p>
+<aside class="note"><strong>Note:</strong> While the extractor publishes the MIME type of the
+media tracks that it contains, the codecs that support these MIME types need to be present
+in order for the file to be fully supported. The actual MIME type string used is strictly
+an agreement between the extractor and the codec. It doesn't necessarily need to be
+added to the <code>MediaDefs.h</code> file.</aside>
+
+
+<h3 id="media-scanner">Media scanner</h3>
+
+
+<p>
+If you want your newly supported file type to be picked up by the media scanner and added to the
+media database, then the media scanner must know about it.
+</p>
+<p>
+Starting in Android {{ androidQVersionNumber }}, the <code>MediaFile.java</code> file
+no longer contains
+a MIME-to-extension mapping. Instead, this mapping is maintained by <code>MimeUtils</code> in
+<code>libcore</code>. The list of MIME types contains a list of the current mappings.
+</p>
+<p>
+<code>MediaFile</code> still contains a mapping from MIME type to MTP format constants.
+Our example AVI is already included in this mapping.
+</p>
+<p>
+Extractors can export a list of filename extensions they support (MP3, MP4, and so on). However,
+that list is only used when <code>LegacyMediaScanner</code> is used. It has no effect on
+<code>ModernMediaScanner</code>, which used by default.
+</p>
+</body>
+</html>

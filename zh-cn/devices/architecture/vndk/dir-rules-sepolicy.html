@@ -27,8 +27,8 @@
 <ul>
 <li><code>/system/lib[64]</code> 包含所有框架共享库，具体包括 LL-NDK、VNDK 和框架专用库（包括 LL-NDK-Private 和一些与 VNDK-SP 中的库同名的库）。</li>
 <li><code>/system/lib[64]/vndk-sp</code> 包含适用于 Same-Process HAL 的 VNDK-SP 库。</li>
-<li><code>/vendor/lib[64]</code> 包含扩展后的 VNDK 库（DXUA 或 DXUX VNDK 库）、Same-Process HAL 实现和其他供应商共享库。</li>
-<li><code>/vendor/lib[64]/vndk-sp</code> 可能会包含 VNDK-SP 库所使用的其他库。</li>
+<li><code>/vendor/lib[64]</code> 包含供应商扩展的 VNDK 库（DXUA 库或 DXUX VNDK 库）、Same-Process HAL 实现，以及其他供应商共享库。</li>
+<li><code>/vendor/lib[64]/vndk-sp</code> 可能包含供应商扩展的 VNDK-SP 库。</li>
 </ul>
 
 <p>供应商模块从 <code>/system/lib[64]</code> 中加载 VNDK 库。</p>
@@ -37,9 +37,9 @@
 <p>本部分提供了完整的 VNDK 规则列表。</p>
 
 <ul>
-<li>框架进程不得从供应商分区加载非 SP-HAL 共享库（Android O 中并未严格地强制实施此规则，但未来版本中会这么做）。
+<li>框架进程不得从供应商分区中加载非 SP-HAL 共享库（此规则从 Android 8.1 开始严格地强制实施）。
 </li>
-<li>供应商进程不得从系统分区加载非 LL-NDK 库、非 VNDK-SP 库和非 VNDK 库（Android O 中并未严格地强制实施此规则，但未来版本中会这么做）。</li>
+<li>供应商进程不得从系统分区中加载非 LL-NDK 库、非 VNDK-SP 库和非 VNDK 库（Android O 中并未严格地强制实施此规则，但未来版本中会这么做）。</li>
 
 <aside class="note"><strong>注意</strong>：要想从未来版本（比 Android 8.0 更高的版本）仅针对框架的 OTA 中受益，就不得在搭载 Android 8.0 出厂的设备中违反此规则。</aside>
 
@@ -136,5 +136,23 @@
 </tbody></table>
 
 <p>LL-NDK-Private 和 VNDK-SP-Private 必须从这两个域中都可访问，因为非 <code>coredomain</code> 会间接访问这些库。同样，SP-HAL-Dep 必须可从 <code>coredomain</code> 访问，因为 SP-HAL 依赖该域。</p>
+
+<h2 id="sphal"><code>same_process_hal_file</code> 标签</h2>
+
+<p>供应商分区中包含下面几个库。确保这些库既可以从 <code>coredomain</code> 访问，又可以从非 <code>coredomain</code> 访问。</p>
+
+<ul>
+  <li>VNDK-SP-Ext，位于 <code>/vendor/lib[64]/vndk-sp</code></li>
+  <li>SP-HAL，位于 <code>/vendor/lib[64]</code> 或 <code>/vendor/lib[64]/hw</code></li>
+  <li>SP-HAL-Dep，位于 <code>/vendor/lib[64]</code> 或 <code>/vendor/lib[64]/hw</code></li>
+</ul>
+
+<p>将这些文件明确标记为 <code>same_process_hal_file</code>。因为在默认情况下，从 <code>coredomain</code> 无法访问 <code>vendor</code> 分区中的任何内容。请向供应商特定的 <code>file_contexts</code> 文件中添加与以下命令行类似的命令行：</p>
+
+<pre class="prettyprint">
+/vendor/lib(64)?/hw/libMySpHal\.so        u:object_r:same_process_hal_file:s0
+/vendor/lib(64)?/vndk-sp/libBase\.so      u:object_r:same_process_hal_file:s0
+/vendor/lib(64)?/libBaseInternal\.so      u:object_r:same_process_hal_file:s0
+</pre>
 
 </body></html>

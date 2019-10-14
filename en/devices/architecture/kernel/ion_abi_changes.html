@@ -1,0 +1,174 @@
+<html devsite>
+  <head>
+    <title>Ion ABI Changes</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  {% include "_versions.html" %}
+  <!--
+      Copyright 2019 The Android Open Source Project
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+  -->
+
+<p>
+  Devices shipping kernel 4.14 and higher are affected by a major refactoring
+  of the <a href="https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/tree/drivers/staging/android/ion">Ion kernel module</a>,
+  which many vendor graphics memory allocator (gralloc) hardware abstraction layer (HAL) implementations call
+  to allocate shared memory buffers. This article provides guidance on migrating
+  legacy vendor code over to the new version of Ion and discusses possible future
+  application binary interface (ABI) breaks.
+</p>
+
+<h2 id="about-ion">About Ion</h2>
+
+<p>
+  Ion is part of the upstream kernel's work-in-progress
+  <a href="https://www.kernel.org/doc/html/latest/process/2.Process.html#staging-trees">
+  staging tree</a>. While in staging, Ion's userspace-to-kernel ABI may
+  break between major kernel versions. While <strong>Ion ABI breaks don't
+  directly affect either ordinary applications or already-launched devices</strong>,
+  vendors migrating to new major kernel versions may encounter changes that
+  affect vendor code calling into Ion. Additionally, future ABI
+  breaks may occur as the Android systems team works with upstream to move
+  Ion out of the staging tree.
+</p>
+
+<h2 id="changes-in-android-4-14">Changes in android-4.14</h2>
+
+<p>
+  Kernel 4.12 heavily refactored the Ion kernel code, cleaning up and
+  removing parts of Ion that overlapped with other kernel frameworks.
+  As a result, many legacy Ion ioctls are no longer relevant and have been removed.
+</p>
+
+<h3 id="removal-of-ion-clients-and-handles">Removal of Ion clients and handles</h3>
+
+<p>
+  Before kernel 4.12, opening <code>/dev/ion</code> allocated an
+  <em>Ion client</em>. The <code>IOC_ION_ALLOC</code> ioctl allocated
+  a new buffer and returned it to userspace as an <em>Ion handle</em>
+  (an opaque integer meaningful only to the Ion client that allocated it).
+  To map buffers into userspace or share them with other processes, Ion
+  handles were re-exported as dma-buf fds using the <code>IOC_ION_SHARE</code> ioctl.
+</p>
+
+<p>
+  In kernel 4.12, the <code>IOC_ION_ALLOC</code> ioctl directly
+  outputs dma-buf fds. The intermediate Ion handle state has been removed,
+  along with all ioctls that consume or produce Ion handles. Because
+  dma-buf fds aren't tied to specific Ion clients, the <code>IOC_ION_SHARE</code>
+  ioctl is no longer needed, and all Ion client infrastructure has been removed.
+</p>
+
+<h3 id="addition-of-cache-coherency-ioctls">Addition of cache-coherency ioctls</h3>
+
+<p>
+  Before kernel 4.12, Ion provided an <code>ION_IOC_SYNC</code> ioctl to
+  synchronize the file descriptor with memory. This ioctl was poorly
+  documented and inflexible. As a result, many vendors implemented custom
+  ioctls to perform cache maintenance.
+</p>
+
+<p>
+  Kernel 4.12 replaced <code>ION_IOC_SYNC</code> with the
+  <code><a href="https://www.kernel.org/doc/html/latest/driver-api/dma-buf.html#cpu-access-to-dma-buffer-objects">DMA_BUF_IOCTL_SYNC ioctl</a></code> defined in
+  <a href="https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/tree/include/uapi/linux/dma-buf.h">linux/dma-buf.h</a>. Call <code>DMA_BUF_IOCTL_SYNC</code>
+  at the start and end of every CPU access, with flags
+  specifying whether these accesses are reads and/or writes. Although <code>DMA_BUF_IOCTL_SYNC</code>
+  is more verbose than <code>ION_IOC_SYNC</code>, it gives userspace
+  more control over the underlying cache maintenance operations.
+</p>
+
+<p>
+  <code>DMA_BUF_IOCTL_SYNC</code> is part of the kernel's stable ABI and is usable with
+  all dma-buf fds, whether or not they were allocated by Ion.
+</p>
+
+<h2 id="migrating-vendor-code-to-android-4-12">Migrating vendor code to android-4.12+</h2>
+
+<p>
+  For <strong>userspace</strong> clients, the Android systems team strongly encourages
+  using <a href="https://android.googlesource.com/platform/system/core/+/master/libion/">libion</a>
+  rather than open-coding <code>ioctl()</code> calls. As of Android 9, libion automatically
+  detects the Ion ABI at runtime and attempts to mask any differences between kernels.
+  However, any libion functions that produced or consumed <code>ion_user_handle_t</code> handles
+  no longer work after kernel 4.12. You can replace these functions with the following
+  equivalent operations on dma-buf fds, which work on all versions of the kernel to date.
+</p>
+
+<table class="responsive">
+  <tr>
+   <th>Legacy ion_user_handle_t call</th>
+   <th>Equivalent dma-buf fd call</th>
+  </tr>
+  <tr>
+   <td><code>ion_alloc(ion_fd, …, &buf_handle)</code></td>
+   <td><code>ion_alloc_fd(ion_fd, ..., &buf_fd)</code></td>
+  </tr>
+  <tr>
+   <td><code>ion_share(ion_fd, buf_handle, &buf_fd)</code></td>
+   <td>N/A (this call isn't needed with dma-buf fds)</td>
+  </tr>
+  <tr>
+   <td><code>ion_map(ion_fd, buf_handle, ...)</code></td>
+   <td><code>mmap(buf_fd, ...)</code></td>
+  </tr>
+  <tr>
+   <td><code>ion_free(ion_fd, buf_handle)</code></td>
+   <td><code>close(buf_fd)</code></td>
+  </tr>
+  <tr>
+   <td><code>ion_import(ion_fd, buf_fd, &buf_handle)</code></td>
+   <td>N/A (this call isn't needed with dma-buf fds)</td>
+  </tr>
+  <tr>
+   <td><code>ion_sync_fd(ion_fd, buf_fd)</code></td>
+   <td><code>If (ion_is_legacy(ion_fd))</code>
+<p>
+<code>    ion_sync_fd(ion_fd, buf_fd);</code>
+<p>
+<code>else</code>
+<p>
+<code>    ioctl(buf_fd, DMA_BUF_IOCTL_SYNC, ...);</code></td>
+  </tr>
+</table>
+
+<p>
+  For <strong>in-kernel</strong> clients, because Ion no longer exports
+  any kernel-facing APIs, drivers that previously used the in-kernel
+  Ion kernel API with <code>ion_import_dma_buf_fd()</code> must be converted to
+  use <a href="https://www.kernel.org/doc/html/latest/driver-api/dma-buf.html">the in-kernel dma-buf API</a>
+  with <code><a href="https://www.kernel.org/doc/html/latest/driver-api/dma-buf.html#c.dma_buf_get">dma_buf_get()</a></code>.
+</p>
+
+    <h2 id="future-ion-abi-breaks">Future Ion ABI breaks</h2>
+
+<p>
+  Before Ion can be moved out of the staging tree, future kernel
+  releases may need to break the Ion ABI again. The Android systems team
+  <strong>doesn't expect</strong> these changes to affect devices launching with
+  the next Android version, but such changes may affect devices launching
+  with subsequent Android versions.
+</p>
+
+<p>
+  For example, the upstream community has proposed splitting the single
+  <code>/dev/ion</code> node into multiple, per-heap nodes (e.g., <code>/dev/ion/heap0</code>)
+  to enable devices to apply different SELinux policies to each heap. If this
+  change is implemented in a future kernel release, it would break Ion ABI.
+</p>
+
+  </body>
+</html>

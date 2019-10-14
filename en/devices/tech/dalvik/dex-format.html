@@ -292,18 +292,17 @@ encodes a format version number as three decimal digits, which is
 expected to increase monotonically over time as the format evolves.</p>
 
 <pre class="devsite-click-to-copy">
-ubyte[8] DEX_FILE_MAGIC = { 0x64 0x65 0x78 0x0a 0x30 0x33 0x38 0x00 }
-                        = "dex\n038\0"
+ubyte[8] DEX_FILE_MAGIC = { 0x64 0x65 0x78 0x0a 0x30 0x33 0x39 0x00 }
+                        = "dex\n039\0"
 </pre>
 
-<p class="note"><strong>Note:</strong> At least a couple earlier versions of the format have
-been used in widely-available public software releases. For example,
-version <code>009</code> was used for the M3 releases of the
-Android platform (November&ndash;December 2007),
-and version <code>013</code> was used for the M5 releases of the Android
-platform (February&ndash;March 2008). In several respects, these earlier
-versions of the format differ significantly from the version described in this
-document.</p>
+<p class="note"><strong>Note:</strong> Support for version <code>039</code> of the
+format was added in the Android 9.0 release, which introduced two
+new bytecodes, <code>const-method-handle</code> and
+<code>const-method-type</code>. (These are each described in the
+<a href="https://source.android.com/devices/tech/dalvik/dalvik-bytecode#instructions">Summary of bytecode set</a>
+  table.) In Android 10, version <code>039</code> extends the DEX file format to include hidden
+API information that's only applicable to DEX files on the boot class path.</p>
 
 <p class="note"><strong>Note:</strong> Support for version
 <code>038</code> of the format was added in the Android 8.0
@@ -316,6 +315,15 @@ the format was added in the Android 7.0 release. Prior to version <code>037</cod
 versions of Android have used version <code>035</code> of the format. The only
 difference between versions <code>035</code> and <code>037</code> is the
 addition of default methods and the adjustment of the <code>invoke</code>.
+
+<p class="note"><strong>Note:</strong> At least a couple earlier versions of the format have
+been used in widely available public software releases. For example,
+version <code>009</code> was used for the M3 releases of the
+Android platform (November&ndash;December 2007),
+and version <code>013</code> was used for the M5 releases of the Android
+platform (February&ndash;March 2008). In several respects, these earlier
+versions of the format differ significantly from the version described in this
+document.</p>
 
 <h3 id="endian-constant">ENDIAN_CONSTANT and REVERSE_ENDIAN_CONSTANT</h3>
 <h4>embedded in header_item</h4>
@@ -887,7 +895,9 @@ things. The <code>.dex</code> format allows a fair amount of latitude
 here (much more than most common source languages). In brief, a simple
 name consists of any low-ASCII alphabetic character or digit, a few
 specific low-ASCII symbols, and most non-ASCII code points that are not
-control, space, or special characters. Note that surrogate code points
+control, space, or special characters. Starting from version <code>040</code>
+the format additionally allows space characters (Unicode <code>Zs</code>
+category). Note that surrogate code points
 (in the range <code>U+d800</code> &hellip; <code>U+dfff</code>) are not
 considered valid name characters, per se, but Unicode supplemental
 characters <i>are</i> valid (which are represented by the final
@@ -896,56 +906,87 @@ represented in a file as pairs of surrogate code points in the MUTF-8
 encoding.</p>
 
 <table class="bnf">
-  <tr><td colspan="2" class="def"><i>SimpleName</i> &rarr;</td></tr>
+  <tr><td colspan="3" class="def"><i>SimpleName</i> &rarr;</td></tr>
   <tr>
     <td/>
-    <td><i>SimpleNameChar</i> (<i>SimpleNameChar</i>)*</td>
+    <td colspan="2"><i>SimpleNameChar</i> (<i>SimpleNameChar</i>)*</td>
   </tr>
 
-  <tr><td colspan="2" class="def"><i>SimpleNameChar</i> &rarr;</td></tr>
+  <tr><td colspan="3" class="def"><i>SimpleNameChar</i> &rarr;</td></tr>
   <tr>
     <td/>
     <td><code>'A'</code> &hellip; <code>'Z'</code></td>
+    <td/>
   </tr>
   <tr>
     <td class="bar">|</td>
     <td><code>'a'</code> &hellip; <code>'z'</code></td>
+    <td/>
   </tr>
   <tr>
     <td class="bar">|</td>
     <td><code>'0'</code> &hellip; <code>'9'</code></td>
+    <td/>
+  </tr>
+  <tr>
+    <td class="bar">|</td>
+    <td><code>' '</code></td>
+    <td>since DEX version 040</td>
   </tr>
   <tr>
     <td class="bar">|</td>
     <td><code>'$'</code></td>
+    <td/>
   </tr>
   <tr>
     <td class="bar">|</td>
     <td><code>'-'</code></td>
+    <td/>
   </tr>
   <tr>
     <td class="bar">|</td>
     <td><code>'_'</code></td>
+    <td/>
+  </tr>
+  <tr>
+    <td class="bar">|</td>
+    <td><code>U+00a0</code></td>
+    <td>since DEX version 040</td>
   </tr>
   <tr>
     <td class="bar">|</td>
     <td><code>U+00a1</code> &hellip; <code>U+1fff</code></td>
+    <td/>
+  </tr>
+  <tr>
+    <td class="bar">|</td>
+    <td><code>U+2000</code> &hellip; <code>U+200a</code></td>
+    <td>since DEX version 040</td>
   </tr>
   <tr>
     <td class="bar">|</td>
     <td><code>U+2010</code> &hellip; <code>U+2027</code></td>
+    <td/>
+  </tr>
+  <tr>
+    <td class="bar">|</td>
+    <td><code>U+202f</code></td>
+    <td>since DEX version 040</td>
   </tr>
   <tr>
     <td class="bar">|</td>
     <td><code>U+2030</code> &hellip; <code>U+d7ff</code></td>
+    <td/>
   </tr>
   <tr>
     <td class="bar">|</td>
     <td><code>U+e000</code> &hellip; <code>U+ffef</code></td>
+    <td/>
   </tr>
   <tr>
     <td class="bar">|</td>
     <td><code>U+10000</code> &hellip; <code>U+10ffff</code></td>
+    <td/>
   </tr>
 </table>
 
@@ -1570,6 +1611,12 @@ be ordered by initial offset and must not overlap.</p>
   <td>annotations_directory_item</td>
   <td>TYPE_ANNOTATIONS_DIRECTORY_ITEM</td>
   <td>0x2006</td>
+  <td><i>implicit; must parse</i></td>
+</tr>
+  <tr>
+  <td>hiddenapi_class_data_item</td>
+  <td>TYPE_HIDDENAPI_CLASS_DATA_ITEM</td>
+  <td>0xF000</td>
   <td><i>implicit; must parse</i></td>
 </tr>
 </tbody>
@@ -3031,6 +3078,120 @@ method_annotations_item, and annotation_set_ref_item</h4>
   <td>bytes representing the encoded array value, in the format specified
     by "<code>encoded_array</code> Format" under "<code>encoded_value</code>
     Encoding" above.
+  </td>
+</tr>
+</tbody>
+</table>
+
+<h3 id="hiddenapi-class-data-item">hiddenapi_class_data_item</h3>
+
+<p> This section contains data on restricted interfaces used by each class.</p>
+
+<p class="note"><strong>Note:</strong>
+  The hidden API feature was introduced in Android 10.0
+  and is only applicable to the DEX files of classes in the boot class path.
+  The list of flags described below may be extended in the future releases
+  of Android. For more information, see
+  <a href="https://developer.android.com/distribute/best-practices/develop/restrictions-non-sdk-interfaces"
+    class="external">restrictions on non-SDK interfaces</a>.
+</p>
+
+<table class="format">
+<thead>
+<tr>
+  <th>Name</th>
+  <th>Format</th>
+  <th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>size</td>
+  <td>uint</td>
+  <td>total size of the section</td>
+</tr>
+<tr>
+  <td>offsets</td>
+  <td>uint[]</td>
+  <td>array of offsets indexed by <code>class_idx</code>.
+    A zero array entry at index <code>class_idx</code> means that either
+    there is no data for this <code>class_idx</code>, or all hidden API
+    flags are zero.
+    Otherwise the array entry is non-zero and contains an offset from
+    the beginning of the section to an array of hidden API flags
+    for this <code>class_idx</code>.
+  </td>
+</tr>
+<tr>
+  <td>flags</td>
+  <td>uleb128[]</td>
+  <td>concatenated arrays of hidden API flags for each class.
+    Possible flag values are described in the table below.
+    Flags are encoded in the same order as fields and methods are
+    encoded in class data.
+  </td>
+</tr>
+</tbody>
+</table>
+
+<p>Restriction flag types:</p>
+
+<table class="format">
+<thead>
+<tr>
+  <th>Name</th>
+  <th>Value</th>
+  <th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>whitelist</td>
+  <td>0</td>
+  <td>Interfaces that can be freely used and are supported as part of
+    the officially documented Android framework
+    <a href="https://developer.android.com/reference/packages.html"
+       class="external">Package Index</a>.
+  </td>
+</tr>
+  <tr>
+  <td>greylist</td>
+  <td>1</td>
+  <td>Non-SDK interfaces that can be used regardless of the application's
+    <a href="https://developer.android.com/distribute/best-practices/develop/target-sdk"
+       class="external">target API level</a>.
+  </td>
+</tr>
+<tr>
+  <td>blacklist</td>
+  <td>2</td>
+  <td>Non-SDK interfaces that cannot be used regardless of the application's
+    <a href="https://developer.android.com/distribute/best-practices/develop/target-sdk"
+       class="external">target API level</a>.
+    Accessing one of these interfaces causes a
+    <a href="https://developer.android.com/distribute/best-practices/develop/restrictions-non-sdk-interfaces#results-of-keeping-non-sdk"
+       class="external">runtime error</a>.
+  </td>
+</tr>
+<tr>
+  <td>greylist&#8209;max&#8209;o</td>
+  <td>3</td>
+  <td>Non-SDK interfaces that can be used for Android 8.x and below
+    unless they are restricted.
+  </td>
+</tr>
+<tr>
+  <td>greylist&#8209;max&#8209;p</td>
+  <td>4</td>
+  <td>Non-SDK interfaces that can be used for Android 9.x
+    unless they are restricted.
+  </td>
+</tr>
+<tr>
+  <td>greylist&#8209;max&#8209;q</td>
+  <td>5</td>
+  <td>Non-SDK interfaces that can be used for Android 10.x
+    unless they are restricted.
   </td>
 </tr>
 </tbody>

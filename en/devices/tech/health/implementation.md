@@ -106,6 +106,49 @@ Then:
 
 *   Update necessary SELinux permissions.
 
+*   Implement HAL in recovery by installing a passthrough implementation to the
+    recovery image. Example:
+
+    ```bp
+    // Android.bp
+    cc_library_shared {
+        name: "android.hardware.health@2.0-impl-<device>",
+        recovery_available: true,
+        relative_install_path: "hw",
+        static_libs: [
+            "android.hardware.health@2.0-impl",
+            "libhealthd.<device>"
+            // Include the following or implement device-specific storage APIs
+            "libhealthstoragedefault",
+        ],
+        srcs: [
+            "HealthImpl.cpp",
+        ],
+        overrides: [
+            "android.hardware.health@2.0-impl-default",
+        ],
+    }
+    ```
+
+    ```c++
+    // HealthImpl.cpp
+    #include <health2/Health.h>
+    #include <healthd/healthd.h>
+    using android::hardware::health::V2_0::IHealth;
+    using android::hardware::health::V2_0::implementation::Health;
+    extern "C" IHealth* HIDL_FETCH_IHealth(const char* name) {
+        const static std::string providedInstance{"default"};
+        if (providedInstance != name) return nullptr;
+        return Health::initInstance(&gHealthdConfig).get();
+    }
+    ```
+
+    ```mk
+    # device.mk
+    PRODUCT_PACKAGES += android.hardware.health@2.0-impl-<device>
+    ```
+
+
 For details, refer to
 [hardware/interfaces/health/2.0/README.md](https://android.googlesource.com/platform/hardware/interfaces/+/master/health/2.0/README.md){: .external}.
 

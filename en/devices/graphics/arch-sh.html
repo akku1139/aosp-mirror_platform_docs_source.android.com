@@ -21,87 +21,84 @@
       limitations under the License.
   -->
 
+<p>Surface objects enable apps to render images to be presented on screens.
+SurfaceHolder interfaces enable apps to edit and control surfaces.</p>
 
+<h2 id="surface">Surface</h2>
 
-<p>The
-<a href="http://developer.android.com/reference/android/view/Surface.html">Surface</a>
-class has been part of the public API since 1.0.  Its description simply says,
-"Handle onto a raw buffer that is being managed by the screen compositor."  The
-statement was accurate when initially written but falls well short of the mark
-on a modern system.</p>
+<p>A <a href="https://developer.android.com/reference/android/view/Surface.html"
+class="external">surface</a> is an interface for a producer to exchange buffers
+with a consumer.</p>
 
-<p>The Surface represents the producer side of a buffer queue that is often (but
-not always!) consumed by SurfaceFlinger.  When you render onto a Surface, the
-result ends up in a buffer that gets shipped to the consumer.  A Surface is not
-simply a raw chunk of memory you can scribble on.</p>
-
-<p>The BufferQueue for a display Surface is typically configured for
-triple-buffering; but buffers are allocated on demand.  So if the producer
-generates buffers slowly enough -- maybe it's animating at 30fps on a 60fps
-display -- there might only be two allocated buffers in the queue.  This helps
-minimize memory consumption.  You can see a summary of the buffers associated
+<p>The BufferQueue for a display surface is typically configured for
+triple-buffering. Buffers are allocated on demand, so if the producer
+generates buffers slowly enough, such as at 30&nbsp;fps on a 60&nbsp;fps
+display, there might only be two allocated buffers in the queue.
+Allocating buffers on demand helps
+minimize memory consumption. You can see a summary of the buffers associated
 with every layer in the <code>dumpsys SurfaceFlinger</code> output.</p>
 
-<h2 id="canvas">Canvas Rendering</h2>
+<p>Most clients render onto surfaces using <a
+href="/devices/graphics/arch-egl-opengl">OpenGL ES</a> or <a
+href="/devices/graphics/arch-vulkan">Vulkan</a>. However, some clients render
+onto surfaces using a canvas.<p>
 
-<p>Once upon a time, all rendering was done in software, and you can still do this
-today.  The low-level implementation is provided by the Skia graphics library.
-If you want to draw a rectangle, you make a library call, and it sets bytes in a
-buffer appropriately.  To ensure that a buffer isn't updated by two clients at
-once, or written to while being displayed, you have to lock the buffer to access
-it.  <code>lockCanvas()</code> locks the buffer and returns a Canvas to use for drawing,
-and <code>unlockCanvasAndPost()</code> unlocks the buffer and sends it to the compositor.</p>
+<h3 id="canvas">Canvas rendering</h3>
 
-<p>As time went on, and devices with general-purpose 3D engines appeared, Android
-reoriented itself around OpenGL ES.  However, it was important to keep the old
-API working, for apps as well as app framework code, so an effort was made to
-hardware-accelerate the Canvas API.  As you can see from the charts on the
-<a href="http://developer.android.com/guide/topics/graphics/hardware-accel.html">Hardware
-Acceleration</a>
-page, this was a bit of a bumpy ride.  Note in particular that while the Canvas
-provided to a View's <code>onDraw()</code> method may be hardware-accelerated, the Canvas
-obtained when an app locks a Surface directly with <code>lockCanvas()</code> never is.</p>
+<p>The canvas implementation is provided by the
+<a href="https://skia.org/" class="external">Skia Graphics Library</a>.
+If you want to draw a rectangle, you call the Canvas API, which sets bytes in a
+buffer appropriately. To ensure that a buffer isn't updated by two clients at
+once, or written to while being displayed, lock the buffer to access
+it. Use the following commands to work with canvas locks:
 
-<p>When you lock a Surface for Canvas access, the "CPU renderer" connects to the
-producer side of the BufferQueue and does not disconnect until the Surface is
-destroyed.  Most other producers (like GLES) can be disconnected and reconnected
-to a Surface, but the Canvas-based "CPU renderer" cannot.  This means you can't
-draw on a surface with GLES or send it frames from a video decoder if you've
-ever locked it for a Canvas.</p>
+<ul>
+  <li><a href="https://developer.android.com/reference/android/view/Surface.html#lockCanvas(android.graphics.Rect)"
+class="external"><code>lockCanvas()</code></a> locks the buffer for rendering on the CPU
+  and returns a Canvas to use for drawing.</li>
+  <li><a href="https://developer.android.com/reference/android/view/Surface.html#unlockCanvasAndPost(android.graphics.Canvas)"
+class="external"><code>unlockCanvasAndPost()</code></a> unlocks the buffer and
+    sends it to the compositor.</li>
+  <li><a href="https://developer.android.com/reference/android/view/Surface.html#lockHardwareCanvas()"
+class="external"><code>lockHardwareCanvas()</code></a> locks the buffer for rendering on
+    the GPU and returns a canvas to use for drawing.</li>
+</ul>
 
-<p>The first time the producer requests a buffer from a BufferQueue, it is
-allocated and initialized to zeroes.  Initialization is necessary to avoid
-inadvertently sharing data between processes.  When you re-use a buffer,
-however, the previous contents will still be present.  If you repeatedly call
+<aside class="note"><strong>Note:</strong> The canvas obtained when an app locks
+a surface with <code>lockCanvas()</code> is never hardware accelerated.</aside>
+
+<aside class="caution"><strong>Caution:</strong> You can't draw on a surface
+with GLES or send it frames from a video decoder if you've ever called
+<code>lockCanvas()</code>. <code>lockCanvas()</code> connects the CPU
+renderer to the producer side of the BufferQueue and doesn't disconnect until
+the surface is destroyed. The canvas-based CPU renderer can't be disconnected
+and reconnected to a surface, unlike most producers (like GLES or Vulkan).</aside>
+
+<p>The first time the producer requests a buffer from a BufferQueue, the
+buffer is
+allocated and initialized to zero. Initialization is necessary to avoid
+inadvertently sharing data between processes. However, if you reuse a buffer,
+the previous contents are still present. If you repeatedly call
 <code>lockCanvas()</code> and <code>unlockCanvasAndPost()</code> without
-drawing anything, you'll cycle between previously-rendered frames.</p>
+drawing anything, the producer cycles between previously rendered frames.</p>
 
-<p>The Surface lock/unlock code keeps a reference to the previously-rendered
-buffer.  If you specify a dirty region when locking the Surface, it will copy
-the non-dirty pixels from the previous buffer.  There's a fair chance the buffer
-will be handled by SurfaceFlinger or HWC; but since we need to only read from
-it, there's no need to wait for exclusive access.</p>
-
-<p>The main non-Canvas way for an application to draw directly on a Surface is
-through OpenGL ES (as described in the <a href="/devices/graphics/arch-egl-opengl">EGLSurface
-and OpenGL ES</a> section).</p>
+<p>The surface lock/unlock code keeps a reference to the previously rendered
+buffer. If you specify a dirty region when locking the surface, it copies
+the nondirty pixels from the previous buffer. SurfaceFlinger or HWC typically
+handle the buffer; but because we only need to read from
+the buffer, there's no need to wait for exclusive access.</p>
 
 <h2 id="surfaceholder">SurfaceHolder</h2>
 
-<p>Some things that work with Surfaces want a SurfaceHolder, notably SurfaceView.
-The original idea was that Surface represented the raw compositor-managed
-buffer, while SurfaceHolder was managed by the app and kept track of
-higher-level information like the dimensions and format.  The Java-language
-definition mirrors the underlying native implementation.  It's arguably no
-longer useful to split it this way, but it has long been part of the public API.</p>
+<p>A <a href="https://developer.android.com/reference/android/view/SurfaceHolder.html"
+class="external">SurfaceHolder</a> is an interface the system uses to share ownership of
+surfaces with apps. Some clients that work with surfaces want a SurfaceHolder,
+because APIs to get and set surface parameters are implemented through a
+SurfaceHolder. A <a href="/devices/graphics/arch-sv-glsv">SurfaceView</a> contains
+a SurfaceHolder.</p>
 
-<p>Generally speaking, anything having to do with a View will involve a
-SurfaceHolder.  Some other APIs, such as MediaCodec, will operate on the Surface
-itself.  You can easily get the Surface from the SurfaceHolder, so hang on to
-the latter when you have it.</p>
-
-<p>APIs to get and set Surface parameters, such as the size and format, are
-implemented through SurfaceHolder.</p>
+<p>Most components that interact with a view involve a SurfaceHolder.
+Some other APIs, such as MediaCodec, operate on the surface itself.</p>
 
   </body>
 </html>

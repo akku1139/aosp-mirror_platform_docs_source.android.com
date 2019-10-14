@@ -1,0 +1,434 @@
+<html devsite>
+  <head>
+    <title>OTA for A/B Devices without Dynamic Partitions</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2019 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+  {% include "_versions.html" %}
+
+    <p>
+      Android {{ androidQVersionNumber }} supports Dynamic Partitions, a
+      userspace partitioning system that can create, resize, and destroy
+      partitions during an over-the-air (OTA) update. This document describes
+      how OTA clients resize dynamic partitions during an update for A/B
+      devices that launched without dynamic partitions support and how OTA
+      clients upgrade to Android {{ androidQVersionNumber }}.
+    </p>
+
+    <h2 id="background">Background</h2>
+
+      <p>
+        During an update of an A/B device to support Dynamic Partitions, the
+        GUID partition table (GPT) on the device is preserved, so there's no
+        <code>super</code> partition on the device. Metadata is stored at
+        <code>system_a</code> and <code>system_b</code>, but this can be
+        customized by changing
+        <code>BOARD_SUPER_PARTITION_METADATA_DEVICE</code>.
+      </p>
+
+      <p>
+        In each of the block devices, there are two metadata slots. Only one
+        metadata slot in each block device is used. For example, Metadata 0 at
+        <code>system_a</code> and Metadata 1 at <code>system_b</code>
+        correspond to partitions at the A and B slots, respectively. At
+        runtime, it doesn't matter which slot is being updated.
+      </p>
+
+      <p>
+        In this document, the metadata slots are called Metadata S
+        (source) and Metadata T (target). Similarly, partitions are referred
+        to as <code>system_s</code>, <code>vendor_t</code>, and so on.
+      </p>
+
+      <p>
+        For more information about <em>build system configurations</em>, see
+        <a href="/devices/tech/ota/dynamic_partitions/implement#upgrading-devices"
+        >Upgrading devices</a>.
+      </p>
+
+      <p>
+        For more information about how partitions belong to <em>update
+        groups</em>, see
+        <a
+           href="/devices/tech/ota/dynamic_partitions/implement#board-configuration-changes">Board
+          configuration changes</a> for new devices.
+      </p>
+
+      <p>
+        An example of metadata on a device is:
+      </p>
+
+      <ul>
+        <li>Physical block device <code>system_a</code>
+          <ul>
+            <li>Metadata 0
+              <ul>
+                <li>Group <code>foo_a</code>
+                  <ul>
+                    <li>Logical (dynamic) partition <code>system_a</code></li>
+                    <li>Logical (dynamic) partition
+                      <code>product_services_a</code></li>
+                    <li>Other partitions updated by Foo</li>
+                  </ul>
+                </li>
+              </ul>
+              <ul>
+                <li>Group <code>bar_a</code>
+                  <ul>
+                    <li>Logical (dynamic) partition <code>vendor_a</code></li>
+                    <li>Logical (dynamic) partition
+                      <code>product_a</code></li>
+                    <li>Other partitions updated by Bar</li>
+                  </ul>
+                </li>
+              </ul>
+            </li>
+            <li>Metadata 1 (not used)</li>
+          </ul>
+        </li>
+        <li>Physical block device <code>system_b</code>
+          <ul>
+            <li>Metadata 0 (not used)</li>
+            <li>Metadata 1
+              <ul>
+                <li>Group foo_b
+                  <ul>
+                    <li>Logical (dynamic) partition
+                      <code>system_b</code></li>
+                    <li>Logical (dynamic) partition
+                      <code>product_services_b</code></li>
+                    <li>Other partitions updated by Foo</li>
+                  </ul>
+                </li>
+                <li>Group bar_b
+                  <ul>
+                    <li>Logical (dynamic) partition
+                      <code>vendor_b</code></li>
+                    <li>Logical (dynamic) partition
+                      <code>product_b</code></li>
+                    <li>Other partitions updated by Bar</li>
+                  </ul>
+                </li>
+              </ul>
+            </li>
+          </ul>
+        </li>
+      </ul>
+
+      <p>
+        You can use the <code>lpdump</code> tool under
+        <code>system/extras/partition_tools</code> to dump the metadata on
+        your device. For example:
+      </p>
+
+<pre class="devsite-click-to-copy">
+<code class="devsite-terminal">lpdump --slot 0 /dev/block/by-name/system_a</code>
+<code class="devsite-terminal">lpdump --slot 1 /dev/block/by-name/system_b</code>
+</pre>
+
+    <h2 id="retrofitting-an-update">Retrofitting an update</h2>
+
+      <p>
+        On devices running Android 9 and earlier, the OTA client on the device
+        doesn't support mapping dynamic partitions before the update. An
+        additional set of patches is created so that mapping can be applied
+        directly to the existing physical partitions.
+      </p>
+
+      <p>
+        The OTA generator builds the final <code>super.img</code> file that
+        contains the content of all dynamic partitions, then splits the image
+        into multiple images matching the sizes of the physical block devices
+        corresponding to system, vendor, and so on. These images are named
+        <code>super_system.img</code>, <code>super_vendor.img</code>, and so on.
+        The OTA client applies these images to the physical partitions, rather
+        than applying the images for the logical (dynamic) partitions.
+      </p>
+
+      <p>
+        Because the OTA client doesn't know how to map dynamic partitions,
+        all post-install steps are disabled automatically for these partitions
+        when the update package is generated. See
+        <a href="/devices/tech/ota/ab/ab_implement#post-install">Implementing
+        A/B Updates: Configuring post-installation</a> for more details.
+      </p>
+
+      <p>
+        The update flow is the same as in Android 9.
+      </p>
+
+      <p>Before the update:<p>
+
+<pre class="prettyprint">
+ro.boot.dynamic_partitions=
+ro.boot.dynamic_partitions_retrofit=
+</pre>
+
+      <p>
+        After the update:
+      </p>
+
+<pre class="prettyprint">
+ro.boot.dynamic_partitions=true
+ro.boot.dynamic_partitions_retrofit=true
+</pre>
+
+    <h2 id="future-updates-after-retrofit">Future updates after retrofit</h2>
+
+      <p>
+        After the retrofit update, the OTA client is updated to work with
+        dynamic partitions. The extents for source partitions never span
+        across target physical partitions.
+      </p>
+
+      <h3 id="update-flow-using-a-regular-update-package">
+        Update flow using a regular update package
+      </h3>
+
+        <ol>
+          <li><strong>Initialize super partition metadata.</strong>
+            <ol>
+              <li>
+                Construct new metadata M from Metadata S (source metadata).
+                For example, if Metadata S uses [<code>system_s</code>,
+                <code>vendor_s</code>, <code>product_s</code>] as block
+                devices, then the new metadata M uses [<code>system_t</code>,
+                <code>vendor_t</code>, <code>product_t</code>] as block
+                devices. All groups and partitions are discarded in M.
+              </li>
+              <li>
+                Add target groups and partitions according to the
+                <code>dynamic_partition_metadata</code> field in the update
+                manifest. The size of each partition can be found in
+                <code>new_partition_info</code>.
+              </li>
+              <li>
+                Write M to Metadata T.
+              </li>
+              <li>
+                Map the added partitions on the device mapper as writable.
+              </li>
+            </ol>
+          </li>
+          <li><strong>Apply the update on the block devices as usual.</strong>
+            <ol>
+              <li>
+                If necessary, map the source partitions on the device mapper
+                as read-only. This is necessary for sideloading because the
+                source partitions aren't mapped prior to the update.
+              </li>
+              <li>
+                Apply a full or delta update to all block devices at the
+                target slot.
+              </li>
+              <li>
+                Mount the partitions to do the post-install step, then unmount.
+              </li>
+            </ol>
+          </li>
+          <li><strong>Unmap the target partitions.</strong></li>
+        </ol>
+
+      <h3 id="update-flow-using-a-retrofit-update-package">
+        Update flow using a retrofit update package
+      </h3>
+
+        <p>
+          If the retrofit update package is applied on a device that already
+          enables dynamic partitions, the OTA client applies the split
+          <code>super.img</code> file on block devices directly. The update
+          flow is similar to a retrofit update. See
+          <a href="#retrofitting-an-update">Retrofitting an update</a>
+          for details.
+        </p>
+
+        <p>
+          For example, assume the following:
+        </p>
+
+        <ul>
+          <li>Slot A is the active slot.</li>
+          <li>
+            <code>system_a</code> contains the active metadata at slot 0.
+          </li>
+          <li>
+            <code>system_a</code>, <code>vendor_a</code>, and
+            <code>product_a</code> are used as block devices.
+          </li>
+        </ul>
+
+        <p>
+          When the OTA client receives a retrofit update package, it applies
+          <code>super_system.img</code> on physical <code>system_b</code>,
+          <code>super_vendor.img</code> on physical <code>vendor_b</code>, and
+          <code>super_product.img</code> on physical <code>product_b</code>.
+          The physical block device <code>system_b</code> contains the correct
+          metadata to map the logical <code>system_b</code>,
+          <code>vendor_b</code>, and <code>product_b</code> at boot time.
+        </p>
+
+        <aside class="note">
+          <strong>Note:</strong> Before and after the update, these values
+          don't change:
+          <p>
+            <code>PRODUCT_USE_LOGICAL_PARTITIONS := true</code><br />
+            <code>PRODUCT_RETROFIT_DYNAMIC_PARTITIONS := true</code>
+          </p>
+        </aside>
+
+    <h2 id="generating-update-packages">Generating update packages</h2>
+
+      <h3 id="incremental-ota">Incremental OTA</h3>
+
+        <p>
+          When generating incremental OTAs for retrofit devices, the updates
+          depend on whether or not the base build defines
+          <code>PRODUCT_USE_LOGICAL_PARTITIONS</code> and
+          <code>PRODUCT_RETROFIT_DYNAMIC_PARTITIONS</code>:
+        </p>
+
+        <ul>
+          <li>
+            If the base build doesn't define the variables, this is a
+            retrofitting update. The update package contains the split
+            <code>super.img</code> file and disables the post-install step.
+          </li>
+          <li>
+            If the base build does define the variables, this is the same as a
+            typical update with dynamic partitions. The update package
+            contains the images for logical (dynamic) partitions. The
+            post-install step can be enabled.
+          </li>
+        </ul>
+
+      <h3 id="full-ota">Full OTA</h3>
+
+        <p>
+          Two full OTA packages are generated for retrofit devices.
+        </p>
+
+        <ul>
+          <li>
+            <code>$(PRODUCT)-ota-retrofit-$(TAG).zip</code> always contains
+            split <code>super.img</code> and disables the post-install step
+            for retrofitting update.
+            <ul>
+              <li>
+                It's generated with an additional argument
+                <code>--retrofit_dynamic_partitions</code> to the
+                <code>ota_from_target_files</code> script.
+              </li>
+              <li>
+                It can be applied to all builds.
+              </li>
+            </ul>
+          </li>
+          <li>
+            <code>$(PRODUCT)-ota-$(TAG).zip</code> contains logical images for
+            future updates.
+            <ul>
+              <li>
+                Only apply this to builds with dynamic partitions
+                enabled. See details below on enforcing this.
+              </li>
+            </ul>
+          </li>
+        </ul>
+
+      <h3 id="reject-non-retrofit-update-on-old-builds">
+        Rejecting non-retrofit update on old builds
+      </h3>
+
+      <p>
+        The regular full OTA package should only be applied to builds with
+        dynamic partitions enabled. If the OTA server is configured
+        incorrectly and pushes these packages to devices running Android 9 or
+        lower, devices fail to boot. The OTA client on Android 9 and
+        lower can't tell the difference between a retrofit OTA package and a
+        regular full OTA package, so the client won't reject the full package.
+      </p>
+
+      <p>
+        To prevent the device from accepting the full OTA package, you can
+        require a post-install step to check the existing device
+        configuration. For example:
+      </p>
+
+      <p>
+        <code>device/<var>device_name</var>/dynamic_partitions/check_dynamic_partitions</code>
+      </p>
+
+<pre class="prettyprint">
+#!/system/bin/sh
+DP_PROPERTY_NAME="ro.boot.dynamic_partitions"
+DP_RETROFIT_PROPERTY_NAME="ro.boot.dynamic_partitions_retrofit"
+
+DP_PROPERTY=$(getprop ${DP_PROPERTY_NAME})
+DP_RETROFIT_PROPERTY=$(getprop ${DP_RETROFIT_PROPERTY_NAME})
+
+if [ "${DP_PROPERTY}" != "true" ] || [ "${DP_RETROFIT_PROPERTY}" != "true" ] ; then
+    echo "Error: applied non-retrofit update on build without dynamic" \
+         "partitions."
+    echo "${DP_PROPERTY_NAME}=${DP_PROPERTY}"
+    echo "${DP_RETROFIT_PROPERTY_NAME}=${DP_RETROFIT_PROPERTY}"
+    exit 1
+fi
+</pre>
+
+      <p>
+        <code>device/<var>device_name</var>/dynamic_partitions/Android.mk</code>
+      </p>
+
+<pre class="prettyprint">
+LOCAL_PATH := $(call my-dir)
+include $(CLEAR_VARS)
+LOCAL_MODULE:= check_dynamic_partitions
+LOCAL_MODULE_TAGS := optional
+LOCAL_MODULE_CLASS := EXECUTABLES
+LOCAL_SRC_FILES := check_dynamic_partitions
+LOCAL_PRODUCT_MODULE := true
+include $(BUILD_PREBUILT)
+</pre>
+
+      <p>
+        <code>device/<var>device_name</var>/device.mk</code>
+      </p>
+
+<pre class="prettyprint">
+PRODUCT_PACKAGES += check_dynamic_partitions
+
+# OPTIONAL=false so that the error in check_dynamic_partitions will be
+# propagated to OTA client.
+AB_OTA_POSTINSTALL_CONFIG += \
+    RUN_POSTINSTALL_product=true \
+    POSTINSTALL_PATH_product=bin/check_dynamic_partitions \
+    FILESYSTEM_TYPE_product=ext4 \
+    POSTINSTALL_OPTIONAL_product=false \
+</pre>
+
+      <p>
+        When the regular OTA package is applied on a device without dynamic
+        partitions enabled, the OTA client runs
+        <code>check_dynamic_partitions</code> as a post-install step and
+        rejects the update.
+      </p>
+
+  </body>
+</html>

@@ -21,128 +21,117 @@
       limitations under the License.
   -->
 
+<p>The <a
+href="https://developer.android.com/reference/android/view/TextureView?hl=en"
+class="external">TextureView</a> class is a view object that combines a view
+with a SurfaceTexture.</p>
+
+<h2 id="render_opengl_es">Rendering with OpenGL ES</h2>
+
+<p>A TextureView object wraps a SurfaceTexture, responding to callbacks and
+acquiring new buffers. When a TextureView acquires new buffers, a TextureView
+issues a view invalidate request and draws using the contents of the newest
+buffer as its data source, rendering wherever and however the view state
+indicates it should.</p>
+
+<p>OpenGL ES (GLES) <em>can</em> render on a TextureView by passing the
+SurfaceTexture to the EGL creation call, but this creates a problem. When GLES
+renders on a TextureView, BufferQueue producers and consumers are in the same
+thread, which can cause the buffer swap call to stall or fail. For example, if
+a producer submits several buffers in quick succession from the UI thread, the
+EGL buffer swap call needs to dequeue a buffer from the BufferQueue. However,
+because the consumer and producer are on the same thread, there won't be any
+buffers available and the swap call hangs or fails.</p>
+
+<p>To ensure that the buffer swap doesn't stall, BufferQueue always needs a
+buffer available to be dequeued. To implement this, BufferQueue discards the
+contents of the previously acquired buffer when a new buffer is queued and
+places restrictions on minimum and maximum buffer counts to prevent a consumer
+from consuming all buffers at once.</p>
+
+<h2 id="surface_or_texture">Choosing SurfaceView or TextureView</h2>
+
+<aside class="note"><strong>Note:</strong> In API 24 and higher, it's
+recommended to implement SurfaceView instead of TextureView.</aside>
+
+<p>SurfaceView and TextureView fill similar roles and are both citizens of the
+view hierarchy. However, SurfaceView and TextureView have different
+implementations. A SurfaceView takes the same parameters as other views, but
+SurfaceView contents are transparent when rendered.</p>
+
+<p>A TextureView has better alpha and rotation handling than a SurfaceView, but
+a SurfaceView has performance advantages when compositing UI elements layered
+over videos. When a client renders with a SurfaceView, the SurfaceView provides
+the client with a separate composition layer. SurfaceFlinger composes the
+separate layer as a hardware overlay if supported by the device. When a client
+renders with a TextureView, the UI toolkit composites the TextureView's content
+into the view hierarchy with the GPU. Updates to the content may cause other
+view elements to redraw, for example, if the other views are positioned on top
+of a TextureView. After view rendering completes, SurfaceFlinger composites the
+app UI layer and all other layers, so that every visible pixel is composited
+twice.</p>
+
+<aside class="note"><strong>Note:</strong> DRM-protected video can be presented
+only on an overlay plane. Video players that support protected content must be
+implemented with SurfaceView.</aside>
+
+<h2 id="grafika">Case Study: Grafika's Play Video</h2>
+
+<p><a
+href="https://github.com/google/grafika/blob/master/app/src/main/java/com/android/grafika/PlayMovieActivity.java"
+class="external">Grafika's Play Video</a> includes a pair of video players, one
+implemented with TextureView and one implemented with SurfaceView. The video
+decoding portion of the activity sends frames from MediaCodec to a surface for
+both TextureView and SurfaceView. The biggest difference between the
+implementations are the steps required to present the correct aspect ratio.</p>
+
+<p>Scaling SurfaceView requires a custom implementation of FrameLayout.
+WindowManager needs to send a new window position and new size values to
+SurfaceFlinger. Scaling a TextureView's SurfaceTexture requires configuring a
+transformation matrix with <code>TextureView#setTransform()</code>.</p>
+
+<p>After presenting the correct aspect ratio, both implementations follow the
+same pattern. When SurfaceView/TextureView creates the surface, the app code
+enables playback. When a user taps <strong>play</strong>, it starts a video
+decoding thread, with the surface as the output target. After that, the app
+code doesn't do anything&mdash;composition and display are handled by
+SurfaceFlinger (for the SurfaceView) or by the TextureView.</p>
+
+<h2 id="decode">Case Study: Grafika's Double Decode</h2>
+
+<p><a
+href="https://github.com/google/grafika/blob/master/app/src/main/java/com/android/grafika/DoubleDecodeActivity.java"
+class="external">Grafika's Double Decode</a> demonstrates manipulation of the
+SurfaceTexture inside a TextureView.</p>
+
+<p>Grafika's Double Decode uses a pair of TextureView objects to show two videos
+playing side by side, simulating a video conferencing app. When the orientation
+of the screen changes and the activity restarts, the MediaCodec decoders don't
+stop, simulating playback of a real-time video stream. To improve efficiency,
+the client should keep the surface alive. The surface is a handle to the producer
+interface in the SurfaceTexture's BufferQueue. Because the TextureView manages
+the SurfaceTexture, the client needs to keep the SurfaceTexture alive to keep
+the surface alive.</p>
+
+<p>To keep the SurfaceTexture alive, Grafika's Double Decode obtains references
+to SurfaceTextures from the TextureView objects and saves them in a static field.
+Then, Grafika's Double Decode returns <code>false</code> from
+<code>TextureView.SurfaceTextureListener#onSurfaceTextureDestroyed()</code> to
+prevent the destruction of the SurfaceTexture. TextureView then passes a
+SurfaceTexture to <code>onSurfaceTextureDestroyed()</code> that can be
+maintained across the activity configuration change, which the client passes to
+the new TextureView through <code>setSurfaceTexture()</code>.</p>
+
+<p>Separate threads drive each video decoder. Mediaserver sends buffers with
+decoded output to the SurfaceTextures, the BufferQueue consumers. The
+TextureView objects perform rendering and execute on the UI thread.</p>
 
 
-
-<p>The TextureView class introduced in Android 4.0 and is the most complex of
-the View objects discussed here, combining a View with a SurfaceTexture.</p>
-
-<h2 id=render_gles>Rendering with GLES</h2>
-<p>Recall that the SurfaceTexture is a "GL consumer", consuming buffers of graphics
-data and making them available as textures.  TextureView wraps a SurfaceTexture,
-taking over the responsibility of responding to the callbacks and acquiring new
-buffers.  The arrival of new buffers causes TextureView to issue a View
-invalidate request.  When asked to draw, the TextureView uses the contents of
-the most recently received buffer as its data source, rendering wherever and
-however the View state indicates it should.</p>
-
-<p>You can render on a TextureView with GLES just as you would SurfaceView.  Just
-pass the SurfaceTexture to the EGL window creation call.  However, doing so
-exposes a potential problem.</p>
-
-<p>In most of what we've looked at, the BufferQueues have passed buffers between
-different processes.  When rendering to a TextureView with GLES, both producer
-and consumer are in the same process, and they might even be handled on a single
-thread.  Suppose we submit several buffers in quick succession from the UI
-thread.  The EGL buffer swap call will need to dequeue a buffer from the
-BufferQueue, and it will stall until one is available.  There won't be any
-available until the consumer acquires one for rendering, but that also happens
-on the UI thread… so we're stuck.</p>
-
-<p>The solution is to have BufferQueue ensure there is always a buffer
-available to be dequeued, so the buffer swap never stalls.  One way to guarantee
-this is to have BufferQueue discard the contents of the previously-queued buffer
-when a new buffer is queued, and to place restrictions on minimum buffer counts
-and maximum acquired buffer counts.  (If your queue has three buffers, and all
-three buffers are acquired by the consumer, then there's nothing to dequeue and
-the buffer swap call must hang or fail.  So we need to prevent the consumer from
-acquiring more than two buffers at once.)  Dropping buffers is usually
-undesirable, so it's only enabled in specific situations, such as when the
-producer and consumer are in the same process.</p>
-
-<h2 id=surface_or_texture>SurfaceView or TextureView?</h2>
-SurfaceView and TextureView fill similar roles, but have very different
-implementations.  To decide which is best requires an understanding of the
-trade-offs.</p>
-
-<p>Because TextureView is a proper citizen of the View hierarchy, it behaves like
-any other View, and can overlap or be overlapped by other elements.  You can
-perform arbitrary transformations and retrieve the contents as a bitmap with
-simple API calls.</p>
-
-<p>The main strike against TextureView is the performance of the composition step.
-With SurfaceView, the content is written to a separate layer that SurfaceFlinger
-composites, ideally with an overlay.  With TextureView, the View composition is
-always performed with GLES, and updates to its contents may cause other View
-elements to redraw as well (e.g. if they're positioned on top of the
-TextureView).  After the View rendering completes, the app UI layer must then be
-composited with other layers by SurfaceFlinger, so you're effectively
-compositing every visible pixel twice.  For a full-screen video player, or any
-other application that is effectively just UI elements layered on top of video,
-SurfaceView offers much better performance.</p>
-
-<p>As noted earlier, DRM-protected video can be presented only on an overlay plane.
- Video players that support protected content must be implemented with
-SurfaceView.</p>
-
-<h2 id=grafika>Case Study: Grafika's Play Video (TextureView)</h2>
-
-<p>Grafika includes a pair of video players, one implemented with TextureView, the
-other with SurfaceView.  The video decoding portion, which just sends frames
-from MediaCodec to a Surface, is the same for both.  The most interesting
-differences between the implementations are the steps required to present the
-correct aspect ratio.</p>
-
-<p>While SurfaceView requires a custom implementation of FrameLayout, resizing
-SurfaceTexture is a simple matter of configuring a transformation matrix with
-<code>TextureView#setTransform()</code>.  For the former, you're sending new
-window position and size values to SurfaceFlinger through WindowManager; for
-the latter, you're just rendering it differently.</p>
-
-<p>Otherwise, both implementations follow the same pattern.  Once the Surface has
-been created, playback is enabled.  When "play" is hit, a video decoding thread
-is started, with the Surface as the output target.  After that, the app code
-doesn't have to do anything -- composition and display will either be handled by
-SurfaceFlinger (for the SurfaceView) or by TextureView.</p>
-
-<h2 id=decode>Case Study: Grafika's Double Decode</h2>
-
-<p>This activity demonstrates manipulation of the SurfaceTexture inside a
-TextureView.</p>
-
-<p>The basic structure of this activity is a pair of TextureViews that show two
-different videos playing side-by-side.  To simulate the needs of a
-videoconferencing app, we want to keep the MediaCodec decoders alive when the
-activity is paused and resumed for an orientation change.  The trick is that you
-can't change the Surface that a MediaCodec decoder uses without fully
-reconfiguring it, which is a fairly expensive operation; so we want to keep the
-Surface alive.  The Surface is just a handle to the producer interface in the
-SurfaceTexture's BufferQueue, and the SurfaceTexture is managed by the
-TextureView;, so we also need to keep the SurfaceTexture alive.  So how do we deal
-with the TextureView getting torn down?</p>
-
-<p>It just so happens TextureView provides a <code>setSurfaceTexture()</code> call
-that does exactly what we want.  We obtain references to the SurfaceTextures
-from the TextureViews and save them in a static field.  When the activity is
-shut down, we return "false" from the <code>onSurfaceTextureDestroyed()</code>
-callback to prevent destruction of the SurfaceTexture.  When the activity is
-restarted, we stuff the old SurfaceTexture into the new TextureView.  The
-TextureView class takes care of creating and destroying the EGL contexts.</p>
-
-<p>Each video decoder is driven from a separate thread.  At first glance it might
-seem like we need EGL contexts local to each thread; but remember the buffers
-with decoded output are actually being sent from mediaserver to our
-BufferQueue consumers (the SurfaceTextures).  The TextureViews take care of the
-rendering for us, and they execute on the UI thread.</p>
-
-<p>Implementing this activity with SurfaceView would be a bit harder.  We can't
-just create a pair of SurfaceViews and direct the output to them, because the
-Surfaces would be destroyed during an orientation change.  Besides, that would
-add two layers, and limitations on the number of available overlays strongly
-motivate us to keep the number of layers to a minimum.  Instead, we'd want to
-create a pair of SurfaceTextures to receive the output from the video decoders,
-and then perform the rendering in the app, using GLES to render two textured
-quads onto the SurfaceView's Surface.</p>
+<p>Implementing Grafika's Double Decode with SurfaceView is harder than
+implementing with TextureView because SurfaceView objects destroy surfaces
+during orientation changes. Additionally, using SurfaceView objects adds two
+layers, which isn't ideal because of the limitations on the number of overlays
+available on the hardware.</p>
 
   </body>
 </html>

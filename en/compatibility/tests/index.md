@@ -26,27 +26,16 @@ Before understanding how testing is done on the Android platform,
 please refer to the [Android platform architecture](/devices/architecture)
 for an overview.
 
-## What's new
+Then delve into the precise technologies available to you in this section, such
+as the [Vendor Test Suite (VTS)](/compatibility/vts) and its myriad
+[video and codelab tutorials](/compatibility/vts/codelab-video).
 
-### Test development workflow
+Also note the [security-specific testing](/devices/tech/debug/fuzz-sanitize)
+mechanisms available to detect and harden your devices against vulnerabilities.
 
-The [Test Development Workflow](/compatibility/tests/development) subsection now
-contains introductory materials including end-to-end examples for all primary
-test types.
-
-### Simple test configuration
-
-The [Soong build system](https://android.googlesource.com/platform/build/soong/)
-was introduced in Android 8.0 (Oreo) with support for `android_test` arriving in
-Android Q, now available in the Android Open Source Project (AOSP) master
-branch. Soong's Blueprint-based configuration is far simpler than the previous
-Make solution.
-
-### Atest
-
-[Atest](/compatibility/tests/development/atest)
-is a command line tool that allows users to build, install and run Android tests
-locally. It is the recommended standard for initial testing of your feature.
+For app testing, start with the [Fundamentals of Testing](https://developer.android.com/training/testing/fundamentals)
+and conduct the [Android Testing Codelab](https://codelabs.developers.google.com/codelabs/android-testing/)
+using the [samples](https://github.com/android/testing-samples) provided.
 
 ## What and how to test
 

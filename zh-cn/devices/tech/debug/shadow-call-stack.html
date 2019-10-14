@@ -1,0 +1,52 @@
+<html devsite><head>
+    <title>ShadowCallStack</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+
+  <!--
+      Copyright 2019 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<aside class="note"><b>注意</b>：ShadowCallStack 仅针对 aarch64 进行实现。</aside>
+
+<p>ShadowCallStack (SCS) 是一种 <a href="https://clang.llvm.org/docs/ShadowCallStack.html" class="external">LLVM 插桩</a>模式，可将函数的返回地址保存到非叶函数的函数 prolog 中单独分配的 <strong>ShadowCallStack</strong>，并从函数 epilog 中的 ShadowCallStack 加载返回地址，从而防止返回地址覆盖（比如堆栈缓冲区溢出）。返回地址也存储在常规堆栈中，以便与展开程序兼容，但在其他方面未使用。这样可以确保攻击（修改常规堆栈上的返回地址）不会对程序控制流造成任何影响。</p>
+
+<p>在 aarch64 上，插桩使用 <code>x18</code> 寄存器来引用 ShadowCallStack，这意味着不必将对 ShadowCallStack 的引用存储在内存中。这样就可以实现一个运行时，避免向可以读取任意内存的攻击者公开 ShadowCallStack 地址。</p>
+
+<h2 id="implementation">实现</h2>
+<p>Android 支持将 ShadowCallStack 用于内核和用户空间。</p>
+
+<h3 id="enable-kernel">为内核启用 SCS</h3>
+<p>要为内核启用 ShadowCallStack，请将下面这行代码添加到内核配置文件：</p>
+
+<pre class="devsite-click-to-copy">CONFIG_SHADOW_CALL_STACK=y</pre>
+
+<h3 id="enable-userspace">在用户空间中启用 SCS</h3>
+<p>要在用户空间组件中启用 ShadowCallStack，请将下面这几行代码添加到组件的蓝图文件中：</p>
+
+<pre class="devsite-click-to-copy">
+sanitize: {
+  scs: true
+}
+</pre>
+
+<p>SCS 会假定 <code>x18</code> 寄存器预留下来以存储 ShadowCallStack 的地址，并且该寄存器不会用于任何其他目的。虽然所有系统库都编译为预留 <code>x18</code> 寄存器，但如果为与进程内旧版代码（例如可由第三应用加载的库）进行互操作的用户空间组件启用 SCS，可能会破坏 <code>x18</code> 寄存器，从而可能导致出现问题。因此，我们仅建议在不会加载到旧版二进制文件中的自包含组件中启用 SCS。</p>
+
+<h2 id="validation">验证</h2>
+<p>没有专门针对 SCS 的 CTS 测试。不过，您可以确保无论是否启用 SCS，CTS 测试均能通过，从而确定 SCS 不会影响设备。</p>
+
+</body></html>

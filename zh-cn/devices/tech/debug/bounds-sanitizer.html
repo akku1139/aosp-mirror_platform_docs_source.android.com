@@ -1,0 +1,92 @@
+<html devsite><head>
+    <title>边界排错程序</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+
+  <!--
+      Copyright 2019 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          //www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>边界排错程序 (BoundSan) 将插桩添加到二进制文件，以在数组访问周围插入边界检查。如果编译器无法在编译时证明访问是安全的，并且在运行时将知道数组大小，便会添加这些检查，以便进行边界检查。Android 10 在蓝牙和编解码器中部署了 BoundSan。BoundSan 由编译器提供，在整个平台的各个组件中默认启用。</p>
+
+<h2 id="implementation">实现</h2>
+
+<p>BoundSan 使用 <a href="/devices/tech/debug/sanitizers#undefinedbehaviorsanitizer">UBSan</a> 的边界排错程序。该缓解功能是在各个模块级别启用，有助于确保 Android 关键组件的安全性，因此不应停用。</p>
+
+<p>我们强烈建议您为更多组件启用 BoundSan。理想的候选组件是特权原生代码或可解析不可信用户输入的复杂原生代码。与启用 BoundSan 相关的性能开销取决于无法证明安全的数组访问次数。预计开销所占的平均百分比会较小，您可以测试性能是否存在问题。</p>
+
+<h3 id="blueprint-files">在 Blueprint 文件中启用 BoundSan</h3>
+
+<p>在 Blueprint 文件中，可以将 <code>"bounds"</code> 添加到二进制文件和库模块的 <code>misc_undefined</code> sanitize 属性，以启用 BoundSan：</p>
+
+<pre class="prettyprint">
+sanitize: {
+   misc_undefined: ["bounds"],
+   diag: {
+      misc_undefined: ["bounds"],
+   },
+   blacklist: "modulename_blacklist.txt",</pre>
+
+<h4 id="diag">diag</h4>
+
+<p><code>diag</code> 属性用于为排错程序启用诊断模式。请仅在测试期间使用诊断模式。诊断模式不会在溢出发生时中止，而这会抹杀该缓解功能的安全优势并导致更高的性能开销，因此不建议在正式版中使用。</p>
+
+<h4 id="blacklist">blacklist</h4>
+
+<p><code>blacklist</code> 属性用于指定黑名单文件，开发者可用来防止函数和源文件成为排错对象。请仅在性能存在问题且目标文件/函数可显著做出贡献时才使用此属性。手动审核这些文件/函数以确保数组访问安全无虞。如需更多详细信息，请参阅<a href="#troubleshooting">问题排查</a>。</p>
+
+<h3 id="makefiles">在 makefile 中启用 BoundSan</h3>
+
+<p>在 makefiles 中，可以将 <code>"bounds"</code> 添加到二进制文件和库模板的 <code>LOCAL_SANITIZE</code> 变量中，以启用 BoundSan。</p>
+
+<pre class="prettyprint">
+LOCAL_SANITIZE := bounds
+# Optional features
+LOCAL_SANITIZE_DIAG := bounds
+LOCAL_SANITIZE_BLACKLIST := modulename_blacklist.txt</pre>
+
+<p><code>LOCAL_SANITIZE</code> 接受以逗号分隔的排错程序列表。</p>
+
+<p><code>LOCAL_SANITIZE_DIAG</code> 用于开启诊断模式。请仅在测试期间使用诊断模式。诊断模式不会在溢出发生时中止，而这会抹杀该缓解功能的安全优势并导致更高的性能开销，因此不建议在正式版中使用。</p>
+
+<p><code>LOCAL_SANITIZE_BLACKLIST</code> 属性用于指定黑名单文件，以便开发者防止函数和源文件成为排错对象。请仅在性能存在问题且目标文件/函数可显著做出贡献时才使用此属性。手动审核这些文件/函数以确保数组访问安全无虞。如需更多详细信息，请参阅<a href="#troubleshooting">问题排查</a>。</p>
+
+<h3 id="disabling-boundsan">停用 BoundSan</h3>
+
+<p>您可以使用黑名单或函数属性在函数和源文件中停用 BoundSan。建议将 BoundSan 保留为启用状态，因此只有在函数或文件产生大量性能开销并且已手动审核源文件时才停用 BoundSan。</p>
+
+<p>如需详细了解如何使用<a href="https://clang.llvm.org/docs/UndefinedBehaviorSanitizer.html#disabling-instrumentation-with-attribute-no-sanitize-undefined">函数属性</a>和<a href="https://clang.llvm.org/docs/SanitizerSpecialCaseList.html">黑名单文件格式设置</a>停用 BoundSan，请参阅 Clang LLVM <a href="https://clang.llvm.org/docs/">文档</a>。应将黑名单的作用范围限定为特定的排错程序，方法是使用区块名称指定目标排错程序，以免影响其他排错程序。</p>
+
+<h2 id="validation">验证</h2>
+<p>没有专门针对 BoundSan 的 CTS 测试。因此请确保 CTS 测试在启用或未启用 BoundSan 的情况下均能通过，以证明它不会给设备带来影响。</p>
+
+<h2 id="troubleshooting">问题排查</h2>
+<p>在启用 BoundSan 之后全面测试组件，以确保任何先前未检测到的出界访问得到解决。</p>
+
+<p>BoundSan 错误可以轻松识别，因为此类错误包含以下 tombstone 中止消息：</p>
+
+<pre class="prettyprint">
+pid: ###, tid: ###, name: Binder:###  &gt;&gt;&gt; /system/bin/foobar &lt;&lt;&lt;
+signal 6 (SIGABRT), code -6 (SI_TKILL), fault addr --------
+Abort message: 'ubsan: out-of-bounds'</pre>
+
+<p>在诊断模式下运行时，源文件、行号和索引值将记入 <code>logcat</code>。默认情况下，此模式不会抛出中止消息。请查看 <code>logcat</code> 以检查是否存在任何错误。</p>
+
+<pre class="prettyprint">
+external/foo/bar.c:293:13: runtime error: index -1 out of bounds for type 'int [24]'</pre>
+
+</body></html>

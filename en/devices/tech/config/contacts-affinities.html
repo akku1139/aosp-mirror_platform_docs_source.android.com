@@ -1,0 +1,216 @@
+<html devsite>
+  <head>
+    <title>Contacts Provider and Affinities Information</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  {% include "_versions.html" %}
+  <body>
+  <!--
+      Copyright 2019 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p> Starting in Android {{ androidQVersionNumber }}, contacts-affinity-related data,
+managed by the <a
+href="https://developer.android.com/guide/topics/providers/contacts-
+provider.html" class="external">Contacts Provider</a> component (the source of data seen in a
+device’s contacts app), is accessed differently than in Android 9 and lower.</p>
+
+<p>Prior to Android {{ androidQVersionNumber }}, apps used the Contacts Provider
+to access data and transfer it between a device and online services. Android {{
+androidQVersionNumber }} features changes regarding data accessibility to ensure
+increased user privacy in all Android {{ androidQVersionNumber }} devices that
+use the Contacts Provider. For one, the underlying database doesn’t
+contain contact affinities data. Therefore apps can’t write to or read from it.
+Changes include the following: </p>
+
+<ul>
+  <li>The Contacts Provider doesn’t record contacts-affinity-related
+data, such as the number of times a user was contacted, the last time of
+contact, the app used, the person contacted, or any related historical data.</li>
+
+  <li>The <code><a
+href="https://developer.android.com/reference/android/widget/MultiAutoCompleteTe
+xtView" class="external">MultiAutoCompleteTextView</a></code> class in the Contacts Provider
+autocomplete API  doesn’t sort query results by interaction counter.</li>
+
+  <li>The Android framework doesn’t provide implicit contacts ranking. (However,
+  user-controlled, <em>explicit</em> contacts ranking (such as <em>starred</em>
+  contacts) remains).</li>
+</ul>
+
+<p>
+To implement these changes, do one of the following:
+</p>
+
+<ul>
+  <li>Use the latest Contacts Provider.</li>
+
+  <li>Update your version (if you’re using a forked version).</li>
+</ul>
+
+<p>In addition, update any apps that rely on the <a href="#fields">deprecated Contacts Provider
+features</a>. API versions designed to be workarounds to the deprecated functions <strong>aren’t
+allowed.</strong></p>
+
+<p>
+For Android 9 and lower, contact-interaction data from the Contacts Provider
+hasn’t been removed. Instead, contact-interaction data is cleared periodically
+(approximately once per day) to simulate the equivalent in Android {{
+androidQVersionNumber }}. The Contacts Provider stores this information, but
+only temporarily.
+</p>
+
+<h3 id="APIchanges">API changes</h3>
+
+<p>
+These changes are expected to have a large impact on APIs. For example,
+autocomplete ranking won’t perform as well. Potential impacts on API behavior
+include the following:
+</p>
+
+<ul>
+  <li>The Contacts Provider won’t store a user's preferences for, or interactions
+with, the contact in the <code><a
+href="https://developer.android.com/reference/android/provider/ContactsContract.
+Contacts.html" class="external">ContactsContract.Contacts</a></code> table columns.</li>
+  <li>The autocomplete API won’t sort results by interaction counter.</li>
+  <li>The <code>TIMES_CONTACTED</code> / <code>TIMES_USED</code> and
+<code>LAST_TIME_CONTACTED</code> / <code>LAST_TIME_USED</code> columns won’t be
+updated.</li>
+
+<ul>
+  <li>These clear (to either <code>null</code> or set to 0, depending on
+the affected columns) upon upgrade to Android {{ androidQVersionNumber }}.</li>
+  <li>Ranking in the autocomplete query APIs returns results sorted
+alphabetically, never by affinity information.</li>
+  <li>API calls for frequent contacts (for example, using the filter string
+<code>CONTENT_FREQUENT_URI</code>) return no results.</li></ul></ul>
+
+<p>
+Generally, if any of the deprecated Contacts Provider API elements use counters,
+those counters (when used in Android {{ androidQVersionNumber }}) contain 0, and
+return 0 when queried. Update requests from affected APIs are ignored. For
+example, the <code><a
+href="https://developer.android.com/reference/android/provider/ContactsContract.
+DataUsageFeedback.html" class="external">ContactsContract.DataUsageFeedback</a></code> class was
+deprecated, so update and delete calls to this class are ignored.</p>
+
+<h4 id="fields">Fields that impact APIs</h4>
+
+<p>
+These fields have changed in Android {{ androidQVersionNumber }}:
+</p>
+
+<ul>
+  <li><code><a href="https://developer.android.com/reference/android/provider/ContactsContract.ContactOptionsColumns.html#TIMES_CONTACTED" class="external">ContactsContract.ContactOptionsColumns#TIMES_CONTACTED</a></code></li>
+  <li><code><a href="https://developer.android.com/reference/android/provider/ContactsContract.ContactOptionsColumns.html#LAST_TIME_CONTACTED" class="external">ContactsContract.ContractOptionsColumns.LAST_TIME_CONTACTED</a></code></li>
+  <li><code><a href="https://developer.android.com/reference/android/provider/ContactsContract.DataUsageStatColumns.html#TIMES_USED" class="external">ContactsContract.DataUsageStatColumns#TIMES_USED</a></code></li>
+  <li><code><a href="https://developer.android.com/reference/android/provider/ContactsContract.DataUsageStatColumns.html#LAST_TIME_USED" class="external">ContactsContract.DataUsageStatColumns#LAST_TIME_USED</a></code></li>
+  <li><code><a href="https://developer.android.com/reference/android/provider/ContactsContract.Contacts.html?hl=ro#CONTENT_STREQUENT_FILTER_URI" class="external">ContactsContract#CONTENT_STREQUENT_FILTER_URI</a></code></li>
+  <li><code><a href="https://developer.android.com/reference/android/provider/ContactsContract.Contacts.html?hl=ro#CONTENT_STREQUENT_URI" class="external">ContactsContract.Contacts#CONTENT_STREQUENT_URI</a></code></li>
+  <li><code><a href="https://developer.android.com/reference/android/provider/ContactsContract.Contacts.html?hl=ro#CONTENT_FREQUENT_URI" class="external">ContactsContract.Contacts#CONTENT_FREQUENT_URI</a></code></li>
+  <li><code><a href="https://developer.android.com/reference/android/provider/ContactsContract.Contacts.html#ENTERPRISE_CONTENT_FILTER_URI" class="external">ContactsContract.Contacts#ENTERPRISE_CONTENT_FILTER_URI</a></code></li>
+  <li><code><a href="https://developer.android.com/reference/android/provider/ContactsContract.Contacts#CONTENT_FILTER_URI" class="external">ContactsContract.Contacts#CONTENT_FILTER_URI</a></code></li>
+</ul>
+
+<p> The affected fields in Android {{ androidQVersionNumber }} may be present in different APIs, as
+indicated in the table below. Deprecated API fields return behaviors as listed. Because one of these
+deprecated fields may be used in several of your APIs, verify your use cases. </p>
+
+<table>
+  <tbody>
+    <tr>
+      <th>Class</th>
+      <th>API fields</th>
+      <th>{{ androidQVersionNumber }} returns</th>
+    </tr>
+    <tr>
+      <td>
+      <code><a href="https://developer.android.com/reference/android/provider/ContactsContract.Contacts" class="external">ContactsContract.Contacts</a></code><br>
+      <code><a href="https://developer.android.com/reference/android/provider/ContactsContract.RawContacts" class="external">ContactsContract.RawContacts</a></code><br>
+      <code><a href="https://developer.android.com/reference/android/provider/ContactsContract.Data" class="external">ContactsContract.Data</a></code><br>
+      <code><a href="https://developer.android.com/reference/android/provider/ContactsContract.Contacts.Entity" class="external">ContactsContract.Entity</a></code>
+      </td>
+      <td><code>ContactOptionsColumns</code><br>
+        <code>TIMES_CONTACTED</code><br>
+        <code>LAST_TIME_CONTACTED</code>
+      </td>
+      <td>These columns always contain 0, regardless of how they’re used. Attempts to modify them are
+       ignored.</td>
+    </tr>
+    <tr>
+      <td><code><a href="https://developer.android.com/reference/android/provider/ContactsContract.Contacts" class="external">Contacts</a></code>
+      </td>
+      <td><code>markAsContacted()</code></td>
+      <td>No operation.</td>
+    </tr>
+    <tr>
+      <td><code><a href="https://developer.android.com/reference/android/provider/ContactsContract.DataUsageFeedback" class="external">ContactsContract.DataUsageFeedback</a></code>
+      </td>
+      <td><p><code>update</code><br>
+        <code>delete</code></p>
+     </td>
+      <td>No operation.</td>
+    </tr>
+    <tr>
+      <td><code><a href="https://developer.android.com/reference/android/provider/ContactsContract.Contacts" class="external">ContactsContract.Contacts</a></code>
+      </td>
+      <td>Strequent (<em>starred</em> + frequent)<br>
+         <code>CONTENT_STREQUENT_FILTER_URI</code><br>
+         <code>CONTENT_STREQUENT_URI</code><br>
+         <code>CONTENT_FREQUENT_URI</code>
+      </td>
+      <td>Returns <em>starred</em> contacts only. No frequent contacts returned.</td>
+    </tr>
+    <tr>
+      <td><code><a href="https://developer.android.com/reference/android/provider/ContactsContract.CommonDataKinds.Email" class="external">ContactsContract.CommonDataKinds.Email</a></code><br>
+      <code><a href="https://developer.android.com/reference/android/provider/ContactsContract.CommonDataKinds.Phone" class="external">ContactsContract.CommonDataKinds.Phone</a></code><br>
+      <code><a href="https://developer.android.com/reference/android/provider/ContactsContract.CommonDataKinds.Callable" class="external">ContactsContract.CommonDataKinds.Callable</a></code>
+      </td>
+      <td>Filter (also called autocomplete) APIs
+        <p><code>CONTENT_FILTER_URI</code><br>
+        <code>ENTERPRISE_CONTENT_FILTER_URI</code></p>
+      </td>
+      <td>Results not sorted by affinity. These are sorted by <em>starred</em> and <em>name</em>.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h4 id="alternatives">Alternatives</h4>
+
+<p>
+There are no alternatives to the deprecated API fields. Workarounds designed to
+circumvent these restrictions, whether in the form of new APIs or new fields,
+aren’t allowed.
+</p>
+
+<h3 id="implementation">Implementation</h3>
+
+<p> You don’t need to do anything to implement these changes. They’re part of the initiative to
+increase user privacy on the Android OS platform. However, if your apps rely on deprecated features,
+you may want to update your apps to compensate for any changes. Additionally, if you use a forked
+version of the Contacts Provider, you must update your Contacts Provider.</p>
+
+<h3 id="nocustomize">No customization</h3>
+
+<p>
+Don’t customize or work around the contacts affinity information changes.
+They’re built into the framework, and making any changes takes you out of
+compliance. Never alter the default settings or provide backdoor alternatives.
+</p>
+
+  </body>
+</html>

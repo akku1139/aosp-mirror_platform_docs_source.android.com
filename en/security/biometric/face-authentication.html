@@ -1,0 +1,255 @@
+<html devsite>
+  <head>
+    <title>Face Authentication HIDL</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+{% include "_versions.html" %}
+  <!--
+      Copyright 2019 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<h2 id="overview">Overview</h2>
+
+<p>Face authentication allows users to unlock their device simply by looking at
+the front of their device. Android {{ androidQVersionNumber }} adds support
+for a new face authentication stack that can securely process camera frames,
+preserving security and privacy during face authentication on supported
+hardware. Android {{ androidQVersionNumber }} also provides an easy way for
+security compliant implementations to enable application integration for
+transactions, such as online banking or other services.</p>
+
+<p>The Android face authentication stack is a new implementation in Android
+{{ androidQVersionNumber }}. The new implementation introduces the <a
+href="https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/master/biometrics/face/1.0/IBiometricsFace.hal"
+class="external"><code>IBiometricsFace.hal</code></a>,
+<a
+href="https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/master/biometrics/face/1.0/IBiometricsFaceClientCallback.hal"
+class="external"><code>IBiometricsFaceClientCallback.hal</code></a>,
+and <a
+href="https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/master/biometrics/face/1.0/types.hal"
+class="external"><code>types.hal</code></a> interfaces.</p>
+
+<h2 id="architecture">Architecture</h2>
+<p>The BiometricPrompt API includes all biometric authentication including,
+face, finger, and iris. The Face HAL interacts with the following components.</p>
+
+<figure>
+  <img src="/security/images/biometricStack.png"
+       alt="Biometric stack" style="margin: 10px 10px 10px 10px;">
+  <figcaption>
+    <strong>Figure 1.</strong> Biometric stack
+  </figcaption>
+</figure>
+
+<h3 id="facemanager">FaceManager</h3>
+<p><code>FaceManager</code> is a private interface that maintains a
+connection with <code>FaceService</code>. It's used by Keyguard to
+access face authentication with a custom UI. Apps don't
+have access to FaceManager and must use <code>BiometricPrompt</code> instead.</p>
+
+<h3 id="faceservice">FaceService</h3>
+<p>This is the framework implementation that manages access to the face
+authentication hardware. It contains basic enrollment and authentication state
+machines as well as various other helpers (for example, enumeration). Because of
+stability and security concerns, no vendor code is permitted to run in this
+process. All vendor code is accessed through the <a
+href="https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/master/biometrics/face/1.0/IBiometricsFace.hal"
+class="external">Face 1.0 HIDL interface</a>.</p>
+
+<h3 id="faced">faced</h3>
+<p>This is a Linux executable that implements the Face 1.0 HIDL interface used
+by <code>FaceService</code>. It registers itself as IBiometricsFace@1.0 so that <code>FaceService</code>
+can find it.</p>
+
+<h2 id="implementation">Implementation</h2>
+
+<h3 id="facehidl">Face HIDL</h3>
+<p>To implement the Face HIDL, you must implement all the <a
+href="#methods">methods</a> of <code>IBiometricsFace.hal</code>
+in a vendor-specific library.</p>
+
+<h4 id="error-messages">Error messages</h4>
+<p>Error messages are sent by a callback and return the state machine to the
+<strong>idle</strong> state after they're sent. Most messages have a
+corresponding user-facing string to inform the user of the error, but not all
+errors have this user-facing string. For more information on error messages, see
+<a
+href="https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/master/biometrics/face/1.0/types.hal"
+class="external"><code>types.hal</code></a>.
+All error messages represent a terminal state, meaning the framework assumes that the
+HAL returns to an idle state after sending an error message.</p>
+
+<h4 id="acquisition-messages">Acquisition messages</h4>
+<p>Acquisition messages are delivered during enrollment or authentication and
+are meant to guide the user toward a successful enrollment or authentication.
+Each ordinal has
+an associated message from the <a
+href="https://android.googlesource.com/platform/frameworks/base/+/refs/heads/master/core/java/android/hardware/face/FaceManager.java"
+class="external"><code>FaceAuthenticationManager.java</code></a>
+file. Vendor-specific messages can be added as long as the corresponding help
+strings are provided. Acquisition messages aren't terminal states in and of
+themselves; the HAL is expected to send as many of these as necessary to
+complete the current enrollment or authentication. If an acquisition message
+results in a terminal state where no progress can be made, then the HAL should
+follow the acquisition messages with an error message, for example, where the
+image is too dark and stays too dark for progress to be made. In this case, it's
+reasonable to send <code>UNABLE_TO_PROCESS</code> after several attempts have been made
+  but no further progress can be made.</p>
+
+<h4 id="hardware">Hardware</h4>
+<p>For devices to comply with the <strong>strong biometric</strong>
+requirements for Android {{ androidQVersionNumber }}, they must have
+secure hardware to ensure the integrity of face data and the
+ultimate authentication comparison. The Android Compatibility
+Definition Document (CDD) outlines the level of security required
+and the acceptable spoof acceptance rate (SAR) required. A trusted
+execution environment (TEE) is required for secure processing
+and recognition. Additionally, secure camera hardware is required to
+prevent injection attacks on face authentication. For example,
+the associated memory pages for image data could be privileged
+and marked read-only so only the camera hardware can update them.
+Ideally, no process should have access except TEE and the hardware.</p>
+
+<p>Because face authentication hardware varies considerably, it's necessary to
+develop hardware-specific drivers to enable face authentication, depending on
+specific device architecture. As such, there is no reference
+implementation for <code>faced</code>.</p>
+
+<h4 id="methods">Methods</h4>
+<p>The following methods are all asynchronous and must immediately return to the
+framework. Failing to do so results in a slow system and potential
+Watchdog resets. It's recommended to have a message queue with multiple threads
+to avoid blocking the caller. All GET requests should cache information where
+possible so the caller is blocked for a minimal amount of time.</p>
+
+<table>
+  <thead>
+  <tr>
+    <th>Method</th>
+    <th>Description</th>
+  </tr>
+  </thead>
+<tbody>
+  <tr>
+    <td><code>setCallback()</code></td>
+    <td>Called by <code>FaceService</code> to plumb all messages back to itself.</td>
+  </tr>
+  <tr>
+    <td><code>setActiveUser()</code></td>
+    <td>Sets the active user, which all subsequent HAL operations are applied.
+      Authentication is always for this user until this method is called again.</td>
+  </tr>
+  <tr>
+    <td><code>revokeChallenge()</code></td>
+    <td>Finishes the secure transaction by invalidating the challenge generated
+      by <code>generateChallenge()</code>.</td>
+  </tr>
+  <tr>
+    <td><code>enroll()</code></td>
+    <td>Enrolls a user's face.</td>
+  </tr>
+  <tr>
+    <td><code>cancel()</code></td>
+    <td>Cancels the current operation (for example, enroll, authenticate,
+      remove, or enumerate) and returns <code>faced</code> to the idle state.</td>
+  </tr>
+  <tr>
+    <td><code>enumerate()</code></td>
+    <td>Enumerates all face templates associated with the active user.</td>
+  </tr>
+  <tr>
+    <td><code>remove()</code></td>
+    <td>Removes a face template or all face templates associated with the active
+    user.</td>
+  </tr>
+  <tr>
+    <td><code>authenticate()</code></td>
+    <td>Authenticates the active user.</td>
+  </tr>
+  <tr>
+    <td><code>userActivity()</code></td>
+    <td>This method should only be used when the HAL is in the authenticating or
+    standby state. Using this method when the HAL is not in one of these
+    states returns <code>OPERATION_NOT_SUPPORTED</code>. Calling
+    this method while the HAL is already authenticating may extend the
+    amount of time the system looks for a face.</td>
+  </tr>
+  <tr>
+    <td><code>resetLockout()</code></td>
+    <td>When too many faces are rejected, <code>faced</code> is required to enter a lockout
+    state (<code>LOCKOUT</code> or <code>LOCKOUT_PERMANENT</code>).  When it
+    does, it's required to send the remaining time to the framework so it can
+    display it for the user. As with <code>setFeature()</code>, this method requires an
+    active hardware authentication token (HAT) to securely reset the internal state. Resets lockout
+    <strong>only</strong> for the current user.</td>
+  </tr>
+</tbody>
+</table>
+
+<aside class="key-point"><b>Key Point:</b> Calls to the above methods should
+  insert a message and return. It's important the methods listed above
+immediately return to the idle state.</aside>
+
+<p>The three remaining methods are all synchronous and should
+block for the minimal amount of time to avoid stalling the framework.</p>
+
+<table>
+<thead>
+  <tr>
+    <th>Method</th>
+    <th>Description</th>
+  </tr>
+</thead>
+<tbody>
+  <tr>
+    <td><code>generateChallenge()</code></td>
+    <td>Generates a unique and cryptographically secure random token used to
+indicate the start of a secure transaction.</td>
+  </tr>
+  <tr>
+    <td><code>setFeature()</code></td>
+    <td>Enables or disables a feature for the current user. For security
+      reasons, this requires a HAT from checking
+      the user's pin/pattern/password against the above challenge</td>
+  </tr>
+  <tr>
+    <td><code>getFeature()</code></td>
+    <td>Retrieves the current enablement state of the feature, as dictated by
+      the default or a call to <code>setFeature()</code> above. If the face ID is invalid, the
+      implementation must return <code>ILLEGAL_ARGUMENT</code></td>
+  </tr>
+  <tr>
+    <td><code>getAuthenticatorId()</code></td>
+    <td>Returns an identifier associated with the current face set.
+      This identifier <strong>must</strong> change whenever a face is added</td>
+  </tr>
+</tbody>
+</table>
+
+<h3 id="state-diagram">State Diagram</h3>
+<p>The framework expects <code>faced</code> to follow the state diagram below.</p>
+
+<figure>
+  <img src="/security/images/faceAuthStateFlow.png"
+       alt="State Diagram">
+  <figcaption>
+    <strong>Figure 2.</strong> Face authentication state flow
+  </figcaption>
+</figure>
+
+  </body>
+</html>

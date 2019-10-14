@@ -586,16 +586,16 @@ reflects back to the caller all messages it receives from clients originated
 from the secure or non-secure side.</p>
 
 <pre class="prettyprint">
-#include < stddef.h >
-#include < stdio.h >
-#include < stdlib.h >
-#include < string.h >
-#include < trusty_std.h >
-#include < app / echo / uuids.h >
+#include &lt;uapi/err.h&gt;
+#include &lt;stdbool.h&gt;
+#include &lt;stddef.h&gt;
+#include &lt;stdio.h&gt;
+#include &lt;stdlib.h&gt;
+#include &lt;string.h&gt;
+#include &lt;trusty_ipc.h&gt;
 #define LOG_TAG "echo_srv"
-#define TLOGE(fmt, ...)\
-fprintf(stderr, "%s: %d: "
-  fmt, LOG_TAG, __LINE__, ##__VA_ARGS__)
+#define TLOGE(fmt, ...) \
+    fprintf(stderr, "%s: %d: " fmt, LOG_TAG, __LINE__, ##__VA_ARGS__)
 
 # define MAX_ECHO_MSG_SIZE 64
 
@@ -609,20 +609,20 @@ static uint8_t msg_buf[MAX_ECHO_MSG_SIZE];
  */
 static int handle_msg(handle_t chan) {
   int rc;
-  iovec_t iov;
+  struct iovec iov;
   ipc_msg_t msg;
   ipc_msg_info_t msg_inf;
 
-  iov.base = msg_buf;
-  iov.len = sizeof(msg_buf);
+  iov.iov_base = msg_buf;
+  iov.iov_len = sizeof(msg_buf);
 
   msg.num_iov = 1;
-  msg.iov = & iov;
+  msg.iov = &amp;iov;
   msg.num_handles = 0;
   msg.handles = NULL;
 
   /* get message info */
-  rc = get_msg(chan, & msg_inf);
+  rc = get_msg(chan, &amp;msg_inf);
   if (rc == ERR_NO_MSG)
     return NO_ERROR; /* no new messages */
 
@@ -633,19 +633,19 @@ static int handle_msg(handle_t chan) {
   }
 
   /* read msg content */
-  rc = read_msg(chan, msg_inf.id, 0, & msg);
-  if (rc < 0) {
+  rc = read_msg(chan, msg_inf.id, 0, &amp;msg);
+  if (rc &lt; 0) {
     TLOGE("failed (%d) to read_msg for chan (%d)\n",
       rc, chan);
     return rc;
   }
 
   /* update number of bytes received */
-  iov.len = (size_t) rc;
+  iov.iov_len = (size_t) rc;
 
   /* send message back to the caller */
-  rc = send_msg(chan, & msg);
-  if (rc < 0) {
+  rc = send_msg(chan, &amp;msg);
+  if (rc &lt; 0) {
     TLOGE("failed (%d) to send_msg for chan (%d)\n",
       rc, chan);
     return rc;
@@ -668,19 +668,19 @@ static int handle_msg(handle_t chan) {
 static void handle_channel_event(const uevent_t * ev) {
   int rc;
 
-  if (ev - > event & IPC_HANDLE_POLL_MSG) {
-    rc = handle_msg(ev - > handle);
+  if (ev->event &amp; IPC_HANDLE_POLL_MSG) {
+    rc = handle_msg(ev->handle);
     if (rc != NO_ERROR) {
       /* report an error and close channel */
       TLOGE("failed (%d) to handle event on channel %d\n",
-        rc, ev - > handle);
-      close(ev - > handle);
+        rc, ev->handle);
+      close(ev->handle);
     }
     return;
   }
-  if (ev - > event & IPC_HANDLE_POLL_HUP) {
+  if (ev->event &amp; IPC_HANDLE_POLL_HUP) {
     /* closed by peer. */
-    close(ev - > handle);
+    close(ev->handle);
     return;
   }
 }
@@ -689,83 +689,81 @@ static void handle_channel_event(const uevent_t * ev) {
  *  Port event handler
  */
 static void handle_port_event(const uevent_t * ev) {
-    uuid_t peer_uuid;
+  uuid_t peer_uuid;
 
-    if ((ev - > event & IPC_HANDLE_POLL_ERROR) ||
-      (ev - > event & IPC_HANDLE_POLL_HUP) ||
-      (ev - > event & IPC_HANDLE_POLL_MSG) ||
-      (ev - > event & IPC_HANDLE_POLL_SEND_UNBLOCKED)) {
-      /* should never happen with port handles */
-      TLOGE("error event (0x%x) for port (%d)\n",
-        ev - > event, ev - > handle);
-      abort();
+  if ((ev->event &amp; IPC_HANDLE_POLL_ERROR) ||
+    (ev->event &amp; IPC_HANDLE_POLL_HUP) ||
+    (ev->event &amp; IPC_HANDLE_POLL_MSG) ||
+    (ev->event &amp; IPC_HANDLE_POLL_SEND_UNBLOCKED)) {
+    /* should never happen with port handles */
+    TLOGE("error event (0x%x) for port (%d)\n",
+      ev->event, ev->handle);
+    abort();
+  }
+  if (ev->event &amp; IPC_HANDLE_POLL_READY) {
+    /* incoming connection: accept it */
+    int rc = accept(ev->handle, &amp;peer_uuid);
+    if (rc &lt; 0) {
+      TLOGE("failed (%d) to accept on port %d\n",
+        rc, ev->handle);
+      return;
     }
-    if (ev - > event & IPC_HANDLE_POLL_READY) {
-      /* incoming connection: accept it */
-      int rc = accept(ev - > handle, &peer_uuid);
-    if (ev - > event & IPC_HANDLE_POLL_READY) {
-      /* incoming connection: accept it */
-      int rc = accept(ev - > handle, &peer_uuid);
-      if (rc < 0) {
-        TLOGE("failed (%d) to accept on port %d\n",
-          rc, ev - > handle);
-        return;
-      }
-      handle_t chan = rc;
-      while (true){
-        struct uevent cev;
+    handle_t chan = rc;
+    while (true){
+      struct uevent cev;
 
-        rc = wait(handle, &cev, -1);
-        if (rc < 0) {
-          TLOGE("wait returned (%d)\n", rc);
-          abort();
-        }
-        handle_channel_event(&cev);
-        if (cev.event & IPC_HANDLE_POLL_HUP) {
-          return;
-        }
-      }
-    }
-
-
-    /*
-     *  Main application entry point
-     */
-    int main(void) {
-      int rc;
-      handle_t port;
-
-      /* Initialize service */
-      rc = port_create(srv_name, 1, MAX_ECHO_MSG_SIZE,
-        IPC_PORT_ALLOW_NS_CONNECT |
-        IPC_PORT_ALLOW_TA_CONNECT);
-      if (rc < 0) {
-        TLOGE("Failed (%d) to create port %s\n",
-          rc, srv_name);
+      rc = wait(chan, &amp;cev, INFINITE_TIME);
+      if (rc &lt; 0) {
+        TLOGE("wait returned (%d)\n", rc);
         abort();
       }
-      port = (handle_t) rc;
-
-      /* enter main event loop */
-      while (true) {
-        uevent_t ev;
-
-        ev.handle = INVALID_IPC_HANDLE;
-        ev.event = 0;
-        ev.cookie = NULL;
-
-        /* wait forever */
-        rc = wait(port, &ev, -1)
-        if (rc == NO_ERROR) {
-          /* got an event */
-          handle_port_event(&ev);
-        } else {
-          TLOGE("wait returned (%d)\n", rc);
-          abort();
-        }
+      handle_channel_event(&amp;cev);
+      if (cev.event &amp; IPC_HANDLE_POLL_HUP) {
+        return;
       }
-      return 0;
     }
+  }
+}
+
+
+/*
+ *  Main application entry point
+ */
+int main(void) {
+  int rc;
+  handle_t port;
+
+  /* Initialize service */
+  rc = port_create(srv_name, 1, MAX_ECHO_MSG_SIZE,
+    IPC_PORT_ALLOW_NS_CONNECT |
+    IPC_PORT_ALLOW_TA_CONNECT);
+  if (rc &lt; 0) {
+    TLOGE("Failed (%d) to create port %s\n",
+      rc, srv_name);
+    abort();
+  }
+  port = (handle_t) rc;
+
+  /* enter main event loop */
+  while (true) {
+    uevent_t ev;
+
+    ev.handle = INVALID_IPC_HANDLE;
+    ev.event = 0;
+    ev.cookie = NULL;
+
+    /* wait forever */
+    rc = wait(port, &amp;ev, INFINITE_TIME);
+    if (rc == NO_ERROR) {
+      /* got an event */
+      handle_port_event(&amp;ev);
+    } else {
+      TLOGE("wait returned (%d)\n", rc);
+      abort();
+    }
+  }
+  return 0;
+}
 </pre>
 
 <p>The <code>run_end_to_end_msg_test()</code> method sends 10,000 messages asynchronously
@@ -1191,4 +1189,3 @@ void tipc_chan_put_rxbuf(struct tipc_chan *chan,
 
   </body>
 </html>
-

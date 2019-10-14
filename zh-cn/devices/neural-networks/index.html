@@ -1,0 +1,401 @@
+<html devsite><head>
+
+  <meta name="book_path" value="/_book.yaml"/>
+
+  <meta name="project_path" value="/_project.yaml"/>
+</head>
+<body>
+
+<!--
+  Copyright 2018 The Android Open Source Project
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+<h1 id="neural_networks_api_drivers" class="page-title">Neural Networks API 驱动程序</h1>
+
+<p>本页简要介绍了如何实现 Neural Networks API (NNAPI) 驱动程序。如需更多详细信息，请参阅 HAL 定义文件中的相关文档 (<a href="https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/master/neuralnetworks/" class="external"><code>hardware/interfaces/neuralnetworks</code></a>)。您可以在 <a href="https://android.googlesource.com/platform/frameworks/ml/+/refs/heads/master/nn/driver/sample" class="external"><code>frameworks/ml/nn/driver/sample</code></a> 中找到驱动程序实现示例。</p>
+
+<p>如需详细了解 Neural Networks API，请参阅 <a href="https://developer.android.com/ndk/guides/neuralnetworks/" class="external">Neural Networks API</a>。</p>
+
+<h2 id="nnhal">神经网络 HAL</h2>
+
+<p>神经网络 (NN) HAL 定义了产品（例如手机或平板电脑）中各种设备<em></em>的抽象概念，例如图形处理单元 (GPU) 和数字信号处理器 (DSP)。这些设备的驱动程序必须符合 NN HAL。接口在 <a href="https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/master/neuralnetworks/" class="external"><code>hardware/interfaces/neuralnetworks</code></a> 下的 HAL 定义文件中指定。</p>
+
+<p>图 1 显示了框架和驱动程序之间的接口遵循的一般流程。</p>
+
+<p><img src="/devices/neural-networks/images/neural-networks-interface.png" alt="神经网络流程"/></p>
+
+<p><strong>图 1.</strong> 神经网络流程</p>
+
+<h2 id="initialization">初始化</h2>
+
+<p>在进行初始化时，框架使用 <code>IDevice.hal</code> 中的 <a href="https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/master/neuralnetworks/1.2/IDevice.hal#87" class="external"><code>IDevice::getCapabilities_1_2</code></a> 向驱动程序查询其功能（或者，对于 HAL 1.1，使用 <a href="/reference/hidl/android/hardware/neuralnetworks/1.1/IDevice#getcapabilities_1_1"><code>getCapabilities_1_1</code></a>；对于 HAL 1.0，使用 <a href="/reference/hidl/android/hardware/neuralnetworks/1.0/IDevice#getcapabilities"><code>getCapabilities</code></a>）。<code>@1.2::Capabilities</code> 结构包括所有数据类型，并使用向量表示非放宽的性能。</p>
+
+<p>为了确定如何将计算分配给可用设备，框架根据这些功能了解每个驱动程序履行执行的速度和能效。要提供这些信息，驱动程序必须根据参考工作负载的执行情况提供标准化的性能值。</p>
+
+<p>要确定驱动程序为响应 <code>IDevice::getCapabilities_1_2</code> 返回的值，请使用 NNAPI 基准应用衡量相应数据类型的性能。建议使用 MobileNet v1 和 v2 <code>asr_float</code> 和 <code>tts_float</code> 模型衡量 32 位浮点值的性能，并建议用 MobileNet v1 和 v2 量化模型衡量 8 位量化值的性能。如需了解详情，请参阅 <a href="#mlts">Android 机器学习测试套件</a>。</p>
+
+<p>在 Android 9 及更低版本中，<code>Capabilities</code> 结构仅包含浮点和量化张量的驱动程序性能信息，不包含标量数据类型的驱动程序性能信息。</p>
+
+<p>在初始化过程中，框架可能会使用 <a href="https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/master/neuralnetworks/1.2/IDevice.hal#76" class="external"><code>IDevice::getType</code></a>、<a href="https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/master/neuralnetworks/1.2/IDevice.hal#56" class="external"><code>IDevice::getVersionString</code></a>、<a href="https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/master/neuralnetworks/1.2/IDevice.hal#101" class="external"><code>IDevice:getSupportedExtensions</code></a> 和 <a href="https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/master/neuralnetworks/1.2/IDevice.hal#164" class="external"><code>IDevice::getNumberOfCacheFilesNeeded</code></a> 查询更多信息。</p>
+
+<p>在产品重新启动之间，框架希望本部分中描述的所有查询始终针对指定驱动程序报告相同的值。否则，使用该驱动程序的应用可能会出现性能下降或行为不当的情况。</p>
+
+<h2 id="compilation">编译</h2>
+
+<p>在收到应用的请求时，框架会确定要使用哪个设备。在 Android 10 中，应用可以发现并指定框架从中选择的设备。如需了解详情，请参阅<a href="/devices/neural-networks/device-discovery">设备发现和分配</a>。</p>
+
+<p>在模型编译过程中，框架通过调用 <a href="https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/master/neuralnetworks/1.2/IDevice.hal#123" class="external"><code>IDevice::getSupportedOperations_1_2</code></a>（或者，对于 HAL 1.1，调用 <a href="/reference/hidl/android/hardware/neuralnetworks/1.1/IDevice#getsupportedoperations_1_1"><code>getSupportedOperations_1_1</code></a>；对于 HAL 1.0，调用 <a href="/reference/hidl/android/hardware/neuralnetworks/1.0/IDevice#getsupportedoperations"><code>getSupportedOperations</code></a>）将模型发送到每个候选驱动程序。每个驱动程序都会返回一个布尔值数组，以指出支持模型的哪些运算。驱动程序可以根据多种原因确定无法支持指定的运算。例如：</p>
+
+<ul>
+<li>驱动程序不支持相应数据类型。</li>
+<li>驱动程序仅支持具有特定输入参数的运算。例如，驱动程序可能支持 3x3 和 5x5 卷积运算，但不支持 7x7 卷积运算。</li>
+<li>驱动程序具有内存限制，导致无法处理大型图表或输入。</li>
+</ul>
+
+<p>在编译期间，模型的输入、输出和内部运算数（如 <a href="/reference/hidl/android/hardware/neuralnetworks/1.0/types#operandlifetime"><code>OperandLifeTime</code></a> 中所述）可能具有未知的维度或秩。如需了解详情，请参阅<a href="#output-shape">输出形状</a>。</p>
+
+<p>框架通过调用 <a href="https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/master/neuralnetworks/1.2/IDevice.hal#266" class="external"><code>IDevice::prepareModel_1_2</code></a> 或 <a href="https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/master/neuralnetworks/1.2/IDevice.hal#346" class="external"><code>prepareModelFromCache</code></a>（或者，对于 HAL 1.1，调用 <a href="/reference/hidl/android/hardware/neuralnetworks/1.1/IDevice#preparemodel_1_1"><code>prepareModel_1_1</code></a>；对于 HAL 1.0，调用 <a href="/reference/hidl/android/hardware/neuralnetworks/1.0/IDevice#preparemodel"><code>prepareModel</code></a>）指示每个所选驱动程序做好执行模型一部分的准备。然后，每个驱动程序会编译模型的一部分。例如，驱动程序可能会生成代码或创建重新排序的权重副本。由于编译模型和执行请求之间可能间隔很长时间，因此不应在编译期间分配诸如大块设备内存等资源。</p>
+
+<p>编译成功后，驱动程序会返回 <a href="https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/master/neuralnetworks/1.2/IPreparedModel.hal" class="external"><code>@1.2::IPreparedModel</code></a>（或 <a href="/reference/hidl/android/hardware/neuralnetworks/1.0/IPreparedModel"><code>@1.0::IPreparedModel</code></a>）句柄。如果驱动程序在准备模型的一部分时返回失败代码，则框架会在 CPU 上运行整个模型。</p>
+
+<p>为了减少应用启动时编译所用的时间，驱动程序可以缓存编译工件。如需了解详情，请参阅<a href="/devices/neural-networks/compilation-caching">编译缓存</a>。</p>
+
+<h2 id="execution">执行</h2>
+
+<p>当应用要求框架执行请求时，框架会默认调用 <a href="https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/master/neuralnetworks/1.2/IPreparedModel.hal#141" class="external"><code>IPreparedModel::executeSynchronously</code></a> HAL 方法，以在准备好的模型上同步执行请求。也可以使用 <a href="https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/master/neuralnetworks/1.2/IPreparedModel.hal#79" class="external"><code>execute_1_2</code></a>（对于使用 NN HAL 1.1 或更低版本的驱动程序，则使用 <a href="/reference/hidl/android/hardware/neuralnetworks/1.0/IPreparedModel#execute"><code>execute</code></a>）方法异步执行请求，或者使用<a href="/devices/neural-networks/burst-executions">爆发执行</a>方法执行请求。</p>
+
+<p>与异步调用相比，同步执行调用可提高性能并减少线程开销，因为只有在执行完成后才将控制权返还给应用进程。这意味着驱动程序不需要单独的机制来通知应用进程执行已完成。</p>
+
+<p>如果使用异步 <code>execute_1_2</code> 或 <code>execute</code> 方法，控制权在执行开始后便返还给应用进程，并且驱动程序必须在执行完成时使用 <a href="https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/master/neuralnetworks/1.2/IExecutionCallback.hal" class="external"><code>@1.2::IExecutionCallback</code></a> 或 <a href="/reference/hidl/android/hardware/neuralnetworks/1.0/IExecutionCallback"><code>@1.0::IExecutionCallback</code></a> 接口通知框架。</p>
+
+<p>对于调试，建议将 <code>debug.nn.syncexec-hal</code> 属性设置为 <code>0</code>，这样会告知框架调用异步 <a href="https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/master/neuralnetworks/1.2/IPreparedModel.hal#79" class="external"><code>execute_1_2</code></a> 方法（而不是 <code>executeSynchronously</code>），否则可能无法从框架运行 <code>execute_1_2</code>。</p>
+
+<p>传递给 execute 方法的 <code>Request</code> 参数列出了用于执行的输入和输出运算数。存储运算数数据的内存必须使用行主序，第一维度的迭代速度最慢，并且在任何行的末尾都没有填充。如需详细了解运算数类型，请参阅<a href="https://developer.android.com/ndk/guides/neuralnetworks#operands" class="external">运算数</a>。</p>
+
+<p>对于使用 NN HAL 1.2 的驱动程序，当请求完成时，错误状态、<a href="#output-shape">输出形状</a>和<a href="#timing">时间信息</a>会返回到框架。在执行期间，模型的输出或内部运算数可能具有一个或多个未知维度或未知秩。当至少一个输出运算数具有未知维度或秩时，驱动程序必须返回大小动态变化的输出信息。</p>
+
+<p>对于使用 NN HAL 1.1 或更低版本的驱动程序，在请求完成时仅返回错误状态。必须完全指定输入和输出运算数的维度，才能成功完成执行。内部运算数可能具有一个或多个未知维度，但它们必须具有指定的秩。</p>
+
+<p>对于涉及多个驱动程序的用户请求，框架负责预留中间内存，并按顺序执行对每个驱动程序的调用。</p>
+
+<p>可以在同一个 <a href="https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/master/neuralnetworks/1.2/IPreparedModel.hal" class="external"><code>@1.2::IPreparedModel</code></a>（或 <a href="/reference/hidl/android/hardware/neuralnetworks/1.0/IPreparedModel"><code>@1.0::IPreparedModel</code></a>）上并行启动多个请求。驱动程序可以并行执行这些请求，也可以按顺序执行。</p>
+
+<p>框架可以要求驱动程序保留多个准备好的模型。例如，准备模型 <code>m1</code>，准备 <code>m2</code>，在 <code>m1</code> 上执行 <code>r1</code>，在 <code>m2</code> 上执行 <code>r2</code>，在 <code>m1</code> 上执行 <code>r3</code>，在 <code>m2</code> 上执行 <code>r4</code>，释放（如<a href="#cleanup">清理</a>中所述）<code>m1</code>，以及释放 <code>m2</code>。</p>
+
+<p>为了避免首次执行速度缓慢（这可能会导致糟糕的用户体验，比如第一帧卡顿），驱动程序应在编译阶段执行大部分初始化工作。首次执行时的初始化应仅限于过早执行会对系统运行状况产生负面影响的操作，例如预留较大的临时缓冲区或提高设备的时钟频率。只能准备有限数量的并发模型的驱动程序可能必须在首次执行时进行初始化。</p>
+
+<p>在 Android 10 中，如果快速连续地执行针对相同准备好模型的多个执行请求，则客户端可以选择使用执行爆发对象在应用和驱动程序进程之间进行通信。如需了解详情，请参阅<a href="/devices/neural-networks/burst-executions">爆发执行和快速消息队列</a>。</p>
+
+<p>为了提高多次快速连续执行的性能，驱动程序可以保留临时缓冲区或提高时钟频率。建议创建一个监控线程，在经过固定的一段时间后未创建任何新请求时释放资源。</p>
+<aside class="note"><strong>注意：</strong><span>对跨 HAL 层同步执行调用的支持不依赖于跨 NDK 层的同步执行调用。</span></aside>
+<h3 id="output-shape">输出形状</h3>
+
+<p>对于一个或多个输出运算数未指定所有维度的请求，驱动程序必须提供一个输出形状列表，其中包含执行后每个输出运算数的维度信息。如需详细了解维度，请参阅 <a href="https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/master/neuralnetworks/1.2/types.hal#4872" class="external"><code>types.hal</code></a>。</p>
+
+<p>如果执行由于输出缓冲区大小不足而失败，则驱动程序必须在输出形状列表中指出哪些输出运算数的缓冲区大小不足，并且应尽可能多地报告维度信息，使用零表示未知的维度。</p>
+
+<h3 id="timing">时间</h3>
+
+<p>在 Android 10 中，如果应用指定了在编译过程中使用的单个设备，则应用可以询问执行时间。如需了解详情，请参阅 <a href="https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/master/neuralnetworks/1.2/types.hal#5081" class="external"><code>MeasureTiming</code></a> 以及<a href="/devices/neural-networks/device-discovery">设备发现和分配</a>。在这种情况下，使用 NN HAL 1.2 的驱动程序必须在执行请求时测量执行时长或报告 <code>UINT64_MAX</code>（指明无法提供时长）。驱动程序应尽可能减少测量执行时长导致的性能损失。</p>
+
+<p>驱动程序在 <a href="https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/master/neuralnetworks/1.2/types.hal#5096" class="external"><code>Timing</code></a> 结构中报告以下时长（以微秒为单位）：</p>
+
+<ul>
+<li><strong>设备上的执行时间</strong>：不包括在主机处理器上运行的驱动程序中的执行时间。</li>
+<li><strong>驱动程序中的执行时间</strong>：包括设备上的执行时间。</li>
+</ul>
+
+<p>这些时长必须包括暂停执行（例如当执行被其他任务抢占或等待某资源可用时）的时间。</p>
+<aside class="note"><strong>注意</strong>：<span>当驱动程序以微秒为单位报告时长时，框架会以纳秒为单位报告时长（通过调整驱动程序报告的时长）。</span></aside>
+<p>如果未要求驱动程序测量执行时长，或者存在执行错误，则驱动程序必须将时长报告为 <code>UINT64_MAX</code>。即使已要求驱动程序测量执行时长，也可以针对设备上的执行时间和/或驱动程序中的执行时间报告 <code>UINT64_MAX</code>。当驱动程序将两个时长报告为 <code>UINT64_MAX</code> 以外的值时，驱动程序中的执行时间必须等于或超过设备上的执行时间。</p>
+
+<h2 id="cleanup">清理</h2>
+
+<p>当应用使用完准备好的模型时，框架会释放对 <a href="https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/master/neuralnetworks/1.2/IPreparedModel.hal" class="external"><code>@1.2::IPreparedModel</code></a>（或 <a href="/reference/hidl/android/hardware/neuralnetworks/1.0/IPreparedModel"><code>@1.0::IPreparedModel</code></a>）对象的引用。当 <code>IPreparedModel</code> 对象不再被引用时，它会在创建它的驱动程序服务中自动销毁。此时，在驱动程序的析构函数实现中，可以重新获取模型专用的资源。如果驱动程序服务希望 <code>IPreparedModel</code> 对象在客户端不再需要时自动销毁，则在通过 <a href="https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/master/neuralnetworks/1.2/IPreparedModelCallback.hal#54" class="external"><code>IPreparedModelCallback::notify_1_2</code></a> 或 <a href="/reference/hidl/android/hardware/neuralnetworks/1.0/IPreparedModelCallback#notify"><code>IPreparedModelCallback::notify</code></a> 返回 <code>IPreparedeModel</code> 对象后，它不得保留对 <code>IPreparedModel</code> 对象的任何引用。</p>
+
+<h2 id="cpu-usage">CPU 使用情况</h2>
+
+<p>驱动程序应该使用 CPU 来设置计算。驱动程序不应使用 CPU 来执行图计算，因为这会导致框架无法正确分配工作。驱动程序应向框架报告它无法处理的部分，并让框架处理其余部分。</p>
+
+<p>框架为所有 NNAPI 运算（供应商定义的运算除外）提供了 CPU 实现。如需了解详情，请参阅<a href="/devices/neural-networks/vendor-extensions">供应商扩展</a>。</p>
+
+<p><a href="#android-q">Android 10 中引入的运算</a>（API 级别 29）仅具有参考 CPU 实现，以验证 CTS 和 VTS 测试是否正确。移动机器学习框架中包含的优化实现优于 NNAPI CPU 实现。</p>
+
+<h2 id="utility_functions">效用函数</h2>
+
+<p>NNAPI 代码库包含可由驱动程序服务使用的效用函数。</p>
+
+<p><a href="https://android.googlesource.com/platform/frameworks/ml/+/refs/heads/master/nn/common/include/Utils.h" class="external"><code>frameworks/ml/nn/common/include/Utils.h</code></a> 文件包含各种效用函数，例如用于日志的函数以及在不同 NN HAL 版本之间进行转换的函数。</p>
+
+<ul>
+<li><p>VLogging：<code>VLOG</code> 是 Android <code>LOG</code> 的封装容器宏，只有在 <code>debug.nn.vlog</code> 属性中设置了相应标记时才会输出日志消息。
+必须在调用 <code>VLOG</code> 之前调用 <a href="https://android.googlesource.com/platform/frameworks/ml/+/refs/heads/master/nn/common/Utils.cpp#50" class="external"><code>initVLogMask()</code></a>。<code>VLOG_IS_ON</code> 宏可用于检查当前是否启用了 <code>VLOG</code>，如果不需要，则可以跳过复杂的日志代码。属性值必须是以下某个值：</p>
+
+<ul>
+<li>一个空字符串，表示不进行日志记录。</li>
+<li>令牌 <code>1</code> 或 <code>all</code>，表示要完成所有日志记录。</li>
+<li>由空格、英文逗号或冒号分隔的标记列表，指示要执行的日志记录。标记是 <code>compilation</code>、<code>cpuexe</code>、<code>driver</code>、<code>execution</code>、<code>manager</code> 和 <code>model</code>。</li>
+</ul></li>
+<li><p><code>compliantWithV1_*</code>：如果 NN HAL 对象可以转换为相同类型的不同 HAL 版本而不丢失信息，则返回 <code>true</code>。例如，如果模型包含 NN HAL 1.1 或 NN HAL 1.2 中引入的运算类型，则对 <code>V1_2::Model</code> 调用 <code>compliantWithV1_0</code> 会返回 <code>false</code>。</p></li>
+<li><p><code>convertToV1_*</code>：将 NN HAL 对象从一个版本转换为另一个版本。如果转换导致信息丢失（即如果该类型的新版本无法完全表示该值），则发出警告日志消息。</p></li>
+<li><p>权能：<code>nonExtensionOperandPerformance</code> 和 <code>update</code> 函数可用于帮助构建 <a href="https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/master/neuralnetworks/1.2/types.hal#4782" class="external"><code>Capabilities::operandPerformance</code></a> 字段。</p></li>
+<li><p>查询类型的属性：<code>isExtensionOperandType</code>、<code>isExtensionOperationType</code>、<code>nonExtensionSizeOfData</code>、<code>nonExtensionOperandSizeOfData</code>、<code>nonExtensionOperandTypeIsScalar</code>、<code>tensorHasUnspecifiedDimensions</code>。</p></li>
+</ul>
+
+<p><a href="https://android.googlesource.com/platform/frameworks/ml/+/refs/heads/master/nn/common/include/ValidateHal.h" class="external"><code>frameworks/ml/nn/common/include/ValidateHal.h</code></a> 文件包含根据对应 HAL 版本的规范验证 NN HAL 对象是否有效的效用函数。</p>
+
+<ul>
+<li><code>validate*</code>：如果根据对应 HAL 版本的规范验证 NN HAL 对象是有效的，则返回 <code>true</code>。不会验证 OEM 类型和扩展类型。例如，如果模型包含引用不存在的运算数索引的运算，或者包含该 HAL 版本不支持的运算，则 <code>validateModel</code> 会返回 <code>false</code>。</li>
+</ul>
+
+<p><a href="https://android.googlesource.com/platform/frameworks/ml/+/refs/heads/master/nn/common/include/Tracing.h" class="external"><code>frameworks/ml/nn/common/include/Tracing.h</code></a> 文件包含用于简化将<a href="/devices/tech/debug/systrace">系统跟踪</a>信息添加到神经网络代码的宏。有关示例，请参阅<a href="https://android.googlesource.com/platform/frameworks/ml/+/refs/heads/master/nn/driver/sample" class="external">驱动程序示例</a>中的 <code>NNTRACE_*</code> 宏调用。</p>
+
+<p><a href="https://android.googlesource.com/platform/frameworks/ml/+/refs/heads/master/nn/common/include/GraphDump.h" class="external"><code>frameworks/ml/nn/common/include/GraphDump.h</code></a> 文件包含一个以图形形式转储 <code>Model</code> 的内容以进行调试的效用函数。</p>
+
+<ul>
+<li><code>graphDump</code>：将 Graphviz (<code>.dot</code>) 格式的模型表示写入指定的信息流（如果提供）或 logcat（如果没有提供信息流）。</li>
+</ul>
+
+<h2 id="validation">验证</h2>
+
+<p>要测试 NNAPI 的实现，请使用 Android 框架中包含的 VTS 和 CTS 测试。VTS 直接执行驱动程序（不使用框架），而 CTS 通过框架间接执行驱动程序。它们会测试每个 API 方法并验证驱动程序支持的所有运算是否正常工作，并提供满足精度要求的结果。</p>
+
+<p>CTS 和 VTS 对 NNAPI 的精度要求如下：</p>
+
+<ul>
+<li><p><strong>浮点</strong>：abs(expected - actual) &lt;= atol + rtol * abs(expected)；其中：</p>
+
+<ul>
+<li>对于 fp32，atol = rtol = 1e-5f</li>
+<li>对于 fp16，atol = rtol = 5.0f * 0.0009765625f</li>
+</ul></li>
+<li><p><strong>量化</strong>：差一误差（除了 <code>mobilenet_quantized</code>，它是差二误差）</p></li>
+<li><p><strong>布尔值：</strong>完全匹配</p></li>
+</ul>
+
+<p>CTS 测试 NNAPI 的一种方法是生成固定的伪随机图，用于测试和比较每个驱动程序的执行结果与采用 NNAPI 参考实现的执行结果。对于使用 NN HAL 1.2 或更高版本的驱动程序，如果结果不符合精度标准，CTS 会报告错误并在 <code>/data/local/tmp</code> 下转储失败模型的规范文件以进行调试。如需详细了解精度标准，请参阅 <a href="https://android.googlesource.com/platform/frameworks/ml/+/refs/heads/master/nn/runtime/test/fuzzing/TestRandomGraph.cpp#573" class="external"><code>TestRandomGraph.cpp</code></a> 和 <a href="https://android.googlesource.com/platform/frameworks/ml/+/refs/heads/master/nn/runtime/test/fuzzing/RandomGraphGenerator.h" class="external"><code>RandomGraphGenerator.h</code></a>。</p>
+
+<h3 id="security">安全性</h3>
+
+<p>由于应用进程直接与驱动程序的进程通信，因此驱动程序必须验证所收到的调用的参数。此验证由 VTS 完成。验证代码位于 <a href="https://android.googlesource.com/platform/frameworks/ml/+/refs/heads/master/nn/common/include/ValidateHal.h" class="external"><code>frameworks/ml/nn/common/include/ValidateHal.h</code></a> 中。</p>
+
+<p>驱动程序还应确保应用在使用同一设备时不会相互干扰。</p>
+
+<h3 id="mlts">Android 机器学习测试套件</h3>
+
+<p>Android 机器学习测试套件 (MLTS) 是 CTS 和 VTS 中包含的 NNAPI 基准，用于验证供应商设备上真实模型的准确性。该基准会评估延迟性和准确性，并针对相同的模型和数据集，将驱动程序的结果与使用 CPU 上运行的 <a href="https://www.tensorflow.org/lite" class="external">TF Lite</a> 的结果进行比较。这样可确保驱动程序的准确性不会低于 CPU 参考实现的准确性。</p>
+
+<p>Android 平台开发者还使用 MLTS 评估驱动程序的延迟行和准确性。</p>
+
+<p>可以在 AOSP 的两个项目中找到 NNAPI 基准：</p>
+
+<ul>
+<li><a href="https://android.googlesource.com/platform/test/mlts/benchmark/+/master" class="external"><code>platform/test/mlts/benchmark</code></a>（基准应用）</li>
+<li><a href="https://android.googlesource.com/platform/test/mlts/models/+/master" class="external"><code>platform/test/mlts/models</code></a>（模型和数据集）</li>
+</ul>
+
+<h4 id="models">模型和数据集</h4>
+
+<p>NNAPI 基准使用以下模型和数据集。</p>
+
+<ul>
+<li>MobileNetV1 float 和 u8 以不同大小进行量化，针对 Open Images Dataset v4 的一小部分（1500 张图片）运行。</li>
+<li>MobileNetV2 float 和 u8 以不同大小进行量化，针对 Open Images Dataset v4 的一小部分（1500 张图片）运行。</li>
+<li>基于长短期记忆 (LSTM) 的文字转语音声学模型，针对 CMU Arctic 集合的一小部分运行。</li>
+<li>基于 LSTM 的自动语音识别声学模型，针对 LibriSpeech 数据集的一小部分运行。</li>
+</ul>
+
+<p>如需了解详情，请参阅 <a href="https://android.googlesource.com/platform/test/mlts/models/+/master" class="external"><code>platform/test/mlts/models</code></a>。</p>
+
+<h4 id="use-mlts">使用 MLTS</h4>
+
+<p>要使用 MLTS，请执行以下操作：</p>
+
+<ol>
+<li>将目标设备连接到工作站，并确保它可以通过 <a href="https://developer.android.com/studio/command-line/adb" class="external">adb</a> 进行访问。如果连接了多个设备，则导出目标设备 <code>ANDROID_SERIAL</code> 环境变量。</li>
+<li><p><code>cd</code> 到 Android 的顶级源代码目录。</p>
+<pre class="prettyprint"><code>source build/envsetup.sh
+lunch aosp_arm-userdebug # Or aosp_arm64-userdebug if available.
+./test/mlts/benchmark/build_and_run_benchmark.sh
+</code></pre>
+<p>在基准运行结束时，系统会将结果显示为 HTML 页面并传递给 <code>xdg-open</code>。</p></li>
+</ol>
+
+<p>如需了解详情，请参阅 <a href="https://android.googlesource.com/platform/test/mlts/benchmark/+/refs/heads/master/README.txt" class="external"><code>platform/test/mlts/benchmark/README.txt</code></a>。</p>
+
+<h2 id="hal-versions">神经网络 HAL 版本</h2>
+
+<p>本部分介绍了 Android 和神经网络 HAL 版本中引入的更改。</p>
+
+<h3 id="android-q">Android 10</h3>
+
+<p>Android 10 引入了 NN HAL 1.2，其中包括以下主要更改。</p>
+
+<ul>
+<li><code>Capabilities</code> 结构体包括所有数据类型（包括标量数据类型），并使用向量（而不是命名字段）表示非放宽的性能。</li>
+<li><code>getVersionString</code> 和 <code>getType</code> 方法允许框架检索设备类型 (<code>DeviceType</code>) 和版本信息。请参阅<a href="/devices/neural-networks/device-discovery">设备发现和分配</a>。</li>
+<li>默认情况下，调用 <code>executeSynchronously</code> 方法以同步执行。<code>execute_1_2</code> 方法告知框架异步执行。请参阅<a href="#execution">执行</a>部分。</li>
+<li><code>executeSynchronously</code>、<code>execute_1_2</code> 和爆发执行的 <code>MeasureTiming</code> 参数指定驱动程序是否要测量执行时长。系统会在 <code>Timing</code> 结构中报告结果。请参阅<a href="#timing">时间</a>部分。</li>
+<li>支持一个或多个输出运算数具有未知维度或秩的执行。请参阅<a href="#output-shape">输出形状</a>部分。</li>
+<li>支持供应商扩展，即供应商定义的运算和数据类型的集合。驱动程序通过 <code>IDevice::getSupportedExtensions</code> 方法报告支持的扩展。请参阅<a href="/devices/neural-networks/vendor-extensions">供应商扩展</a>部分。</li>
+<li>爆发对象能够使用快速消息队列 (FMQ) 控制一组爆发执行，以在应用和驱动程序进程之间进行通信，从而缩短延迟。请参阅<a href="/devices/neural-networks/burst-executions">爆发执行和快速消息队列</a>。</li>
+<li>支持 AHardwareBuffer，以允许驱动程序在不复制数据的情况下完成执行。请参阅 <a href="/devices/neural-networks/ahardwarebuffer">AHardwareBuffer</a>。</li>
+<li>改进了对缓存编译工件的支持，以减少应用启动时编译所用的时间。请参阅<a href="/devices/neural-networks/compilation-caching">编译缓存</a>。</li>
+</ul>
+
+<p>Android 10 引入了以下运算数类型和运算。</p>
+
+<ul>
+<li><p><a href="https://developer.android.com/ndk/reference/group/neural-networks.html#operandcode" class="external">运算数类型</a> </p>
+
+<ul>
+<li><code>ANEURALNETWORKS_BOOL</code></li>
+<li><code>ANEURALNETWORKS_FLOAT16</code></li>
+<li><code>ANEURALNETWORKS_TENSOR_BOOL8</code></li>
+<li><code>ANEURALNETWORKS_TENSOR_FLOAT16</code></li>
+<li><code>ANEURALNETWORKS_TENSOR_QUANT16_ASYMM</code></li>
+<li><code>ANEURALNETWORKS_TENSOR_QUANT16_SYMM</code></li>
+<li><code>ANEURALNETWORKS_TENSOR_QUANT8_SYMM</code></li>
+<li><code>ANEURALNETWORKS_TENSOR_QUANT8_SYMM_PER_CHANNEL</code></li>
+</ul></li>
+<li><p><a href="https://developer.android.com/ndk/reference/group/neural-networks.html#operationcode" class="external">运算</a> </p>
+
+<ul>
+<li><code>ANEURALNETWORKS_ABS</code></li>
+<li><code>ANEURALNETWORKS_ARGMAX</code></li>
+<li><code>ANEURALNETWORKS_ARGMIN</code></li>
+<li><code>ANEURALNETWORKS_AXIS_ALIGNED_BBOX_TRANSFORM</code></li>
+<li><code>ANEURALNETWORKS_BIDIRECTIONAL_SEQUENCE_LSTM</code></li>
+<li><code>ANEURALNETWORKS_BIDIRECTIONAL_SEQUENCE_RNN</code></li>
+<li><code>ANEURALNETWORKS_BOX_WITH_NMS_LIMIT</code></li>
+<li><code>ANEURALNETWORKS_CAST</code></li>
+<li><code>ANEURALNETWORKS_CHANNEL_SHUFFLE</code></li>
+<li><code>ANEURALNETWORKS_DETECTION_POSTPROCESSING</code></li>
+<li><code>ANEURALNETWORKS_EQUAL</code></li>
+<li><code>ANEURALNETWORKS_EXP</code></li>
+<li><code>ANEURALNETWORKS_EXPAND_DIMS</code></li>
+<li><code>ANEURALNETWORKS_GATHER</code></li>
+<li><code>ANEURALNETWORKS_GENERATE_PROPOSALS</code></li>
+<li><code>ANEURALNETWORKS_GREATER</code></li>
+<li><code>ANEURALNETWORKS_GREATER_EQUAL</code></li>
+<li><code>ANEURALNETWORKS_GROUPED_CONV_2D</code></li>
+<li><code>ANEURALNETWORKS_HEATMAP_MAX_KEYPOINT</code></li>
+<li><code>ANEURALNETWORKS_INSTANCE_NORMALIZATION</code></li>
+<li><code>ANEURALNETWORKS_LESS</code></li>
+<li><code>ANEURALNETWORKS_LESS_EQUAL</code></li>
+<li><code>ANEURALNETWORKS_LOG</code></li>
+<li><code>ANEURALNETWORKS_LOGICAL_AND</code></li>
+<li><code>ANEURALNETWORKS_LOGICAL_NOT</code></li>
+<li><code>ANEURALNETWORKS_LOGICAL_OR</code></li>
+<li><code>ANEURALNETWORKS_LOG_SOFTMAX</code></li>
+<li><code>ANEURALNETWORKS_MAXIMUM</code></li>
+<li><code>ANEURALNETWORKS_MINIMUM</code></li>
+<li><code>ANEURALNETWORKS_NEG</code></li>
+<li><code>ANEURALNETWORKS_NOT_EQUAL</code></li>
+<li><code>ANEURALNETWORKS_PAD_V2</code></li>
+<li><code>ANEURALNETWORKS_POW</code></li>
+<li><code>ANEURALNETWORKS_PRELU</code></li>
+<li><code>ANEURALNETWORKS_QUANTIZE</code></li>
+<li><code>ANEURALNETWORKS_QUANTIZED_16BIT_LSTM</code></li>
+<li><code>ANEURALNETWORKS_RANDOM_MULTINOMIAL</code></li>
+<li><code>ANEURALNETWORKS_REDUCE_ALL</code></li>
+<li><code>ANEURALNETWORKS_REDUCE_ANY</code></li>
+<li><code>ANEURALNETWORKS_REDUCE_MAX</code></li>
+<li><code>ANEURALNETWORKS_REDUCE_MIN</code></li>
+<li><code>ANEURALNETWORKS_REDUCE_PROD</code></li>
+<li><code>ANEURALNETWORKS_REDUCE_SUM</code></li>
+<li><code>ANEURALNETWORKS_RESIZE_NEAREST_NEIGHBOR</code></li>
+<li><code>ANEURALNETWORKS_ROI_ALIGN</code></li>
+<li><code>ANEURALNETWORKS_ROI_POOLING</code></li>
+<li><code>ANEURALNETWORKS_RSQRT</code></li>
+<li><code>ANEURALNETWORKS_SELECT</code></li>
+<li><code>ANEURALNETWORKS_SIN</code></li>
+<li><code>ANEURALNETWORKS_SLICE</code></li>
+<li><code>ANEURALNETWORKS_SPLIT</code></li>
+<li><code>ANEURALNETWORKS_SQRT</code></li>
+<li><code>ANEURALNETWORKS_TILE</code></li>
+<li><code>ANEURALNETWORKS_TOPK_V2</code></li>
+<li><code>ANEURALNETWORKS_TRANSPOSE_CONV_2D</code></li>
+<li><code>ANEURALNETWORKS_UNIDIRECTIONAL_SEQUENCE_LSTM</code></li>
+<li><code>ANEURALNETWORKS_UNIDIRECTIONAL_SEQUENCE_RNN</code></li>
+</ul></li>
+</ul>
+
+<p>Android 10 更新了很多现有运算。更新主要与以下方面有关：</p>
+
+<ul>
+<li>支持 NCHW 内存布局</li>
+<li>支持 softmax 和归一化运算中秩不为 4 的张量</li>
+<li>支持扩张的卷积</li>
+<li>支持在 <code>ANEURALNETWORKS_CONCATENATION</code> 中包含混合量化的输入</li>
+</ul>
+
+<p>下表列出了 Android 10 中修改的运算。如需了解有关更改的完整详情，请参阅 NNAPI 参考文档中的 <a href="https://developer.android.com/ndk/reference/group/neural-networks#operationcode" class="external">OperationCode</a>。</p>
+
+<ul>
+<li><code>ANEURALNETWORKS_ADD</code></li>
+<li><code>ANEURALNETWORKS_AVERAGE_POOL_2D</code></li>
+<li><code>ANEURALNETWORKS_BATCH_TO_SPACE_ND</code></li>
+<li><code>ANEURALNETWORKS_CONCATENATION</code></li>
+<li><code>ANEURALNETWORKS_CONV_2D</code></li>
+<li><code>ANEURALNETWORKS_DEPTHWISE_CONV_2D</code></li>
+<li><code>ANEURALNETWORKS_DEPTH_TO_SPACE</code></li>
+<li><code>ANEURALNETWORKS_DEQUANTIZE</code></li>
+<li><code>ANEURALNETWORKS_DIV</code></li>
+<li><code>ANEURALNETWORKS_FLOOR</code></li>
+<li><code>ANEURALNETWORKS_FULLY_CONNECTED</code></li>
+<li><code>ANEURALNETWORKS_L2_NORMALIZATION</code></li>
+<li><code>ANEURALNETWORKS_L2_POOL_2D</code></li>
+<li><code>ANEURALNETWORKS_LOCAL_RESPONSE_NORMALIZATION</code></li>
+<li><code>ANEURALNETWORKS_LOGISTIC</code></li>
+<li><code>ANEURALNETWORKS_LSH_PROJECTION</code></li>
+<li><code>ANEURALNETWORKS_LSTM</code></li>
+<li><code>ANEURALNETWORKS_MAX_POOL_2D</code></li>
+<li><code>ANEURALNETWORKS_MEAN</code></li>
+<li><code>ANEURALNETWORKS_MUL</code></li>
+<li><code>ANEURALNETWORKS_PAD</code></li>
+<li><code>ANEURALNETWORKS_RELU</code></li>
+<li><code>ANEURALNETWORKS_RELU1</code></li>
+<li><code>ANEURALNETWORKS_RELU6</code></li>
+<li><code>ANEURALNETWORKS_RESHAPE</code></li>
+<li><code>ANEURALNETWORKS_RESIZE_BILINEAR</code></li>
+<li><code>ANEURALNETWORKS_RNN</code></li>
+<li><code>ANEURALNETWORKS_ROI_ALIGN</code></li>
+<li><code>ANEURALNETWORKS_SOFTMAX</code></li>
+<li><code>ANEURALNETWORKS_SPACE_TO_BATCH_ND</code></li>
+<li><code>ANEURALNETWORKS_SPACE_TO_DEPTH</code></li>
+<li><code>ANEURALNETWORKS_SQUEEZE</code></li>
+<li><code>ANEURALNETWORKS_STRIDED_SLICE</code></li>
+<li><code>ANEURALNETWORKS_SUB</code></li>
+<li><code>ANEURALNETWORKS_SVDF</code></li>
+<li><code>ANEURALNETWORKS_TANH</code></li>
+<li><code>ANEURALNETWORKS_TRANSPOSE</code></li>
+</ul>
+
+<h3 id="android-9">Android 9</h3>
+
+<p>Android 9 引入了 NN HAL 1.1，并且包括以下主要更改。</p>
+
+<ul>
+<li><code>IDevice::prepareModel_1_1</code> 包含一个 <code>ExecutionPreference</code> 参数。驱动程序可以通过该参数了解应用是倾向于节约电量，还是将在快速连续调用中执行模型，从而调整其准备工作。</li>
+<li>新增了 9 个运算：<code>BATCH_TO_SPACE_ND</code>、<code>DIV</code>、<code>MEAN</code>、<code>PAD</code>、<code>SPACE_TO_BATCH_ND</code>、<code>SQUEEZE</code>、<code>STRIDED_SLICE</code>、<code>SUB</code>、<code>TRANSPOSE</code>。</li>
+<li>通过将 <code>Model.relaxComputationFloat32toFloat16</code> 设为 <code>true</code>，应用可以指定可使用 16 位浮点范围和/或精度运行 32 位浮点运算。<code>Capabilities</code> 结构体具有附加字段 <code>relaxedFloat32toFloat16Performance</code>，因此驱动程序可以向框架报告其放宽的性能。</li>
+</ul>
+
+<h3 id="android-81">Android 8.1</h3>
+
+<p>Android 8.1 发布了最初的神经网络 HAL (1.0)。如需了解详情，请参阅 <a href="https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/master/neuralnetworks/1.0/" class="external"><code>/neuralnetworks/1.0/</code></a>。</p>
+
+</body></html>

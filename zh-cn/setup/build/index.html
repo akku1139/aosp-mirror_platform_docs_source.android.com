@@ -1,0 +1,165 @@
+<html devsite><head>
+
+  <meta name="book_path" value="/_book.yaml"/>
+
+  <meta name="project_path" value="/_project.yaml"/>
+</head>
+<body>
+
+<!--
+  Copyright 2019 The Android Open Source Project
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+<h1 id="soong_build_system" class="page-title">Soong 编译系统</h1>
+
+<p>在 Android 7.0 发布之前，Android 仅使用 <a href="https://www.gnu.org/software/make/" class="external">GNU Make</a> 描述和执行其编译规则。Make 编译系统得到了广泛的支持和使用，但在 Android 层面变得缓慢、容易出错、无法扩展且难以测试。<a href="https://android.googlesource.com/platform/build/soong/+/refs/heads/master/README.md" class="external">Soong 编译系统</a>正提供了 Android 编译版本所需的灵活性。</p>
+
+<h2 id="what_is_soong">什么是 Soong？</h2>
+
+<p><a href="https://android.googlesource.com/platform/build/soong/+/refs/heads/master/README.md" class="external">Soong 编译系统</a>是在 Android 7.0 (Nougat) 中引入的，旨在取代 Make。这项工作仍在进展中。</p>
+
+<p>请参阅 Android 开源项目 (AOSP) 中的 <a href="https://android.googlesource.com/platform/build/+/master/README.md" class="external">Android Make 编译系统</a>说明，了解一般<a href="https://android.googlesource.com/platform/build/+/master/Usage.txt" class="external">说明</a>以及 <a href="https://android.googlesource.com/platform/build/+/master/Changes.md" class="external">Android.mk 编写人员须知的编译系统变更</a>，从而获悉从 Make 切换到 Soong 所需的修改。</p>
+
+<p>如需查看示例 Soong 配置（Blueprint 或 <code>.bp</code>）文件，请参阅<a href="/compatibility/tests/development/blueprints">简单的编译配置</a>；您还可以查看 <a href="https://ci.android.com/builds/latest/branches/aosp-build-tools/targets/linux/view/soong_build.html" class="external">Soong 参考文件</a>以了解完整详情。</p>
+<aside class="caution"><strong>注意</strong>：<span>在 Android 完全从 Make 转换为 Soong 之前，Make 产品配置必须指定 <code>PRODUCT_SOONG_NAMESPACES</code> 值。要查看相关说明，请参阅<a href="#namespace_modules">命名空间模块</a>部分。</span></aside>
+<h2 id="androidbp_file_format">Android.bp 文件格式</h2>
+
+<p>根据设计，<code>Android.bp</code> 文件很简单。它们不包含任何条件语句，也不包含控制流语句 - 所有复杂问题都由用 Go 编写的编译逻辑处理。<code>Android.bp</code> 文件的语法和语义类似于 <a href="https://www.bazel.io/versions/master/docs/be/overview.html" class="external">Bazel BUILD 文件</a>（如有可能）。</p>
+
+<h3 id="modules">模块</h3>
+
+<p><code>Android.bp</code> 文件中的模块以<a href="https://ci.android.com/builds/latest/branches/aosp-build-tools/targets/linux/view/soong_build.html" class="external">模块类型</a>开头，后跟一组 <code>name: value,</code> 格式的属性：</p>
+<pre class="prettyprint"><code>cc_binary {
+    name: "gzip",
+    srcs: ["src/test/minigzip.c"],
+    shared_libs: ["libz"],
+    stl: "none",
+}
+</code></pre>
+<p>每个模块都必须具有 <code>name</code> 属性，并且相应值在所有 <code>Android.bp</code> 文件中必须是唯一的，仅有两个例外情况是命名空间和预编译模块中的属性。</p>
+
+<p>如需有效模块类型及其属性的列表，请参阅 <a href="https://ci.android.com/builds/latest/branches/aosp-build-tools/targets/linux/view/soong_build.html" class="external">Soong 模块参考</a>。</p>
+
+<h3 id="types">类型</h3>
+
+<p>变量和属性是强类型，变量根据第一项赋值动态变化，属性由模块类型静态设置。支持的类型为：</p>
+
+<ul>
+<li>布尔型（<code>true</code> 或 <code>false</code>）</li>
+<li>整型 (<code>int</code>)</li>
+<li>字符串 (<code>"string"</code>)</li>
+<li>字符串列表 (<code>["string1", "string2"]</code>)</li>
+<li>映射 (<code>{key1: "value1", key2: ["value2"]}</code>)</li>
+</ul>
+
+<p>映射可以包含任何类型的值，包括嵌套映射。列表和映射可能在最后一个值后面有终止逗号。</p>
+
+<h3 id="globs">Glob</h3>
+
+<p>接受文件列表的属性（例如 <code>srcs</code>）也可以采用 glob 模式。glob 模式可以包含普通的 UNIX 通配符 <code>*</code>，例如 <code>*.java</code>。glob 模式还可以包含单个 <code>**</code> 通配符作为路径元素，与零个或多个路径元素匹配。例如，<code>java/**/*.java</code> 与以下二者均匹配：<code>java/Main.java</code>
+<code>java/com/android/Main.java</code></p>
+
+<h3 id="variables">变量</h3>
+
+<p><code>Android.bp</code> 文件可能包含顶级变量赋值：</p>
+<pre class="prettyprint"><code>gzip_srcs = ["src/test/minigzip.c"],
+cc_binary {
+    name: "gzip",
+    srcs: gzip_srcs,
+    shared_libs: ["libz"],
+    stl: "none",
+}
+</code></pre>
+<p>变量的作用域限定在声明它们的文件的其余部分，以及所有子 Blueprint 文件。变量是不可变的，但有一个例外情况：可以使用 += 赋值将变量附加到别处，但只能在引用它们之前附加。</p>
+
+<h3 id="comments">注释</h3>
+
+<p><code>Android.bp</code> 文件可以包含 C 样式的多行 <code>/* */</code> 注释以及 C++ 样式的单行 <code>//</code> 注释。</p>
+
+<h3 id="operators">运算符</h3>
+
+<p>可以使用 + 运算符附加字符串、字符串列表和映射。可以使用 + 运算符对整数求和。附加映射会生成两个映射中键的并集，并附加在两个映射中都存在的所有键的值。</p>
+
+<h3 id="conditionals">条件语句</h3>
+
+<p>Soong 不支持 <code>Android.bp</code> 文件中的条件语句。但是，编译规则中需要条件语句的复杂问题将在 Go（在这种语言中，您可以使用高级语言功能，并且可以跟踪条件语句引入的隐式依赖项）中处理。大多数条件语句都会转换为映射属性，其中选择了映射中的某个值并将其附加到顶级属性。</p>
+
+<p>例如，要支持特定于架构的文件，请使用以下命令：</p>
+<pre class="prettyprint"><code>cc_library {
+    ...
+    srcs: ["generic.cpp"],
+    arch: {
+        arm: {
+            srcs: ["arm.cpp"],
+        },
+        x86: {
+            srcs: ["x86.cpp"],
+        },
+    },
+}
+</code></pre>
+<h3 id="formatter">格式设置工具</h3>
+
+<p>Soong 包含一个针对 Blueprint 文件的规范格式设置工具，类似于 <a href="https://golang.org/cmd/gofmt/" class="external">gofmt</a>。要以递归方式重新格式化当前目录中的所有 <code>Android.bp</code> 文件，请运行以下命令：</p>
+<pre class="prettyprint"><code>bpfmt -w .
+</code></pre>
+<p>规范格式包括缩进四个空格、多元素列表的每个元素后面有换行符，以及列表和映射末尾有逗号。</p>
+
+<h2 id="special_modules">特殊模块</h2>
+
+<p>一些特殊模块组具有独特的特征。</p>
+
+<h3 id="defaults_modules">默认模块</h3>
+
+<p>默认模块可用于在多个模块中重复使用相同的属性。例如：</p>
+<pre class="prettyprint"><code>cc_defaults {
+    name: "gzip_defaults",
+    shared_libs: ["libz"],
+    stl: "none",
+}
+
+cc_binary {
+    name: "gzip",
+    defaults: ["gzip_defaults"],
+    srcs: ["src/test/minigzip.c"],
+}
+</code></pre>
+<h3 id="prebuilt_modules">预编译的模块</h3>
+
+<p>某些预编译的模块类型允许模块与其基于源代码的对应模块具有相同的名称。例如，如果已有同名的 <code>cc_binary</code>，也可以将 <code>cc_prebuilt_binary</code> 命名为“foo”。这让开发者可以灵活地选择要纳入其最终产品中的版本。如果编译配置包含两个版本，则预编译模块定义中的 <code>prefer</code> 标记值会指示哪个版本具有优先级。请注意，某些预编译模块的名称不是以 <code>prebuilt</code> 开头，例如 <code>android_app_import</code>。</p>
+
+<h3 id="namespace_modules">命名空间模块</h3>
+
+<p>在 Android 完全从 Make 转换为 Soong 之前，Make 产品配置必须指定 <code>PRODUCT_SOONG_NAMESPACES</code> 值。它的值应该是一个以空格分隔的列表，其中包含 Soong 导出到 Make 以使用 <code>m</code> 命令进行编译的命名空间。在 Android 完成到 Soong 的转换之后，启用命名空间的详细信息可能会发生变化。</p>
+
+<p>Soong 可以让不同目录中的模块指定相同的名称，只要每个模块都在单独的命名空间中声明即可。可以按如下方式声明命名空间：</p>
+<pre class="prettyprint"><code>soong_namespace {
+    imports: ["path/to/otherNamespace1", "path/to/otherNamespace2"],
+}
+</code></pre>
+<p>请注意，命名空间没有 name 属性；其路径会自动指定为其名称。</p>
+
+<p>系统会根据每个 Soong 模块在树中的位置为其分配命名空间。每个 Soong 模块都会被视为处于 <code>soong_namespace</code>（位于当前目录或最近的父级目录中的 <code>Android.bp</code> 文件内）定义的命名空间中。如果未找到此类 <code>soong_namespace</code> 模块，则认为该模块位于隐式根命名空间中。</p>
+
+<p>下面是一个示例：Soong 尝试解析由模块 M 在名称空间 N（导入命名空间 I1、I2、I3…）中声明的依赖项 D</p>
+
+<ol>
+<li>如果 D 是 <code>//namespace:module</code> 格式的完全限定名称，系统将仅在指定的命名空间中搜索指定的模块名称。</li>
+<li>否则，Soong 将首先查找在名称空间 N 中声明的名为 D 的模块。</li>
+<li>如果该模块不存在，Soong 将在命名空间 I1、I2、I3… 中查找名为 D 的模块。</li>
+<li>最后，Soong 将在根命名空间中查找。</li>
+</ol>
+
+</body></html>

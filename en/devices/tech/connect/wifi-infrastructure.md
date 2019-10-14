@@ -126,6 +126,11 @@ rating provider menu.
 
 ### External network rating provider
 
+Note: As an alternative to the `NetworkScoreManager` API, it is recommended to
+use the
+[`WifiNetworkSuggestion`](https://developer.android.com/reference/android/net/wifi/WifiNetworkSuggestion){: .external}
+class.
+
 To help determine what constitutes a _good_ Wi-Fi network, Android supports
 external _Network rating providers_ (also known as _Network scorers_) that
 provide information about the quality of open Wi-Fi networks. For instance, a
@@ -142,7 +147,8 @@ feature is disabled.
 You do not have to provide an external network rating provider. To create a
 provider:
 
-+   Implement the API documented in `NetworkScoreManager`.
++   Implement the class documented in
+    [`NetworkScoreManager`](https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/net/NetworkScoreManager.java){: .external}.
 +   The external network rating provider must be a privileged app.
 +   Configure your system to use your custom implementation by updating the
     `config_defaultNetworkRecommendationProviderPackage` key in your product's

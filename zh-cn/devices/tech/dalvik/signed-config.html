@@ -1,0 +1,64 @@
+<html devsite><head>
+
+  <meta name="book_path" value="/_book.yaml"/>
+
+  <meta name="project_path" value="/_project.yaml"/>
+</head>
+<body>
+
+<!--
+  Copyright 2019 The Android Open Source Project
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+<h1 id="implementing_signed_config" class="page-title">实现签名配置</h1>
+
+<p>签名配置功能允许在 APK 中嵌入非 SDK 接口限制的配置。这样一来，将可以从黑名单中移除特定非 SDK 接口，以便 AndroidX 安全地使用它们。这让 AndroidX 团队可以在已发布的 Android 版本上添加对新功能的支持。Android 10 及更高版本支持该功能。</p>
+
+<p>适当地支持签名配置可以确保 AndroidX 库在将来推出的设备上正常运行。</p>
+
+<p>该功能无法自定义。它在 AOSP 中完全受支持，且原始设备制造商 (OEM) 可以轻松予以支持。</p>
+
+<h2 id="examples_and_source">示例和来源</h2>
+
+<p>功能实现位于系统服务器的以下位置：<code>frameworks/base/services/core/java/com/android/server/signedconfig</code>。CTS 测试 <code>CtsSignedConfigHostTestCases</code> 包含使用示例，并在 <code>cts/hostsidetests/signedconfig/app/version1_AndroidManifest.xml</code> 中提供了一个配置示例。</p>
+
+<h2 id="implementation">实现</h2>
+
+<p>可以轻松支持该功能，而且它没有任何特定的硬件要求。</p>
+
+<p>该功能使用两个应用元数据键在 APK 内部嵌入配置和签名。这两个键分别是 <code>android.settings.global</code> 和 <code>android.settings.global.signature</code>。如果未来 AndroidX 库要求从黑名单中移除非 SDK 接口，则这两个键的值将由 Android 团队发布和/或作为 AndroidX 的一部分发布。</p>
+
+<p>APK 元数据键 <code>android.settings.global</code> 和 <code>android.settings.global.signature</code> 均包含 base-64 编码数据。键 <code>android.settings.global</code> 的值是以 JSON 编码的配置值，会应用到 <code>SettingsProvider</code> 中的全局设置。键 <code>android.settings.global.signature</code> 的值是 JSON 数据的 ECDSA-p256 签名。该签名用于验证配置数据的来源。</p>
+
+<p>该功能对用户不可见。</p>
+
+<h2 id="customization">自定义</h2>
+
+<p>该功能不支持自定义。不建议原始设备制造商 (OEM) 修改该功能，包括替换键。对该功能的任何更改都可能导致 AndroidX 未来在受影响的设备上无法正常运行。</p>
+
+<h2 id="validation">验证</h2>
+
+<p>CTS 测试 <code>CtsSignedConfigHostTestCases</code> 可以验证功能实现情况。</p>
+
+<p>此外，您还可以通过安装适当的 APK 和检查 <code>adb logcat</code> 输出来手动测试该功能：</p>
+<pre class="prettyprint"><code>$ adb install CtsSignedConfigTestAppV1.apk
+...
+$ adb logcat
+...
+I SignedConfig: Verified config using production key
+...
+</code></pre>
+
+</body></html>

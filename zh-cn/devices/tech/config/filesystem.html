@@ -1,9 +1,10 @@
 <html devsite><head>
-    <title>配置自主访问控制 (DAC)</title>
+    <title>自主访问控制 (DAC)</title>
     <meta name="project_path" value="/_project.yaml"/>
     <meta name="book_path" value="/_book.yaml"/>
   </head>
   <body>
+
   <!--
       Copyright 2017 The Android Open Source Project
 
@@ -50,7 +51,7 @@
 <h2 id="adding-android-aids">添加 Android ID (AID)</h2>
 
 <p>
-  Android 8.0 从 Android 开源项目 (AOSP) 中移除了 <code>android_ids[]</code> 数组。所有好记的 AID 名称都改为在生成 Bionic <code>android_ids[]</code> 数组时从 <code>system/core/include/private/android_filesystem_config.h</code> 标头文件生成。这种机制会发现与 <code>define</code> 匹配的所有 <code>AID_*</code>，且 <strong>*</strong> 会变为小写名称。
+  Android 8.0 从 Android 开源项目 (AOSP) 中移除了 <code>android_ids[]</code> 数组。所有好记的 AID 名称都改为在生成 Bionic <code>android_ids[]</code> 数组时从 <code>system/core/include/private/android_filesystem_config.h</code> 标头文件生成。这种机制会发现与 <code>AID_*</code> 匹配的所有 <code>define</code>，且 <strong>*</strong> 会变为小写名称。
 </p>
 
 <p>
@@ -80,25 +81,22 @@
 </p>
 
 <aside class="caution">
-  <strong>注意</strong>：请勿将 <code>TARGET_FS_CONFIG_GEN</code> 与更低版本 Android 中较旧的 <code>TARGET_ANDROID_FILESYSTEM_CONFIG_H</code> 方法结合使用！否则，您会收到错误提示。
+  <strong>注意</strong>：请勿将 <code>TARGET_FS_CONFIG_GEN</code> 与更低 Android 版本中较旧的 <code>TARGET_ANDROID_FILESYSTEM_CONFIG_H</code> 方法结合使用！否则，您会收到错误提示。
 </aside>
 
-<p>
-  按照惯例，配置文件使用名称 <code>config.fs</code>，但在实际中，您可以使用任意名称。<code>config.fs</code> 文件采用 <a href="https://docs.python.org/2/library/configparser.html" class="external">Python ConfigParser ini 格式</a>，并包含 caps 部分（用于配置文件系统权能）和 AID 部分（用于配置 OEM AID）。
+<p>按照惯例，配置文件使用名称 <code>config.fs</code>，但实际上，您可以使用任意名称。<code>config.fs</code> 文件采用 <a href="https://docs.python.org/2/library/configparser.html" class="external">Python ConfigParser ini 格式</a>，并包含 caps 部分（用于配置文件系统权能）和 AID 部分（用于配置 OEM AID）。
 </p>
 
 <h3 id="configuring-the-caps-section">配置 caps 部分</h3>
 
 <aside class="note">
-  <strong>注意</strong>：<a href="/devices/tech/config/ambient">Ambient 权能</a>是为由 <code>init</code> 启动的服务设置权能的首选机制（此方法会将服务配置的所有方面保存在单个 <code>.rc</code> 文件中）。建议您对这些服务使用 Ambient 权能，而不是在 <code>config.fs</code> 文件中使用 caps 部分配置文件系统权能。在为<strong>不是由 <code>init</code> 启动</strong>的服务设置权能时，请继续使用 <code>fs_config.c</code> 配置文件系统权能。
+  <strong>注意</strong>：<a href="/devices/tech/config/ambient">Ambient 权能</a>是为由 <code>init</code> 启动的服务设置权能的首选机制（此方法会将服务配置的所有方面保存在单个 <code>.rc</code> 文件中）。建议您对这些服务使用 Ambient 权能，而不是在 <code>config.fs</code> 文件中使用 caps 部分配置文件系统权能。在为<strong>并非由 <code>init</code> 所启动</strong>的服务设置权能时，请继续使用 <code>fs_config.c</code> 来配置文件系统权能。
 </aside>
 
-<p>
-  caps 部分支持在编译环境中对文件系统对象设置<a href="http://man7.org/linux/man-pages/man7/capabilities.7.html" class="external">文件系统权能</a>（文件系统本身也必须支持此功能）。
+<p>caps 部分支持在编译环境中对文件系统对象设置<a href="http://man7.org/linux/man-pages/man7/capabilities.7.html" class="external">文件系统权能</a>（文件系统本身也必须支持此功能）。
 </p>
 
-<p>
-  由于在 Android 中以 Root 身份运行稳定的服务会导致无法通过<a href="/compatibility/cts/index.html">兼容性测试套件 (CTS)</a> 测试，因此之前有关在运行进程或服务时必须保留权能的要求中规定，必须先设置权能，然后再使用 <code>setuid</code>/<code>setgid</code> 设置适当的 AID。借助 caps 部分，您可以跳过这些要求，让内核为您代劳。当控制权交给 <code>main()</code> 时，您的进程已拥有其所需的权能，因此您的服务可以使用非 Root 用户和群组（这是启动特权服务的首选方式）。
+<p>由于在 Android 中以 Root 身份运行稳定的服务会导致无法通过<a href="/compatibility/cts/index.html">兼容性测试套件 (CTS)</a> 测试，因此之前有关在运行进程或服务时必须保留权能的要求中规定，必须先设置权能，然后再使用 <code>setuid</code>/<code>setgid</code> 设置适当的 AID。借助 caps 部分，您可以跳过这些要求，让内核为您代劳。当控制权交给 <code>main()</code> 时，您的进程已拥有其所需的权能，因此您的服务可以使用非 Root 用户和群组（这是启动特权服务的首选方式）。
 </p>
 
 <p>
@@ -166,29 +164,55 @@
   <td><code>[AID_&lt;name&gt;]</code></td>
    <td></td>
    <td><code>&lt;name&gt;</code> 可以包含大写字母、数字和下划线字符。小写版本作为好记的名称使用。生成的用于代码收录的标头文件使用确切的 <code>AID_&lt;name&gt;</code>。
-   <br /><br />使用同一 <code>AID_&lt;name&gt;</code> 指定多个部分（不区分大小写，限制条件与 <code>[path]</code> 相同）是错误的做法。</td>
+   <br /><br />使用同一 <code>AID_&lt;name&gt;</code> 指定多个部分（不区分大小写，限制条件与 <code>[path]</code> 相同）是错误的做法。
+   <br /><br /><code>&lt;name&gt;</code> 必须以分区名称开头，以确保不会与其他源发生冲突。</td>
   </tr>
   <tr>
   <td><code>value</code></td>
   <td>&lt;number&gt;</td>
   <td>有效的 C 样式的数字字符串（十六进制、八进制、二进制和十进制）。
-  <br /><br />无论是使用同一个值选项指定多个部分，<strong>还是</strong>指定超出收录的 OEM 范围（在 <code>system/core/include/private/android_filesystem_config.h</code> 中指定）的值，都是错误的做法：
+  <br /><br />使用同一值选项指定多个部分的做法是错误的。
+  <br /><br />值选项必须在 <code>&lt;name&gt;</code> 所使用的分区对应的范围中指定。有效分区及其对应范围的列表在 <code>system/core/include/private/android_filesystem_config.h</code> 中定义。
+  以下是各个选项：
   <ul>
-  <li>AID_OEM_RESERVED_START(2900) - AID_OEM_RESERVED_END(2999)</li>
-  <li>AID_OEM_RESERVED_2_START(5000) - AID_OEM_RESERVED_2_END(5999)</li>
+   <li>供应商分区
+    <ul>
+     <li>AID_OEM_RESERVED_START(2900) - AID_OEM_RESERVED_END(2999)</li>
+     <li>AID_OEM_RESERVED_2_START(5000) - AID_OEM_RESERVED_2_END(5999)</li>
+    </ul>
+   </li>
+   <li>系统分区
+    <ul>
+     <li>AID_SYSTEM_RESERVED_START(6000) - AID_SYSTEM_RESERVED_END(6499)</li>
+    </ul>
+   </li>
+   <li>ODM 分区
+    <ul>
+     <li>AID_ODM_RESERVED_START(6500) - AID_ODM_RESERVED_END(6999)</li>
+    </ul>
+   </li>
+   <li>产品分区
+    <ul>
+     <li>AID_PRODUCT_RESERVED_START(7000) - AID_PRODUCT_RESERVED_END(7499)</li>
+    </ul>
+   </li>
+   <li>System_ext 分区
+    <ul>
+     <li>AID_SYSTEM_EXT_RESERVED_START(7500) - AID_SYSTEM_EXT_RESERVED_END(7999)</li>
+    </ul>
+   </li>
   </ul>
   </td>
   </tr>
 </tbody></table>
 
 <p>
-  有关使用示例，请参阅<a href="#defining-oem-aid-name">定义 OEM AID</a> 和<a href="#using-oem-aids">使用 OEM AID</a>。
+  有关使用示例，请参阅<a href="#defining-oem-aid-name">定义 OEM AID 名称</a>和<a href="#using-oem-aids">使用 OEM AID</a>。
 </p>
 
 <h2 id="usage-examples">用法示例</h2>
 
-<p>
-  以下示例详细介绍了如何定义和使用 OEM AID，以及如何启用文件系统权能。OEM AID 名称 (<strong>[AID_</strong><em>name<strong></strong></em><strong>]</strong>) 必须以值“<strong>vendor_</strong>”开头，以确保它们不会与未来的 AOSP 名称发生冲突。
+<p>以下示例详细介绍了如何定义和使用 OEM AID，以及如何启用文件系统权能。OEM AID 名称 (<strong>[AID_</strong><em>name<strong></strong></em><strong>]</strong>) 必须以分区名称（如“<strong>vendor_</strong>”）开头，以确保不会与将来的 AOSP 名称或其他分区发生冲突。
 </p>
 
 <h3 id="defining-oem-aid-name">定义 OEM AID 名称</h3>
@@ -203,8 +227,7 @@ value: 2900
 </pre>
 
 <p>
-  创建好文件后，设置 <code>TARGET_FS_CONFIG_GEN</code> 变量并在 <code>BoardConfig.mk</code> 中指向它。例如，在 <code>device/x/y/BoardConfig.mk</code> 中设置以下内容：
-</p>
+  创建好文件后，设置 <code>TARGET_FS_CONFIG_GEN</code> 变量并在 <code>BoardConfig.mk</code> 中指向它。例如，在 <code>device/x/y/BoardConfig.mk</code> 中设置以下内容：</p>
 
 <pre class="prettyprint">TARGET_FS_CONFIG_GEN += device/x/y/config.fs</pre>
 
@@ -261,15 +284,13 @@ service vendor_foo /vendor/bin/foo_service
 
 <h2 id="converting-aid-to-friendly">从 AID 转换为好记的名称</h2>
 
-<p>
-  对于 <a href="#using-oem-aid">OEM AID</a>，Android 8.x 要求jiang 配合 <code>oem_####</code> 使用 <code>getpwnam</code> 和类似函数，在通过 <code>getpwnam</code>（如 <code>init</code> 脚本）处理查询时也是如此。在 Android 9 中，您可以使用 Bionic 中的 <code>getpwnam</code> 和 <code>getgrnam</code> 这对组合函数从 Android ID (AID) 转换为好记的名称，反之亦然。
+<p>对于 <a href="#using-oem-aids">OEM AID</a>，Android 8.x 要求配合 <code>getpwnam</code> 和类似函数使用 <code>oem_####</code>，在通过 <code>getpwnam</code> 处理查询（如 <code>init</code> 脚本）时也是如此。在 Android 9 中，您可以使用 Bionic 中的 <code>getpwnam</code> 和 <code>getgrnam</code> 这对组合函数从 Android ID (AID) 转换为好记的名称，反之亦然。
 </p>
 
 <h3 id="using-file-system-capabilities">使用文件系统权能</h3>
 
 <p>
-  要启用文件系统权能，请在 <code>config.fs</code> 文件中创建一个 caps 部分。例如，在 <code>device/x/y/config.fs</code> 中添加以下部分：
-</p>
+  要启用文件系统权能，请在 <code>config.fs</code> 文件中创建一个 caps 部分。例如，在 <code>device/x/y/config.fs</code> 中添加以下部分：</p>
 
 <pre>
 [system/bin/foo_service]
@@ -283,15 +304,13 @@ caps: SYS_ADMIN | SYS_NICE
   <strong>注意</strong>：此处也可以使用好记的名称 <code><strong>vendor_</strong>foo</code> 和 <code>system</code>。
 </aside>
 
-<p>
-  创建好文件后，在 <code>BoardConfig.mk</code> 中设置 <code>TARGET_FS_CONFIG_GEN</code>，以指向该文件。例如，在 <code>device/x/y/BoardConfig.mk</code> 中设置以下内容：
-</p>
+<p>创建好文件后，在 <code>BoardConfig.mk</code> 中设置 <code>TARGET_FS_CONFIG_GEN</code>，以指向该文件。例如，在 <code>device/x/y/BoardConfig.mk</code> 中设置以下内容：</p>
 
 <pre>
 TARGET_FS_CONFIG_GEN += device/x/y/config.fs
 </pre>
 
-<p>当执行 <code><strong>vendor_</strong>foo</code> 服务时，它会先使用 <code>CAP_SYS_ADMIN</code> 和 <code>CAP_SYS_NICE</code> 权能，而不使用 <code>setuid</code> 和 <code>setgid</code> 调用。此外，<code><strong>vendor_</strong>foo</code> 服务的 SELinux 政策不再需要 <code>setuid</code> 和 <code>setgid</code> 权能，因此可以删除这些权能。
+<p>执行 <code><strong>vendor_</strong>foo</code> 服务时，会先使用 <code>CAP_SYS_ADMIN</code> 和 <code>CAP_SYS_NICE</code> 权能，而不使用 <code>setuid</code> 和 <code>setgid</code> 调用。此外，<code><strong>vendor_</strong>foo</code> 服务的 SELinux 政策不再需要 <code>setuid</code> 和 <code>setgid</code> 权能，因此可以删除这两项权能。
 </p>
 
 <h2 id="older">配置替换（Android 6.x 到 7.x）</h2>
@@ -314,8 +333,7 @@ TARGET_FS_CONFIG_GEN += device/x/y/config.fs
 <li>对于文件，请使用 <code>android<strong>_device</strong>_files[]</code>。</li>
 </ul>
 
-<p>
-  在不使用 <code>android_device_dirs[]</code> 和 <code>android_device_files[]</code> 时，您可以定义 <code>NO_ANDROID_FILESYSTEM_CONFIG_DEVICE_DIRS</code> 和 <code>NO_ANDROID_FILESYSTEM_CONFIG_DEVICE_FILES</code>（请参见下面的<a href="#older-example">示例</a>）。您还可以使用板级配置中的 <code>TARGET_ANDROID_FILESYSTEM_CONFIG_H</code> 指定强制基本名称为 <code>android_filesystem_config.h</code> 的替换文件。
+<p>在不使用 <code>android_device_dirs[]</code> 和 <code>android_device_files[]</code> 时，您可以定义 <code>NO_ANDROID_FILESYSTEM_CONFIG_DEVICE_DIRS</code> 和 <code>NO_ANDROID_FILESYSTEM_CONFIG_DEVICE_FILES</code>（请参见下面的<a href="#older-example">示例</a>）。您还可以使用板级配置中的 <code>TARGET_ANDROID_FILESYSTEM_CONFIG_H</code> 指定强制基本名称为 <code>android_filesystem_config.h</code> 的替换文件。
 </p>
 
 <h3 id="older-include">包含替换文件</h3>
@@ -337,9 +355,7 @@ TARGET_FS_CONFIG_GEN += device/x/y/config.fs
 
 <h3 id="older-example">替换示例</h3>
 
-<p>
-  以下示例展示了一个补丁程序，该程序用于替换 <code>system/bin/glgps</code> 守护进程，以在 <code>device/<em>vendor</em>/<em>device</em></code> 目录中添加唤醒锁定支持。请注意以下几点：
-</p>
+<p>以下示例展示了一个补丁程序，该程序用于替换 <code>system/bin/glgps</code> 守护进程，以在 <code>device/<em>vendor</em>/<em>device</em></code> 目录中添加唤醒锁支持。请注意以下几点：</p>
 
 <ul>
   <li>每个结构条目都包含模式、uid、gid、权能和名称。
@@ -410,14 +426,12 @@ index 0c71d21..235c1a7 100644
 
 <h3 id="older-migration">从早期版本迁移文件系统</h3>
 
-<p>
-  当从 Android 5.x 及更低版本迁移文件系统时，请注意以下事项：
-</p>
+<p>当从 Android 5.x 及更低版本迁移文件系统时，请注意以下事项：</p>
 
 <ul>
-  <li>Android 6.x 移除了部分头文件、结构和内嵌定义。</li>
+  <li>Android 6.x 移除了部分包含文件、结构和内嵌定义。</li>
   <li>Android 6.x 需要引用 <code>libcutils</code>，而不是直接从 <code>system/core/include/private/android_filesystem_config.h</code> 运行。文件/目录结构依赖于 <code>system/code/include/private_filesystem_config.h</code> 的设备制造商专属可执行文件或者 <code>fs_config</code> 必须添加 <code>libcutils</code> 库依赖项。</li>
-  <li>Android 6.x 需要 <code>system/core/include/private/android_filesystem_config.h</code> 的设备制造商专属分支副本，该副本应包含有关现有目标的附加内容，以便移至 <code>device/<em>vendor</em>/<em>device</em>/android_filesystem_config.h</code>。
+  <li>Android 6.x 需要 <code>system/core/include/private/android_filesystem_config.h</code> 的设备制造商专用分支副本，并需将现有目标上的附加内容移至 <code>device/<em>vendor</em>/<em>device</em>/android_filesystem_config.h</code>。
   </li>
   <li>由于 Android 6.x 保留将 SELinux 强制访问控制 (MAC) 应用于目标系统中的配置文件的权利，因此如果实现包含使用 <code>fs_config()</code> 的自定义目标可执行文件，则必须确保具有访问权限。</li>
 </ul>

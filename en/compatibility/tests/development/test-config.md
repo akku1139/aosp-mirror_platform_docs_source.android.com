@@ -22,10 +22,10 @@ Book: /_book.yaml
 # Complex Test Configuration
 
 Important: The instructions on this page are needed only for Android
-[Compatibility Test Suite](compatibility/cts) (CTS) tests or those that require
+[Compatibility Test Suite](/compatibility/cts) (CTS) tests or those that require
 special setup, such as disabling Bluetooth or collecting sample data.  All other
 cases can be covered by the Soong-based [Simple Test
-Configuration](blueprints.md) using Blueprints that automate much of the
+Configuration](/compatibility/tests/development/blueprints) using Blueprints that automate much of the
 configuration previously conducted manually.
 
 Some test modules may require customized setup and tear down steps that cannot

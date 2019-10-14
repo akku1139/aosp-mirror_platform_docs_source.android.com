@@ -1,0 +1,54 @@
+<html devsite><head>
+    <title>Safe Union</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+
+  <!--
+      Copyright 2019 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+<p>HIDL 中的 <code>safe_union</code> 表示一种显式标记联合类型。它类似于 <code>union</code>，但 <code>safe_union</code> 会跟踪基础类型且与 Java 兼容。<code>safe_union</code> 类型适用于搭载 Android 10 及更高版本的新设备和升级设备。</p>
+
+<h2 id="syntax">语法</h2>
+<p><code>safe_union</code> 在 HIDL 中的表示方式与 <code>union</code> 或 <code>struct</code> 完全相同。</p>
+
+<pre class="prettyprint">
+safe_union MySafeUnion {
+     TypeA a;
+     TypeB b;
+     ...
+};
+</pre>
+
+<h2 id="usage">用法</h2>
+<p>在运行时中，<code>safe_union</code> 只是一种类型。默认情况下，它将是联合中的第一个类型。例如，在上面的示例中，<code>MySafeUnion</code> 默认为 <code>TypeA</code>。</p>
+
+<p>在 C++ 和 Java 中，<code>hidl-gen</code> 会为 <code>safe_union</code> 生成一个自定义类或结构。该类包括每个成员的判别器（位于 <code>hidl_discriminator</code> 中），一个用于获取当前判别器的方法 (<code>getDiscriminator</code>)，以及每个成员的 setter 和 getter。每个 setter 和 getter 的名称都与其成员完全一样。例如，<code>TypeA a</code> 的 getter 名为“a”，它将返回 <code>TypeA</code> 的内容。对应的 setter 也命名为“a”，它会采用 <code>TypeA</code> 的参数。在 <code>safe_union</code> 中设置值会更新 <code>getDiscriminator</code> 返回的判别器的值。从当前判别器以外的判别器访问值会中止该程序。例如，如果在 <code>MySafeUnion</code> 实例上调用 <code>getDiscriminator</code> 会返回 <code>hidl_discriminator::b</code>，则尝试检索 <code>a</code> 会中止该程序。</p>
+
+<h2 id="monostate">Monostate</h2>
+
+<p><code>safe_union</code> 始终有一个值，但如果希望它没有值，请使用 <code>android.hidl.safe_union@1.0::Monostate</code> 作为占位符。例如，以下联合可以是 <code>noinit</code>（空）或 <code>foo</code>：</p>
+
+<pre class="prettyprint">
+import android.hidl.safe_union@1.0::Monostate;
+
+safe_union OptionalFoo {
+     Monostate noinit;
+     Foo foo;
+};
+</pre>
+
+</body></html>

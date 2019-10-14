@@ -96,14 +96,15 @@ and APIs to manipulate the application process under test.
       ```
       atest FrameworksCoreTests
       ```
-   *  Or for more complex tests, use the Trade Federation test harness:
+   *  Or for more complex tests, use the
+      [Trade Federation test Harness](/devices/tech/test_infra/tradefed):
 
     ```
     make tradefed-all -j
     tradefed.sh run template/local_min --template:map test=FrameworksCoreTests
     ```
 
-1.  If using Trade Fed, manually install and run the tests:
+1.  If not using Tradefed, manually install and run the tests:
     1. Install the generated apk:
 
     ```

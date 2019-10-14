@@ -4,6 +4,7 @@
     <meta name="book_path" value="/_book.yaml"/>
   </head>
   <body>
+
   <!--
       Copyright 2017 The Android Open Source Project
 
@@ -137,14 +138,11 @@ libhidlbase</pre></td>
 <tr>
 <td><pre>
 
-opaque</pre></td>
+safe_union</pre></td>
 <td><pre>
 
-uint64_t</pre></td>
-<td><pre>
-
-&lt;stdint.h&gt;</pre>
-</td>
+(custom) struct</pre></td>
+<td></td>
 </tr>
 
 <tr>
@@ -200,12 +198,25 @@ libhidlbase</pre></td>
 <p>HIDL 形式的枚举会变成 C++ 形式的枚举。例如：</p>
 <pre class="prettyprint">
 enum Mode : uint8_t { WRITE = 1 &lt;&lt; 0, READ = 1 &lt;&lt; 1 };
+enum SpecialMode : Mode { NONE = 0, COMPARE = 1 &lt;&lt; 2 };
 </pre>
 
 <p>…会变为：</p>
 <pre class="prettyprint">
 enum class Mode : uint8_t { WRITE = 1, READ = 2 };
+enum class SpecialMode : uint8_t { WRITE = 1, READ = 2, NONE = 0, COMPARE = 4 };
 </pre>
+
+<p>从 Android 10 开始，可以使用 <code>::android::hardware::hidl_enum_range</code> 迭代枚举。此范围包括每个枚举（按照在 HIDL 源代码中显示的顺序迭代），从父级枚举开始到最后一个子级。例如，此代码按这样的顺序迭代 <code>WRITE</code>、<code>READ</code>、<code>NONE</code> 和 <code>COMPARE</code>。根据上述 <code>SpecialMode</code>：</p>
+
+<pre class="prettyprint">
+template &lt;typename T&gt;
+using hidl_enum_range = ::android::hardware::hidl_enum_range&lt;T&gt;
+
+for (SpecialMode mode : hidl_enum_range&lt;SpecialMode&gt;) {...}
+</pre>
+
+<p><code>hidl_enum_range</code> 还实现了反向迭代，可以在 <code>constexpr</code> 上下文中使用。如果某个值在枚举中多次出现，则该值会多次出现在该范围内。</p>
 
 <h2 id="bitfield">bitfield&lt;T&gt;</h2>
 <p><code>bitfield&lt;T&gt;</code>（其中 <code>T</code> 是用户定义的枚举）会变为 C++ 形式的该枚举的底层类型。在上述示例中，<code>bitfield&lt;Mode&gt;</code> 会变为 <code>uint8_t</code>。</p>

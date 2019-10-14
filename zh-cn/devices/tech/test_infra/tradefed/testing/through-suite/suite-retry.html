@@ -1,0 +1,78 @@
+<html devsite><head>
+
+  <meta name="book_path" value="/_book.yaml"/>
+
+  <meta name="project_path" value="/_project.yaml"/>
+</head>
+<body>
+<!--
+  Copyright 2019 The Android Open Source Project
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+<h1 id="use_suite_retry" class="page-title">使用套件重试</h1>
+
+<p>套件往往包含多个测试模块，测试语料库也会变得相当大。例如，<a href="/compatibility/cts">Android 兼容性测试套件 (CTS)</a> 包含数百个模块和数十万个测试用例。</p>
+
+<p>由于隔离性差或设备进入不良状态，大量测试可能会失败。</p>
+
+<p>套件重试功能旨在应对这些情况：它允许您仅重试失败的测试而不是完整的套件，以排除不稳定性和隔离性差的问题。如果测试一直失败，则重试也会失败；您会得到一个更强烈的信号，表明确实存在问题。</p>
+
+<h2 id="implement_suite_retry">实现套件重试</h2>
+
+<p>结果的重试涉及读取先前的结果并重新运行上一次调用。</p>
+
+<p>驱动重试的主接口是 <a href="https://android.googlesource.com/platform/tools/tradefederation/+/refs/heads/master/src/com/android/tradefed/testtype/suite/retry/ITestSuiteResultLoader.java">ITestSuiteResultLoader</a>，它允许您加载上一条结果和上一个命令行。</p>
+
+<p>然后，<a href="https://android.googlesource.com/platform/tools/tradefederation/+/refs/heads/master/src/com/android/tradefed/testtype/suite/retry/RetryRescheduler.java">RetryRescheduler</a> 使用此信息来重新创建上一条命令并填充一些过滤器，以便仅重新运行先前失败的测试或未执行的测试。</p>
+
+<h2 id="example_suite_retry_cts">套件重试示例：CTS</h2>
+
+<p>CTS 中的重试配置如下：</p>
+<pre class="prettyprint lang-xml"><code>&lt;configuration description="Runs a retry of a previous CTS session."&gt;
+    &lt;object type="previous_loader" class="com.android.compatibility.common.tradefed.result.suite.PreviousResultLoader" /&gt;
+    &lt;test class="com.android.tradefed.testtype.suite.retry.RetryRescheduler" /&gt;
+
+    &lt;logger class="com.android.tradefed.log.FileLogger"&gt;
+        &lt;option name="log-level-display" value="WARN" /&gt;
+    &lt;/logger&gt;
+&lt;/configuration&gt;
+</code></pre>
+<p>这适用于扩展 CTS 的大多数套件，例如 <a href="/compatibility/vts">VTS</a>。</p>
+
+<p>可通过以下命令进行调用：</p>
+<pre class="prettyprint lang-shell"><code>cts-tradefed run retry --retry &lt;session&gt;
+</code></pre>
+<p>通过在 CTS 控制台中列出先前的结果，可以找到该会话：</p>
+<pre class="prettyprint lang-shell"><code>cts-tf &gt; l r
+Session  Pass  Fail  Modules Complete  Result Directory     Test Plan  Device serial(s)  Build ID   Product
+0        2092  30    148 of 999        2018.10.29_14.12.57  cts        [serial]          P          Pixel
+</code></pre>
+<p>确切的原始命令将连同额外的过滤器一起重新加载并重新运行。这意味着，如果原始命令包含一些选项，它们也会是重试的一部分。</p>
+
+<p>例如：</p>
+<pre class="prettyprint lang-shell"><code>cts-tradefed run cts-dev -m CtsGestureTestCases
+</code></pre>
+<p>上面的重试总是局限于 <code>CtsGestureTestCases</code>，因为我们重试的是一个只涉及它的命令。</p>
+
+<h2 id="configure_retry_for_cts-style_suite">配置 CTS 型套件的重试</h2>
+
+<p>为使重试正常工作，需要以 proto 格式导出先前的结果。需要添加以下内容：</p>
+<pre class="prettyprint lang-xml"><code>&lt;result_reporter class="com.android.compatibility.common.tradefed.result.suite.CompatibilityProtoResultReporter" /&gt;
+</code></pre>
+<p>此内容需要添加到主命令的 XML 配置，这将导致在结果文件夹中创建 <code>test-record.pb</code> 文件。</p>
+
+<p>然后，CTS 重试将从 <code>test-record.pb</code> 和现有 <code>test_result.xml</code> 的组合加载数据以准备重试调用。</p>
+
+</body></html>

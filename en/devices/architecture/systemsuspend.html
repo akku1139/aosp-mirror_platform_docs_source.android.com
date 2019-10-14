@@ -1,0 +1,168 @@
+<html devsite>
+  <head>
+    <title>SystemSuspend service</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+{% include "_versions.html" %}
+  <!--
+      Copyright 2019 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>In Android 9 and lower there is a thread in <a
+  href="https://android.googlesource.com/platform/system/core/+/pie-dev/libsuspend/autosuspend_wakeup_count.cpp#65"
+  class="external">libsuspend</a>
+  responsible for initiating system suspend. Android {{ androidQVersionNumber }}
+  introduces an equivalent functionality in a SystemSuspend HIDL service.
+  This service is located in the system image and is served by the Android platform.
+  The logic from <code>libsuspend</code> remains largely the same, except every userspace
+  process blocking the system suspend needs to communicate with SystemSuspend.</p>
+
+<h2 id="libs">libsuspend and libpower</h2>
+<p>In Android {{ androidQVersionNumber }}, SystemSuspend service replaces
+  <code>libsuspend</code>. <code>libpower</code> was reimplemented to rely on
+  the SystemSuspend service instead of
+  <code>/sys/<strong>power</strong>/wake[un]lock</code>
+  without changing the C API.</p>
+
+<p>This pseudocode shows how to implement <code>acquire_wake_lock</code>
+  and <code>release_wake_lock</code>.</p>
+
+<pre class="prettyprint">
+<code>
+static std::unordered_map&lt;std::string, sp&lt;IWakeLock&gt;&gt; gWakeLockMap;
+
+int acquire_wake_lock(int, const char* id) {
+    ...
+    if (!gWakeLockMap[id]) {
+        gWakeLockMap[id] = suspendService-&gt;acquireWakeLock(WakeLockType::PARTIAL, id);
+    }
+    ...
+    return 0;
+}
+
+int release_wake_lock(const char* id) {
+    ...
+    if (gWakeLockMap[id]) {
+        auto ret = gWakeLockMap[id]-&gt;release();
+        gWakeLockMap[id].clear();
+        return 0;
+    }
+    ...
+    return -1;
+}
+</code>
+</pre>
+
+<h2 id="execution-threads">Execution threads</h2>
+<p>The SystemSuspend service keeps track of the number of wake locks issued with
+a suspend counter. It has two threads of execution:</p>
+
+<ul>
+  <li>The <strong>main</strong> thread answers binder calls.</li>
+  <li>The <strong>suspend</strong> thread controls system suspend.</li>
+</ul>
+
+<h3 id="main-thread">Main thread</h3>
+<p>The main thread answers requests from clients to allocate new wake locks,
+incrementing/decrementing the suspend counter.</p>
+
+<h3 id="suspend-thread">Suspend thread</h3>
+<p>The suspend thread performs the following in a loop:</p>
+<ol>
+  <li>Read from <code>/sys/<strong>power</strong>/wakeup_count</code>.</li>
+  <li>Acquire the mutex. This makes sure that the suspend thread doesn't touch
+    the suspend counter while the <strong>main</strong> thread is trying to
+    increment or decrement it. The <strong>main</strong> thread is blocked
+    on issuing or removing wake locks when the suspend counter has reached zero
+    and the <strong>suspend</strong> thread is trying to run.</li>
+  <li>Wait until the counter is equal to zero.</li>
+  <li>Write the value read from <code>/sys/<strong>power
+    </strong>/wakeup_count</code> (from step 1) to this file.
+    If the write fails, return to the beginning of the loop</li>
+  <li>Start the system suspend by writing <code>mem</code> to
+    <code>/sys/power/<strong>state</code></strong>.</li>
+  <li>Release the mutex.</li>
+</ol>
+
+<p>When a request for a wake lock successfully returns, the suspend thread is
+  blocked.</p>
+
+<figure id="suspend-thread-loop">
+  <img alt="" src="/devices/architecture/images/suspendThreadLoop.png" />
+  <figcaption><b>Figure 1.</b> Suspend thread loop</figcaption>
+</figure>
+
+<aside class="note"><b>Note:</b> The mutex is always released at the end
+of the loop iteration.</aside>
+
+<h3 id="systemsuspend-api">SystemSuspend API</h3>
+<p>The SystemSuspend API consists of two interfaces. The HIDL interface is used
+  by native processes to acquire wake locks and the AIDL interface is used for
+  communication between SystemServer and SystemSuspend.</p>
+
+<h3 id="isystemsuspend">ISystemSuspend HIDL interface</h3>
+
+<pre class="prettyprint">
+<code>
+enum WakeLockType : uint32_t {
+    PARTIAL,
+    FULL
+};
+
+interface IWakeLock {
+    oneway release();
+};
+
+interface ISystemSuspend {
+    acquireWakeLock(WakeLockType type, string debugName)
+        generates (IWakeLock lock);
+};
+</code>
+</pre>
+
+<p>Each client that requests a wake lock receives a unique
+  <code>IWakeLock</code> instance. This is different from
+  <code>/sys/<strong>power</strong>/wake_lock</code>, which allows multiple
+  clients to use the wake lock under the same name. If a client holding an
+  <code>IWakeLock</code> instance terminates, the binder driver and
+  SystemSuspend service cleans it up.</p>
+
+<h3 id="isuspendcontrolservice">ISuspendControlService AIDL interface</h3>
+<p>ISuspendControlService is intended to be used only by SystemServer.</p>
+
+<pre class="prettyprint">
+<code>
+interface ISuspendCallback {
+     void notifyWakeup(boolean success);
+}
+
+interface ISuspendControlService {
+    boolean enableAutosuspend();
+    boolean registerCallback(ISuspendCallback callback);
+    boolean forceSuspend();
+}
+</code>
+</pre>
+
+<p>Leveraging the Android HIDL offers the following benefits:</p>
+<ul>
+  <li>If a suspend-blocking process dies, SystemSuspend can be notified.</li>
+  <li>The thread responsible for system suspend can be given a callback.</li>
+</ul>
+
+  </body>
+</html>

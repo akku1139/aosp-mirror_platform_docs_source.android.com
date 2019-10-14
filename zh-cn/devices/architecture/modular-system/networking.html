@@ -1,0 +1,105 @@
+<html devsite><head>
+    <title>网络</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+
+  <!--
+      Copyright 2019 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>Android 10 包含以下网络模块：</p>
+
+<ul>
+  <li>网络组件模块，用于提供常见的 IP 服务、网络连接监控和强制登录门户检测。</li>
+  <li>网络堆栈权限配置模块，定义了一种可让模块执行网络相关任务的权限。</li>
+</ul>
+
+<h2 id="networking-components">网络组件模块</h2>
+
+<p>网络组件模块可以确保 Android 能够适应不断完善的网络标准，还支持与新实现进行互操作。例如，通过针对强制门户检测和登录代码的更新，Android 能够及时了解不断变化的强制门户模型；通过针对高级政策防火墙 (APF) 的更新，Android 能够在新型数据包变得常见的同时节省 WLAN 耗电量。
+</p>
+
+<h3 id="networking-q">Android 10 中的变化</h3>
+
+<p>网络组件模块包含以下组件。
+</p>
+
+<ul>
+  <li><strong>IP 服务。</strong> IpClient（以前称为 IpManager）组件负责处理 IP 层配置和维护。在 Android 9 中，它被蓝牙等组件用于进程间处理，被 WLAN 等组件用于进程内处理。DhcpClient 组件从 DHCP 服务器获取 IP 地址，以便将它们分配给接口。</li>
+  <li><strong>NetworkMonitor。</strong> NetworkMonitor 组件会在连接到新网络或出现网络故障时、检测强制门户时以及验证网络时测试互联网可达性。</li>
+  <li><strong>强制门户登录应用。</strong> 强制门户登录应用是一款预安装应用，负责管理强制门户的登录操作。自 Android 5.0 开始，此应用一直是一款独立应用，但它会与 NetworkMonitor 交互，以将一些用户选择项转发给系统。</li>
+</ul>
+
+<p>在使用网络组件模块的设备上，系统会将上述服务重构为其他进程，并使用<a href="/devices/bootloader/stable-aidl">稳定的 AIDL 接口</a>进行访问。重构路径如下表所示。
+</p>
+
+<h4 id="ipservices-refactor">IP 服务重构路径</h4>
+
+<table>
+  <tbody><tr>
+    <th style="width:20%">Android 9 及更低版本</th>
+    <td>在 <code>frameworks/base/services/net/java/android/net/</code> 中：<ul>
+    <li><code>apf</code></li>
+    <li><code>dhcp</code></li>
+    <li><code>ip</code></li>
+    <li><code>netlink</code></li>
+    <li><code>util</code>（部分）</li>
+    </ul>
+    </td>
+  </tr>
+  <tr>
+    <th>Android 10 及更高版本</th>
+    <td><code>packages/modules/NetworkStack</code></td>
+  </tr>
+</tbody></table>
+
+<h4 id="captive-portal-refactor">强制门户登录重构路径</h4>
+
+<table>
+  <tbody><tr>
+    <th style="width:20%">Android 9 及更低版本</th>
+    <td>在 <code>frameworks/base/</code> 中：<ul>
+    <li><code>core/java/android/net/captiveportal/</code></li>
+    <li><code>services/core/java/com/android/server/connectivity/NetworkMonitor.java</code></li>
+    <li><code>packages/CaptivePortalLogin/*</code>（其中 * 表示通配符）</li>
+    </ul>
+    </td>
+  </tr>
+  <tr>
+    <th>Android 10 及更高版本</th>
+    <td><code>packages/modules/CaptivePortalLogin</code>（以及一些其他共享位置）</td>
+  </tr>
+</tbody></table>
+
+<h3 id="networking-format">格式和依赖项</h3>
+
+<p>网络组件模块作为三个 APK 提供：一个用于 IP 服务，一个用于强制门户登录，一个用于<a href="#network-stack-permission-config">网络堆栈权限配置</a>。
+</p>
+
+<p>网络组件模块依赖于以下各项：</p>
+
+<ul>
+  <li><strong>系统服务器中的特权 <code>@hide</code> 方法</strong>（如 <code>IConnectivityManager.aidl</code> 中的此类方法）。这些 API 带有 <code>@SystemApi</code> 注释并受到适当保护，这样一来，该模块可以访问它们，但其他特权应用（如使用新签名权限的应用）则不能。</li>
+  <li><strong><code>INetd.aidl</code> 中定义的指向 <code>netd</code> 的 Binder IPC。</strong> 此接口已转换为稳定的 AIDL，并且需要进行一致性测试。</li>
+</ul>
+
+<h2 id="network-stack-permission-config">网络堆栈权限配置模块</h2>
+
+<p>网络堆栈权限配置模块不包含任何代码，而是定义了一种供网络堆栈模块和强制门户登录模块使用的权限。系统允许已获得此权限的模块在设备上执行相关的网络配置任务。
+</p>
+
+</body></html>

@@ -1,0 +1,122 @@
+
+<html devsite>
+  <head>
+    <title>Prebuilt ABI usages checker</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  {% include "_versions.html" %}
+  <body>
+  <!--
+      Copyright 2019 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>Android shared libraries evolve from time to time. Keeping prebuilt binaries
+up-to-date requires considerable efforts. In Android
+{{ androidPVersionNumber }} or earlier, the prebuilt binaries that depend on
+removed libraries or ABIs only fail to link at run-time. Developers have to
+trace the logs to find the outdated prebuilt binaries. In Android
+{{ androidQVersionNumber }}, a symbol-based ABI usages checker is introduced.
+The checker can detect outdated prebuilt binaries at build-time, so that shared
+library developers can know which prebuilt binaries might be broken by their
+change and which prebuilt binaries must be re-built.
+</p>
+
+
+
+<h2 id="symbol-based-abi-usages-checker">Symbol-based ABI usages checker</h2>
+
+<p>The symbol-based ABI usages checker emulates the Android dynamic linker on
+host. The checker links the prebuilt binary with the dependencies of the
+prebuilt binary and checks whether all undefined symbols are resolved.</p>
+
+<p>First, the checker checks the target architecture of the prebuilt binary.
+If the prebuilt binary does not target ARM, AArch64, x86, or x86-64
+architecture, the checker skips the prebuilt binary.</p>
+
+<p>Second, the dependencies of the prebuilt binary must be listed in
+<code>LOCAL_SHARED_LIBRARIES</code> or <code>shared_libs</code>. The build
+system resolves the module names to the matching variant (i.e.
+<code>core</code> v.s. <code>vendor</code>) of the shared libraries.</p>
+
+<p>Third, the checker compares the <code>DT_NEEDED</code> entries to
+<code>LOCAL_SHARED_LIBRARIES</code> or <code>shared_libs</code>. In particular,
+the checker extracts the <code>DT_SONAME</code> entry from each shared
+libraries and compares these <code>DT_SONAME</code> with the
+<code>DT_NEEDED</code> entries recorded in the prebuilt binary. If there is a
+mismatch, an error message is emitted.</p>
+
+<p>Fourth, the checker resolves the undefined symbols in the prebuilt binary.
+Those undefined symbols must be defined in one of the dependencies and the
+symbol binding must be either <code>GLOBAL</code> or <code>WEAK</code>. If an
+undefined symbol cannot be resolved, an error message is emitted.</p>
+
+
+<h3 id="prebuilts-module-properties">Prebuilts module properties</h3>
+
+<p>Dependencies of the prebuilt binary must be specified in one of the
+following:</p>
+
+<ul>
+  <li>Android.bp: <code>shared_libs: ["libc", "libdl", "libm"],</code></li>
+  <li>Android.mk: <code>LOCAL_SHARED_LIBRARIES := libc libdl libm</code></li>
+</ul>
+
+
+<p>If the prebuilt binary is designed to have some
+<em>unresolvable undefined symbols</em>, specify one of the following:</p>
+
+<ul>
+  <li>Android.bp: <code>allow_undefined_symbols: true,</code></li>
+  <li>Android.mk: <code>LOCAL_ALLOW_UNDEFINED_SYMBOLS := true</code></li>
+</ul>
+
+
+<p>To have the prebuilt binary skip the ELF file check, specify one of the
+following:</p>
+
+<ul>
+  <li>Android.bp: <code>check_elf_files: false,</code></li>
+  <li>Android.mk: <code>LOCAL_CHECK_ELF_FILES := false</code></li>
+</ul>
+
+
+<h3 id="run-the-checker">Run the checker</h3>
+
+<p>To run the checker, set the environment variable
+<code>CHECK_ELF_FILES</code> to <code>true</code> and run
+<code>make check-elf-files</code>:</p>
+
+<pre class="prettyprint">
+CHECK_ELF_FILES=true make check-elf-files
+</pre>
+
+
+<p>To enable the checker by default, add <code>PRODUCT_CHECK_ELF_FILES</code>
+to <code>BoardConfig.mk</code>:</p>
+
+<pre class="prettyprint">
+PRODUCT_CHECK_ELF_FILES := true
+</pre>
+
+<p>Prebuilts are automatically checked during the build process of Android:</p>
+
+<pre class="prettyprint">
+make
+</pre>
+
+
+  </body>
+</html>

@@ -1,0 +1,156 @@
+<html devsite><head>
+    <title>具有动态分区的 A/B 设备的 OTA</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+
+  <!--
+      Copyright 2019 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+    <p>Android 10 支持动态分区，它是一个用户空间分区系统，可以在无线下载 (OTA) 更新期间创建、销毁分区以及调整其大小。本文档介绍了 OTA 客户端如何在发布时即具有动态分区支持的 A/B 设备更新期间调整动态分区的大小。
+    </p>
+
+    <h2 id="background">背景</h2>
+
+      <p>设备上有一个 <code>super</code> 分区。该分区不以插槽为后缀。块设备必须与 <code>fstab</code> 中 <code>/misc</code> 的 <code>blk_device</code> 条目一起存在。例如，如果 <code>fstab</code> 文件列出以下内容：</p>
+
+<pre class="prettyprint">
+/dev/block/bootdevice/by-name/misc    /misc    # Other fields
+</pre>
+
+      <p>则 <code>super</code> 的块设备必须存在于 <code>/dev/block/bootdevice/by-name/super</code> 中，但 <code>super</code> 分区不需要在 <code>fstab</code> 文件中列出。
+      </p>
+
+      <p><code>super</code> 分区中有两个元数据插槽，编号分别为 0 和 1，对应于分区的 A/B 插槽。<em></em>在本文档中，我们将元数据插槽称为元数据 S（来源）和元数据 T（目标）。同样，将分区称为 <code>system_s</code>、<code>vendor_t</code> 等。
+      </p>
+
+      <p>在升级之前，元数据 S 包含正在使用的动态分区（通常是 <code>system_s</code>、<code>vendor_s</code>、<code>product_s</code> 等）的信息。系统会在更新期间读取这些分区的范围，因此它们无法删除。
+      </p>
+
+      <p>分区属于更新组。<em></em>如需了解详情，请参阅<a href="/devices/tech/ota/dynamic_partitions/implement">实现动态分区</a>。
+      </p>
+
+      <p>下面的示例显示了设备上的元数据。
+      </p>
+
+      <ul>
+        <li>元数据 0<ul>
+            <li>组 <code>foo_a</code>
+              <ul>
+                <li>分区 <code>system_a</code></li>
+                <li>分区 <code>product_services_a</code></li>
+                <li>其他由 Foo 更新的分区</li>
+              </ul>
+            </li>
+            <li>组 bar_a<ul>
+                <li>分区 <code>vendor_a</code></li>
+                <li>分区 <code>product_a</code></li>
+                <li>其他由 Bar 更新的分区</li>
+              </ul>
+            </li>
+            <li>组 <code>foo_b</code>（从上一次升级中剩余）</li>
+            <li>组 <code>bar_b</code>（从上一次升级中剩余）</li>
+          </ul>
+        </li>
+        <li>元数据 1<ul>
+            <li>组 <code>foo_a</code>（从上一次升级中剩余）</li>
+            <li>组 <code>bar_a</code>（从上一次升级中剩余）</li>
+            <li>组 <code>foo_b</code>
+              <ul>
+                <li>分区 <code>system_b</code></li>
+                <li>分区 <code>product_services_b</code></li>
+                <li>其他由 Foo 更新的分区</li>
+              </ul>
+            </li>
+            <li>组 <code>bar_b</code>
+              <ul>
+                <li>分区 <code>vendor_b</code></li>
+                <li>分区 <code>product_b</code></li>
+                <li>其他由 Bar 更新的分区</li>
+              </ul>
+            </li>
+          </ul>
+        </li>
+      </ul>
+
+      <p>您可以使用 <code>lpdump</code> 工具（<code>system/extras/partition_tools</code> 下的源代码）转储设备上的元数据。例如：</p>
+
+<pre class="devsite-click-to-copy">
+<code class="devsite-terminal">lpdump --slot 0 /dev/block/bootdevice/by-name/super</code>
+<code class="devsite-terminal">lpdump --slot 1 /dev/block/bootdevice/by-name/super</code>
+</pre>
+
+    <h2 id="update-flow">更新流程</h2>
+
+      <ol>
+        <li><strong>初始化 <code>super</code> 分区元数据。</strong>
+          <ol>
+            <li>从元数据 S 加载来源动态分区的范围。假设 M 是加载的元数据。
+            </li>
+            <li>从元数据 M 中移除目标组和分区（例如 <code>foo_t</code>、<code>bar_t</code>），以便元数据 M 仅包含带有 <code>_s</code> 后缀的分区和组。
+            </li>
+            <li>根据更新清单中的 <code>dynamic_partition_metadata</code> 字段添加目标组和分区。<br />可在 <code>new_partition_info</code> 中了解每个分区的大小。
+            </li>
+            <li>将元数据 M 写入元数据 T。</li>
+            <li>将设备映射器上添加的分区映射为可写入。
+            </li>
+          </ol>
+        </li>
+        <li><strong>在块设备上应用更新。</strong>
+          <ol>
+            <li>如有必要，将设备映射器上的来源分区映射为只读。这对于旁加载来说是必要的，因为在更新之前未映射来源分区。
+            </li>
+            <li>将完整或增量更新应用到目标插槽上的所有块设备。
+            </li>
+            <li>装载分区以运行安装后脚本，然后再卸载分区。
+            </li>
+          </ol>
+        </li>
+        <li><strong>取消映射目标分区。</strong></li>
+      </ol>
+
+      <aside class="note">
+        <strong>注意</strong>：来源和目标动态分区的范围跨越整个 <code>super</code> 分区。因此，您必须加载来源元数据，以便这些范围不会用作任何目标分区的一部分。
+      </aside>
+
+      <p>在更新之前和之后，以下系统属性应具有相应的值：</p>
+
+<pre class="prettyprint">
+ro.boot.dynamic_partitions=true
+ro.boot.dynamic_partitions_retrofit=true
+</pre>
+
+    <h2 id="update-manifest">将组和分区添加到更新清单</h2>
+
+      <p>在具有动态分区的 A/B 设备上或添加了对动态分区的支持的 A/B 设备上执行 OTA 更新时，需要将组和分区添加到更新清单。下面的代码段显示了支持动态分区所需的更新清单上的其他信息。要查看有关每个字段的详细文档，请参阅 <a href="https://android.googlesource.com/platform/system/update_engine/+/master/update_metadata.proto">update_metadata.proto</a>。
+      </p>
+
+<pre class="prettyprint">message DeltaArchiveManifest {
+    optional DynamicPartitionMetadata dynamic_partition_metadata;
+}
+
+message DynamicPartitionMetadata {
+    repeated DynamicPartitionGroup groups;
+}
+
+message DynamicPartitionGroup {
+    required string name;
+    optional uint64 size; // maximum size of group
+    repeated string partition_names;
+}
+</pre>
+
+</body></html>

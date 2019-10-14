@@ -1,0 +1,84 @@
+<html devsite>
+  <head>
+    <title>Lock Screen</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+{% include "_versions.html" %}
+
+  <!--
+      Copyright 2019 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>AOSP's default implementation of the Lock screen with affordances to unlock
+it (keyguard) appears only on the primary display. In Android 9 (and lower),
+secondary screens supported a single <em>locking window</em> on a single external
+display. In Android {{ androidQVersionNumber }}, the Lock screen is expanded to all public secondary
+displays. The Lock screen remains simple and doesn't support unlocking from secondary
+screens.</p>
+
+<p><img src="/devices/tech/display/images/multi_display_08.png"></p>
+
+<p><strong>Figure 1.</strong> Lock screen on secondary display</p>
+
+<p>Device manufacturers can implement their Lock screen for secondary displays,
+provided  the fundamental security requirement is fulfilled. When the device is
+locked, information should be securely concealed on all displays. There's no
+built-in policy or control over what content should be shown or hidden when device
+is locked. Therefore, the only secure way of implementing restricted access is to
+hide all content behind the Lock screen and locking windows. The only exceptions
+are apps that have explicitly opted in to be displayed on top of the Lock screen
+using the
+  <code><a href="https://developer.android.com/reference/android/R.attr.html#showWhenLocked"
+           class="external">R.attr.showWhenLocked</a></code> or
+  <code><a href="https://developer.android.com/reference/android/app/Activity.html#setShowWhenLocked(boolean)"
+           class="external">Activity.setShowWhenLocked()</a></code> methods.
+Otherwise, there is strong potential to leak information from public and private
+displays.</p>
+
+<p>While displays can be placed in to different states (<code>ON</code>/<code>OFF</code>),
+the locked state is global for all displays. As with any device implementation, it should
+be obvious to a user when a device is locked (or unlocked). For example, pressing
+a power button typically locks a mobile device. A power button should also lock all
+internal and external screens.</p>
+
+<p>Because the locking window is owned by SystemUI, it won't be placed on
+private displays. Owners of the private displays are responsible for hiding
+the windows and protecting content when a device is locked. The default system
+implementation <em>only</em> hides activities on private displays by changing
+visibility.</p>
+
+<h2 id="implementation">Implementation</h2>
+
+<p>The locking window on secondary displays is implemented as a <a
+href="https://developer.android.com/reference/android/app/Presentation" class="external">Presentation</a>
+window in <code>KeyguardDisplayManager</code>. Android {{ androidQVersionNumber }} changed
+<code>KeyguardDisplayManager#mPresentations</code> to an array that holds all
+locking windows for all secondary screens. <code>KeyguardDisplayManager</code> also
+has a display-change listener to respond to changes to the available displays and
+secure all screens. It's important to immediately lock all connected displays at
+any given time so that attackers can't extract user data even with physical access
+to the device.</p>
+
+<p>The locking window is displayed on all public secondary displays (see
+<code>KeyguardDisplayManager#isKeyguardShowable()</code>). Owners of private
+displays are responsible for securing the content when a device is
+locked.</p>
+
+
+  </body>
+</html>
+

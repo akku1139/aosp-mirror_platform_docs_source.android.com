@@ -4,6 +4,7 @@
     <meta name="book_path" value="/_book.yaml"/>
   </head>
   <body>
+
   <!--
       Copyright 2017 The Android Open Source Project
 
@@ -19,6 +20,7 @@
       See the License for the specific language governing permissions and
       limitations under the License.
   -->
+
 <p>
 Keystore 提供了一个更安全的位置，让您能够以可控方式创建、存储和使用加密密钥。如果有硬件支持的密钥存储区可用，则使用该存储区比从设备中提取密钥材料更安全，并且 Keymaster 强制执行的限制会更难以打破。
 </p>
@@ -34,22 +36,22 @@ Keystore 提供了一个更安全的位置，让您能够以可控方式创建�
 <p>
 通过 ID 认证，设备可以提供其硬件标识符的证明，例如序列号或 IMEI。
 
-</p><p class="note">为了支持 Keymaster 3 从旧式 C 结构 HAL 转换到根据新硬件接口定义语言 (HIDL) 中的定义生成的 C++ HAL 接口，Android 8.0 中的标记和方法名称已更改。如同所有其他 keymaster 枚举一样，标记现在被定义为 C++ 域化 (scoped) 枚举。例如，标记的前缀从之前的 <code>KM_TAG_</code> 改为现在的 <code>Tag::</code>，而方法采用的是驼峰式大小写形式。除非另有指定，否则以下示例均使用 Keymaster 3 术语。
-</p>
+</p><aside class="note"><b>注意</b>：为了支持 Keymaster 3 从旧式 C 结构 HAL 转换到根据新硬件接口定义语言 (HIDL) 中的定义生成的 C++ HAL 接口，Android 8.0 中的标记和方法名称已更改。如同所有其他 keymaster 枚举一样，标记现在被定义为 C++ 域化的枚举。例如，标记的前缀从之前的 <code>KM_TAG_</code> 改为现在的 <code>Tag::</code>，而方法采用的是驼峰式大小写形式。除非另有指定，否则以下示例均使用 Keymaster 3 术语。</aside>
 
 <h2 id="key-attestation">密钥认证</h2>
-<p></p>
 <p>
 为了支持密钥认证，Android 7.1 为 HAL 引入了一系列标记、类型和方法。
 </p>
 <p>
 <strong>标记</strong>
 </p>
+
 <ul>
-<li><code>Tag::ATTESTATION_CHALLENGE</code></li>
-<li><code>Tag::INCLUDE_UNIQUE_ID</code></li>
-<li><code>Tag::RESET_SINCE_ID_ROTATION</code></li>
+  <li><code>Tag::ATTESTATION_CHALLENGE</code></li>
+  <li><code>Tag::INCLUDE_UNIQUE_ID</code></li>
+  <li><code>Tag::RESET_SINCE_ID_ROTATION</code></li>
 </ul>
+
 <p>
 <strong>类型</strong>
 </p>
@@ -61,15 +63,16 @@ Keystore 提供了一个更安全的位置，让您能够以可控方式创建�
 } keymaster_cert_chain_t;
 </pre>
 
-<p>
-<strong><code>AttestKey</code> 方法</strong></p>
+<p><strong><code>AttestKey</code> 方法</strong></p>
 
 <p><strong>Keymaster 3</strong></p>
+
 <pre class="devsite-click-to-copy">
     attestKey(vec&lt;uint8_t&gt; keyToAttest, vec&lt;KeyParameter&gt; attestParams)
         generates(ErrorCode error, vec&lt;vec&lt;uint8_t&gt;&gt; certChain);</pre>
 
 <p><strong>Keymaster 2 及更低版本</strong></p>
+
 <pre class="devsite-click-to-copy">keymaster_error_t (*attest_key)(const struct keymaster2_device* dev,
         const keymaster_key_blob_t* key_to_attest,
         const keymaster_key_param_set_t* attest_params,
@@ -77,15 +80,16 @@ Keystore 提供了一个更安全的位置，让您能够以可控方式创建�
 </pre>
 
 <ul>
-<li><code>dev</code> 是 Keymaster 设备结构。</li>
-<li><code>keyToAttest</code> 是从系统将为其创建认证的 <code>generateKey</code> 返回的密钥 Blob。</li>
-<li><code>attestParams</code> 是认证所需的所有参数的列表。该列表包含 <code>Tag::ATTESTATION_CHALLENGE</code> 和 <code>Tag::RESET_SINCE_ID_ROTATION</code>，以及 <code>Tag::APPLICATION_ID</code> 和 <code>Tag::APPLICATION_DATA</code>。如果在密钥生成过程中指定了后两个参数，则它们是解密密钥 Blob 所必需的参数。</li>
-<li><code>certChain</code> 是输出参数，会返回一个证书数组。条目 0 是认证证书，表示它会对 <code>keyToAttest</code> 中的密钥进行认证，并且包含认证扩展。</li>
+  <li><code>dev</code> 是 Keymaster 设备结构。</li>
+  <li><code>keyToAttest</code> 是从系统将为其创建认证的 <code>generateKey</code> 返回的密钥 Blob。</li>
+  <li><code>attestParams</code> 是认证所需的所有参数的列表。该列表包含 <code>Tag::ATTESTATION_CHALLENGE</code> 和 <code>Tag::RESET_SINCE_ID_ROTATION</code>（可能），以及 <code>Tag::APPLICATION_ID</code> 和 <code>Tag::APPLICATION_DATA</code>。如果在密钥生成过程中指定了后两个参数，则它们是解密密钥 Blob 所必需的参数。</li>
+  <li><code>certChain</code> 是输出参数，会返回一个证书数组。条目 0 是认证证书，表示它会对 <code>keyToAttest</code> 中的密钥进行认证，并且包含认证扩展。</li>
 </ul>
 
 <p>
-<code>attestKey</code> 方法被视为对经过认证的密钥进行的公钥操作，因为它可以随时调用，不需要满足授权限制条件。例如，如果经过认证的密钥需要进行用户身份验证才能使用，则该方法可以在不进行用户身份验证的情况下生成认证。
+<code>attestKey</code> 方法被视为对经过认证的密钥进行的公钥操作，因为它可以随时被调用，不需要满足授权限制条件。例如，如果经过认证的密钥需要进行用户身份验证才能使用，则该方法可以在不进行用户身份验证的情况下生成认证。
 </p>
+
 <h3 id="attestation-certificate">认证证书</h3>
 <p>
 认证证书是标准的 X.509 证书，具有可选的认证扩展，其中包含对经过认证的密钥的描述。证书采用出厂配置的<a href="#attestation-keys-and-certificates">认证密钥</a>进行签名，该密钥使用的算法与正在进行认证的密钥相同（例如，RSA 密钥使用 RSA 算法，EC 密钥使用 EC 算法）。
@@ -93,6 +97,7 @@ Keystore 提供了一个更安全的位置，让您能够以可控方式创建�
 <p>
 认证证书中包含下表所列的字段，且不得包含任何其他字段。某些字段会指定固定的字段值。CTS 测试会验证证书内容是否与所定义的内容完全一致。
 </p>
+
 <h4 id="certificate-sequence">证书序列</h4>
 <table>
   <tbody><tr>
@@ -168,11 +173,12 @@ Keystore 提供了一个更安全的位置，让您能够以可控方式创建�
 
 <h3 id="attestation-extension">认证扩展</h3>
 <p>
-认证扩展包含对与密钥相关联的密钥 Keymaster 授权的完整描述，其所采用的结构直接对应于 Android 和 Keymaster HAL 中使用的授权列表。授权列表中的各个标记分别由一个 ASN.1 SEQUENCE 条目表示，通过 Keymaster 标记编号进行显式标记，而类型描述符（4 个高值位）则采用掩码处理。</p>
+<code>attestation</code> 扩展包含对与密钥相关联的密钥 Keymaster 授权的完整描述，其所采用的结构直接对应于 Android 和 Keymaster HAL 中使用的授权列表。授权列表中的各个标记分别由一个 ASN.1 <code>SEQUENCE</code> 条目表示，通过 Keymaster 标记编号进行显式标记，而类型描述符（4 个高值位）则采用掩码处理。</p>
 <p>例如，在 Keymaster 3 中，<code>Tag::PURPOSE</code> 在 types.hal 中被定义为 <code>ENUM_REP | 1</code>。对于认证扩展，<code>ENUM_REP</code> 值会被移除，但留下标记 <code>1</code>。（对于 Keymaster 2 及更低版本，<code>KM_TAG_PURPOSE</code> 在 keymaster_defs.h 中定义。）
 </p>
 <p>
 根据下表所示，值通过一种简单的方式转换为 ASN.1 类型：</p>
+
 <table>
   <tbody><tr>
    <th>Keymaster 类型</th>
@@ -220,9 +226,8 @@ Keystore 提供了一个更安全的位置，让您能够以可控方式创建�
    <td>OCTET_STRING</td>
   </tr>
 </tbody></table>
-<p class="note">
-<strong>注意</strong>：该架构中省略了某些标记，这些标记不应该包含在认证中。例如，<code>Tag::USER_ID</code> 和 <code>Tag::SECURE_USER_ID</code> 的值在设备外没有意义，而 <code>Tag::MIN_MAC_LENGTH</code> 和 <code>Tag::CALLER_NONCE</code> 对于不对称密钥是无用的。
-</p>
+
+<aside class="note"><b>注意</b>：该架构中省略了某些标记，这些标记不应该包含在认证中。例如，<code>Tag::USER_ID</code> 和 <code>Tag::SECURE_USER_ID</code> 的值在设备外没有意义，而 <code>Tag::MIN_MAC_LENGTH</code> 和 <code>Tag::CALLER_NONCE</code> 对于不对称密钥是无用的。</aside>
 
 <h4 id="schema">架构</h4>
 <p>
@@ -294,7 +299,7 @@ VerifiedBootState ::= ENUMERATED {
 
 <h4 id="keydescription-fields">KeyDescription 字段</h4>
 <p>
-keymasterVersion 和 attestationChallenge 字段通过位置（而非标记）进行标识，因此编码形式的标记仅指定字段类型。其余字段采用隐式标记，如架构中所指定。
+<code>keymasterVersion</code> 和 <code>attestationChallenge</code> 字段通过位置（而非标记）进行标识，因此编码形式的标记仅指定字段类型。其余字段采用隐式标记，如架构中所指定。
 </p>
 <table>
   <tbody><tr>
@@ -340,24 +345,26 @@ keymasterVersion 和 attestationChallenge 字段通过位置（而非标记）�
   <tr>
    <td><code>teeEnforced</code></td>
    <td>AuthorizationList</td>
-   <td>可选值，会被 TEE 强制执行的 Keymaster 授权（如果存在）。</td>
+   <td>可选值，会被 TEE 强制执行的 Keymaster 授权（如果存在）。
+   </td>
   </tr>
 </tbody></table>
 
 <h4 id="authorizationlist-fields">AuthorizationList 字段</h4>
 <p>
-AuthorizationList 字段均为可选字段并通过 Keymaster 标记值来标识，类型位则采用掩码处理。此类字段使用显式标记，因此还包含一个可指明其 ASN.1 类型的标记，这样更易于解析。
+<code>AuthorizationList</code> 字段均为可选字段并通过 Keymaster 标记值来标识，类型位则采用掩码处理。此类字段使用显式标记，因此还包含一个可指明其 ASN.1 类型的标记，这样更易于解析。
 </p>
-<p>要详细了解各个字段的值，如果是 Keymaster 3，请参阅 types.hal，如果是 Keymaster 2 及更低版本，请参阅 keymaster_defs.h。通过省略 KM_TAG 前缀并将其余部分更改为驼峰式大小写形式，Keymaster 标记名称被转换为了字段名称，因此 <code>Tag::KEY_SIZE</code> 变成了 <code>keySize</code>。
+<p>
+要详细了解各个字段的值，如果是 Keymaster 3，请参阅 <code>types.hal</code>，如果是 Keymaster 2 及更低版本，请参阅 <code>keymaster_defs.h</code>。通过省略 <code>KM_TAG</code> 前缀并将其余部分更改为驼峰式大小写形式，Keymaster 标记名称被转换为了字段名称，因此 <code>Tag::KEY_SIZE</code> 变成了 <code>keySize</code>。
 </p>
-<p class="note">
-<strong>注意</strong>：types.hal 和 keymaster_defs.h 中的很多标记都未包含在该架构中。因为一些标记不适用于不对称密钥，还有一些标记在设备外没有意义，等等。
-</p>
+<aside class="note"><b>注意</b>：types.hal 和 keymaster_defs.h 中的很多标记都未包含在该架构中。因为一些标记不适用于不对称密钥，还有一些标记在设备外没有意义，等等。
+</aside>
 
 <h4 id="rootoftrust-fields">RootOfTrust 字段</h4>
 <p>
-RootOfTrust 字段通过位置进行标识。
+<code>RootOfTrust</code> 字段通过位置进行标识。
 </p>
+
 <table>
   <tbody><tr>
    <th>字段名称</th>
@@ -390,6 +397,7 @@ RootOfTrust 字段通过位置进行标识。
    <td>最新补丁程序的月份和年份，采用 YYYYMM 格式的整数表示，其中 YYYY 表示四位数年份，MM 表示两位数月份。例如，2016 年 4 月将表示为 201604。</td>
   </tr>
 </tbody></table>
+
 <h4 id="verifiedbootstate-values">VerifiedBootState 值</h4>
 <p>
 <code>verifiedBootState</code> 的值具有以下含义：
@@ -402,18 +410,18 @@ RootOfTrust 字段通过位置进行标识。
   <tr>
    <td><code>Verified</code></td>
    <td>表示实现了从引导加载程序到已验证分区的完整信任链，其中包括引导加载程序、启动分区和所有已验证的分区。<br />
-在此状态下，verifiedBootKey 值是嵌入证书的哈希值，表示不可更改的证书已烧录到 ROM 中。</td>
+在此状态下，<code>verifiedBootKey</code> 值是嵌入证书的哈希值，表示不可更改的证书已烧录到 ROM 中。</td>
   </tr>
   <tr>
    <td><code>SelfSigned</code></td>
    <td>表示已使用嵌入的证书验证启动分区，并且签名有效。在允许启动过程继续之前，引导加载程序会显示一条警告以及公钥的指纹。
 <br />
-在此状态下，verifiedBootKey 值是自签名证书的哈希值。</td>
+在此状态下，<code>verifiedBootKey</code> 值是自签名证书的哈希值。</td>
   </tr>
   <tr>
    <td><code>Unverified</code></td>
    <td>表示可以随意修改设备。设备完整性由用户进行带外验证。在允许启动过程继续之前，引导加载程序会向用户显示一条警告。<br />
-在此状态下，verifiedBootKey 值为空。</td>
+在此状态下，<code>verifiedBootKey</code> 值为空。</td>
   </tr>
   <tr>
    <td><code>Failed</code></td>
@@ -423,7 +431,7 @@ RootOfTrust 字段通过位置进行标识。
 
 <h4 id="securitylevel-values">SecurityLevel 值</h4>
 <p>
-securityLevel 的值具有以下含义：
+<code>securityLevel</code> 的值具有以下含义：
 </p>
 <table>
   <tbody><tr>
@@ -436,9 +444,11 @@ securityLevel 的值具有以下含义：
   </tr>
   <tr>
    <td><code>TrustedEnvironment</code></td>
-   <td>创建或管理相关元素（认证或密钥）的代码已在可信执行环境 (TEE) 中实现。如果 TEE 遭到入侵，该代码可能会被更改；不过，TEE 对远程入侵具有很强的抵抗力，并且可以通过直接硬件攻击来适度抵御入侵。</td>
+   <td>创建或管理相关元素（认证或密钥）的代码已在可信执行环境 (TEE) 中实现。如果 TEE 遭到入侵，该代码可能会被更改；不过，TEE 对远程入侵具有很强的抵抗力，并且可以通过直接硬件攻击来适度抵御入侵。
+</td>
   </tr>
 </tbody></table>
+
 <h3 id="unique-id">唯一 ID</h3>
 <p>
 唯一 ID 是一个用于标识设备的 128 位值，但只能在限定时间段内使用。该值通过以下公式计算得出：
@@ -453,13 +463,12 @@ HMAC_SHA256(T || C || R, HBK)
 </p>
 
 <ul>
-<li><code>T</code> 是“时间计数器值”，通过将 <code>Tag::CREATION_DATETIME</code> 的值除以 2592000000 再舍去所有余数计算得出。<code>T</code> 每 30 天变化一次 (2592000000 = 30 * 24 * 60 * 60 * 1000)。</li>
-<li><code>C</code> 是 <code>Tag::APPLICATION_ID</code> 的值</li>
-<li>如果 attest_key 调用的 attest_params 参数中存在 <code>Tag::RESET_SINCE_ID_ROTATION</code>，则 <code>R</code> 为 1；如果不存在该标记，则为 0。</li>
-<li><code>HBK</code> 是可信执行环境已知的绑定到硬件的唯一密钥，可信执行环境绝不会显示该密钥。该密钥包含至少 128 位的熵，并且对于单个设备是独一无二的（根据 128 位的熵，概率上的唯一性是可接受的）。
-Jack： "128 位的熵" 是否合适??
-serena：可以HBK 应该通过 HMAC 或 AES_CMAC 从融合密钥材料中派生。</li>
+  <li><code>T</code> 是“时间计数器值”，通过将 <code>Tag::CREATION_DATETIME</code> 的值除以 2592000000 再舍去所有余数计算得出。<code>T</code> 每 30 天变化一次 (2592000000 = 30 * 24 * 60 * 60 * 1000)。</li>
+  <li><code>C</code> 是 <code>Tag::APPLICATION_ID</code> 的值</li>
+  <li>如果 attest_key 调用的 attest_params 参数中存在 <code>Tag::RESET_SINCE_ID_ROTATION</code>，则 <code>R</code> 为 1；如果不存在该标记，则为 0。</li>
+  <li><code>HBK</code> 是可信执行环境已知的绑定到硬件的唯一密钥，可信执行环境绝不会显示该密钥。该密钥包含至少 128 位的熵，并且对各个设备都是唯一的（根据 128 位的熵，概率上的唯一性是可接受的）。HBK 应该通过 HMAC 或 AES_CMAC 从融合密钥材料中派生。</li>
 </ul>
+
 <p>
 将 HMAC_SHA256 输出截断为 128 位。
 </p>
@@ -485,15 +494,14 @@ ID 认证的主要 API 表面基于 Keymaster 2 中引入的现有密钥认证�
 <p>
 保存设备标识符的存储区需要具有以下属性：
 </p>
+
 <ul>
   <li>在设备出厂之前，将设备的原始标识符派生的值复制到存储区中。</li>
-  <li><code>destroyAttestationIds()</code> 方法可以永久破坏该标识符所派生数据的副本。永久破坏意味着数据会被彻底移除，无论是恢复出厂设置还是在设备上执行任何其他程序都无法将其恢复。对于用户已解锁引导加载程序并更改了系统软件以及 Android 框架返回的标识符的设备而言，这一点尤其重要。</li>
+  <li><code>destroyAttestationIds()</code> 方法可以永久销毁该标识符所派生数据的副本。永久破坏意味着数据会被彻底移除，无论是恢复出厂设置还是在设备上执行任何其他程序都无法将其恢复。对于用户已解锁引导加载程序并更改了系统软件以及 Android 框架返回的标识符的设备而言，这一点尤其重要。</li>
   <li>RMA 设施应该能够生成硬件标识符派生数据的新副本。这样一来，通过 RMA 的设备可以再次执行 ID 认证。必须保护 RMA 设施使用的机制，从而使用户无法自行调用，因为调用该机制会导致用户完成对假冒 ID 的认证。</li>
   <li>在 TEE 中，除了 Keymaster 可信应用之外的所有代码都无法读取存储区中保存的标识符派生数据。</li>
   <li>存储区可以防篡改：如果存储区的内容已遭到修改，TEE 会将其视为相应内容的副本已被破坏，并会拒绝尝试进行 ID 认证的所有操作。这通过对存储区执行签名或 MAC 来实现（<a href="#construction">如下所述</a>）。</li>
-  <li>存储区不保存原始标识符。由于 ID 认证涉及到一项质询，因此调用程序始终需要提供要进行认证的标识符。
-  TEE 只需验证这些标识符是否与其原始值相匹配即可。
-  只要存储了原始值的安全哈希（而不是值本身），即可进行此验证。</li>
+  <li>存储区不保存原始标识符。由于 ID 认证涉及到一项质询，因此调用程序始终需要提供要进行认证的标识符。TEE 只需验证这些标识符是否与其原始值相匹配即可。只要存储了原始值的安全哈希（而不是值本身），即可进行此验证。</li>
 </ul>
 
 <h3 id="construction">结构</h3>
@@ -505,16 +513,20 @@ ID 认证的主要 API 表面基于 Keymaster 2 中引入的现有密钥认证�
 <p>
 其中：
 </p>
+
 <ul>
   <li><code>D = HMAC(HBK, ID<sub>1</sub>) || HMAC(HBK, ID<sub>2</sub>) || ... ||
   HMAC(HBK, ID<sub>n</sub>)</code></li>
   <li><code>HMAC</code> 是具有适当安全哈希的 HMAC 结构（建议使用 SHA-256）</li>
-  <li><code>HBK</code> 是不用于任何其他用途的绑定到硬件的密钥</li>
+  <li><code>HBK</code> 是不用于任何其他用途的绑定到硬件的密钥
+  </li>
   <li><code>ID<sub>1</sub>...ID<sub>n</sub></code> 是原始 ID 值；特定值与特定索引之间的关联取决于实现，因为不同设备将具有不同数量的标识符</li>
   <li><code>||</code> 表示连接</li>
 </ul>
+
 <p>由于 HMAC 输出的大小是固定的，因此不需要标头或其他结构就能够查找单个 ID 哈希或 D 结构的 HMAC。实现不仅需要检查所收到的值以执行认证，还需要验证 S。验证 S 的方法是从 S 中提取 D，计算 HMAC（HBK、D），然后将计算结果与 S 中的值进行比较，从而确认没有任何单个 ID 遭到修改/损坏。此外，实现必须对所有单个 ID 元素进行常数时间比较，并对 S 进行验证。比较时间必须是常量，不考虑所提供的 ID 数量以及测试的任何部分是否正确匹配。
 </p>
+
 <h3 id="hardware-identifiers">硬件标识符</h3>
 <p>
 ID 认证支持以下硬件标识符：
@@ -529,8 +541,9 @@ ID 认证支持以下硬件标识符：
   <li>所有无线装置的 IMEI</li>
   <li>所有无线装置的 MEID</li>
 </ol>
+
 <p>
-为了支持设备 ID 认证，设备需要证明这些标识符。运行 Android 的所有设备都具有前 6 种标识符，它们是此功能正常发挥作用所必需的元素。如果设备具有任何无线装置，那么还需要支持对无线装置的 IMEI 和/或 MEID 的认证。
+为了支持设备 ID 认证，设备需要证明这些标识符。运行 Android 的所有设备都具有前 6 种标识符，它们是此功能正常发挥作用所必需的元素。如果设备具有任何集成的手机无线装置，那么还必须支持对无线装置的 IMEI 和/或 MEID 的认证。
 </p>
 <p>
 通过执行密钥认证并在请求中添加要认证的设备标识符来请求 ID 认证。这些标识符的标记如下所示：
@@ -554,7 +567,8 @@ ID 认证支持以下硬件标识符：
 <p>
 如果该设备支持 ID 认证，并且密钥认证请求中包含以上一个或多个标记，TEE 会验证带有各个标记的标识符是否与其硬件标识符的副本相匹配。如果有一个或多个标识符不匹配，则整个认证都会失败并显示 <code>ErrorCode::CANNOT_ATTEST_IDS</code>。这种情况也适用于多次带有同一标记的标识符。这在证明 IMEI 时会非常实用（举例而言）：一个设备可以配备多个具有多个 IMEI 的无线装置。如果带有每个 <code>ATTESTATION_ID_IMEI</code> 标记的值与设备的其中一个无线装置相匹配，则认证请求有效。这同样适用于所有其他标记。
 </p>
-<p>如果认证成功，则会使用<a href="#attestation-extension">上述架构</a>将经过认证的 ID 添加到所颁发的认证证书的<a href="#schema">认证扩展</a>中 (OID 1.3.6.1.4.1.11129.2.1.17)。Keymaster 2 认证架构发生的变更以<strong>粗体</strong>显示，并带有注释。
+<p>
+如果认证成功，则会使用<a href="#schema">上述架构</a>将经过认证的 ID 添加到所颁发的认证证书的<a href="#attestation-extension">认证扩展</a>中 (OID 1.3.6.1.4.1.11129.2.1.17)。Keymaster 2 认证架构发生的变更以<strong>粗体</strong>显示，并带有注释。
 </p>
 
 <h2 id="java-api">Java API</h2>
@@ -574,7 +588,8 @@ ID 认证支持以下硬件标识符：
 下面的示例生成一个密钥对并请求一次认证。
 </p>
 
-<pre class="devsite-click-to-copy">// Create KeyPairGenerator and set generation parameters for an ECDSA key pair
+<pre class="devsite-click-to-copy">// Create KeyPairGenerator
+and set generation parameters for an ECDSA key pair
 // using the NIST P-256 curve.  "Key1" is the key alias.
 KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance(
     KeyProperties.KEY_ALGORITHM_EC, "AndroidKeyStore");

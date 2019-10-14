@@ -1,0 +1,268 @@
+<html devsite>
+  <head>
+    <title>System Decorations Support</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+{% include "_versions.html" %}
+
+  <!--
+      Copyright 2019 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>Updates made to these display-specific areas are provided below:</p>
+
+<ul>
+  <li><a href="system-decorations#decorations">System decorations</a></li>
+  <li><a href="system-decorations#ui-decor">System UI decor windows</a></li>
+  <li><a href="system-decorations#launcher">Launcher</a></li>
+  <li><a href="system-decorations#wallpaper">Wallpapers</a></li>
+</ul>
+
+<h2 id="decorations">System decorations</h2>
+
+<p>Android {{ androidQVersionNumber }} adds support for configuring secondary
+displays to show certain system decorations, such as wallpaper, navigation bar,
+and launcher. By default, the primary display shows all system decorations, and
+secondary displays show those optionally enabled. Support for an Input Method Editor
+(IME) can be set separately from other system decorations.</p>
+
+<p>Use <code>DisplayWindowSettings#setShouldShowSystemDecorsLocked()</code>
+to add support for system decorations on a specific display or provide
+a default value in <code>/data/system/display_settings.xml</code>. For examples,
+see <a
+href="/devices/tech/display/multi_display/displays#windows">Display window settings</a>.</p>
+
+<h3 id="implementation-decor">Implementation</h3>
+
+<p><code>DisplayWindowSettings#setShouldShowSystemDecorsLocked()</code> is also exposed in
+<code>WindowManager#setShouldShowSystemDecors()</code> for testing. Triggering of this method
+with intent to enable system decors doesn't add decor windows that were
+previously missing, or remove them if they were previously present. In most
+cases, the change of system decorations support takes full effect only after a
+device reboot.</p>
+
+<p>Checks for support of system decorations in the WindowManager code base
+usually go through <code>DisplayContent#supportsSystemDecorations()</code> while
+checks for external services (such as System UI to check if the navigation bar
+should be shown) use <code>WindowManager#shouldShowSystemDecors()</code>.
+To understand what is controlled by this setting, explore the call points of
+these methods.</p>
+
+<h2 id="ui-decor">System UI decor windows</h2>
+
+<p>Android {{ androidQVersionNumber }} adds system decor window support
+for the navigation bar <em>only</em>, because the navigation bar is essential
+for navigating between activities and apps. By default, the navigation bar shows
+Back and Home affordances. This is included only if the target display supports
+system decorations (see <code>DisplayWindowSettings</code>).</p>
+
+<p>The <em>status bar </em>is a more complicated system window, because it
+also contains Notification Shade, Quick Settings, and Lock Screen. In Android
+{{ androidQVersionNumber }}, the status bar is not supported on secondary displays.
+Therefore, notifications, settings, and a full keyguard are available only on the
+primary display.</p>
+
+<p>The <em>Overview/Recents</em> system window isn't supported on secondary
+screens. In Android {{ androidQVersionNumber }}, AOSP only display Recents on the
+default display and contains activities from all displays. When launched from
+Recents, an activity that was on a secondary display is brought to the front on
+that display, by default. This approach has some known issues, such as not
+updating immediately when apps appear on other screens.</p>
+
+<h3 id="implementation-decor">Implementation</h3>
+
+<p>To implement additional System UI features, device manufacturers should use a
+single System UI component that listens for the addition/removal of displays and
+presents appropriate content.</p>
+
+<p>A System UI component that supports Multi-Display (MD) should handle the
+following cases:</p>
+
+<ul>
+<li>Multiple display initialization at startup</li>
+<li>Display added at runtime</li>
+<li>Display removed at runtime</li>
+</ul>
+
+<p>When System UI detects the addition of a display before WindowManager, it creates
+a race condition. This can be avoided by implementing a custom callback from
+WindowManager to System UI when a display is added instead of subscribing to
+DisplayManager<code>.DisplayListener</code> events. For a reference implementation,
+see <code>CommandQueue.Callbacks#onDisplayReady</code> for navigation bar support
+and <code>WallpaperManagerInternal#onDisplayReady</code> for wallpapers.</p>
+
+<p>In addition, Android {{ androidQVersionNumber }} provides these updates:</p>
+
+<ul>
+<li>The <code>NavigationBarController</code> class controls all functionality
+specific to navigation bars.</li>
+<li>To view a customized navigation bar, see <code>CarStatusBar</code>.</li>
+<li><code>TYPE_NAVIGATION_BAR</code> is no longer restricted to a single
+instance and can be used per display.</li>
+<li><code>IWindowManager#hasNavigationBar()</code> is updated to include the
+<code>displayId</code> parameter for System UI only.</li>
+</ul>
+
+<h2 id="launcher">Launcher</h2>
+
+<p>In Android {{ androidQVersionNumber }}, each display configured to support
+system decorations has a dedicated home stack for launcher activities with type
+<code>WindowConfiguration#ACTIVITY_TYPE_HOME</code>, by default. Each display
+uses a separate instance of launcher activity.</p>
+
+<p><img src="/devices/tech/display/images/multi_display_05a.png"></p>
+
+<p><img src="/devices/tech/display/images/multi_display_05b.png"></p>
+
+<p><strong>Figure 1.</strong> Multi-display launcher example for
+<code>platform/development/samples/MultiDisplay</code></p>
+
+<p>Most existing launchers don't support multiple instances and aren't optimized
+for large screen sizes. Also, a different kind of experience is often expected
+on secondary/external displays. To provide a dedicated activity for secondary
+screens, Android {{ androidQVersionNumber }} introduces the <code>SECONDARY_HOME</code> category in intent
+filters. Instances of this activity are used on all displays that support system
+decorations, one per display. </p>
+
+<pre class="prettyprint">
+&lt;activity&gt;
+    ...
+    &lt;intent-filter&gt;
+        &lt;category android:name="android.intent.category.SECONDARY_HOME" /&gt;
+        ...
+    &lt;/intent-filter&gt;
+&lt;/activity&gt;
+</pre>
+
+<p>The activity must have a launch mode that doesn't prevent multiple
+instances and is expected to adapt to different screen sizes. The launch mode
+can't be <code>singleInstance</code> or <code>singleTask</code>.</p>
+
+<h3 id="implementation-launcher">Implementation</h3>
+
+<p>In Android {{ androidQVersionNumber }}, <code>RootActivityContainer#startHomeOnDisplay()</code>
+automatically selects the desired component and intent depending on the display
+where the home screen is launched. <code>RootActivityContainer#resolveSecondaryHomeActivity()</code>
+contains the logic to look up the launcher activity component depending on the currently
+selected launcher and can use the system default, if needed (see
+<code>ActivityTaskManagerService#getSecondaryHomeIntent()</code>). </p>
+
+<aside class="note"><strong>Note:</strong> Launching an activity with
+<code>WindowConfiguration#ACTIVITY_TYPE_HOME</code> automatically creates a
+stack with the corresponding type on a display. There can be at most one such stack
+per display.</aside>
+
+<h3 id="launcher-security">Security restrictions</h3>
+
+<p>In addition to restrictions that apply to activities on secondary displays,
+to avoid the possibility of a malicious app creating a virtual display with enabled
+<a
+href="/devices/tech/display/multi_display/system-decorations#decorations">System decorations</a>
+and reading user-sensitive information from the surface, the launcher appears only
+on virtual displays owned by the system. The launcher doesn't display content on
+non-system virtual displays.</p>
+
+<h2 id="wallpaper">Wallpapers</h2>
+
+<p>In Android {{ androidQVersionNumber }} (and higher), wallpapers are supported
+on secondary displays:</p>
+
+<p><img src="/devices/tech/display/images/multi_display_06a.png"></p>
+<p><img src="/devices/tech/display/images/multi_display_06b.png"></p>
+
+<p><strong>Figure 2.</strong> Live wallpaper on internal (above) and external
+displays (below)</p>
+
+<p>Developers can declare support for the wallpaper feature by providing
+<code>android:supportsMultipleDisplays="true"</code> in the
+<code>WallpaperInfo</code> XML definition. Wallpaper developers are also
+expected to load assets using the display context in
+<code>WallpaperService.Engine#getDisplayContext()</code>.</p>
+
+<p>The framework creates one <code>WallpaperService.Engine</code> instance
+per display, so each engine has its own surface and display context. The
+developer needs to make sure that each engine can draw independently, at
+different frame rates, respecting VSYNC.</p>
+
+<h3 id="individual-wallpaper">Selecting wallpapers for individual screens</h3>
+
+<p>Android {{ androidQVersionNumber }} doesn't provide direct platform support for selecting wallpapers
+for individual screens. To accomplish this, a stable display identifier is
+needed to persist wallpaper settings per display.
+<code>Display#getDisplayId()</code> is dynamic, so there's no guarantee that a
+physical display will have the same ID after reboot.</p>
+
+<p>However, Android {{ androidQVersionNumber }} added <code>DisplayInfo.mAddress</code>,
+which contains stable identifiers for physical displays and can be used for a full
+implementation in future. Unfortunately, it is too late to implement the logic
+for Android {{ androidQVersionNumber }}. The suggested solution:</p>
+
+<ol>
+<li>Use the <code>WallpaperManager</code> API to set the wallpapers.</li>
+<li><code>WallpaperManager</code> is obtained from a <code>Context</code>
+object, and each <code>Context</code> object has information about corresponding
+display (<code>Context#getDisplay()/getDisplayId()</code>). Therefore, you can
+obtain <code>displayId</code> from a <code>WallpaperManager</code> instance
+without adding new methods.</li>
+<li>On the framework side, use <code>displayId</code> obtained from a
+<code>Context</code> object and map it to a static identifier (such as a port of
+a physical display). Use the static identifier to persist the chosen wallpaper.</li>
+</ol>
+
+<p>This workaround uses existing implementations for wallpaper pickers. If it
+was opened on a specific display and uses the right context, then when it
+calls to set a wallpaper, the system can automatically identify the display.</p>
+
+<p>If there's a need to set wallpaper for a display other than the current
+display, then create a new <code>Context</code> object for the target display
+(<code>Context#createDisplayContext</code>) and obtain the
+<code>WallpaperManager</code> instance from that display.</p>
+
+<h3 id="security-launcher">Security restrictions</h3>
+
+<p>The system won't show wallpapers on virtual displays that it doesn't own.
+This is due to a security concern that a malicious app could create a virtual
+display with enabled system decorations support and read a user-sensitive
+information from the surface (such as a personal photo).</p>
+
+<h3 id="implementation-launcher">Implementation</h3>
+
+<p>In Android {{ androidQVersionNumber }}, the <code>IWallpaperConnection#attachEngine()</code>
+and <code>IWallpaperService#attach()</code> interfaces accept the
+<code>displayId</code> parameter to create per-display connections.
+<code>WallpaperManagerService.DisplayConnector</code> encapsulates a per-display
+wallpaper engine and connection. In WindowManager, wallpaper controllers are
+created for each <code>DisplayContent</code> object at construction instead of a
+single <code>WallpaperController</code> for all displays.</p>
+
+<p>Some of the public <code>WallpaperManager</code> method implementations (such as
+<code>WallpaperManager#getDesiredMinimumWidth()</code>) were updated to compute
+and provide information for corresponding displays.
+<code>WallpaperInfo#supportsMultipleDisplays()</code> and a corresponding
+resource attribute were added, so that app developers can report which
+wallpapers are ready for multiple screens.</p>
+
+<p>If the wallpaper service shown on the default display doesn't support
+multiple displays, then the system shows the default wallpaper on the secondary
+displays.</p>
+
+<p><img src="/devices/tech/display/images/multi_display_07.png"></p>
+
+<p><strong>Figure 3. </strong>Wallpaper fallback logic for secondary displays</p>
+
+  </body>
+</html>

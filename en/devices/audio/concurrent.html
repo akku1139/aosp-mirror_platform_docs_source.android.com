@@ -1,0 +1,258 @@
+<html devsite>
+<head>
+  <title>Concurrent Capture</title>
+  <meta name="project_path" value="/_project.yaml" />
+  <meta name="book_path" value="/_book.yaml" />
+</head>
+
+<body>
+  <!--
+      Copyright 2019 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+  {% include "_versions.html" %}
+
+<p>
+Android {{ androidQVersionNumber }} improves the user experience that requires more than one
+active audio capture to happen simultaneously, for example, if the user wants to control a
+VoIP call or video recorder with voice commands provided by an accessibility service.
+</p>
+<p>
+The audio framework implements the policy allowing only certain privileged apps to capture
+concurrently with regular apps.
+</p>
+<p>
+The concurrency policy is implemented by silencing its captured audio rather than by preventing
+an application from starting capturing. This allows the framework to dynamically address
+changes in the number and types of active capture use cases, without preventing an app from
+starting capturing in a case where it can recover full access to the microphone after another app has
+finished capturing.
+</p>
+<p>
+The consequence for the audio HAL and audio subsystem is that they must support several active input
+streams simultaneously, even if in some cases, only one stream is providing non-silent audio to
+an active client.
+</p>
+<h2 id="cdd-requirements">CDD requirements</h2>
+
+
+<p>
+See <a href="/compatibility/android-cdd">CDD</a> for the
+requirements for concurrent capture support.
+</p>
+
+<h2>Capture situations from audio HAL</h2>
+
+<p>
+A concurrent capture scenario can result in different situations in terms of the number of active
+input streams, input device selection, or preprocessing configuration.
+</p>
+<p>Concurrency can happen between the following:</p>
+<ul>
+<li>Several input streams from the application processor (AP)</li>
+<li>Input streams and a voice call</li>
+<li>Input streams and an audio DSP implementing a low-power hotword detection</li>
+</ul>
+
+<h3 id="concurrent-activity-of-ap-input-streams">Concurrent activity of AP input streams</h3>
+
+<p>
+The audio policy configuration file <code>audio_policy_configuration.xml</code> is used by the audio
+framework to determine how many input streams can be opened and active simultaneously.
+</p>
+<p>
+At a minimum, the audio HAL must support <strong>at least one instance of each input
+profile</strong> (<code>mixPort</code> of role <code>sink</code>) listed in the <strong> open
+and active configuration file</strong>.
+</p>
+<h4 id="device-selection">Device selection</h4>
+
+<p>
+When several active clients are attached to the same HAL input stream, the framework
+selects the appropriate device for this input stream based on use case priority.
+</p>
+<p>
+When several input streams are active, each stream can have a different device
+selection.
+</p>
+<p>
+If the technology is compatible, it's recommended that the audio HAL
+and subsystem allow different streams to capture from different devices, such as a Bluetooth headset
+and built-in mic.
+</p>
+<p>
+If there's an incompatibility (for instance two devices share the same digital audio interface
+or back end) the audio HAL must choose which stream controls the device selection.
+</p>
+
+<p>In this case:</p>
+<ul>
+<li>The resulting state must be consistent and offer the same device selection when the same
+scenario is repeated.
+<li>When the concurrency state ends, the remaining active stream must be routed to the initially
+requested device on this stream.</li>
+</ul>
+
+<p>
+If a priority order is defined by the audio HAL between active use cases, follow the same order as
+found in <code>source_priority()</code> in
+<code>frameworks/av/services/audiopolicy/common/include/policy.h</code>
+</p>
+<h4 id="pre-processing-selection">Pre processing selection</h4>
+
+<p>
+The audio framework can request preprocessing on an input stream using
+the <code>addEffect()</code> or <code>removeEffect()</code> HAL methods.
+</p>
+<p>
+For preprocessing on a given input stream, the audio framework enables only
+the configuration corresponding to the highest-priority active use case on the
+input stream. However, there might be some overlap during use case activation and deactivation,
+causing two simultaneous active processes (for example, two instances of echo canceller) to run
+on the same input stream. In this case, the HAL implementation chooses which request is
+accepted; it keeps track of the active requests and restores the correct state when either
+process is disabled.
+</p>
+<p>
+When several capture streams are active simultaneously, different preprocessing requests might be
+run on different streams.
+</p>
+<p>
+The HAL and audio subsystem implementations should allow for different pre processing to be
+applied to different streams, even if they share the same input device. That is, pre processing
+should be applied after demuxing the streams from the primary capture source.
+</p>
+<p>
+If it's not possible for technical reasons on a given audio subsystem, the audio HAL should apply
+priority rules similar to those listed in
+<a href="#device-selection">Device selection</a>.
+</p>
+<h3 id="concurrent-voice-call-and-capture-from-ap">Concurrent voice call and capture from AP</h3>
+
+<p>
+Capture from the AP can happen while a voice call is active. This
+situation isn't new in Android {{ androidQVersionNumber }} and isn't directly related to the
+concurrent capture feature, but it's useful to mention the guidelines for this scenario.
+</p>
+<p>
+Two different types of capture from the AP are needed during a call.
+</p><ul>
+
+<li><a href="#capturing-call-rx-and-tx">Capturing call RX and TX paths</a></li>
+<li><a href="#capturing-from-input-devices-when-a-call-is-active">Capturing from an input device
+(for example, built-in mic)</a></li></ul>
+
+<h4 id="capturing-call-rx-and-tx">Capturing call RX and TX</h4>
+
+<p>
+Capturing call RX and TX is triggered by the use of audio source
+<code>AudioSource.VOICE_UPLINK </code> or <code>AudioSource.VOICE_DOWNLINK</code>, and/or device
+<code>AudioDevice.IN_TELEPHONY_RX</code>.
+</p>
+<p>
+Audio HALs should expose on input profile (<code>mixPort</code> of role <code>sink</code>)
+with an available route from device <code>AudioDevice.IN_TELEPHONY_RX</code>.
+</p>
+<p>
+When a call is connected (audio mode is <code>AudioMode.IN_CALL</code>), it should be possible
+to have at least one active capture stream from device <code>AudioDevice.IN_TELEPHONY_RX</code>.
+</p>
+
+<h4 id="capturing-from-input-devices-when-a-call-is-active">Capturing from input devices when a
+call is active</h4>
+
+
+<p>
+When a call is active (audio mode is <code>AudioMode.IN_CALL</code>), it should be possible to
+open and activate input streams from the AP as specified in section
+<a href="#concurrent-activity-of-ap-input-streams">Concurrent activity of AP input streams</a>.
+</p>
+
+<p>
+However, the priority for device selection and pre processing should always be driven by the voice
+call in case there is a conflict with the requests from the AP input streams.
+</p>
+
+<h3 id="concurrent-capture-from-dsp-and-ap">Concurrent capture from DSP and AP</h3>
+
+<p>
+When the audio subsystem contains a DSP supporting low-power audio context or hotword detection
+functions, the implementation should support concurrent capture from the AP and the audio DSP.
+This includes both capture by the DSP during initial detection phase and capture by the AP
+with <code>AudioSource.HOTWORD </code>after detection is triggered by the DSP.
+</p>
+<p>
+This should be reflected by the concurrent capture flag reported by the sound trigger HAL via
+the implementation descriptor: <code>ISoundTriggerHw.Properties.concurrentCapture = true</code>.
+</p>
+<p>
+The audio HAL should also expose and input profile specific for hotword capture identified by
+flag <code>AudioInputFlag.HW_HOTWORD</code>. The implementation should support opening and
+activating a number of streams on this profile at least equal to the number of sound models that
+can be loaded concurrently by the sound trigger HAL.
+</p>
+<p>
+Capture from this input profile should be possible while other input profiles are active.
+</p>
+
+<h2 id="implication-for-assistant-implementations">Implication for Assistant implementations</h2>
+
+
+<h3 id="requirements">Requirements on data usage and user notification </h3>
+
+<p>
+Because concurrent mic usage, if abused, can leak user private data, we need the following
+conditions and guarantees to be applied to the privileged preloaded apps that ask to hold the
+Assistant role.
+</p><ul>
+
+<li>Data collected through the microphone should not leave the device unless the user is
+interacting with the Assistant. For example, after the hotword is triggered.
+<li>Applications listening concurrently should provide visual cues to the user after the hotword
+is detected. This helps users understand that further conversations would go through a different
+app, such as Assistant.
+<li>Users should have the ability to turn off the microphone or the Assistant triggers.
+<li>When audio recordings are stored, users should have the ability to access, review, and
+delete recordings at any time.</li></ul>
+
+<h3>Functional improvements for Android {{ androidQVersionNumber }}</h3>
+
+
+<h4 id="assistants-not-blocking-each-other">Assistants not blocking each other</h4>
+
+<p>
+On Android P or lower, when there are two always-on Assistants on the device, only one of them
+could be listening for its hotword. Hence, there was a need to switch between
+the two Assistants. In Android {{ androidQVersionNumber }}, the default Assistant can be listening concurrently with
+the other Assistant. This results in a much smoother experience for users with both Assistants.
+</p>
+
+<h4 id="apps-holding-mic-open">Apps holding mic open</h4>
+
+<p>
+When apps like Shazam or Waze hold the mic open, the default Assistant can still be listening
+for the hotword.
+</p>
+<p>
+For non-default Assistant apps, there is no change in behavior for Android {{ androidQVersionNumber }}.
+</p>
+
+<h2 id="sample-audio-hal-implementation">Sample audio HAL implementation</h2>
+
+<p>
+An example of an audio HAL implementation complying to the guidelines in this document can be
+found in <a href="https://android.googlesource.com/platform/hardware/qcom/audio/+/refs/heads/master">AOSP</a>.</p>
+
+</body>
+</html>

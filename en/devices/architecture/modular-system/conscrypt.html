@@ -1,0 +1,113 @@
+<html devsite>
+  <head>
+    <title>Conscrypt</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+    {% include "_versions.html" %}
+  <body>
+  <!--
+      Copyright 2019 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>
+  The Conscrypt module accelerates security improvements and improves device
+  security without relying on OTA updates. It uses Java code and a native
+  library to provide the Android TLS implementation as well as a large portion
+  of Android cryptographic functionality such as key generators, ciphers, and
+  message digests. Conscrypt is available as an
+  <a href="https://github.com/google/conscrypt" class="external">open source
+  library</a>, though it has some specializations when included in the Android
+  platform.
+</p>
+
+<p>
+  The Conscrypt module uses
+  <a href="https://boringssl.googlesource.com/boringssl/" class="external">BoringSSL</a>,
+  a native library that is a Google fork of OpenSSL and which is used in many
+  Google products for cryptography and TLS (most notably Google Chrome).
+  BoringSSL doesn't have official releases (all users build from head) and
+  makes no guarantees around API or ABI stability.
+</p>
+
+<h2 id="consrypt-q">Changes in Android {{ androidQVersionNumber }}</h2>
+
+<p>
+  Android 9 doesn't include an Android-specific public API for Conscrypt but
+  instead uses a security provider that implements standard classes for Java
+  Cryptography Architecture (JCA) including Cipher and MessageDigest, and
+  Java Secure Socket Extension (JSSE), including SSLSocket and SSLEngine.
+  Users interact with those classes and some nonpublic Conscrypt APIs are used
+  by <code>libcore</code> or frameworks code.
+</p>
+
+<p>
+  Android {{ androidQVersionNumber }} adds a small number of public API methods
+  in <code>android.net.ssl</code> to access Conscrypt functionality that isn't
+  exposed by the classes under <code>javax.net.ssl</code>. Android
+  {{ androidQVersionNumber }} also includes a slimmed copy of
+  <a href="https://en.wikipedia.org/wiki/Bouncy_Castle_(cryptography)"
+  class="external">Bouncy Castle</a> to provide lower-popularity cryptographic
+  tools as part of Android Runtime (not included in the Conscrypt module).
+</p>
+
+<h2 id="conscrypt-format">Format and dependencies</h2>
+
+<p>
+  The Conscrypt module is distributed as an
+  <a href="/devices/tech/ota/apex">APEX</a> file that includes the Conscrypt
+  Java code and a Conscrypt native library that dynamically links to Android NDK
+  libraries (such as <code>liblog</code>). The native library also includes a
+  copy of BoringSSL that has
+  <a href="https://csrc.nist.gov/projects/cryptographic-algorithm-validation-program"
+  class="external">Cryptographic Algorithm Validation Program (CAVP)</a>
+  certification on AArch64. This copy has <strong>not</strong> been validated
+  through NIST's
+  <a href="https://www.aeecenter.org/certifications/certifications/certified-measurement-verification-professional"
+  class="external">Certified Measurement and Verification Professional
+  (CMVP)</a>.
+</p>
+
+<aside class="note">
+  <strong>Note:</strong> The Conscrypt module includes
+  <a href="https://android.googlesource.com/platform/external/conscrypt/"
+  class="external">/external/conscrypt</a> and
+  <a href="https://android.googlesource.com/platform/external/boringssl/"
+  class="external">/external/boringssl</a>, but doesn't include
+  <code>/external/bouncycastle</code>.
+</aside>
+
+<p>
+  The Conscrypt module exposes the following APIs:
+</p>
+
+<ul>
+  <li><strong>Public APIs</strong> are extensions of classes and interfaces in
+  packages under <code>java.*</code> and <code>javax.*</code>, plus classes
+  under <code>android.net.ssl.*</code>. External app code doesn't call Conscrypt
+  directly. Platform API standards ensure that these APIs remain backward-
+  and forward-compatible.</li>
+  <li><strong>Core platform APIs</strong> are hidden APIs used by the framework
+  to access nonpublic functionality. These are relatively limited; the largest
+  user is <code>NetworkSecurityConfig</code>, which extends the Conscrypt
+  trust manager (the component that verifies certificates) to implement the
+  <a href="https://developer.android.com/training/articles/security-config"
+  class="external">network security configuration feature</a>.</li>
+  <li><strong>Intra-core APIs</strong> are limited to zero-argument constructors
+  called reflectively by the JCA and JSEE machinery.</li>
+</ul>
+
+</body>
+</html>

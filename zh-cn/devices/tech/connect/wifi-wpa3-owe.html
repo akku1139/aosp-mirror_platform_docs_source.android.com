@@ -1,0 +1,135 @@
+<html devsite><head>
+
+  <meta name="book_path" value="/_book.yaml"/>
+
+  <meta name="project_path" value="/_project.yaml"/>
+</head>
+<body>
+
+<!--
+  Copyright 2019 The Android Open Source Project
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+<h1 id="wpa3_and_wi-fi_enhanced_open" class="page-title">WPA3 和 WLAN Enhanced Open</h1>
+
+<p>Android 10 引入了对 WLAN 联盟 (WFA) 的 WLAN Protected Access 版本 3 (WPA3) 和 WLAN Enhanced Open 标准的支持。如需了解详情，请参阅 <a href="https://www.wi-fi.org/discover-wi-fi/security" class="external">WFA 网站上的安全性</a>。<em></em></p>
+
+<p>WPA3 是 WLAN 联盟 (WFA) 新制定的适用于个人网络和企业网络的安全标准。WPA3 旨在通过使用现代安全算法和更强大的加密套件来提高 WLAN 的整体安全性。WPA3 分为两个部分：</p>
+
+<ul>
+<li><strong>WPA3-Personal</strong>：使用对等实体同时验证 (SAE) 而不是预共享密钥 (PSK)，可以为用户提供更强大的安全保护，抵御离线字典攻击、密钥恢复和消息伪造等攻击。</li>
+<li><strong>WPA3-Enterprise</strong>：提供更强大的身份验证和链路层加密方法，以及适用于敏感安全环境的可选 192 位安全模式。</li>
+</ul>
+
+<p>WLAN Enhanced Open 是 WLAN 联盟 (WFA) 新推出的适用于公共网络的安全标准，基于机会性无线加密 (OWE)。WLAN Enhanced Open 可以为咖啡馆、酒店、餐馆和图书馆等场所内无密码保护的开放网络提供加密和隐私保护。Enhanced Open 不提供身份验证。</p>
+
+<p>WPA3 和 WLAN Enhanced Open 可以提升 WLAN 的整体安全性，从而提供更好的隐私保护和稳健性来抵御已知攻击。由于许多设备尚不支持这些标准或尚未进行软件升级来支持这些功能，因此 WFA 提供了以下过渡模式：</p>
+
+<ul>
+<li><strong>WPA2/WPA3 过渡模式</strong>：服务接入点同时支持这两种标准。在该模式下，搭载 Android 10 的设备使用 WPA3 建立连接，搭载 Android 9 或更低版本的设备使用 WPA2 连接到同一接入点。</li>
+<li><strong>OWE 过渡模式</strong>：服务接入点同时支持 OWE 和开放式标准。在该模式下，搭载 Android 10 的设备使用 OWE 建立连接，搭载 Android 9 或更低版本的设备无需任何加密即可连接到同一接入点。</li>
+</ul>
+
+<p>WPA3 和 WLAN Enhanced Open 仅在客户端模式下受支持。</p>
+
+<h2 id="implementation">实现</h2>
+
+<p>要支持 WPA3 和 WLAN Enhanced Open，请实现 Android 开源项目 (AOSP) 中提供的客户端 HAL 接口设计语言 (HIDL)（位于 <code>hardware/interfaces/wifi/supplicant/1.2/</code>）。</p>
+<aside class="note"><strong>注意</strong><span>：客户端 HAL 版本必须为 1.2 或更高版本。</span></aside>
+<p>要支持 WPA3 和 OWE，必须具备以下几项：</p>
+
+<ul>
+<li><p>用以支持 SAE 和 OWE 的 Linux 内核补丁程序</p>
+
+<ul>
+<li>cfg80211</li>
+<li>nl80211</li>
+</ul></li>
+<li><p>支持 SAE、SUITEB192 和 OWE 的 <a href="https://android.googlesource.com/platform/external/wpa_supplicant_8/+/refs/heads/master" class="external"><code>wpa_supplicant</code></a></p></li>
+<li><p>支持 SAE、SUITEB192 和 OWE 的 WLAN 驱动程序</p></li>
+<li><p>支持 SAE、SUITEB192 和 OWE 的 WLAN 固件</p></li>
+<li><p>支持 WPA3 和 OWE 的 WLAN 芯片</p></li>
+</ul>
+
+<p>Android 10 中提供可以让应用确定设备是否支持这些功能的公共 API：</p>
+
+<ul>
+<li><a href="https://android.googlesource.com/platform/frameworks/base/+/refs/heads/master/wifi/java/android/net/wifi/WifiManager.java#4550" class="external"><code>WifiManager#isWpa3SaeSupported</code></a> </li>
+<li><a href="https://android.googlesource.com/platform/frameworks/base/+/refs/heads/master/wifi/java/android/net/wifi/WifiManager.java#4557" class="external"><code>WifiManager#isWpa3SuiteBSupported</code></a> </li>
+<li><a href="https://android.googlesource.com/platform/frameworks/base/+/refs/heads/master/wifi/java/android/net/wifi/WifiManager.java#4564" class="external"><code>WifiManager#isEnhancedOpenSupported</code></a> </li>
+</ul>
+
+<p><a href="https://android.googlesource.com/platform/frameworks/base/+/refs/heads/master/wifi/java/android/net/wifi/WifiConfiguration.java#140" class="external"><code>WifiConfiguration.java</code></a> 包含新的密钥管理类型，以及成对加密、组加密、组管理加密和 Suite B 加密，这些均是 OWE、WPA3-Personal 和 WPA3-Enterprise 所必需的。</p>
+
+<h2 id="enabling_wpa3_and_wi-fi_enhanced_open">实现 WPA3 和 WLAN Enhanced Open</h2>
+
+<p>要在 Android 框架中实现 WPA3-Personal、WPA3-Enterprise 和 WLAN Enhanced Open，请执行以下操作：</p>
+
+<ul>
+<li><p><strong>WPA3-Personal</strong>：在 <code>wpa_supplicant</code> <a href="https://android.googlesource.com/platform/external/wpa_supplicant_8/+/refs/heads/master/wpa_supplicant/android.config" class="external">配置文件</a>中包含 <code>CONFIG_SAE</code> 编译选项：</p>
+
+<pre class="devsite-click-to-copy">
+# WPA3-Personal (SAE)
+CONFIG_SAE=y
+</pre></li>
+<li><p><strong>WPA3-Enterprise</strong>：在 <code>wpa_supplicant</code> 配置文件中包含 <code>CONFIG_SUITEB192</code> 和 <code>CONFIG_SUITEB</code> 编译选项。</p>
+
+<pre class="devsite-click-to-copy">
+# WPA3-Enterprise (SuiteB-192)
+CONFIG_SUITEB=y
+CONFIG_SUITEB192=y
+</pre></li>
+<li><p><strong>WLAN Enhanced Open</strong>：在 <code>wpa_supplicant</code> 配置文件中包含 <code>CONFIG_OWE</code> 编译选项。</p>
+
+<pre class="devsite-click-to-copy">
+# Opportunistic Wireless Encryption (OWE)
+# Experimental implementation of draft-harkins-owe-07.txt
+CONFIG_OWE=y
+</pre></li>
+</ul>
+
+<p>如果不实现 WPA3-Personal、WPA3-Enterprise 或 WLAN Enhanced Open，用户将无法手动添加、扫描或连接到这些类型的网络。</p>
+
+<h2 id="validation">验证</h2>
+
+<p>要测试实现情况，请运行以下测试。</p>
+
+<h3 id="unit_tests">单元测试</h3>
+
+<p>运行 <a href="https://android.googlesource.com/platform/frameworks/opt/net/wifi/+/refs/heads/master/tests/wifitests/src/com/android/server/wifi/SupplicantStaIfaceHalTest.java" class="external"><code>SupplicantStaIfaceHalTest</code></a> 以验证 WPA3 和 OWE 的功能标记的行为。</p>
+
+<pre class="devsite-terminal devsite-click-to-copy">
+atest SupplicantStaIfaceHalTest
+</pre>
+
+<p>运行 <a href="https://android.googlesource.com/platform/cts/+/refs/heads/master/tests/tests/net/src/android/net/wifi/cts/WifiManagerTest.java" class="external"><code>WifiManagerTest</code></a> 以验证此功能的公共 API 的行为。</p>
+
+<pre class="devsite-terminal devsite-click-to-copy">
+atest WifiManagerTest
+</pre>
+
+<h3 id="integration_test_acts">集成测试 (ACTS)</h3>
+
+<p>要运行集成测试，请使用 <code>tools/test/connectivity/acts/tests/google/wifi</code> 中的 Android 通讯测试套件 (ACTS) 文件 <a href="https://android.googlesource.com/platform/tools/test/connectivity/+/refs/heads/master/acts/tests/google/wifi/WifiWpa3OweTest.py"><code>WifiWpa3OweTest.py</code></a>。</p>
+
+<h3 id="vts_tests">VTS 测试</h3>
+
+<p>运行 <code>VtsHalWifiSupplicantV1_2Host</code> 以测试客户端 HAL v1.2 的行为。</p>
+
+<pre class="devsite-terminal devsite-click-to-copy">
+vts-tradefed run commandAndExit vts --skip-all-system-status-check --primary-abi-only --skip-preconditions --module VtsHalWifiSupplicantV1_2Host
+</pre>
+
+</body></html>

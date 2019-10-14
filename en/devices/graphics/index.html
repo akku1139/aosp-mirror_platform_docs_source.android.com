@@ -32,38 +32,11 @@ is important to have a good understanding of how those APIs work at a higher
 level. This page introduces the graphics hardware abstraction layer (HAL) upon
 which those drivers are built.</p>
 
-<p>Application developers draw images to the screen in two ways: with Canvas or
-OpenGL. See <a
-href="/devices/graphics/architecture.html">System-level graphics
-architecture</a> for a detailed description of Android graphics
-components.</p>
-
-<p><a
-href="http://developer.android.com/reference/android/graphics/Canvas.html">android.graphics.Canvas</a>
-is a 2D graphics API and is the most popular graphics API among developers.
-Canvas operations draw all the stock and custom <a
-href="http://developer.android.com/reference/android/view/View.html">android.view.View</a>s
-in Android. In Android, hardware acceleration for Canvas APIs is accomplished
-with a drawing library called OpenGLRenderer that translates Canvas operations
-to OpenGL operations so they can execute on the GPU.</p>
-
-<p>Beginning in Android 4.0, hardware-accelerated Canvas is enabled by default.
-Consequently, a hardware GPU that supports OpenGL ES 2.0 is mandatory for
-Android 4.0 and later devices. See the
-<a href="https://developer.android.com/guide/topics/graphics/hardware-accel.html">Hardware Acceleration guide</a> for an explanation of how the
-hardware-accelerated drawing path works and the differences in its behavior
-from that of the software drawing path.</p>
-
-<p>In addition to Canvas, the other main way that developers render graphics is
-by using OpenGL ES to directly render to a surface. Android provides OpenGL ES
-interfaces in the
-<a href="http://developer.android.com/reference/android/opengl/package-summary.html">android.opengl</a>
-package that developers can use to call into their GL implementations with the
-SDK or with native APIs provided in the <a
-href="https://developer.android.com/tools/sdk/ndk/index.html">Android
-NDK</a>.</p>
-
-<p>Android implementers can test OpenGL ES functionality using the <a href="testing.html">drawElements Quality Program</a>, also known as deqp.</p>
+<p>Application developers draw images to the screen in three ways: with <a
+href="/devices/graphics/arch-sh#canvas">Canvas</a>, <a
+href="/devices/graphics/arch-egl-opengl">
+OpenGL ES</a>, or <a href="/devices/graphics/arch-vulkan">
+Vulkan</a>.</p>
 
 <h2 id="android_graphics_components">Android graphics components</h2>
 
@@ -98,15 +71,6 @@ uses OpenGL and the Hardware Composer to compose a group of surfaces.</p>
 <p>Other OpenGL ES apps can consume image streams as well, such as the camera
 app consuming a camera preview image stream. Non-GL applications can be
 consumers too, for example the ImageReader class.</p>
-
-<h3 id="window_manager">Window Manager</h3>
-
-<p>The Android system service that controls a window, which is a container for
-views. A window is always backed by a surface. This service oversees
-lifecycles, input and focus events, screen orientation, transitions,
-animations, position, transforms, z-order, and many other aspects of a window.
-The Window Manager sends all of the window metadata to SurfaceFlinger so
-SurfaceFlinger can use that data to composite surfaces on the display.</p>
 
 <h3 id="hardware_composer">Hardware Composer</h3>
 
@@ -197,35 +161,6 @@ third, for instance, it is using OpenGL ES.</p>
 
 <p>The Hardware Composer HAL conducts the other half of the work. This HAL acts
 as the central point for all Android graphics rendering.</p>
-
-<h3 id="synchronization_framework">Synchronization framework</h3>
-
-<p>Since Android graphics offer no explicit parallelism, vendors have long
-implemented their own implicit synchronization within their own drivers. This
-is no longer required with the Android graphics synchronization framework. See
-the
-<a href="/devices/graphics/implement-vsync.html#explicit_synchronization">Explicit
-synchronization</a> section for implementation instructions.</p>
-
-<p>The synchronization framework explicitly describes dependencies between
-different asynchronous operations in the system. The framework provides a
-simple API that lets components signal when buffers are released. It also
-allows synchronization primitives to be passed between drivers from the kernel
-to userspace and between userspace processes themselves.</p>
-
-<p>For example, an application may queue up work to be carried out in the GPU.
-The GPU then starts drawing that image. Although the image hasn’t been drawn
-into memory yet, the buffer pointer can still be passed to the window
-compositor along with a fence that indicates when the GPU work will be
-finished. The window compositor may then start processing ahead of time and
-hand off the work to the display controller. In this manner, the CPU work can
-be done ahead of time. Once the GPU finishes, the display controller can
-immediately display the image.</p>
-
-<p>The synchronization framework also allows implementers to leverage
-synchronization resources in their own hardware components. Finally, the
-framework provides visibility into the graphics pipeline to aid in
-debugging.</p>
 
   </body>
 </html>

@@ -1,0 +1,62 @@
+<html devsite><head>
+
+  <meta name="book_path" value="/_book.yaml"/>
+
+  <meta name="project_path" value="/_project.yaml"/>
+</head>
+<body>
+<!--
+  Copyright 2019 The Android Open Source Project
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+<h1 id="configure_sharding" class="page-title">配置分片</h1>
+
+<p>本页介绍如何通过分片对套件模块 (<code>AndroidTest.xml</code>) 进行调优，以及如何在实验室中连续执行期间获得最快速的性能。我们将尝试以一种通用的方式描述相应选项，并说明如何理性地使用每个选项。</p>
+
+<p>在实验室中连续运行套件时，套件通常会在多个设备之间进行分片，以缩短总体完成时间。自动化测试框架通常会尝试平衡每个分片的执行时间，以最大限度地缩短总体完成时间（当最后一个分片完成时）。但由于某些测试的性质，我们的自检机制并不总是能够达到足够好的效果，因此还需要模块所有者对一些行为进行调优。</p>
+
+<h2 id="shardable_or_not_shardable">可分片还是不可分片？</h2>
+
+<p>您可以使用 <code>&lt;option name="not-shardable" value="true" /&gt;</code> 来标记模块 (<code>AndroidTest.xml</code>)，以通知自动化测试框架不应将该模块分片。</p>
+
+<p>在典型的模块中，让自动化测试框架将模块分片（默认行为）是正确的做法。但在某些情况下，您可能希望替换该行为：</p>
+
+<ul>
+<li>当模块的设置成本高昂时：</li>
+</ul>
+
+<p>将模块分片会导致可能在所涉及的每个设备上运行一次准备步骤（安装 APK、推送文件等）。如果模块设置耗时很长且成本高昂，并且与测试的运行时相比不值得复制，那么您应将模块标记为不可分片。</p>
+
+<ul>
+<li>当模块中的测试数很少时：</li>
+</ul>
+
+<p>将模块分片会导致所有测试用例可能在不同的设备上独立执行。这与第一点有关；如果测试数很少，那么最终可能某些分片中只有一个测试或根本没有测试，这样会使所有准备步骤成本很高。例如，为单个测试用例安装 APK 通常是不值得的。</p>
+
+<h2 id="instrumentation_tests_max_number_of_shards">插桩测试：最大分片数是多少？</h2>
+
+<p>在我们实际安装和运行 APK 之前，通过 <a href="https://android.googlesource.com/platform/tools/tradefederation/+/refs/heads/master/src/com/android/tradefed/testtype/AndroidJUnitTest.java">AndroidJUnitTest</a> 运行的插桩测试不会向自动化测试框架公开该插桩测试包含多少测试。这些操作成本高昂，并且无法在分片时对属于套件的所有模块执行。</p>
+
+<p>自动化测试框架可能会将插桩测试过度分片，最终生成一些空分片。如果将包含五个测试的插桩测试分成六个分片，那么结果是五个分片中各自有一个测试，一个分片中根本没有测试。其中每个分片都要求安装 APK，这需要高昂的成本。</p>
+
+<p>因此，当插桩测试 APK 中的测试数很少时，您可以使用 <code>&lt;option name="not-shardable" value="true" /&gt;</code> 来标记模块，以通知自动化测试框架将该模块分片是不值得的。</p>
+
+<p><code>AndroidJUnitTest</code> 运行程序有一个特殊选项，用于指定允许分成的最大分片数：<code>&lt;option name="ajur-max-shard" value="5" /&gt;</code>。</p>
+
+<p>您可以利用此选项来指定插桩测试可分片的最大次数，而不管在调用级别请求的分片数是多少。默认情况下，插桩测试将分成调用请求的分片数。</p>
+
+<p>例如，如果您的插桩测试 APK 仅包含两个测试用例，但您仍希望将其分片，那么应将 <code>ajur-max-shard</code> 值设为 <code>2</code>，这样可确保您不会创建空分片。</p>
+
+</body></html>

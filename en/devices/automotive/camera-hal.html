@@ -43,7 +43,7 @@ components diagram.">
 <figcaption><strong>Figure 1.</strong> EVS System components
 overview.</figcaption>
 
-<h3 id="evs-application">EVS application</h3>
+<h3 id="evs-application-component">EVS application</h3>
 <p>A sample C++ EVS application
 (<code>/packages/services/Car/evs/app</code>) serves as a reference
 implementation. This application is responsible for requesting video frames from
@@ -52,9 +52,9 @@ It expects to be started by init as soon as EVS and Car Service are available,
 targeted within two (2) seconds of power on. OEMs can modify or replace the EVS
 application as desired.</p>
 
-<h3 id="evs-manager">EVS Manager</h3>
+<h3 id="evs-manager-component">EVS Manager</h3>
 
-<p>The EVS Manager (<code>/packages/services/Car/evs/service</code>) provides
+<p>The EVS Manager (<code>/packages/services/Car/evs/manager</code>) provides
 the building blocks needed by an EVS application to implement anything from a
 simple rear view camera display to a 6DOF multi-camera rendering. Its interface
 is presented through HIDL and is built to accept multiple concurrent clients.
@@ -104,7 +104,7 @@ description</h2>
 <p>The section describes the HAL. Vendors are expected to provide
 implementations of this API adapted for their hardware.</p>
 
-<h3 id="ievsenumerator">IEvsEnumerator</h3>
+<h3 id="ievsenumerator-hw">IEvsEnumerator</h3>
 
 <p>This object is responsible for enumerating the available EVS hardware in the
 system (one or more cameras and the single display device).</p>
@@ -135,8 +135,8 @@ closeCamera(IEvsCamera camera);
 </pre>
 
 <p>Releases the IEvsCamera interface (and is the opposite of the
-<code>openCamera()</code> call). If streaming is not already stopped, this call
-automatically stops streaming.</p>
+<code>openCamera()</code> call). The camera video stream must be
+  stopped by calling <code>stopVideoStream()</code> before calling <code>closeCamera</code>.</p>
 
 <pre class="prettyprint">
 openDisplay() generates (IEvsDisplay display);
@@ -172,7 +172,7 @@ layer, making it undesirable for the HAL implementation to spontaneously change
 display states. If the display is not currently held by any client (by a call to
 openDisplay), then this function returns <code>NOT_OPEN</code>. Otherwise, it
 reports the current state of the EVS Display (see
-<a href="#ievsdisplay">IEvsDisplay API</a>).</p>
+<a href="#ievsdisplay-hw">IEvsDisplay API</a>).</p>
 
 <a name="cameradesc"></a>
 <pre class="prettyprint">
@@ -193,18 +193,16 @@ uninterpreted from the driver up to the EVS application, which is free to ignore
 it.</li>
 </ul>
 
-<h3 id="ievscamera">IEvsCamera</h3>
+<h3 id="ievscamera-hw">IEvsCamera</h3>
 
 <p>This object represents a single camera and is the primary interface for
 capturing images.</p>
 
 <pre class="prettyprint">
-getId() generates (hidl_string cameraId);
+getCameraInfo() generates (CameraDesc info);
 </pre>
 
-<p>Returns the string id of this camera. This must be the same value as reported
-in the <code>camera_id</code> field of the <code>CameraDesc</code> structure by
-<code>EvsEnumerator::getCameraList()</code>.</p>
+<p>Returns <code>CameraDesc</code> of this camera.</p>
 
 <pre class="prettyprint">
 setMaxFramesInFlight(int32 bufferCount) generates (EvsResult result);
@@ -237,7 +235,7 @@ stream is not started, an error code must be returned; otherwise OK is returned.
 </p>
 
 <pre class="prettyprint">
-doneWithFrame(BufferDesc buffer) generates (EvsResult result);
+oneway doneWithFrame(BufferDesc buffer);
 </pre>
 
 <p>Returns a frame that was delivered by to the IEvsCameraStream. When done
@@ -314,8 +312,8 @@ image (<code>stride</code> in bytes = <code>stride</code> in pixels *
 <li><code>format</code>. The pixel format used by the image. The format provided
 must be compatible with the platform's OpenGL implementation. To pass
 compatibility testing, <code>HAL_PIXEL_FORMAT_YCRCB_420_SP</code> should be
-preferred for camera usage and and <code>RGBA</code> should be preferred for
-display.</li>
+preferred for camera usage, and <code>RGBA</code> or <code>BGRA</code> should
+be preferred for display.</li>
 <li><code>usage</code>. Usage flags set by the HAL implementation. HAL clients
 are expected to pass these unmodified (for details, refer to
 <code>Gralloc.h</code> related flags).</li>
@@ -327,7 +325,7 @@ contains the image data. The HAL implementation might choose to store a Gralloc
 buffer handle here.</li>
 </ul>
 
-<h3 id="ievscamerastream">IEvsCameraStream</h3>
+<h3 id="ievscamerastream-hw">IEvsCameraStream</h3>
 
 <p>The client implements this interface to receive asynchronous video frame
 deliveries.</p>
@@ -349,8 +347,8 @@ bufferHandle itself does not need to be sent back via
 <p>While proprietary buffer formats are technically possible, compatibility
 testing requires the buffer be in one of four supported formats: NV21 (YCrCb
 4:2:0 Semi-Planar), YV12 (YCrCb 4:2:0 Planar), YUYV (YCrCb 4:2:2 Interleaved),
-RGBA (32 bit R:G:B:x). The selected format must be a valid GL texture source on
-the platform's GLES implementation.</p>
+RGBA (32 bit R:G:B:x), BGRA (32 bit B:G:R:x). The selected format must be a valid
+GL texture source on the platform's GLES implementation.</p>
 
 <p>The application should <strong>not</strong> rely on any correspondence
 between the <code>bufferId</code> field and the <code>memHandle</code> in the
@@ -358,7 +356,7 @@ between the <code>bufferId</code> field and the <code>memHandle</code> in the
 essentially private to the HAL driver implementation, and it may use (and reuse)
 them as it sees fit.</p>
 
-<h3 id="ievsdisplay">IEvsDisplay</h3>
+<h3 id="ievsdisplay-hw">IEvsDisplay</h3>
 
 <p>This object represents the Evs display, controls the state of the display,
 and handles the actual presentation of images.</p>
@@ -413,8 +411,8 @@ no longer visible.</p>
 <p>While proprietary buffer formats are technically possible, compatibility testing
 requires the buffer be in one of four supported formats: NV21 (YCrCb 4:2:0
 Semi-Planar), YV12 (YCrCb 4:2:0 Planar), YUYV (YCrCb 4:2:2 Interleaved), RGBA
-(32 bit R:G:B:x). The selected format must be a valid GL render target on the
-platform's GLES implementation.</p>
+(32 bit R:G:B:x), BGRA (32 bit B:G:R:x). The selected format must be a valid GL
+render target on the platform's GLES implementation.</p>
 
 <p>On error, a buffer with a null handle is returned, but such a buffer does not
 need to be passed back to <code>returnTargetBufferForDisplay</code>.</p>

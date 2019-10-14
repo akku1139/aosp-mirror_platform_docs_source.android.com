@@ -4,6 +4,7 @@
     <meta name="book_path" value="/_book.yaml"/>
   </head>
   <body>
+
   <!--
       Copyright 2017 The Android Open Source Project
 
@@ -23,7 +24,7 @@
 <p>本部分介绍框架和设备兼容性矩阵以及<a href="#compatibility-matrix-schema">兼容性矩阵结构</a>。有关匹配规则，请参见<a href="/devices/architecture/vintf/match-rules.html">匹配规则</a>一文。</p>
 
 <h2 id="framework-compatibility-matrix">框架兼容性矩阵 (FCM)</h2>
-<p>框架兼容性矩阵说明了框架对运行它的设备的要求。矩阵文件与 Android 框架映像（位于 <code>system.img</code> 中）相关联。FCM 的要求应通过设备清单来满足（在启动和 OTA 时要求是被强制执行的）。</p>
+<p>框架兼容性矩阵说明了框架对运行它的设备的要求。矩阵文件与 Android 框架映像（位于 <code>system.img</code> 中）相关联。FCM 的要求应通过设备清单来满足（在启动和 OTA 时会强制执行相应要求）。</p>
 
 <p>示例 FCM 文件：</p>
 
@@ -111,8 +112,35 @@
 
 <p>有关详情，请参阅 <a href="/devices/architecture/vintf/fcm">FCM 生命周期</a>。</p>
 
+<h2 id="product-compatibility-matrix">产品兼容性矩阵</h2>
+
+<p>产品 FCM 是产品分区中的框架兼容性矩阵文件。VINTF 对象在运行时会将产品 FCM 与系统分区中的 FCM 连接起来。
+</p>
+
+<p>产品 FCM 是对设备专属 FCM（安装在系统分区中）的补充。设备 FCM 应反映系统分区中各模块的要求，而产品 FCM 应反映产品分区中各模块的要求。两者都应与原始设备制造商 (OEM) 对系统分区和产品分区中框架的修改保持一致。
+</p>
+
+<p>例如，如果安装在产品分区中的应用使用某个 HAL 接口的供应商扩展，则应在产品 FCM 中声明该 HAL 接口的要求。</p>
+
+<p>产品 FCM 文件示例：</p>
+
+<pre class="prettyprint">
+&lt;?xml version="1.0" encoding="UTF-8"?&gt;
+&lt;!-- Comments, Legal notices, etc. here --&gt;
+&lt;compatibility-matrix version="1.0" type="framework"&gt;
+    &lt;hal&gt;
+        &lt;name&gt;vendor.foo.camera&lt;/name&gt;
+        &lt;version&gt;1.0&lt;/version&gt;
+        &lt;interface&gt;
+            &lt;name&gt;IBetterCamera&lt;/name&gt;
+            &lt;instance&gt;default&lt;/instance&gt;
+        &lt;/interface&gt;
+    &lt;/hal&gt;
+&lt;/compatibility-matrix&gt;
+</pre>
+
 <h2 id="device-compatibility-matrix">设备兼容性矩阵 (DCM)</h2>
-<p>设备兼容性矩阵说明了设备期望框架满足的一组要求（在启动和 OTA 时要求是被强制执行的）。
+<p>设备兼容性矩阵说明了设备期望框架满足的一组要求（在启动和 OTA 时会强制执行相应要求）。
 </p>
 <p>示例 DCM 文件：</p>
 
@@ -162,7 +190,7 @@
 </pre>
 
 <h2 id="compatibility-matrix-schema">兼容性矩阵结构</h2>
-<p>本部分介绍这些 XML 标记的含义。Android 源代码树中的源文件中可以缺少某些“必需”标记，这些标记会在编译时由 <code><a href="/devices/architecture/vintf/resources#assemble_vintf">assemble_vintf</a></code> 写入。设备上的相应文件中必须有“必需”标记。</p>
+<p>这一部分介绍了下列 XML 标记的含义。Android 源代码树中的源文件可能会缺少某些“必需”的标记，这些标记可以在编译时由 <code><a href="/devices/architecture/vintf/resources#assemble_vintf">assemble_vintf</a></code> 写入。设备上的相应文件中必须有“必需”标记。</p>
 
 <dl>
 <dt><code>?xml</code></dt>
@@ -189,7 +217,7 @@
  </ul>
 </dd>
 <dt><code>compatibility-matrix.hal.optional</code></dt>
-<dd>属性是可选的，默认值为 false。指明该 HAL 对兼容性矩阵（框架或设备）的所有者来说是否为可选。如果将 <code>&lt;hal&gt;</code> 条目标记为可选，则表示在存在的情况下所有者可以使用该 HAL，但并非是必须存在。</dd>
+<dd>此属性是可选的，默认值为 false。指明该 HAL 对兼容性矩阵（框架或设备）的所有者来说是否为可选。如果将 <code>&lt;hal&gt;</code> 条目标记为可选，则表示在存在的情况下所有者可以使用该 HAL，但并非是必须存在。</dd>
 <dt><code>compatibility-matrix.hal.name</code></dt>
 <dd>必需。该 HAL 的完整软件包名称。示例：
  <ul>
@@ -198,7 +226,7 @@
  </ul>
 </dd>
 <dt><code>compatibility-matrix.hal.version</code></dt>
-<dd>必需，可以在不重名的情况下进行重复使用。版本范围的列表（请参见 <a href="/devices/architecture/vintf/match-rules.html#hals">HAL 匹配</a>一节），用于定义兼容性矩阵（框架或设备）的所有者期望的版本。</dd>
+<dd>必需，可以在不重名的情况下重复。版本范围的列表（请参见 <a href="/devices/architecture/vintf/match-rules.html#hals">HAL 匹配</a>一节），用于定义兼容性矩阵（框架或设备）的所有者期望的版本。</dd>
 <dt><code>compatibility-matrix.hal.interface</code></dt>
 <dd>可选且可重复。该 HAL 的必需接口的列表。</dd>
 <dt><code>compatibility-matrix.hal.interface.name</code></dt>
@@ -244,7 +272,7 @@
 <dt><code>compatibility-matrix.sepolicy.kernel-sepolicy-version</code></dt>
 <dd>必需。声明框架支持的 <code>policydb</code> 版本。</dd>
 <dt><code>compatibility-matrix.avb.vbmeta-version</code></dt>
-<dd>可选，仅供框架兼容性矩阵使用。声明用于对 <code>system.img</code> 签名的 <a href="/devices/architecture/vintf/match-rules.html#avb-version">AVB 版本</a>。</dd>
+<dd>可选，仅供框架兼容性矩阵使用。声明用于对 <code>system.img</code> 签名的 <a href="/devices/architecture/vintf/match-rules.html#avb-version">AVB 版本</a>。在 Android 10 中已弃用。</dd>
 <dt><code>compatibility-matrix.vendor-ndk</code></dt>
 <dd>可选，仅供设备兼容性矩阵使用。声明 VNDK 供应商快照的要求。如果缺失，则系统映像对 VNDK 没有要求。</dd>
 <dt><code>compatibility-matrix.vendor-ndk.version</code></dt>

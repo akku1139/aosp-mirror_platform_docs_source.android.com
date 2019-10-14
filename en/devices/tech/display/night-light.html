@@ -4,6 +4,7 @@
     <meta name="project_path" value="/_project.yaml" />
     <meta name="book_path" value="/_book.yaml" />
   </head>
+  {% include "_versions.html" %}
   <body>
   <!--
       Copyright 2017 The Android Open Source Project
@@ -25,14 +26,18 @@
 
 <p>
 Research suggests that blue light from screens can have a negative impact on
-sleep. Android 7.1.1 includes a feature called Night Light that reduces the
+sleep. Android 7.1.1 introduced a feature called Night Light that reduces the
 amount of blue light emitted by the device display to better match the natural
-light of the user's time of day and location. Android 8.0 includes a feature
-that gives users more control over the intensity of the Night Light effect.
+light of the user's time of day and location. Android 8.0 introduced an additional
+feature that gives users more control over the intensity of the Night Light effect.
+Android {{ androidQVersionNumber }} introduces the
+<code>COLOR_DISPLAY_SERVICE</code> system service, with a system API
+surface to give the system, Settings, and System UI more control over all color
+transforms, including Night Light.
 </p>
 <p>
 Night Light requires a
-<a href="/devices/graphics/implement-hwc.html">Hardware
+<a href="/devices/graphics/implement-hwc">Hardware
 Composer HAL 2.0</a> (HWC 2) implementation that can apply the matrix passed to
 <code>setColorTransform</code> to perform tinting without impacting power,
 performance, and app compatibility.
@@ -40,13 +45,13 @@ performance, and app compatibility.
 <h2 id="implementation">Implementation</h2>
 <p>
 Device manufacturers can enable the default implementation of the feature by
-using the following flags defined in:
-<code><a href="https://android.googlesource.com/platform/frameworks/base/+/master/core/res/res/values/config.xml">
-/android/frameworks/base/core/res/res/values/config.xml</a></code>
+using the following flags defined in
+<code><a href="https://android.googlesource.com/platform/frameworks/base/+/master/core/res/res/values/config.xml"
+         class="external">frameworks/base/core/res/res/values/config.xml</a></code>
 
 <pre class="devsite-click-to-copy">
-&lt;!-- Control whether Night display is available. This should only be enabled
-      on devices with HWC 2 color transform  support. --&gt;
+ &lt;!-- Control whether Night display is available. This should only be enabled
+      on devices with HWC 2 color transform support. --&gt;
  &lt;bool name="config_nightDisplayAvailable"&gt;false&lt;/bool&gt;
  &lt;!-- Default mode to control how Night display is automatically activated.
       One of the following values (see NightDisplayController.java):
@@ -71,39 +76,48 @@ using the following flags defined in:
  &lt;integer name="config_nightDisplayColorTemperatureMax"&gt;4082&lt;/integer&gt;
 </pre>
 <p>
-The code is divided between framework, system services, SystemUI, and Settings:
+The code is divided between framework, system services, System UI, and Settings. The
+core functionality is controlled by <code>ColorDisplayManager</code> (backed by
+<code>ColorDisplayService</code>).
+</p>
+
+<p>
+Device manufacturers should customize the color ramp based on the characteristics of the
+device's display panel, including white point, gamut, and desired color. You can change the
+color ramp  without changing the base implementation by using a configuration overlay.
+This configuration is expressed as a quadratic equation for each of red, green, and blue,
+in the form v<sub>res</sub> = v<sub>a</sub>t<sup>2</sup> + v<sub>b</sub>t + v<sub>y-int</sub>
+where t is the temperature input in Kelvin, as specified in the range between
+<code>config_nightDisplayColorTemperatureMin</code> and
+<code>config_nightDisplayColorTemperatureMax</code> (as described
+in the previous section), and v<sub>a</sub>, v<sub>b</sub>, and v<sub>y-int</sub> are the
+a-coefficient, b-coefficient, and y-intercept, respectively, for the given primary's curve,
+as indicated below.
 </p>
 <pre class="devsite-click-to-copy">
-platform/frameworks/base/core
-├ java/android/provider/Settings.java
-├ java/com/android/internal/app/NightDisplayController.java
-└ res/res/values/config.xml
+    &lt;string-array name="config_nightDisplayColorTemperatureCoefficientsNative"&gt;
+        &lt;!-- R a-coefficient --&gt; &lt;item&gt;0.0&lt;/item&gt;
+        &lt;!-- R b-coefficient --&gt; &lt;item&gt;0.0&lt;/item&gt;
+        &lt;!-- R y-intercept --&gt; &lt;item&gt;1.0&lt;/item&gt;
+        &lt;!-- G a-coefficient --&gt; &lt;item&gt;-0.00000000962353339&lt;/item&gt;
+        &lt;!-- G b-coefficient --&gt; &lt;item&gt;0.000153045476&lt;/item&gt;
+        &lt;!-- G y-intercept --&gt; &lt;item&gt;0.390782778&lt;/item&gt;
+        &lt;!-- B a-coefficient --&gt; &lt;item&gt;-0.0000000189359041&lt;/item&gt;
+        &lt;!-- B b-coefficient --&gt; &lt;item&gt;0.000302412211&lt;/item&gt;
+        &lt;!-- B y-intercept --&gt; &lt;item&gt;-0.198650895&lt;/item&gt;
+    &lt;/string-array&gt;
 
-platform/frameworks/base/proto/src/metrics_constants.proto
-
-platform/frameworks/base/services
-├ core/java/com/android/server/display/DisplayManagerService.java
-├ core/java/com/android/server/display/DisplayTransformManager.java
-├ core/java/com/android/server/display/NightDisplayService.java
-└ java/com/android/server/SystemServer.java
-
-platform/frameworks/base/packages/SystemUI
-├ res/drawable/ic_qs_night_display_off.xml
-├ res/drawable/ic_qs_night_display_on.xml
-├ res/values/strings.xml
-└ src/com/android/systemui/qs/tiles/NightDisplayTile.java
-
-platform/packages/apps/Settings
-├ AndroidManifest.xml
-├ res/drawable/ic_settings_night_display.xml
-├ res/values/strings.xml
-├ res/xml/display_settings.xml
-├ res/xml/night_display_settings.xml
-├ src/com/android/settings/Settings.java
-├ src/com/android/settings/dashboard/conditional/NightDisplayCondition.java
-├ src/com/android/settings/display/NightDisplayPreference.java
-├ src/com/android/settings/display/NightDisplayPreferenceController.java
-└ src/com/android/settings/display/NightDisplaySettings.java
+    &lt;string-array name="config_nightDisplayColorTemperatureCoefficients"&gt;
+        &lt;!-- R a-coefficient --&gt; &lt;item&gt;0.0&lt;/item&gt;
+        &lt;!-- R b-coefficient --&gt; &lt;item&gt;0.0&lt;/item&gt;
+        &lt;!-- R y-intercept --&gt; &lt;item&gt;1.0&lt;/item&gt;
+        &lt;!-- G a-coefficient --&gt; &lt;item&gt;-0.00000000962353339&lt;/item&gt;
+        &lt;!-- G b-coefficient --&gt; &lt;item&gt;0.000153045476&lt;/item&gt;
+        &lt;!-- G y-intercept --&gt; &lt;item&gt;0.390782778&lt;/item&gt;
+        &lt;!-- B a-coefficient --&gt; &lt;item&gt;-0.0000000189359041&lt;/item&gt;
+        &lt;!-- B b-coefficient --&gt; &lt;item&gt;0.000302412211&lt;/item&gt;
+        &lt;!-- B y-intercept --&gt; &lt;item&gt;-0.198650895&lt;/item&gt;
+    &lt;/string-array&gt;
 </pre>
 
 <h2 id="ui-features">UI features</h2>
@@ -126,27 +140,27 @@ and turn it on or off.
 <ul>
   <li><strong>Turn On Automatically</strong>
     <ul>
-     <li><strong>Never</strong>: Night Light will never turn on automatically and
+     <li><strong>Never:</strong> Night Light will never turn on automatically and
          must be activated with the  manual <strong>On / Off</strong> toggle.</li>
-     <li><strong>Custom schedule</strong>: Night Light turns on at a specified
+     <li><strong>Custom schedule:</strong> Night Light turns on at a specified
          <strong>Start time </strong>[default: 10:30 p.m.] and off at a specified
          <strong>End time</strong> [default: 6:30 a.m.].</li>
-     <li><strong>Sunset to sunrise</strong>: Night Light turns on at sunset and off
+     <li><strong>Sunset to sunrise:</strong> Night Light turns on at sunset and off
          at sunrise. The time for sunrise and sunset depends on the device location
          and the time of year.</li>
     </ul>
   </li>
-  <li><strong>On / Off</strong>: Toggle that controls the current state of Night
+  <li><strong>On / Off:</strong> Toggle that controls the current state of Night
   Light. This state respects existing  automatic rules. For example, if Night
   Light is toggled on at 5:30 p.m. (before the automatic rule would turn it on
   at 10:30 p.m.), Night Light will still turn off at 6:30 a.m. And if Night
   Light is toggled off at 5:30 a.m. (before it turns off at 6:30 a.m.), it will
   still turn on at 10:30 p.m.</li>
-  <li><strong>Intensity</strong>:
+  <li><strong>Intensity:</strong>
   <a href="https://developer.android.com/reference/android/widget/SeekBar.html">Seekbar</a>
   that controls the tint level by sliding from warm to cool. The seekbar can be
   disabled when Night Light is not activated.</li>
-  <li><strong>Informational text</strong>: Teaches the user what Night Light does
+  <li><strong>Informational text:</strong> Teaches the user what Night Light does
   and why.</li>
 </ul>
 <h3 id="settings-conditional">Settings conditional</h3>

@@ -84,7 +84,7 @@ the framework to save IPC costs.
 ### Implementation
 
 For a reference implementation, see the
-[default implementation](https://android.googlesource.com/platform/hardware/interfaces/+/master/wifi/1.2/default/wifi_chip.cpp#1388){: .external}
+[default implementation](https://android.googlesource.com/platform/hardware/interfaces/+/master/wifi/1.2/default/wifi_chip.cpp){: .external}
 in the vendor HAL.
 
 You can disable firmware logging by setting the resource,

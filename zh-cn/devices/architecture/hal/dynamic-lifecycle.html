@@ -3,9 +3,8 @@
   <meta name="project_path" value="/_project.yaml"/>
   <meta name="book_path" value="/_book.yaml"/>
 </head>
-
 <body>
-  <!--
+<!--
       Copyright 2018 The Android Open Source Project
 
       Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,13 +19,13 @@
       See the License for the specific language governing permissions and
       limitations under the License.
   -->
-Android 9 支持动态关停未使用或不需要的 Android 硬件子系统。例如，如果用户未使用 WLAN，则 WLAN 子系统不应占用内存、耗损电量或使用其他系统资源。早期版本的 Android 中，在 Android 手机启动的整个持续时间内，Android 设备上的 HAL/驱动程序都会保持开启状态。
+Android 9 支持在不使用或不需要 Android 硬件子系统时动态关停这些子系统。例如，如果用户未使用 WLAN，WLAN 子系统就不应占用内存、耗用电量或使用其他系统资源。早期版本的 Android 中，在 Android 手机启动的整个期间，Android 设备上的 HAL/驱动程序都会保持开启状态。
 
   <p>实现动态关停涉及连接数据流以及执行动态进程，下文对此进行了详细介绍。</p>
 
   <h2 id="changes-HAL-definitions">对 HAL 定义所做的更改</h2>
 
-  <p>要实现动态关停，需要有关于哪些进程为哪些 HAL 接口提供服务的信息（此类信息之后在其他上下文中也可能很有用），还需要确保在设备启动时不启动进程，而且在进程退出后，直到系统再次请求启动它们之前，都不重新启动它们。</p>
+  <p>要实现动态关停，需要有关于哪些进程为哪些 HAL 接口提供服务的信息（此类信息之后在其他情况中也可能很有用），还需要确保在设备启动时不启动进程，而且在进程退出后，直到系统再次请求启动它们之前，都不重新启动它们。</p>
 
   <pre class="prettyprint"># some init.rc script associated with the HAL
 service vendor.some-service-name /vendor/bin/hw/some-binary-service
@@ -44,16 +43,31 @@ service vendor.some-service-name /vendor/bin/hw/some-binary-service
 
   <h2 id="changes-init-and-hwservicemanager">对 init 和 hwservicemanager 所做的更改</h2>
 
-  <p>要实现动态关停，还需要让 <code>hwservicemanager</code> 告知 <code>init</code> 启动所请求的服务。在 Android 9 中，<code>init</code> 包含三个额外的控制消息（例如，<code>ctl.start</code>）：<code>ctl.interface_start</code>、<code>ctl.interface_stop</code> 和 <code>ctl.interface_restart</code>。这些消息可用于指示 <code>init</code> 打开或关闭特定硬件接口。如果系统请求使用某个服务但该服务未注册，则 <code>hwservicemanager</code> 将请求启动该服务。</p>
+  <p>要实现动态关停，还需要让 <code>hwservicemanager</code> 告知 <code>init</code> 启动所请求的服务。在 Android 9 中，<code>init</code> 包含三个额外的控制消息（例如，<code>ctl.start</code>）：<code>ctl.interface_start</code>、<code>ctl.interface_stop</code> 和 <code>ctl.interface_restart</code>。这些消息可用于指示 <code>init</code> 打开或关闭特定硬件接口。如果系统请求使用某个服务但该服务未注册，则 <code>hwservicemanager</code> 会请求启动该服务。不过，动态 HAL 不需要使用以上任何消息。</p>
 
   <h2 id="determining-HAL-exit">确定 HAL 退出</h2>
 
-  <p>要实现动态关停，需要多个政策来决定何时启动和关停 HAL。如果 HAL 出于任何原因而决定退出，则当系统再次需要用到它时，它将使用以下信息和基础架构自动重新启动：HAL 定义中提供的信息，以及通过更改 <code>init</code> 和 <code>hwservicemanager</code> 提供的基础架构。这可能会涉及多个不同的政策，包括：</p>
+  <p>在 Android 9 中，必须手动确定 HAL 退出。对于 Android 10 及更高版本，还可以使用<a href="#automatic-lifecycles">自动生命周期</a>确定 HAL 退出。</p>
+
+  <p>要实现动态关停，需要多个政策来决定何时启动和关停 HAL。如果 HAL 出于任何原因而决定退出，则当系统再次需要用到它时，它将使用以下信息和基础架构自动重新启动：HAL 定义中提供的信息，以及更改后的 <code>init</code> 和 <code>hwservicemanager</code> 提供的基础架构。 这可能会涉及多个不同的政策，包括：</p>
 
   <ul>
     <li>如果有人对 HAL 调用关闭命令或类似的 API，则 HAL 可能会选择自行调用退出命令。此行为必须在相应的 HAL 接口中指定。</li>
 
     <li>HAL 可在任务完成后关停（记录在 HAL 文件中）。</li>
+  </ul>
+
+  <h2 id="automatic-lifecycles">自动生命周期</h2>
+
+  <p>Android 10 为内核和 <code>hwservicemanager</code> 添加了更多支持，可让 HAL 在没有任何客户端时自动关闭。要使用此功能，请完成<a href="#changes-HAL-definitions">对 HAL 定义所做的更改</a>部分的所有步骤，并执行以下操作：</p>
+
+  <ul>
+    <li>使用 <code>LazyServiceRegistrar</code> 而不是成员函数 <code>registerAsService</code> 在 C++ 中注册服务，例如：<pre class="prettyprint">// only one instance of LazyServiceRegistrar per process
+LazyServiceRegistrar registrar();
+registrar.registerAsService(myHidlService /* , "default" */);</pre>
+    </li>
+
+    <li>验证 HAL 客户端是否仅在使用时保留对顶级 HAL（通过 <code>hwservicemanager</code> 注册的接口）的引用。为了避免出现延迟，如果该引用在继续执行的 hwbinder 线程上被丢弃，则客户端还应该在丢弃引用后调用 <code>IPCThreadState::self()-&gt;flushCommands()</code>，以确保 Binder 驱动程序在相关引用计数发生变化时收到通知。</li>
   </ul>
 
 </body></html>

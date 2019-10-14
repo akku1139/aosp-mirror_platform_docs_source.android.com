@@ -31,7 +31,9 @@ customizing your implementation.
 
 1. Review the fundamental principles of Android platform development within
    [Architecture](/devices/architecture/), particularly the
-   [HIDL](/devices/architecture/hidl/) format introduced in Android 8.0.
+   [HIDL](/devices/architecture/hidl/) format introduced in Android 8.0 and the
+   [modular system components](/devices/architecture/modular-system) introduced
+   in Android {{ androidQVersionNumber }}.
 
 1. Ensure your devices meet requirements to be deemed
    [compatible](/compatibility/overview) with Android’s core specification, the
@@ -43,6 +45,9 @@ customizing your implementation.
 
 1. Take advantage of all of the [tests](/compatibility/tests) available to debug
    and improve your Android devices.
+
+1. Follow [security best practices](/security/best-practices) to keep your users
+   and devices safe.
 
 1. Familiarize yourself with
    [App Design](https://developer.android.com/design/){: .external} principles and

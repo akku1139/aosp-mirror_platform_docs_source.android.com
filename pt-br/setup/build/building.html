@@ -1,9 +1,10 @@
 <html devsite><head>
-    <title>Preparo para a criação</title>
+    <title>Como criar versões no Android</title>
     <meta name="project_path" value="/_project.yaml"/>
     <meta name="book_path" value="/_book.yaml"/>
   </head>
   <body>
+
   <!--
       Copyright 2017 The Android Open Source Project
 
@@ -20,28 +21,7 @@
       limitations under the License.
   -->
 
-<p>As instruções a seguir para criar a árvore de origem do Android se aplicam a todos branches, incluindo o <code>master</code>. A sequência básica dos comandos de criação é a seguinte.</p>
-
-<h2 id="obtaining-proprietary-binaries">Adquirir binários reservados</h2>
-
-<p>O AOSP não pode ser usado apenas a partir do código-fonte puro e requer que outras bibliotecas reservadas relacionadas a hardware sejam executadas, como para aceleração de gráficos de hardware. Consulte as seções abaixo para ver os links de download e <a href="requirements.html#binaries">Binários do dispositivo</a> para ver outros recursos.</p>
-
-<aside class="note">Alguns dispositivos têm esses binários reservados na partição <code>/vendor</code> deles.</aside>
-
-<h3 id="downloading-proprietary-binaries">Fazer o download de binários reservados</h3>
-
-<p>Você pode fazer o download de binários oficiais para os dispositivos compatíveis que executam branches de versões AOSP marcadas <a href="https://developers.google.com/android/drivers" class="external">dos drivers do Google</a>. Esses binários acrescentam acesso a outras funcionalidades de hardware com código-fonte não aberto. Para criar o branch master do AOSP, use a <a href="https://developers.google.com/android/blobs-preview" class="external">Visualização de binários</a>. Ao criar o branch master de um dispositivo, use os binários para a <a href="/setup/start/build-numbers.html">versão numerada mais recente</a> ou com a data mais recente.</p>
-
-<h3 id="extracting-proprietary-binaries">Extrair binários reservados</h3>
-
-<p>Cada conjunto de binários é fornecido como um script de autoextração em um arquivo compactado. Descompacte cada arquivo, execute o script de autoextração incluído na raiz da árvore de origem e confirme que você concorda com os termos do contrato de licença. Os binários e seus makefiles correspondentes serão instalados na hierarquia <code>vendor/</code> da árvore de origem.</p>
-
-<h3 id="cleaning-up">Limpeza</h3>
-
-<p>Para garantir que os binários recém-instalados sejam devidamente considerados após serem extraídos, exclua a saída existente de qualquer versão anterior usando:</p>
-<pre class="devsite-terminal devsite-click-to-copy">
-make clobber
-</pre>
+<p>Siga estas instruções para começar a criar versões no Android.</p>
 
 <h2 id="initialize">Configurar o ambiente</h2>
 <p>Inicialize o ambiente com o script <code>envsetup.sh</code>. Observe que a substituição de <code>source</code> por <code>.</code> (um único ponto) economiza alguns caracteres, e o formato curto é mais comumente usado na documentação.</p>
@@ -53,13 +33,34 @@ source build/envsetup.sh
 . build/envsetup.sh
 </pre>
 
+<p class="note">Será necessário reemitir esse comando após cada <code>repo sync</code> para detectar as alterações nesse script.</p>
+
+<p>O script <code>envsetup.sh</code> importa vários comandos que permitem trabalhar com o código-fonte do Android, incluindo os comandos usados neste exercício. Veja a seguir alguns exemplos de comandos importantes:</p>
+
+<ul>
+<li><strong><code>lunch</code></strong>: <code>lunch
+  <var>product_name</var>-<var>build_variant</var></code> seleciona <var>product_name</var> como o produto a ser criado e <var>build_variant</var> como a variante a ser criada, armazenando essas seleções no ambiente para serem lidas por invocações subsequentes de <code>m</code> e outros comandos parecidos.</li>
+<li><strong><code>m</code></strong>: executa versões do topo da árvore.
+Isso é útil porque você pode executar o <code>make</code> dentro de subdiretórios. Se você tiver a variável de ambiente <code>TOP</code> definida, ela será usada. Se você não tiver, o comando buscará a árvore no diretório atual para encontrar o topo dela. Você pode criar toda a árvore de código-fonte executando <code>m</code> sem argumentos ou criar destinos específicos definindo os nomes deles.</li>
+<li><strong><code>mma</code></strong>: cria todos os módulos no diretório atual e as respectivas dependências.</li>
+<li><strong><code>mmma</code></strong>: cria todos os módulos nos diretórios fornecidos e as respectivas dependências.</li>
+<li><strong><code>croot</code></strong>: <code>cd</code> para o topo da árvore.</li>
+</ul>
+
+<p>Para ver a lista completa dos comandos disponíveis, execute:</p>
+
+<pre class="devsite-terminal devsite-click-to-copy">
+hmm
+</pre>
+
 <h2 id="choose-a-target">Escolher um destino</h2>
 <p>Escolha qual destino criar com o <code>lunch</code>. A configuração exata pode ser passada como um argumento. Por exemplo, o comando a seguir se refere a uma versão completa para o emulador, com toda a depuração ativada:</p>
 <pre class="devsite-terminal devsite-click-to-copy">
 lunch aosp_arm-eng
 </pre>
-<p>Se executado sem argumentos, o <code>lunch</code> solicitará que você escolha um destino no menu.</p>
-<p>Todos os destinos de criação assumem o formato <code>BUILD-BUILDTYPE</code>, onde <code>BUILD</code> é um codinome que se refere à combinação específica de recursos. O <code>BUILDTYPE</code> é um dos seguintes:</p>
+<p>Se executado sem argumentos, <code>lunch</code> solicitará que você escolha um destino no menu. Consulte <a href="/setup/build/running#selecting-device-build">Como selecionar uma versão do dispositivo</a> para ver as configurações de versão de todos os dispositivos existentes.</p>
+
+<p>Todos os destinos de criação assumem o formato <code>BUILD-BUILDTYPE</code>, onde <code>BUILD</code> é um codinome que se refere à combinação específica de recursos. O <code>BUILDTYPE</code> é um dos seguintes.</p>
 <table>
   <thead>
     <tr>
@@ -70,46 +71,60 @@ lunch aosp_arm-eng
   <tbody>
     <tr>
       <td>user</td>
-      <td>acesso limitado; adequado para produção</td>
+      <td>Acesso limitado; adequado para produção</td>
     </tr>
     <tr>
       <td>userdebug</td>
-      <td>como user, mas com acesso root e capacidade de depuração; o mais indicado para depuração</td>
+      <td>Como o user, mas com acesso root e capacidade de depuração; mais indicado para depuração</td>
     </tr>
     <tr>
       <td>eng</td>
-      <td>configuração de desenvolvimento com outras ferramentas de depuração</td>
+      <td>Configuração de desenvolvimento com outras ferramentas de depuração</td>
     </tr>
   </tbody>
 </table>
 
-<p>A versão userdebug precisa se comportar da mesma forma que a user, com a capacidade de ativar depuração adicional, que normalmente viola o modelo de segurança da plataforma. Isso faz com que userdebug seja uma boa versão para testes de usuários com maiores recursos de diagnóstico. Ao desenvolver com a versão userdebug, siga as <a href="../develop/new-device.html#userdebug-guidelines">diretrizes de userdebug</a>.</p>
+<p>A versão userdebug precisa se comportar da mesma forma que a user, com a capacidade de ativar depuração adicional, que normalmente viola o modelo de segurança da plataforma. Isso faz com que userdebug seja uma boa versão para testes de usuários com maiores recursos de diagnóstico. Ao desenvolver com a versão userdebug, siga as <a href="/setup/develop/new-device#userdebug-guidelines">diretrizes do userdebug</a>.</p>
 
-<p>A versão eng prioriza a produtividade de engenharia para engenheiros que trabalham na plataforma. Ela desativa várias otimizações usadas para fornecer uma boa experiência ao usuário. Fora isso, a versão eng se comporta de maneira semelhante às versões user e userdebug, para que os desenvolvedores de dispositivos possam ver como o código se comporta nesses ambientes.</p>
+<p>A versão eng prioriza a produtividade de engenharia para engenheiros que trabalham na plataforma. Ela desativa várias otimizações usadas para fornecer uma boa experiência ao usuário. Fora isso, a versão eng apresenta um comportamento semelhante ao das versões user e userdebug, para que os desenvolvedores de dispositivos possam ver como o código se comporta nesses ambientes.</p>
 
-<p>Para ver mais informações sobre como criar e executar em hardwares reais, consulte <a href="running.html">Como executar versões</a>.</p>
+<p>Para ver mais informações sobre como criar e executar em hardwares reais, consulte <a href="/setup/build/running">Como executar versões</a>.</p>
 
-<h2 id="build-the-code">Criar o código</h2>
+<h2 id="build-the-code">Como compilar o código</h2>
 
-<p>Esta seção é meramente um resumo para garantir que a configuração esteja concluída. Consulte <a href="running.html">Como executar versões</a> para ver instruções detalhadas sobre a criação do Android.</p>
+<p>Esta seção é um breve resumo para garantir que a configuração esteja concluída.</p>
 
-    <p>Crie tudo com <code>make</code>. O GNU <code>make</code> pode gerenciar tarefas paralelas com um argumento <code>-jN</code>, e é comum usar várias tarefas N, que são entre uma e duas vezes o número de threads de hardware no computador que está sendo usado para a criação. Por exemplo, em um computador dual-E5520 (2 CPUs, 4 núcleos por CPU, 2 threads por núcleo), as criações mais rápidas são feitas com comandos entre <code>make -j16</code> e <code>make -j32</code>.</p>
+<p>Crie tudo com <code>m</code>. O <code>m</code> pode processar tarefas paralelas com um argumento <code>-jN</code>. Se você não fornecer um argumento <code>-j</code>, o sistema de versão selecionará automaticamente uma contagem de tarefas paralelas que seja considerada ideal para seu sistema.</p>
 
 <pre class="devsite-terminal devsite-click-to-copy">
-make -j4
+m
 </pre>
 
-<h2 id="run-it">Execução</h2>
+<p>Como explicado acima, você pode criar módulos específicos em vez da imagem completa do dispositivo listando os nomes dos módulos na sua linha de comando <code>m</code>. Além disso, <code>m</code> oferece alguns pseudodestinos para fins especiais. Alguns exemplos:</p>
 
-<p>Você pode executar sua versão em um emulador ou armazená-la em flash em um dispositivo. Observe que você já selecionou o destino da versão com <code>lunch</code>, e é improvável que ela seja executada em um destino diferente daquele para o que foi criada.</p>
+<ul>
+<li><strong><code>droid</code></strong>: <code>m droid</code> é a versão normal. Esse destino está aqui porque o destino padrão requer um nome.</li>
+<li><strong><code>all</code></strong>: <code>m all</code> cria tudo o que <code>m droid</code> faz, além de tudo o que não tem a tag <code>droid</code>. O servidor de versão o executa para garantir que tudo o que está na árvore e que tenha um arquivo <code>Android.mk</code> seja criado.</li>
+<li><strong><code>clean</code></strong>: <code>m clean</code> exclui todos os arquivos intermediários e de saída para esta configuração. É o mesmo que <code>rm -rf out/</code>.</li>
+</ul>
 
-<aside class="note"><strong>Observação</strong>: lembre-se de <a href="#obtaining-proprietary-binaries">adquirir os binários reservados</a> ou sua versão não será inicializada com sucesso no hardware de destino. Se adquirir os blobs binários, você precisará descompactá-los, <code>make clobber</code> e recriar.</aside>
+<p>Execute <code>m help</code> para ver o que outros pseudodestinos <code>m</code> oferecem.</p>
 
-<h3 id="flash-a-device">Atualização flash com fastboot</h3>
+<h2 id="run-it">Executar</h2>
 
-<p>Para realizar a atualização flash de um dispositivo, você precisará usar o <code>fastboot</code>, que precisa ser incluído no seu caminho após uma criação bem-sucedida. Consulte <a href="running.html#flashing-a-device">Como realizar uma atualização flash em um dispositivo</a> para ver mais instruções.</p>
+<p>Você pode executar sua versão em um emulador ou armazená-la em flash em um dispositivo.
+ Como você já selecionou seu destino de versão com <code>lunch</code>, é improvável que ele seja executado em um destino diferente daquele para o qual foi criado.</p>
 
-<h3 id="emulate-an-android-device">Emular um dispositivo Android</h3>
+<aside class="note">
+  <p><strong>Observação</strong>: lembre-se de adquirir os binários reservados, ou sua versão não será inicializada no hardware de destino. Às vezes, a fonte pode ter binários diferentes para versões e branches diferentes. Se você adquirir blobs binários neste ponto, será necessário desempacotá-los, <code>m installclean</code> e criá-los novamente. Para saber mais sobre esse processo, consulte <a href="/setup/build/downloading#obtaining-proprietary-binaries">Como fazer o download da origem</a>.
+  </p>
+</aside>
+
+<h3 id="flash-a-device">Como realizar uma atualização flash com fastboot</h3>
+
+<p>Para realizar uma atualização flash de um dispositivo, use <code>fastboot</code>, que precisa ser incluído no seu caminho após a criação ser concluída. Consulte <a href="/setup/build/running#flashing-a-device">Como realizar uma atualização flash em um dispositivo</a> para ver mais instruções.</p>
+
+<h3 id="emulate-an-android-device">Como emular um dispositivo Android</h3>
 
 <p>O emulador é adicionado ao seu caminho automaticamente pelo processo de criação. Para executá-lo, digite:</p>
 
@@ -121,7 +136,8 @@ emulator
 
 <h3 id="wrong-java-version">Versão incorreta do Java</h3>
 
-<p>Se você está tentando criar uma versão do Android inconsistente com sua versão do Java, <code>make</code> será cancelado com uma mensagem como</p>
+<p>Se você estiver tentando criar uma versão do Android inconsistente com sua versão do Java, <code>make</code> será cancelado com uma mensagem como:</p>
+
 <pre>
 ************************************************************
 You are attempting to build with the incorrect version
@@ -138,13 +154,13 @@ Please follow the machine setup instructions at
 <p>Estas são as prováveis causas e soluções:</p>
 
 <ul>
-<li>Falha ao instalar o JDK correto conforme especificado nos <a href="requirements.html#jdk">Requisitos do JDK</a>. Verifique se você seguiu as etapas apresentadas em <a href="building.html#initialize">Configurar o ambiente</a> e <a href="building.html#choose-a-target">Escolher um destino</a>.</li>
+<li>Falha ao instalar o JDK correto conforme especificado nos <a href="/setup/build/requirements#jdk">Requisitos do JDK</a>. É necessário seguir as etapas apresentadas em <a href="/setup/build/building#initialize">Configurar o ambiente</a> e <a href="/setup/build/building#choose-a-target">Escolher um destino</a>.</li>
 <li>Outro JDK instalado anteriormente aparece no seu caminho. Inclua o JDK correto no início do seu caminho ou remova o JDK problemático.</li>
 </ul>
 
 <h3 id="python-version-3">Versão 3 do Python</h3>
 
-<p>O repo foi projetado com uma funcionalidade específica do Python 2.x e, infelizmente, é incompatível com o Python 3. Para usar o repo, instale o Python 2.x:</p>
+<p>O Repo foi projetado com uma funcionalidade específica do Python 2.x e é incompatível com o Python 3. Para usar o Repo, instale o Python 2.x:</p>
 
 <pre class="devsite-terminal devsite-click-to-copy">
 apt-get install python
@@ -152,20 +168,21 @@ apt-get install python
 
 <h3 id="case-insensitive-filesystem">Sistema de arquivos indiferente a maiúsculas</h3>
 
-<p>Se você estiver criando em um sistema de arquivos HFS no Mac OS, poderá encontrar um erro como</p>
+<p>Se você estiver criando em um sistema de arquivos HFS no macOS, poderá encontrar um erro como:</p>
 <pre>
 ************************************************************
 You are building on a case-insensitive filesystem.
 Please move your source tree to a case-sensitive filesystem.
 ************************************************************
 </pre>
-<p>Siga as instruções apresentadas em <a href="initializing.html#creating-a-case-sensitive-disk-image">Como criar uma imagem de disco com diferenciação de maiúsculas e minúsculas</a>.</p>
+<p>Siga as instruções em <a href="/setup/build/initializing#creating-a-case-sensitive-disk-image">Como criar uma imagem de disco com diferenciação entre maiúsculas e minúsculas</a>.</p>
 
 <h3 id="no-usb-permission">Sem permissão para USB</h3>
 
-<p>Na maioria dos sistemas Linux, por padrão, os usuários não privilegiados não podem acessar as portas USB. Se você encontrar um erro de permissão negada, siga as instruções em <a href="initializing.html#configuring-usb-access">Como configurar o acesso por USB</a>.</p>
+<p>Na maioria dos sistemas Linux, por padrão, os usuários sem privilégios não podem acessar as portas USB.
+Se você encontrar um erro de permissão negada, siga as instruções em <a href="/setup/build/initializing#configuring-usb-access">Como configurar o acesso por USB</a>.</p>
 
-<p>Se o adb já estiver em execução e não for possível se conectar ao dispositivo depois definir as regras, ele poderá ser eliminado com <code>adb kill-server</code>.
-Isso fará com que o adb seja reiniciado com a nova configuração.</p>
+<p>Se o adb já estava em execução e não consegue se conectar ao dispositivo após a configuração dessas regras, você pode eliminá-lo com <code>adb kill-server</code>.
+Esse comando faz com que o adb seja reiniciado com a nova configuração.</p>
 
 </body></html>

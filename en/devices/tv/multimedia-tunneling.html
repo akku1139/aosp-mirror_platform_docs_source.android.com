@@ -1,0 +1,436 @@
+<html devsite>
+  <head>
+    <title>Multimedia Tunneling</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+
+  <!--
+      Copyright 2019 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>You can implement multimedia tunneling in Android framework 5.0 and higher. Although
+multimedia tunneling isn't required for Android TV, it provides the best experience
+for ultra-high definition (4K) content.</p>
+
+<h2 id="background">Background</h2>
+
+<p>The Android media framework handles audio/video content in four ways:</p>
+
+<ul> <li><strong>Pure software</strong> (local decoding): The application processor (AP) locally
+decodes audio to pulse-code modulation (PCM) without special acceleration. Always used for Ogg
+Vorbis, and used for MP3 and AAC when there's no compressed offload support.</li>
+  <li><strong><a
+href="https://developer.android.com/about/versions/kitkat.html#44-audio-tunneling"
+class="external">Compressed audio offload</a></strong> sends compressed audio data directly to the
+digital signal processor (DSP) and keeps the AP off as much as possible. Use for playing music files
+with the screen off.</li>
+  <li><strong>Compressed audio passthrough</strong> sends compressed audio
+(specifically AC3 and E-AC3) directly over HDMI to an external TV or audio receiver, without
+decoding it on the Android TV device. The video portion is handled separately.</li>
+  <li><strong>Multimedia tunneling</strong> sends compressed audio and video data together. When the
+encoded stream is received by the video and audio decoders, it doesn’t go back to the framework.
+Ideally, the stream doesn’t interrupt the AP.</li> </ul>
+
+<img src="images/multimedia_tunneling_flo_diag.png" alt="Multimedia Tunneling Flow diagram">
+    <figcaption><strong>Figure 1.</strong> Multimedia tunneling flow</figcaption>
+
+<h3 id="approach_comparison">Approach comparison</h3>
+
+<table>
+  <tbody>
+    <tr>
+      <th>&nbsp;</th>
+      <th>Pure software</th>
+      <th>Compressed audio offload</th>
+      <th>Compressed audio passthrough</th>
+      <th>Multimedia tunneling</th>
+    </tr>
+    <tr>
+      <td>Decode location</td>
+      <td>AP</td>
+      <td>DSP</td>
+      <td>TV or audio/video receiver (AVR)</td>
+      <td>TV or AVR</td>
+    </tr>
+    <tr>
+      <td>Handles audio</td>
+      <td>yes</td>
+      <td>yes</td>
+      <td>yes</td>
+      <td>yes</td>
+    </tr>
+    <tr>
+      <td>Handles video</td>
+      <td>yes</td>
+      <td>no</td>
+      <td>no</td>
+      <td>yes</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 id="for_application_developers">For application developers</h2>
+    <p>Create a <code>SurfaceView</code>, get an audio session ID, then create the
+<code>AudioTrack</code> and <code>MediaCodec</code> instances to provide the necessary timing and
+configurations for playback and video frame decoding.</p>
+
+<h3 id="a_v_sync">A/V sync</h3>
+
+<p>In multimedia tunneling mode, audio and video are synchronized on a master clock. In Android the
+  audio clock is the master clock used for A/V playback.</p>
+
+<p>If a tunneled video <code>MediaCodec</code> instance is linked to the <code>HW_AV_SYNC</code>
+instance in <code>AudioTrack</code>, the implicit clock derived from the number of presented audio
+samples is used to restrict when each video frame is presented, based on the actual video frame
+Presentation Time Stamp (PTS).</p>
+
+<h3 id="api_call_flow">API call flow</h3>
+
+<ol>
+  <li>Create a SurfaceView.
+      <pre class="prettyprint">
+<code>SurfaceView sv = new SurfaceView(mContext);</code></pre>
+  </li>
+  <li>Get an audio session ID. This unique ID is used in creating the audio track
+    (<code>AudioTrack</code>). It's passed to the media codec (<code>MediaCodec</code>) and used by
+  the media framework to link the audio and video paths.
+      <pre class="prettyprint">
+<code>AudioManager am = mContext.getSystemService(AUDIO_SERVICE);
+int audioSessionId = am.generateAudioSessionId();</code></pre>
+  </li>
+  <li>Create <code>AudioTrack</code> with HW A/V sync <code>AudioAttributes</code>.
+    <p>The audio policy manager asks the hardware abstraction layer (HAL) for a device output that
+      supports <code>FLAG_HW_AV_SYNC</code>, and creates an audio track directly connected to this
+    output with no intermediate mixer.</p>
+
+      <pre class="prettyprint">
+<code>AudioAttributes.Builder aab = new AudioAttributes.Builder();
+aab.setUsage(AudioAttributes.USAGE_MEDIA);
+aab.setContentType(AudioAttributes.CONTENT_TYPE_MOVIE);
+aab.setFlag(AudioAttributes.FLAG_HW_AV_SYNC);
+AudioAttributes aa = aab.build();
+AudioTrack at = new AudioTrack(aa);</code></pre>
+  </li>
+  <li>Create a video <code>MediaCodec</code> instance and configure it for tunneled video playback.
+      <pre class="prettyprint">
+<code>// retrieve codec with tunneled video playback feature
+MediaFormat mf = MediaFormat.createVideoFormat(“video/hevc”, 3840, 2160);
+mf.setFeatureEnabled(CodecCapabilities.FEATURE_TunneledPlayback, true);
+MediaCodecList mcl = new MediaCodecList(MediaCodecList.ALL_CODECS);
+String codecName = mcl.findDecoderForFormat(mf);
+if (codecName == null) {
+return FAILURE;
+}
+// create codec and configure it
+mf.setInteger(MediaFormat.KEY_AUDIO_SESSION_ID, audioSessionId);
+MediaCodec mc = MediaCodec.createCodecByName(codecName);
+mc.configure(mf, sv.getSurfaceHolder().getSurface(), null, 0);</code></pre>
+  </li>
+  <li>Decode video frames.
+      <pre class="prettyprint">
+<code> mc.start();
+ for (;;) {
+   int ibi = mc.dequeueInputBuffer(timeoutUs);
+   if (ibi &gt;= 0) {
+     ByteBuffer ib = mc.getInputBuffer(ibi);
+     // fill input buffer (ib) with valid data
+     ...
+     mc.queueInputBuffer(ibi, ...);
+   }
+   // no need to dequeue explicitly output buffers. The codec
+   // does this directly to the sideband layer.
+ }
+ mc.stop();
+ mc.release();
+ mc = null; </code></pre>
+  </li>
+</ol>
+
+<div class="note">
+  <p><strong>Note</strong>: You may switch the order of steps 3 and 4 in this process, as seen in
+    the two figures below.</p>
+</div>
+
+<img src="images/audio_track_created_before_codec_configure.png" alt="Diagram of the audio track created before codec configure">
+<figcaption><strong>Figure 2.</strong> Audio track created before codec configure</figcaption>
+
+<img src="images/audio_track_created_after_codec_configure.png" alt="Diagram of the audio track created after codec configure">
+    <figcaption><strong>Figure 3.</strong> Audio track created after codec configure</figcaption>
+
+<h2 id="for_device_manufacturers">For device manufacturers</h2>
+
+    <p>OEMs should create a separate video decoder <a
+    href="https://www.khronos.org/openmax/">OpenMAX IL</a> (OMX) component to support tunneled video
+    playback. This OMX component must advertise that it's capable of tunneled playback (in
+    <code>media_codecs.xml</code>).</p>
+<code>&lt;Feature name=”tunneled-playback” required=”true” /&gt; </code>
+
+<p>The component must also support an OMX extended parameter
+<code>OMX.google.android.index.configureVideoTunnelMode</code> that uses a
+<code>ConfigureVideoTunnelModeParams</code> structure.</p>
+
+  <pre class="prettyprint">
+<code>struct ConfigureVideoTunnelModeParams {
+    OMX_U32 nSize;              // IN
+    OMX_VERSIONTYPE nVersion;   // IN
+    OMX_U32 nPortIndex;         // IN
+    OMX_BOOL bTunneled;         // IN/OUT
+    OMX_U32 nAudioHwSync;       // IN
+    OMX_PTR pSidebandWindow;    // OUT
+};</code></pre>
+
+<p>When a tunneled <code>MediaCodec</code> creation request is made, the framework configures the
+OMX component in tunneled mode (by setting <code>bTunneled</code> to <code>OMX_TRUE</code>) and
+passes the associated audio output device created with an <code>AUDIO_HW_AV_SYNC</code> flag to the
+OMX component (in <code>nAudioHwSync</code>).</p>
+
+<p>If the component supports this configuration, it should allocate a sideband handle to this codec
+and pass it back via the <code>pSidebandWindow</code> member. A sideband handle is an ID tag for the
+tunneled layer that lets the <a
+href="https://source.android.com/devices/graphics/index.html#hardware_composer">Hardware Composer
+(HW Composer)</a> identify it. If the component doesn't support this configuration, it should set
+<code>bTunneled</code> to <code>OMX_FALSE</code>.</p>
+
+<p>The framework retrieves the tunneled layer (the sideband handle) allocated by the OMX component
+and passes it to the HW Composer. This layer's <code>compositionType</code> gets set to
+<code>HWC_SIDEBAND</code>. (See <a
+href="https://source.android.com/devices/graphics/index#hardware_composer">hardware/libhardware/incl
+ude/hardware/hwcomposer.h</a>.)</p>
+
+<p>The HW Composer is responsible for receiving new image buffers from the stream at the appropriate
+time (for example, synchronized to the associated audio output device) compositing them with the
+current contents of other layers, and displaying the resulting image. This happens independent of
+the normal prepare/set cycle. The prepare/set calls happen only when other layers change, or when
+properties of the sideband layer (such as position or size) change.</p>
+
+<h3 id="configuration">Configuration</h3>
+
+<h4
+id="frameworks_av_services_audioflinger_audioflinger_cpp">frameworks/av/services/audioflinger/Audiof
+linger.cpp</h4> <p>The HAL returns the <code>HW_AV_SYNC</code> ID as a character string decimal
+representation of a 64-bit integer. (Reference <a
+href="https://android.googlesource.com/platform/frameworks/av/+/master/services/audioflinger/AudioFl
+inger.cpp#1604">frameworks/av/services/audioflinger/Audioflinger.cpp</a>.)</p>
+
+  <pre class="prettyprint">
+<code>audio_hw_device_t *dev = mPrimaryHardwareDev-&gt;hwDevice();
+char *reply = dev-&gt;get_parameters(dev, AUDIO_PARAMETER_HW_AV_SYNC);
+AudioParameter param = AudioParameter(String8(reply));
+int hwAVSyncId;
+param.getInt(String8(AUDIO_PARAMETER_HW_AV_SYNC), hwAVSyncId);</code></pre>
+
+<h4
+    id="frameworks_av_services_audioflinger_threads_cpp">frameworks/av/services/audioflinger/Threads.cpp
+</h4>
+
+<p>
+  The audio framework must find the HAL output stream to which this session ID corresponds, and
+  query the HAL for the <code>hwAVSyncId</code> via <code>set_parameters</code>.
+    </p>
+
+  <pre class="prettyprint">
+<code>mOutput-&gt;stream-&gt;common.set_parameters(&amp;mOutput-&gt;stream-&gt;common,
+AUDIO_PARAMETER_STREAM_HW_AV_SYNC=hwAVSyncId);
+</code></pre>
+
+<h3 id="omx_decoder_configuration">OMX decoder configuration</h3>
+
+<h4 id="mediacodec_java">MediaCodec.java</h4>
+
+<p>The audio framework finds the corresponding HAL output stream for this session ID and retrieves
+the <code>audio-hw-sync</code> ID by querying the HAL for the
+<code>AUDIO_PARAMETER_STREAM_HW_AV_SYNC</code> flag via <code>get_parameters</code>.</p>
+
+  <pre class="prettyprint">
+<code>
+// Retrieve HW AV sync audio output device from Audio Service
+// in MediaCodec.configure()
+if (entry.getKey().equals(MediaFormat.KEY_AUDIO_SESSION_ID)) {
+    int sessionId = 0;
+    try {
+        sessionId = (Integer)entry.getValue();
+    }
+    catch (Exception e) {
+        throw new IllegalArgumentException("Wrong Session ID Parameter!");
+    }
+    keys[i] = "audio-hw-sync";
+    values[i] = AudioSystem.getAudioHwSyncForSession(sessionId);
+}
+
+// ...
+</code></pre>
+
+<p>This HW sync ID is passed to the OMX tunneled video decoder using the custom parameter
+<code>OMX.google.android.index.configureVideoTunnelMode</code>.</p>
+
+<h4 id="acodec_cpp">ACodec.cpp</h4>
+
+<p>After you get the audio hardware sync ID, ACodec uses it to configure the tunneled video decoder
+so the tunneled video decoder knows which audio track to synchronize.</p>
+
+  <pre class="prettyprint">
+<code>// Assume you're going to use tunneled video rendering.
+// Configure OMX component in tunneled mode and grab sideband handle (sidebandHandle) from OMX
+// component.
+
+native_handle_t* sidebandHandle;
+
+// Configure OMX component in tunneled mode
+status_t err = mOMX-&gt;configureVideoTunnelMode(mNode, kPortIndexOutput,
+        OMX_TRUE, audioHwSync, &amp;sidebandHandle);</code></pre>
+
+<h4 id="omxnodeinstance_cpp">OMXNodeInstance.cpp</h4>
+
+<p>The OMX component is configured by the <code>configureVideoTunnelMode</code> method above.</p>
+
+  <pre class="prettyprint">
+<code>
+// paraphrased
+
+OMX_INDEXTYPE index;
+OMX_STRING name = const_cast&lt;OMX_STRING&gt;(
+        "OMX.google.android.index.configureVideoTunnelMode");
+
+OMX_ERRORTYPE err = OMX_GetExtensionIndex(mHandle, name, &amp;index);
+
+ConfigureVideoTunnelModeParams tunnelParams;
+InitOMXParams(&amp;tunnelParams);
+tunnelParams.nPortIndex = portIndex;
+tunnelParams.bTunneled = tunneled;
+tunnelParams.nAudioHwSync = audioHwSync;
+err = OMX_SetParameter(mHandle, index, &amp;tunnelParams);
+
+err = OMX_GetParameter(mHandle, index, &amp;tunnelParams);
+
+sidebandHandle = (native_handle_t*)tunnelParams.pSidebandWindow;
+
+</code></pre>
+
+<h4 id="acodec_cpp">ACodec.cpp</h4>
+
+<p>After the OMX component is configured in tunneled mode, the sideband handle is associated with
+the rendering surface.</p>
+
+  <pre class="prettyprint"> <code>  err = native_window_set_sideband_stream(nativeWindow.get(),
+  sidebandHandle); if (err != OK) { ALOGE("native_window_set_sideband_stream(%p) failed! (err %d).",
+  sidebandHandle, err); return err; }</code></pre>
+
+<p>Then the maximal resolution hint, if present, is sent to the component.</p>
+
+  <pre class="prettyprint">
+<code>
+// Configure max adaptive playback resolution - as for any other video decoder
+int32_t maxWidth = 0, maxHeight = 0;
+if (msg-&gt;findInt32("max-width", &amp;maxWidth) &amp;&amp;
+    msg-&gt;findInt32("max-height", &amp;maxHeight)) {
+    err = mOMX-&gt;prepareForAdaptivePlayback(
+              mNode, kPortIndexOutput, OMX_TRUE, maxWidth, maxHeight);
+}
+</code></pre>
+
+<h3 id="pause_support">Pause support</h3>
+
+<p>Android 5.0 and lower doesn't include pause support. You can pause tunneled-playback only by A/V
+starvation, but if the internal buffer for video is large (for example, there's 1 second of data in
+the OpenMax component), it will make pause look non-responsive.</p>
+
+<p>In Android 5.1 and higher, AudioFlinger supports pause and resume for direct (tunneled) audio
+  outputs. If the HAL implements pause/resume, track pause/resume is forwarded to the HAL.</p>
+
+<p>The pause, flush, resume call sequence is respected by executing the HAL calls in the playback
+  thread (same as offload).</p>
+
+<h3 id="implementation_suggestions">Implementation suggestions</h3>
+
+<h4 id="audio_hal">Audio HAL</h4>
+
+<p>Devices supporting tunneled video playback should have at least one audio output stream profile
+with the flags <code>FLAG_HW_AV_SYNC</code> and <code>AUDIO_OUTPUT_FLAG_DIRECT</code> in its
+<code>audio_policy.conf</code> file. These flags are used to set the system clock from the audio
+clock.</p>
+
+<h4 id="omx">OMX</h4>
+
+<p>Device manufacturers should have a separate OMX component for tunneled video playback.
+  Manufacturers may have additional OMX components for other types of audio and video playback, like
+secure playback.</p>
+
+<p>This component should specify 0 buffers (<code>nBufferCountMin</code>,
+  <code>nBufferCountActual</code>) on its output port.</p>
+
+<p>The tunneled component must also implement the
+  <code>OMX.google.android.index.prepareForAdaptivePlayback setParameter</code> extension.</p>
+
+<p>The tunneled component must specify its capabilities in the <code>media_codecs.xml</code> file
+and declare the tunneled-playback feature. It should also clarify any limitations on frame size,
+alignment, or bitrate.</p>
+
+  <pre class="prettyprint">
+<code>
+    &lt;MediaCodec name="OMX.<em>OEM_NAME</em>.VIDEO.DECODER.AVC.<strong>tunneled</strong>"
+    type="video/avc" &gt;
+        &lt;Feature name="adaptive-playback" /&gt;
+        &lt;Feature name="tunneled-playback" <strong>required=”true”</strong> /&gt;
+        &lt;Limit name="size" min="32x32" max="3840x2160" /&gt;
+        &lt;Limit name="alignment" value="2x2" /&gt;
+        &lt;Limit name="bitrate" range="1-20000000" /&gt;
+            ...
+    &lt;/MediaCodec&gt;
+</code></pre>
+
+<p>If the same OMX component is used to support tunneled and non-tunneled decoding, then it should
+  leave the tunneled-playback feature as non-required. Both tunneled and non-tunneled decoders then
+have the same capability limitations.</p>
+
+  <pre class="prettyprint">
+<code>
+    &lt;MediaCodec name="OMX.<em>OEM_NAME</em>.VIDEO.DECODER.AVC" type="video/avc" &gt;
+        &lt;Feature name="adaptive-playback" /&gt;
+        &lt;Feature name="tunneled-playback" /&gt;
+        &lt;Limit name="size" min="32x32" max="3840x2160" /&gt;
+        &lt;Limit name="alignment" value="2x2" /&gt;
+        &lt;Limit name="bitrate" range="1-20000000" /&gt;
+            ...
+    &lt;/MediaCodec&gt;
+</code></pre>
+
+<h4 id="hw_composer">HW Composer</h4>
+
+<p>When there's a tunneled layer (a layer with <code>HWC_SIDEBAND</code>
+<code>compositionType</code>) on a display, the layer’s <code>sidebandStream</code> is the sideband
+handle allocated by the OMX video component.</p>
+
+<p>The HW Composer synchronizes decoded video frames (from the tunneled OMX component) to the
+associated audio track (with the <code>audio-hw-sync</code> ID). When a new video frame becomes
+current, the HW Composer composites it with the current contents of all layers received during the
+last prepare/set call, and displays the resulting image. The prepare/set calls happen only when
+other layers change, or when properties of the sideband layer (like position or size) change.</p>
+
+<p>
+  Figure 4 represents the HW Composer working with the HW (or kernel/driver) synchronizer, to
+  combine video frames (7b) with the latest composition (7a) for display at the correct time, based
+  on audio (7c).
+</p>
+
+<img src="images/hardware_composer_and_synchronizer.png" alt="Hardware composer working with the HW
+(or kernel/driver) synchronizer to combine video frames (7b) with the latest composition (7a), to
+display the result at the correct time, based on the audio (7c)"> <figcaption><strong>Figure
+4.</strong> HW Composer working with the HW (or kernel/driver) synchronizer</figcaption>
+
+  </body>
+</html>
+

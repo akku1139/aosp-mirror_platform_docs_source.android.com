@@ -23,44 +23,60 @@
   -->
 
 <p>
-  Android {{ androidPVersionNumber }}​ includes support for building
+  Android 9 and higher includes support for building
   <code>/product</code> partitions using the Android build system. Previously,
-  Android 8.x enforced the separation of System-on-Chip (SoC)-specific
-  components from the <code>/system</code> partition to the <code>/vendor</code>
-  partition without dedicating space for OEM-specific components built from
-  Android build system.
+  Android 8.x enforced the separation of SoC-specific components
+  from the <code>/system</code> partition to the <code>/vendor</code>
+  partition without dedicating space for OEM-specific components built from the
+  Android build system. Android 9 and higher provides additional
+  <a href="#product-partitions-and-permissions">permissions
+  and whitelisting features</a> that apply to priv-apps on different partitions.
 </p>
 
 <h2 id="product-partitions">About product partitions</h2>
 
 <p>
-  Many OEMs customize the AOSP system image to implement their own features
-  and requirements from carriers. However, such customizations make it
-  impossible to use a single system image for multiple software SKUs as each
-  image must be different to support a different locale, carrier, etc. Using a
+  Many OEMs customize the AOSP system image to implement their own features,
+  as well as carrier requirements. However, such customizations make it
+  impossible to use a single system image for multiple software SKUs. Each
+  image must be different to support the customizations, such as with
+  different locales or carriers. Using a
   separate <code>/product</code> partition to contain customizations makes it
-  possible to use a single system image for multiple software SKUs (the
+  possible to use a single system image for multiple software SKUs. (The
   <code>/system</code> partition hosts generic code that can be shared among
   many software SKUs). The <code>/vendor</code> partition continues to host
-  SoC-specific Board-Specific (BSP) code that can be shared among multiple
+  SoC-specific BSP code which can be shared among multiple
   devices based on the given SoC.
 </p>
 
 <p>
-  Using separate partitions has some disadvantages, such as difficulties in
-  managing disk space (a limited amount of space should be reserved for future
-  growth) and in <a href="/devices/architecture/vndk/abi-stability">maintaining
-  stable Application Binary Interface (ABI)</a> between partitions. Before
+  Using separate partitions has some disadvantages, such as
+  managing disk space (a limited amount of space must remain reserved for future
+  growth) and <a href="/devices/architecture/vndk/abi-stability">maintaining
+  a stable application binary interface (ABI)</a> between partitions. Before
   deciding to use <code>/product</code> partitions, take time to consider your
   unique AOSP implementation and possible mitigation tactics (such as
-  repartitioning a device during an <a href="/devices/tech/ota/">Over-the-Air
-  (OTA) update</a>, which is not done by Google but is done by some OEMs).
+  repartitioning a device during an <a href="/devices/tech/ota/">over-the-air
+  (OTA) update</a>, which isn't done by Google but is done by some OEMs).
 </p>
+
+<h3 id="product-partitions-and-permissions">Product partitions and permissions</h3>
+
+<p>
+  In Android 9 and higher, a change in the permissions
+  and whitelisting process affects how you grant priv-apps permissions on
+  your product partitions. The <code>permissions.xml</code> file
+  must reside in the same partition as the priv-apps. Placing a
+  <code>permissions.xml</code> file in the <code>/system</code> partition
+  for priv-apps doesn't extend those permissions to priv-apps in the <code>/product</code>
+  partition, even though the former is an extension of the latter.
+  For details on the permissions and whitelisting processes, see
+  <a href="/devices/tech/config/perms-whitelist">Privileged Permission Whitelisting</a>.</p>
 
 <h3 id="legacy-oem">Legacy /oem vs /product</h3>
 
 <p>
-  The new <code>/product</code> partition is incompatible with the legacy
+  The new <code>/product</code> partition is different than the legacy
   <code>/oem</code> partition:
 </p>
 
@@ -73,13 +89,14 @@
   <td><code>/oem</code></td>
   <td>
   <ul>
-    <li>Not updateable; usually flashed once at factory.</li>
-    <li>Built per small variations such as branding and color. Different
-    <code>/oem</code> partition contents do not make them different product
-    software.</li>
-    <li>System partition does not depend on <code>/oem</code> (it uses the
+   <li>Not updateable; usually flashed once at the factory.</li>
+    <li>Built per small variations, such as branding and color. Having
+    different <code>/oem</code> partition contents doesn't mean the product
+    software is different.</li>
+    <li>The <code>/system</code> partition doesn't depend on
+    the <code>/oem</code> partition. (It uses the <code>/oem</code>
     partition only when a specific file is found there).</li>
-    <li>Does not use API on system other than public API.</li>
+    <li>Only uses public API on the <code>/system</code> partition.</li>
   </ul>
   </td>
   </tr>
@@ -98,9 +115,9 @@
   </table>
 
 <p>
-  For these reasons, Android {{ androidPVersionNumber }} supports the new
-  <code>/product</code> partition and also retains support for the legacy
-  <code>/oem</code> partition for devices that depend on it.
+  For these reasons, Android 9 supports the new
+  <code>/product</code> partition while retaining support for the legacy
+  <code>/oem</code> partition, for devices that depend on it.
 </p>
 
 <h3 id="product-components">/product components</h3>
@@ -127,43 +144,43 @@
 <h3 id="custom-images">No custom_images</h3>
 
 <p>
-  You cannot use <code>custom_images</code> as they lack support for the
+  You can't use <code>custom_images</code>. They lack support for the
   following:
 </p>
 
 <ul>
   <li><strong>Installing modules into a specific target</strong>.
   <code>custom_images</code> support copying artifacts into an image but
-  cannot install a module into a specific partition by specifying its target
+  can't install a module into a specific partition by specifying its target
   partition as a part of a build rule.</li>
-  <li><strong>Soong support</strong>. <code>custom_images</code> cannot be
+  <li><strong>Soong support</strong>. <code>custom_images</code> can't be
   built using the Soong build system.</li>
-  <li>OTA update support</a>. <code>custom_images</code> are used as factory ROM
-  images that cannot be OTA-ed.</li>
+  <li><strong>OTA update support</strong>. <code>custom_images</code> are used as factory ROM
+  images that can't receive OTA updates.</li>
 </ul>
 
 <h3 id="maintaining-abis">Maintaining ABIs between partitions</h3>
 
 <p>
-  The <code>/product</code> partition in Android {{ androidPVersionNumber }}
-  is an extension of the <code>/system</code> partition. As there is weak ABI
-  between <code>/product</code> and <code>/system</code> partitions, both must
-  be upgraded at the same time and the ABI should be System SDK-based. If the
-  System SDK doesn't cover all API surfaces between <code>/product</code> and
-  <code>/system</code>, it is up to the OEM to maintain their own ABI between
+  The <code>/product</code> partition in Android 9
+   is an extension of the <code>/system</code> partition. There's a weak ABI
+  between <code>/product</code> and <code>/system</code> partitions, so both must
+  be upgraded at the same time, and the ABI should be system SDK-based. If the
+  system SDK doesn't cover all API surfaces between <code>/product</code> and
+  <code>/system</code>, OEMs must maintain their own ABIs between
   the two partitions.
 </p>
 
 <p>The <code>/product</code> and <code>/system</code> partitions can have
   dependency on each other. However, tests with the
-  <a href="/setup/build/gsi">Generic System Image (GSI)</a> must work properly
+  <a href="/setup/build/gsi">Generic&nbsp;System&nbsp;Image&nbsp;(GSI)</a> must work properly
   without the <code>/product</code> partition.
 </p>
 
 <p>The <code>/product</code> partition must not have any dependency on
-  <code>/vendor</code> partition and no direct interaction between the
-  <code>/product</code> partition and the <code>/vendor</code> is permitted
-  (enforced by SEpolicy).
+  <code>/vendor</code> partition. Direct interaction between the
+  <code>/product</code> and <code>/vendor</code> partitions is forbidden.
+  (This is enforced by SEpolicy.)
 </p>
 
 <h2 id="implementing-product-partitions">Implementing product partitions</h2>
@@ -172,29 +189,40 @@
   Before implementing a new product partition, review the
   <a href="https://android-review.googlesource.com/q/topic:product_partition+(status:open+OR+status:merged)" class="external">related
   product partition changes in AOSP</a>. Then, to set up <code>/product</code>,
-  include the following board or product build flags.
+  include the following board or product-build flags:
 </p>
 
 <ul>
   <li><code>BOARD_USES_PRODUCTIMAGE</code></li>
   <li><code>BOARD_PRODUCTIMAGE_PARTITION_SIZE</code></li>
   <li><code>BOARD_PRODUCTIMAGE_FILE_SYSTEM_TYPE</code></li>
-  <li><code>PRODUCT_PRODUCT_PROPERTIES for /product/build.prop</code>.
-  Should be within a <code>$(call inherit-product path/to/device.mk)</code>,
-  e.g., <code>PRODUCT_PRODUCT_PROPERTIES += product.abc=ok</code>.
+  <li><code>PRODUCT_PRODUCT_PROPERTIES</code> for <code>/product/build.prop</code>.
+  These must be within a <code>$(call inherit-product path/to/device.mk)</code>,
+  as in <code>PRODUCT_PRODUCT_PROPERTIES += product.abc=ok</code>.
    </li>
  </ul>
+
+<h3 id="installing-to-product-partition">Installing a module to the product partition</h3>
+
+<p>
+  Use the following build flags to install a module to the <code>product</code> partition.
+</p>
+
+<ul>
+  <li><code>product_specific: true</code> in <code>Android.bp</code></li>
+  <li><code>LOCAL_PRODUCT_MODULE := true</code> in <code>Android.mk</code></li>
+</ul>
 
 <h3 id="enabling-verified-boot">Enabling verified boot</h3>
 
 <p>
   To prevent the <code>/product</code> partition from being tampered with by
-  malicious software, you should enable
+  malicious software, enable
   <a href="https://android.googlesource.com/platform/external/avb/" class="external">Android
-  Verified Boot (AVB)</a> for that partition (just as you do for
-  <code>/vendor</code> and <code>/system</code> partitions). To enable AVB, 
+  Verified Boot (AVB)</a> for that partition (just as you do for the
+  <code>/vendor</code> and <code>/system</code> partitions). To enable AVB,
   include the following build flags:
-  <code>BOARD_AVB_PRODUCT_ADD_HASHTREE_FOOTER_ARGS</code>
+  <code>BOARD_AVB_PRODUCT_ADD_HASHTREE_FOOTER_ARGS</code>.
 </p>
 
 </body>

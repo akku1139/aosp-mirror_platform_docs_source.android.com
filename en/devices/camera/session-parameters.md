@@ -1,6 +1,8 @@
 Project: /_project.yaml
 Book: /_book.yaml
 
+{% include "_versions.html" %}
+
 <!--
   Copyright 2018 The Android Open Source Project
 
@@ -20,12 +22,17 @@ Book: /_book.yaml
 # Session Parameters
 
 The session parameters feature reduces delays by enabling camera clients to
-actively configure the subset of costly request parameters, i.e. session
+actively configure the subset of costly request parameters, that is, session
 parameters, as part of the capture session initialization phase. With this
 feature, your HAL implementations receive the client parameters during the
 stream configuration phase instead of the first capture request and can,
 depending on their values, prepare and build the internal pipeline more
 efficiently.
+
+In Android {{ androidQVersionNumber }}, you can improve performance by using
+the optional session reconfiguration query feature for more control over the
+internal session parameter reconfiguration logic. For more information, see
+[Session reconfiguration query](#session_reconfiguration_query).
 
 ## Examples and source
 
@@ -38,14 +45,14 @@ CameraHal that implements the camera HIDL API must use the respective HIDL
 entry to access any new incoming session parameters during stream configuration.
 
 Camera clients can query the keys of all supported session parameters by calling
-[`getAvailableSessionKeys()`](https://developer.android.com/reference/android/hardware/camera2/CameraCharacteristics#getAvailableSessionKeys(){: .external})
+[`getAvailableSessionKeys()`](https://developer.android.com/reference/android/hardware/camera2/CameraCharacteristics#getAvailableSessionKeys()){: .external}
 and eventually set their initial values via
-[`setSessionParameters()`](https://developer.android.com/reference/android/hardware/camera2/params/SessionConfiguration#setSessionParameters\(android.hardware.camera2.CaptureRequest\){: .external}).
+[`setSessionParameters()`](https://developer.android.com/reference/android/hardware/camera2/params/SessionConfiguration#setSessionParameters(android.hardware.camera2.CaptureRequest)){: .external}.
 
 ## Implementation
 
 Your CameraHal implementation must populate the
-[`ANDROID_REQUEST_AVAILABLE_SESSION_KEYS`](https://android.googlesource.com/platform/hardware/interfaces/+/master/camera/metadata/3.3/types.hal#99){: .external}
+[`ANDROID_REQUEST_AVAILABLE_SESSION_KEYS`](https://android.googlesource.com/platform/hardware/interfaces/+/master/camera/metadata/3.3/types.hal#98){: .external}
 within the respective static camera metadata and provide a subset of
 [`ANDROID_REQUEST_AVAILABLE_REQUEST_KEYS`](https://android.googlesource.com/platform/hardware/interfaces/+/master/camera/metadata/3.2/types.hal#1016){: .external},
 which contains a list of keys that are difficult to apply per-frame and can
@@ -72,12 +79,12 @@ available session parameter list empty.
 
 CTS includes the following new cases for testing session parameters:
 
-+   [`CameraDeviceTest#testSessionConfiguration`](https://android.googlesource.com/platform/cts/+/master/tests/camera/src/android/hardware/camera2/cts/CameraDeviceTest.java#795){: .external}  
-+   [`CameraDeviceTest#testCreateSessionWithParameters`](https://android.googlesource.com/platform/cts/+/master/tests/camera/src/android/hardware/camera2/cts/CameraDeviceTest.java#1038){: .external}  
-+   [`CameraDeviceTest#testSessionParametersStateLeak`](https://android.googlesource.com/platform/cts/+/master/tests/camera/src/android/hardware/camera2/cts/CameraDeviceTest.java#870){: .external}  
-+   [`NativeCameraDeviceTest#testCameraDevicePreviewWithSessionParameters`](https://android.googlesource.com/platform/cts/+/master/tests/camera/libctscamera2jni/native-camera-jni.cpp#2140){: .external}  
++   [`CameraDeviceTest#testSessionConfiguration`](https://android.googlesource.com/platform/cts/+/a3676a2dfa0630204be80a3c1f1cbbe6db2c3925/tests/camera/src/android/hardware/camera2/cts/CameraDeviceTest.java#793){: .external}
++   [`CameraDeviceTest#testCreateSessionWithParameters`](https://android.googlesource.com/platform/cts/+/a3676a2dfa0630204be80a3c1f1cbbe6db2c3925/tests/camera/src/android/hardware/camera2/cts/CameraDeviceTest.java#868){: .external}  
++   [`CameraDeviceTest#testSessionParametersStateLeak`](https://android.googlesource.com/platform/cts/+/42f4eb187e216363208b96b726ec4287ce512231/tests/camera/src/android/hardware/camera2/cts/CameraDeviceTest.java#870){: .external}
++   [`NativeCameraDeviceTest#testCameraDevicePreviewWithSessionParameters`](https://android.googlesource.com/platform/cts/+/a3676a2dfa0630204be80a3c1f1cbbe6db2c3925/tests/camera/libctscamera2jni/native-camera-jni.cpp#2140){: .external}  
 
-In general, once a certain parameter is part of the session key list, its
+In general, after a certain parameter is part of the session key list, its
 current value is included as part of the session parameters passed during stream
 configuration at the HAL layer.
 
@@ -86,3 +93,90 @@ frequently, if at all, between stream configurations. Parameters that change
 frequently, such as capture intent, are ill-suited and adding them to the
 session parameter list could cause CTS failures due to excessive internal
 re-configuration.
+
+## Session reconfiguration query
+
+Android {{ androidQVersionNumber }} introduces an optional session
+reconfiguration query feature to
+improve performance as internal stream reconfigurations resulting from session
+parameter value modifications can reduce performance. To address this concern,
+HIDL
+[`ICameraDeviceSession`](https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/master/camera/device/3.5/ICameraDeviceSession.hal){: .external}
+version 3.5 and higher supports the
+[`isReconfigurationRequired`](https://android.googlesource.com/platform/hardware/interfaces/+/22eac5f667dfca8de336ddc45ad60a08250f6b30/camera/device/3.5/ICameraDeviceSession.hal#146){: .external}
+method, which provides fine-grained control over the internal session parameter
+reconfiguration logic. Using this method, stream reconfiguration can occur
+precisely when required.
+
+The arguments for `isReconfigurationRequired`
+provide the required information about every pending session parameter
+modification, allowing for various kinds of device-specific customizations.
+
+This feature is implemented only in the camera service and the camera HAL. There
+are no public-facing APIs. If this feature is implemented, camera clients should
+see performance improvements when working with session parameters.
+
+### Implementation
+
+To support session reconfiguration queries, you must implement the
+[`isReconfigurationRequired`](https://android.googlesource.com/platform/hardware/interfaces/+/22eac5f667dfca8de336ddc45ad60a08250f6b30/camera/device/3.5/ICameraDeviceSession.hal#146){: .external}
+method to check whether complete stream reconfiguration is required for new
+session parameter values.
+
+If the client changes the value of any advertised session parameter, the camera
+framework calls the `isReconfigurationRequired`
+method. Depending on the specific values, the HAL decides whether a complete
+stream reconfiguration is required. If the HAL returns `false`, the camera
+framework skips the internal reconfiguration. If the HAL returns `true`, the
+framework reconfigures the streams and passes the new session parameter values
+accordingly.
+
+The `isReconfigurationRequired` method can be called by the framework some time
+before a request with new parameters is submitted to the HAL, and the request
+can be cancelled before it is submitted. Therefore, the HAL must not use this
+method call to change its behavior in any way.
+
+The HAL implementation must meet the following requirements:
+
++   The framework must be able to call the `isReconfigurationRequired` method
+    at any time after active session configuration.
++   There must be no impact on the performance of pending camera requests. In
+    particular, there must not be any glitches or delays during normal camera
+    streaming.
+
+The device and HAL implementation must meet the following performance
+requirements:
+
++   Hardware and software camera settings must not be changed.
++   There must be no user-visible impact on camera performance.
+
+The `isReconfigurationRequired`
+method takes the following arguments:
+
++   `oldSessionParams`: Session parameters from the previous session.
+    Usually the existing session parameters.
++   `newSessionParams`: New session parameters that are set by the client.
+
+The expected return status codes are:
+
++   `OK`: Successful reconfiguration required query.
++   `METHOD_NOT_SUPPORTED`: The camera device doesn't support the
+    reconfiguration query.
++   `INTERNAL_ERROR`: The reconfiguration query can't complete due to an
+    internal error.
+
+The return values are:
+
++   `true`: Stream reconfiguration is required.
++   `false`: Stream reconfiguration isn't required.
+
+To ignore a session reconfiguration query, the HAL returns
+`METHOD_NOT_SUPPORTED` or `false`. This results in the default camera service
+behavior where stream reconfiguration is triggered on each session parameter
+change.
+
+### Validation
+
+The session reconfiguration query feature can be validated using the VTS test
+case in
+[`CameraHidlTest#configureStreamsWithSessionParameters`](https://android.googlesource.com/platform/hardware/interfaces/+/e18057b42f1698f33f34d14e86a53934bd337bb8/camera/provider/2.4/vts/functional/VtsHalCameraProviderV2_4TargetTest.cpp#2653){: .external}.

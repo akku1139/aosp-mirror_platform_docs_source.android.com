@@ -1,0 +1,55 @@
+<html devsite><head>
+    <title>Conscrypt</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+
+  <!--
+      Copyright 2019 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>Conscrypt 模块可以加速实现安全改进并提高设备安全性，而无需依赖于 OTA 更新。它使用 Java 代码和原生库来提供 Android TLS 实现以及大部分 Android 加密功能（例如密钥生成器、加密方式和消息摘要）。Conscrypt 作为<a href="https://github.com/google/conscrypt" class="external">开源库</a>提供，但在包含在 Android 平台中时具有一些特化。
+</p>
+
+<p>Conscrypt 模块使用 <a href="https://boringssl.googlesource.com/boringssl/" class="external">BoringSSL</a>，后者是 Google 在 OpenSSL 基础上派生出的一个原生库，在很多 Google 产品（最值得注意的是 Google Chrome）中用于加密和 TLS。BoringSSL 没有正式版本（所有用户都需要从头构建），并且无法保证 API 或 ABI 稳定性。
+</p>
+
+<h2 id="consrypt-q">Android 10 中的变化</h2>
+
+<p>Android 9 不包含用于 Conscrypt 的 Android 专有公共 API，而是使用一种安全提供程序。该安全提供程序为 Java 加密架构 (JCA)（包括加密方式和消息摘要）和 Java 安全套接字扩展 (JSSE)（包括 SLSocket 和 SSLEngine）实现了标准类。用户与这些类互动，<code>libcore</code> 和框架代码使用了一些非公开的 Conscrypt API。
+</p>
+
+<p>Android 10 在 <code>android.net.ssl</code> 中添加了少量公共 API 方法，以便用户访问 <code>javax.net.ssl</code> 下的类未公开的 Conscrypt 功能。此外，Android 10 还包含精简版的 <a href="https://en.wikipedia.org/wiki/Bouncy_Castle_(cryptography)" class="external">Bouncy Castle</a>，后者作为 Android Runtime 的一部分提供不太热门的加密工具（未包含在 Conscrypt 模块中）。
+</p>
+
+<h2 id="conscrypt-format">格式和依赖项</h2>
+
+<p>Conscrypt 模块作为 <a href="/devices/tech/ota/apex">APEX</a> 文件进行分发，该文件中包含 Conscrypt Java 代码以及动态链接到 Android NDK 库（例如 <code>liblog</code>）的 Conscrypt 原生库。原生库还包含拥有 AArch64 <a href="https://csrc.nist.gov/projects/cryptographic-algorithm-validation-program" class="external">加密算法验证计划 (CAVP)</a> 证书的 BoringSSL 的副本。该副本与<a href="https://www.aeecenter.org/certifications/certifications/certified-measurement-verification-professional" class="external">认证测量及验证专家 (CMVP)</a> 证书<strong>不</strong>兼容。
+</p>
+
+<aside class="note">
+  <strong>注意</strong>：Conscrypt 模块包含 <a href="https://android.googlesource.com/platform/external/conscrypt/" class="external">/external/conscrypt</a> 和 <a href="https://android.googlesource.com/platform/external/boringssl/" class="external">/external/boringssl</a>，但不包含 <code>/external/bouncycastle</code>。
+</aside>
+
+<p>Conscrypt 模块公开以下 API：</p>
+
+<ul>
+  <li><strong>公共 API</strong> 是软件包（位于 <code>java.*</code> 和 <code>javax.*</code>）中的类和接口以及 <code>android.net.ssl.*</code> 下的类的扩展。外部应用代码无法直接调用 Conscrypt。平台 API 标准确保这些 API 保持向后和向前兼容性。</li>
+  <li><strong>核心平台 API</strong> 是框架访问非公开功能时使用的隐藏 API。这些 API 相对有限；最大的用户是 <code>NetworkSecurityConfig</code>，它扩展 Conscrypt 信任管理器（用于验证证书的组件）来实现<a href="https://developer.android.com/training/articles/security-config" class="external">网络安全配置功能</a>。</li>
+  <li><strong>核心内 API</strong> 仅限于由 JCA 和 JSEE 机制反射调用的零参数构造函数使用。</li>
+</ul>
+
+</body></html>

@@ -42,7 +42,7 @@ HIDL using a shim running on top of the legacy HAL.
 
 The legacy HAL headers are located in
 `hardware/libhardware_legacy/include/hardware_legacy/`. The legacy HAL based
-implementation is located in `hardware/interfaces/wifi/1.2/default`.
+implementation is located in `hardware/interfaces/wifi/1.x/default`.
 
 ## Supplicant HAL
 
@@ -75,9 +75,12 @@ type (but not both). This would be expressed as:
 `[{STA} <= 1, {NAN,P2P} <= 1]`
 
 The concurrency specification format is flexible and generic. It can express
-combinations that are not yet supported by the framework. The reference HAL has
-configurations for several combinations which may be activated with build flags.
-For configuration instructions, see:
+combinations that are not yet supported by the framework. To configure a
+particular combination, use the `WIFI_HAL_INTERFACE_COMBINATIONS`
+build flag located in `device/<oem>/<device>/BoardConfig-common.mk`.
+Alternatively, the reference HAL has configurations for several combinations
+that may be activated with (legacy) build flags. For configuration
+instructions, see:
 
 +   [Wi-Fi STA/AP Concurrency](/devices/tech/connect/wifi-sta-ap-concurrency)
 +   [Wi-Fi Aware](/devices/tech/connect/wifi-aware)

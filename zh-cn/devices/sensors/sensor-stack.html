@@ -4,6 +4,7 @@
     <meta name="book_path" value="/_book.yaml"/>
   </head>
   <body>
+
   <!--
       Copyright 2017 The Android Open Source Project
 
@@ -20,7 +21,7 @@
       limitations under the License.
   -->
 
-<p>下图显示的是 Android 传感器堆栈。尽管某些传感器可以绕过传感器中枢（如果存在）进行通信，但各个组件仅可与其上方和下方紧邻的组件通信。控制系统从应用向下流向传感器，数据从传感器向上流向应用。</p>
+<p>下图显示了 Android 传感器堆栈。各个组件仅可与其上方和下方紧邻的组件通信，不过某些传感器可以绕过传感器中枢（如果存在）进行通信。控制信号从应用向下流向传感器，数据从传感器向上流向应用。</p>
 <img src="images/ape_fwk_sensors.png" alt="Android 传感器堆栈的层级和所有者"/>
 <p class="img-caption"><strong>图 1. </strong> Android 传感器堆栈层级以及各自的所有者</p>
 
@@ -37,8 +38,8 @@
 <ul>
   <li>当第一个应用注册到传感器时，框架会向 HAL 发送请求以激活传感器。</li>
   <li>当其他应用注册到相同的传感器时，框架会考虑每个应用的要求，并将更新的已请求参数发送到 HAL。<ul>
-      <li><a href="hal-interface.html#sampling_period_ns">采样率</a>将是请求的采样率的最大值，这意味着一些应用接收事件的频率会高于所请求的频率。</li>
-      <li><a href="hal-interface.html#max_report_latency_ns">最大报告延迟</a>将是请求的延迟的最小值。如果某个应用的最大报告延迟是 0，若它请求传感器，则所有应用将以连续模式从该传感器接收事件，即使某些应用请求传感器时的最大报告延迟不是 0 也是如此。有关详情，请参阅<a href="batching.html">批处理</a>。</li>
+      <li><a href="batching.html#sampling_period_ns">采样率</a>将是请求的采样率的最大值，这意味着一些应用接收事件的频率会高于所请求的频率。</li>
+      <li><a href="batching.html#max_report_latency_ns">最大报告延迟</a>将是请求的延迟的最小值。如果某个应用的最大报告延迟是 0，若它请求传感器，则所有应用将以连续模式从该传感器接收事件，即使某些应用请求传感器时的最大报告延迟不是 0 也是如此。有关详情，请参阅<a href="batching.html">批处理</a>。</li>
     </ul>
   </li>
   <li>当注册到某个传感器的最后一个应用取消注册之后，框架会向 HAL 发送请求以停用该传感器，从而避免不必要的功耗。</li>
@@ -61,7 +62,7 @@
 <p>默认实现无法访问其他实现可以访问的所有数据，并且必须在 SoC 上运行，因此它不像其他实现那样精准和省电。设备制造商应尽可能定义自己的融合传感器（旋转矢量传感器、重力传感器和线性加速度传感器，以及<a href="sensor-types.html#game_rotation_vector">游戏旋转矢量</a>传感器等较新的复合传感器），而非依赖该默认实现。此外，设备制造商也可以要求传感器芯片供应商为其提供实现。</p>
 <p>默认的传感器融合实现没有相关的维护，且可能导致依赖它的设备无法通过 CTS 验证。</p>
 <h3 id="under_the_hood">深入了解</h3>
-<p>本部分作为背景信息提供，适用于 Android 开放源代码项目 (AOSP) 框架代码的维护人员，与硬件制造商无关。</p>
+<p>本部分提供了一些相关背景信息，面向的是 Android 开源项目 (AOSP) 框架代码的维护人员，与硬件制造商无关。</p>
 <h4 id="jni">JNI</h4>
 <p>Android 框架会使用 <code>frameworks/base/core/jni/</code> 目录中与 <a href="http://developer.android.com/reference/android/hardware/package-summary.html">android.hardware</a> 相关联的 Java 原生接口 (JNI)。该代码会调用较低级别的原生代码，以获取对相应传感器硬件的访问权限。</p>
 <h4 id="native_framework">原生框架</h4>
@@ -81,7 +82,7 @@
 <h2 id="sensor_hub">传感器中枢</h2>
 <p>设备的传感器堆栈可视需要添加传感器中枢。在 SoC 可以处于暂停模式时，传感器中枢对执行一些低功耗的低级计算任务非常有用。例如，计步功能或传感器融合功能可以在这些芯片上执行。此外，它也是实施传感器批处理以及为传感器事件添加硬件 FIFO 的理想位置。有关详情，请参阅<a href="batching.html">批处理</a>。</p>
 
-<p class="note"><strong>注意</strong>：要开发采用新传感器或 LED 的新 ContextHub 功能，您还可以使用连接到 HiKey 或 HiKey960 开发板的 <a href="/setup/devices.html#neonkey">Neonkey SensorHub</a>。</p>
+<p class="note"><strong>注意</strong>：要开发采用新传感器或 LED 的新 ContextHub 功能，您还可以使用连接到 HiKey 或 HiKey960 开发板的 <a href="/setup/devices.html#neonkey">Neonkey 传感器中枢</a>。</p>
 
 <p>传感器中枢的具体化方式取决于架构。它有时是一个单独的芯片，有时包含在与 SoC 相同的芯片上。传感器中枢的重要特征是，应该包含足够的内存来进行批处理，并消耗极少的电量以便能实现低功耗 Android 传感器。部分传感器中枢包含一个微控制器（用于通用计算）和硬件加速器（用于针对低电耗传感器实现极低功耗计算）。</p>
 <p>传感器中枢的架构方式以及与传感器和 SoC（I2C 总线、SPI 总线等）的通信方式并非由 Android 指定，但应该以最大程度减少整体功耗为目标。</p>

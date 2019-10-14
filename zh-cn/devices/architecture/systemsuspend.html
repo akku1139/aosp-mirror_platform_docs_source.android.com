@@ -1,0 +1,137 @@
+<html devsite><head>
+    <title>SystemSuspend 服务</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+
+  <!--
+      Copyright 2019 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>在 Android 9 及更低版本中，<a href="https://android.googlesource.com/platform/system/core/+/pie-dev/libsuspend/autosuspend_wakeup_count.cpp#65" class="external">libsuspend</a> 中有一个负责发起系统挂起的线程。Android 10 在 SystemSuspend HIDL 服务中引入了等效功能。此服务位于系统映像中，由 Android 平台提供。<code>libsuspend</code> 的逻辑基本保持不变，除了阻止系统挂起的每个用户空间进程都需要与 SystemSuspend 进行通信。</p>
+
+<h2 id="libs">libsuspend 和 libpower</h2>
+<p>在 Android 10 中，SystemSuspend 服务取代了 <code>libsuspend</code>。<code>libpower</code> 经过重新实现，依赖于 SystemSuspend 服务（而不是 <code>/sys/<strong>power</strong>/wake[un]lock</code>），而无需更改 C API。</p>
+
+<p>下面的伪代码显示了如何实现 <code>acquire_wake_lock</code> 和 <code>release_wake_lock</code>。</p>
+
+<pre class="prettyprint">
+<code>
+static std::unordered_map&lt;std::string, sp&lt;IWakeLock&gt;&gt; gWakeLockMap;
+
+int acquire_wake_lock(int, const char* id) {
+    ...
+    if (!gWakeLockMap[id]) {
+        gWakeLockMap[id] = suspendService-&gt;acquireWakeLock(WakeLockType::PARTIAL, id);
+    }
+    ...
+    return 0;
+}
+
+int release_wake_lock(const char* id) {
+    ...
+    if (gWakeLockMap[id]) {
+        auto ret = gWakeLockMap[id]-&gt;release();
+        gWakeLockMap[id].clear();
+        return 0;
+    }
+    ...
+    return -1;
+}
+</code>
+</pre>
+
+<h2 id="execution-threads">执行线程</h2>
+<p>SystemSuspend 服务使用挂起计数器跟踪发出的唤醒锁数量。它有两个执行线程：</p>
+
+<ul>
+  <li><strong>主</strong>线程响应 binder 调用。</li>
+  <li><strong>挂起</strong>线程控制系统挂起。</li>
+</ul>
+
+<h3 id="main-thread">主线程</h3>
+<p>主线程响应来自客户端的请求以分配新的唤醒锁，从而递增/递减挂起计数器。</p>
+
+<h3 id="suspend-thread">挂起线程</h3>
+<p>挂起线程循环执行以下操作：</p>
+<ol>
+  <li>从 <code>/sys/<strong>power</strong>/wakeup_count</code> 读取。</li>
+  <li>获取互斥量。这可确保挂起线程在<strong>主</strong>线程尝试递增或递减挂起计数器时不会触发挂起计数器。如果挂起计数器达到零，并且<strong>挂起</strong>线程尝试运行，则系统会在发出或移除唤醒锁时阻止<strong>主</strong>线程。</li>
+  <li>等到计数器等于零。</li>
+  <li>将从 <code>/sys/<strong>power
+    </strong>/wakeup_count</code>（第 1 步中）读取的值写入此文件。如果写入失败，则返回到循环的开头</li>
+  <li>通过将 <code>mem</code> 写入 <code>/sys/power/<strong>state</strong></code> 来发起系统挂起。</li>
+  <li>释放互斥量。</li>
+</ol>
+
+<p>成功返回唤醒锁的请求后，挂起线程会被阻止。</p>
+
+<figure id="suspend-thread-loop">
+  <img alt src="/devices/architecture/images/suspendThreadLoop.png"/>
+  <figcaption><b>图 1.</b> 挂起线程循环</figcaption>
+</figure>
+
+<aside class="note"><b>注意：</b>互斥量始终在循环迭代结束时释放。</aside>
+
+<h3 id="systemsuspend-api">SystemSuspend API</h3>
+<p>SystemSuspend API 包含两个接口。HIDL 接口由原生进程用于获取唤醒锁，AIDL 接口用于在 SystemServer 和 SystemSuspend 之间通信。</p>
+
+<h3 id="isystemsuspend">ISystemSuspend HIDL 接口</h3>
+
+<pre class="prettyprint">
+<code>
+enum WakeLockType : uint32_t {
+    PARTIAL,
+    FULL
+};
+
+interface IWakeLock {
+    oneway release();
+};
+
+interface ISystemSuspend {
+    acquireWakeLock(WakeLockType type, string debugName)
+        generates (IWakeLock lock);
+};
+</code>
+</pre>
+
+<p>请求唤醒锁的每个客户端都会收到唯一的 <code>IWakeLock</code> 实例。这与 <code>/sys/<strong>power</strong>/wake_lock</code> 不同，后者允许多个客户端使用相同名称的唤醒锁。如果拥有 <code>IWakeLock</code> 实例的客户端终止，则 binder 驱动程序和 SystemSuspend 服务会将其清除。</p>
+
+<h3 id="isuspendcontrolservice">ISuspendControlService AIDL 接口</h3>
+<p>ISuspendControlService 仅供 SystemServer 使用。</p>
+
+<pre class="prettyprint">
+<code>
+interface ISuspendCallback {
+     void notifyWakeup(boolean success);
+}
+
+interface ISuspendControlService {
+    boolean enableAutosuspend();
+    boolean registerCallback(ISuspendCallback callback);
+    boolean forceSuspend();
+}
+</code>
+</pre>
+
+<p>利用 Android HIDL 可带来以下好处：</p>
+<ul>
+  <li>如果挂起阻止进程终止，则可以通知 SystemSuspend。</li>
+  <li>可以为负责系统挂起的线程提供回调。</li>
+</ul>
+
+</body></html>

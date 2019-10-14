@@ -53,15 +53,21 @@ An eBPF C program loaded on an Android device must have the following format:
 <pre class="prettyprint">
 #include &lt;bpf_helpers.h&gt;
 
-&lt;... define one or more maps in the maps section, ex:
-/* Define a map of type array, with 10 entries */
-struct bpf_map_def SEC("maps") MY_MAPNAME = {
-        .type = BPF_MAP_TYPE_ARRAY,
-        .key_size = sizeof(int),
-        .value_size = sizeof(uint32_t),
-        .max_entries = 10,
-};
-... &gt;
+/* Define one or more maps in the maps section, for example
+ * define a map of type array int -> uint32_t, with 10 entries
+ */
+DEFINE_BPF_MAP(name_of_my_map, ARRAY, int, uint32_t, 10);
+
+/* this will also define type-safe accessors:
+ *   value * bpf_name_of_my_map_lookup_elem(&key);
+ *   int bpf_name_of_my_map_update_elem(&key, &value, flags);
+ *   int bpf_name_of_my_map_delete_elem(&key);
+ * as such it is heavily suggested to use lowercase *_map names.
+ * Also note that due to compiler deficiencies you cannot use a type
+ * of 'struct foo' but must instead use just 'foo'.  As such structs
+ * must not be defined as 'struct foo {}' and must instead be
+ * 'typedef struct {} foo'.
+ */
 
 SEC("PROGTYPE/PROGNAME")
 int PROGFUNC(..args..) {
@@ -74,11 +80,10 @@ int PROGFUNC(..args..) {
 char _license[] SEC("license") = "GPL"; // or other license
 </pre>
 
-Here, `MY_MAPNAME` is the name of your map variable. It's of type `struct
-bpf_map_def` and tells the BPF loader what kind of map to create with what
-parameters. This struct definition is provided by the `bpf_helpers.h` header
-that the C program includes. The above code results in a creation of an array
-map of 10 entries.
+Here, `name_of_my_map` is the name of your map variable. It tells the BPF loader
+what kind of map to create with what parameters. This struct definition is
+provided by the `bpf_helpers.h` header that the C program includes. The above
+code results in a creation of an array map of 10 entries.
 
 Next, the program defines a function `PROGFUNC`. When compiled, this function is
 placed in a section. The section must have a name of the format
@@ -104,7 +109,7 @@ kprobes.
 <th>tracepoint</th>
 <td>Hooks <code>PROGFUNC</code> onto a tracepoint. <code>PROGNAME</code> must be of
    the format <code>SUBSYSTEM/EVENT</code>.  For example, a tracepoint section for attaching
-functions to scheduler context switch events would be 
+functions to scheduler context switch events would be
   <code>SEC("tracepoint/sched/sched_switch")</code>, where <code>sched</code> is
   the name of the trace subsystem, and <code>sched_switch</code> is the name
   of the trace event. Check the <a
@@ -139,20 +144,14 @@ section](/devices/architecture/kernel/bpf#attaching_programs_to_tracepoints_and_
 for how to attach).
 The program adds information about the latest task PID that ran on a particular CPU.
 Name this `myschedtp.c`. We'll refer to this file later in this document.
-  
+
 <pre class="prettyprint">
 #include &lt;linux/bpf.h&gt;
 #include &lt;stdbool.h&gt;
 #include &lt;stdint.h&gt;
 #include &lt;bpf_helpers.h&gt;
 
-struct bpf_map_def SEC("maps") cpu_pid = {
-        .type = BPF_MAP_TYPE_ARRAY,
-        .key_size = sizeof(int),
-        .value_size = sizeof(uint32_t),
-        /* Assume max of 1024 CPUs */
-        .max_entries = 1024,
-};
+DEFINE_BPF_MAP(cpu_pid_map, ARRAY, int, uint32_t, 1024);
 
 struct switch_args {
     unsigned long long ignore;
@@ -173,7 +172,7 @@ int tp_sched_switch(struct switch_args* args) {
     key = bpf_get_smp_processor_id();
     val = args-&gt;next_pid;
 
-    bpf_map_update_elem(&cpu_pid, &key, &val, BPF_ANY);
+    bpf_cpu_pid_map_update_elem(&key, &val, BPF_ANY);
     return 0;
 }
 
@@ -218,10 +217,10 @@ The following files are created and pinned:
    For example, for the above `sched_switch` tracepoint example in `myschedtp.c`, a program file will be created and pinned to
 `/sys/fs/bpf/prog_myschedtp_tracepoint_sched_sched_switch`.
 
-*  For any maps created, assuming `MAPNAME` is the name of the map and `PROGNAME` is the name of the eBPF C file, the Android loader creates and pins each map to `/sys/fs/bpf/map_FILENAME_MAPNAME`.
+*  For any maps created, assuming `MAPNAME` is the name of the map and `FILENAME` is the name of the eBPF C file, the Android loader creates and pins each map to `/sys/fs/bpf/map_FILENAME_MAPNAME`.
 
    For example, for the above `sched_switch` tracepoint example in `myschedtp.c`, a map file is created and pinned to
-`/sys/fs/bpf/map_myschedtp_cpu_pid`.
+`/sys/fs/bpf/map_myschedtp_cpu_pid_map`.
 
 *  The `bpf_obj_get()` in the Android BPF library can be used to obtained a file descriptor from these pinned /sys/fs/bpf file. This function returns a file descriptor, which can be used for further operations, such as reading maps or attaching a program to a tracepoint.
 
@@ -269,7 +268,7 @@ object suitable for the particular map. The map can then be accessed using the
 custom-generated functions which are type aware, resulting in cleaner code.
 
 For more information about `BpfMap`, refer to the
-[Android sources].(https://android.googlesource.com/platform/system/bpf/+/75b410bdf186263fa4e05e079bfba44578622c33/libbpf/include/bpf/BpfMap.h){: .external}
+[Android sources](https://android.googlesource.com/platform/system/bpf/+/75b410bdf186263fa4e05e079bfba44578622c33/libbpf/include/bpf/BpfMap.h){: .external}.
 
 ## Debugging issues
 

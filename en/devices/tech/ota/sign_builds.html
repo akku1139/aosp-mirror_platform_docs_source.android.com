@@ -5,6 +5,9 @@
     <meta name="book_path" value="/_book.yaml" />
   </head>
   <body>
+
+  {% include "_versions.html" %}
+
   <!--
       Copyright 2017 The Android Open Source Project
 
@@ -22,14 +25,13 @@
   -->
 
 
-
 <p>Android OS images use cryptographic signatures in two places:</p>
 <ol>
-<li>Each .apk file inside the image must be signed. Android's Package Manager
-uses an .apk signature in two ways:<ul>
+<li>Each <code>.apk</code> file inside the image must be signed. Android's
+Package Manager uses an <code>.apk</code> signature in two ways:<ul>
 <li>When an application is replaced, it must be signed by the same key as the
-old application in order to get access to the old application's data. This
-holds true both for updating user apps by overwriting the .apk, and for
+old application in order to get access to the old application's data. This holds
+true both for updating user apps by overwriting the <code>.apk</code>, and for
 overriding a system app with a newer version installed under
 <code>/data</code>.</li>
 <li>If two or more applications want to share a user ID (so they can share
@@ -42,9 +44,9 @@ system or the installation process will reject them.</li>
 
 <p>The Android tree includes <i>test-keys</i> under
 <code>build/target/product/security</code>. Building an Android OS image
-using <code>make</code> will sign all .apk files using the test-keys.
-Since the test-keys are publicly known, anybody can sign their own .apk files
-with the same keys, which may allow them to replace or hijack system
+using <code>make</code> will sign all <code>.apk</code> files using the
+test-keys. Since the test-keys are publicly known, anybody can sign their own
+.apk files with the same keys, which may allow them to replace or hijack system
 apps built into your OS image. For this reason it is critical to sign any
 publicly released or deployed Android OS image with a special set of
 <i>release-keys</i> that only you have access to.</p>
@@ -73,14 +75,15 @@ such as on an air-gapped computer.</p>
 <code class="devsite-terminal">make dist</code>
 <code class="devsite-terminal">./build/tools/releasetools/sign_target_files_apks \
     -o \    # explained in the next section
-    -d ~/.android-certs out/dist/*-target_files-*.zip \
+    --default_key_mappings ~/.android-certs out/dist/*-target_files-*.zip \
     signed-target_files.zip</code>
 </pre>
 
-<p>The <code>sign_target_files_apks</code> script takes a target-files .zip
-as input and produces a new target-files .zip in which all the .apks have
-been signed with new keys. The newly signed images can be found under
-<code>IMAGES/</code> in <code>signed-target_files.zip</code>.</p>
+<p>The <code>sign_target_files_apks</code> script takes a target-files
+<code>.zip</code> as input and produces a new target-files <code>.zip</code> in
+which all the <code>.apk</code> files have been signed with new keys. The newly
+signed images can be found under <code>IMAGES/</code> in
+<code>signed-target_files.zip</code>.</p>
 
 <h2 id="sign-ota-packages">Signing OTA packages</h2>
 
@@ -89,7 +92,7 @@ using the following procedure:
 
 <pre class="devsite-click-to-copy">
 <code class="devsite-terminal">./build/tools/releasetools/ota_from_target_files \
-    -k ~/.android-certs/releasekey \
+    --key_mapping ~/.android-certs/releasekey \
     signed-target_files.zip \
     signed-ota_update.zip</code>
 </pre>
@@ -110,10 +113,10 @@ stored in the main system, in the file <code>/system/etc/security/otacerts.zip
 </code> (by default). Recovery checks the signature against public keys stored
 in the recovery partition RAM disk, in the file <code>/res/keys</code>.</p>
 
-<p>By default, the target-files .zip produced by the build sets the OTA
-certificate to match the test key. On a released image, a
-different certificate must be used so that devices can verify the
-authenticity of the update package. Passing the <code>-o</code> flag to
+<p>By default, the target-files <code>.zip</code> produced by the build sets the
+OTA certificate to match the test key. On a released image, a different
+certificate must be used so that devices can verify the authenticity of the
+update package. Passing the <code>-o</code> flag to
 <code>sign_target_files_apks</code>, as shown in the previous section, replaces
 the test key certificate with the release key certificate from your certs
 directory.</p>
@@ -181,13 +184,25 @@ LOCAL_CERTIFICATE := device/yoyodyne/security/special
 are <i>not </i>password protected.</p>
 
 <h2 id="advanced-signing-options">Advanced signing options</h2>
-<p>When you run the <code>sign_target_files_apks</code> script, you must
-specify on the command line a replacement key for each key used in the build.
-The <code>-k <i>src_key</i>=<i>
-dest_key</i></code> flag specifies key replacements one at a time. The flag
-<code>-d <i>dir</i></code> lets you specify a directory with four keys to
-replace all those in <code>build/target/product/security</code>; it is
-equivalent to using <code>-k</code> four times to specify the mappings:</p>
+
+<h3 id="apk-signing-key-replacement">APK signing key replacement</h3>
+
+<p>The signing script <code>sign_target_files_apks</code> works on the target
+files generated for a build. All the information on certificates and private
+keys used at build time is included in the target files. When running the
+signing script to sign for release, signing keys can be replaced based on key
+name or APK name.</p>
+
+<p>Use the <code>--key_mapping</code> and <code>--default_key_mappings</code>
+flags to specify key replacement based on key names:</p>
+<ul>
+<li>The <code>--key_mapping <var>src_key</var>=<var>dest_key</var></code> flag
+specifies the replacement for one key at a time.</li>
+<li>The <code>--default_key_mappings <var>dir</var></code> flag specifies a
+directory with four keys to replace all the keys in
+<code>build/target/product/security</code>; it's equivalent to using
+<code>--key_mapping</code> four times to specify the mappings.</li>
+</ul>
 
 <pre class="devsite-click-to-copy">
 build/target/product/security/testkey  = dir/releasekey
@@ -196,9 +211,15 @@ build/target/product/security/shared   = dir/shared
 build/target/product/security/media    = dir/media
 </pre>
 
+<p>Use the
+<code>--extra_apks <var>apk_name1,apk_name2,...</var>=<var>key</var></code> flag
+to specify the signing key replacements based on APK names. If
+<code><var>key</var></code> is left empty, the script treats the specified APKs
+as pre-signed.</p>
+
 <p>For the hypothetical tardis product, you need five password-protected keys:
-four to replace the four in <code>build/target/product/security</code>, and
-one to replace the additional <code>keydevice/yoyodyne/security/special</code>
+four to replace the four in <code>build/target/product/security</code>, and one
+to replace the additional key <code>device/yoyodyne/security/special</code>
 required by SpecialApp in the example above. If the keys were in the following
 files:</p>
 
@@ -220,7 +241,12 @@ vendor/yoyodyne/security/special-release.pk8   # password protected
 <p>Then you would sign all the apps like this:</p>
 
 <pre class="devsite-click-to-copy">
-<code class="devsite-terminal">./build/tools/releasetools/sign_target_files_apks -d vendor/yoyodyne/security/tardis -k vendor/yoyodyne/special=vendor/yoyodyne/special-release -o tardis-target_files.zip signed-tardis-target_files.zip</code>
+<code class="devsite-terminal">./build/tools/releasetools/sign_target_files_apks \
+    --default_key_mappings vendor/yoyodyne/security/tardis \
+    --key_mapping vendor/yoyodyne/special=vendor/yoyodyne/special-release \
+    --extra_apks PresignedApp= \
+    -o tardis-target_files.zip \
+    signed-tardis-target_files.zip</code>
 </pre>
 
 <p>This brings up the following:</p>
@@ -237,6 +263,8 @@ Enter password for vendor/yoyodyne/security/tardis/shared key&gt;
         [...]
     signing: ContactsProvider.apk (vendor/yoyodyne/security/tardis/shared)
     signing: Launcher.apk (vendor/yoyodyne/security/tardis/shared)
+NOT signing: PresignedApp.apk
+        (skipped due to special cert string)
 rewriting SYSTEM/build.prop:
   replace:  ro.build.description=tardis-user Eclair ERC91 15449 test-keys
      with:  ro.build.description=tardis-user Eclair ERC91 15449 release-keys
@@ -255,16 +283,89 @@ done.
 </pre>
 
 <p>After prompting the user for passwords for all password-protected keys, the
-script re-signs all the .apk files in the input target .zip with the release
-keys. Before running the command, you can also set the ANDROID_PW_FILE
-environment variable to a temporary filename; the script then invokes your
-editor to allow you to enter passwords for all keys (this may be a more
-convenient way to enter passwords).<p>
-<p><code>sign_target_files_apks</code> also rewrites the build description and
-fingerprint in the build properties files to reflect the fact that this is a
-signed build. The <code>-t</code> flag can control what edits are made to the
-fingerprint. Run the script with <code>-h</code> to see documentation on all
-flags.</p>
+script re-signs all the APK files in the input target <code>.zip</code> with the
+release keys. Before running the command, you can also set the
+<code>ANDROID_PW_FILE</code> environment variable to a temporary filename; the
+script then invokes your editor to allow you to enter passwords for all keys
+(this may be a more convenient way to enter passwords).</p>
+
+<h3 id="apex-signing-key-replacement">APEX signing key replacement</h3>
+
+<p>Android {{ androidQVersionNumber }} introduces the
+<a href="/devices/tech/ota/apex.md">APEX file format</a> for installing
+lower-level system modules. As explained in
+<a href="/devices/tech/ota/apex.md#signing">APEX signing</a>, each APEX file is
+signed with two keys: one for the mini file system image within an APEX and the
+other for the entire APEX.
+</p>
+
+<p>When signing for release, the two signing keys for an APEX file are replaced
+with release keys. The file system payload key is specified with the
+<code>--extra_apex_payload</code> flag and the entire APEX file signing key is
+specified with the <code>--extra_apks</code> flag.
+</p>
+
+<p>For the tardis product, assume that you have the following key configuration
+for the <code>com.android.conscrypt.apex</code>,
+<code>com.android.media.apex</code>, and
+<code>com.android.runtime.release.apex</code> APEX files.
+</p>
+
+<pre class="devsite-click-to-copy">
+name="com.android.conscrypt.apex" public_key="PRESIGNED" private_key="PRESIGNED" container_certificate="PRESIGNED" container_private_key="PRESIGNED"
+name="com.android.media.apex" public_key="PRESIGNED" private_key="PRESIGNED" container_certificate="PRESIGNED" container_private_key="PRESIGNED"
+name="com.android.runtime.release.apex" public_key="vendor/yoyodyne/security/testkeys/com.android.runtime.avbpubkey" private_key="vendor/yoyodyne/security/testkeys/com.android.runtime.pem" container_certificate="vendor/yoyodyne/security/testkeys/com.google.android.runtime.release_container.x509.pem" container_private_key="vendor/yoyodyne/security/testkeys/com.google.android.runtime.release_container.pk8"
+</pre>
+
+<p>And you have the following files that contain the release keys:</p>
+
+<pre class="devsite-click-to-copy">
+vendor/yoyodyne/security/runtime_apex_container.x509.pem
+vendor/yoyodyne/security/runtime_apex_container.pk8
+vendor/yoyodyne/security/runtime_apex_payload.pem
+</pre>
+
+<p>The following command overrides the signing keys for
+<code>com.android.runtime.release.apex</code> and
+<code>com.android.tzdata.apex</code> during release signing. In particular,
+<code>com.android.runtime.release.apex</code> is signed with the specified
+release keys (<code>runtime_apex_container</code> for the APEX file, and
+<code>runtime_apex_payload</code> for the file image payload).
+<code>com.android.tzdata.apex</code> is treated as pre-signed. All other APEX
+files are handled by the default configuration as listed in the target files.
+</p>
+
+<pre class="devsite-click-to-copy">
+<code class="devsite-terminal">./build/tools/releasetools/sign_target_files_apks \
+    --default_key_mappings   vendor/yoyodyne/security/tardis \
+    --extra_apks             com.android.runtime.release.apex=vendor/yoyodyne/security/runtime_apex_container \
+    --extra_apex_payload_key com.android.runtime.release.apex=vendor/yoyodyne/security/runtime_apex_payload.pem \
+    --extra_apks             com.android.media.apex= \
+    --extra_apex_payload_key com.android.media.apex= \
+    -o tardis-target_files.zip \
+    signed-tardis-target_files.zip</code>
+</pre>
+
+<p>Running the above command gives the following logs:</p>
+<pre class="devsite-click-to-copy">
+        [...]
+    signing: com.android.runtime.release.apex                  container (vendor/yoyodyne/security/runtime_apex_container)
+           : com.android.runtime.release.apex                  payload   (vendor/yoyodyne/security/runtime_apex_payload.pem)
+NOT signing: com.android.conscrypt.apex
+        (skipped due to special cert string)
+NOT signing: com.android.media.apex
+        (skipped due to special cert string)
+        [...]
+</pre>
+
+<h3 id="other-options">Other options</h3>
+
+<p>The <code>sign_target_files_apks</code> signing script rewrites the build
+description and fingerprint in the build properties files to reflect that the
+build is a signed build. The <code>--tag_changes</code> flag controls what edits
+are made to the fingerprint. Run the script with <code>-h</code> to see
+documentation on all flags.
+</p>
 
 <h2 id="manually-generating-keys">Manually generating keys</h2>
 <p>Android uses 2048-bit RSA keys with public exponent 3. You can generate

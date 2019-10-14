@@ -4,6 +4,7 @@
     <meta name="project_path" value="/_project.yaml" />
     <meta name="book_path" value="/_book.yaml" />
   </head>
+{% include "_versions.html" %}
   <body>
   <!--
       Copyright 2017 The Android Open Source Project
@@ -20,28 +21,44 @@
       See the License for the specific language governing permissions and
       limitations under the License.
   -->
-<p>
-  Privileged applications are system applications located in the
-  <code>/system/priv-app</code> directory on the system image. Historically,
-  device implementers had little control over which signature|privileged
-  permissions could be granted to privileged apps. Starting in Android 8.0,
-  implementors can explicitly whitelist privileged apps in the system
-  configuration XML files in the <code>/etc/permissions</code> directory. Apps
-  not explicitly listed in these XML files are not granted privileged
-  permissions.
-</p>
+
+<p>Privileged apps are system apps that are located in a
+<code>priv-app</code> directory on one of the system image partitions. The
+partitions used for Android releases are</p>
+<ul>
+<li>Android 8.1 and lower - <code>/system</code></li>
+<li>Android 9 and higher - <code>/system, /product, /vendor</code></li>
+</ul>
+
+<p>Throughout this page, <code>/etc/permissions/priv-app</code> resolves to
+<code><var>partition</var>/etc/permissions/priv-app</code>.</p>
+<p>Historically, device manufacturers had little control over which
+<strong>signature|privileged</strong> permissions could be granted to
+privileged apps. Starting in Android 8.0, manufacturers must explicitly grant
+privileged permissions in the system configuration XML files in the
+<code>/etc/permissions</code> directory. As of Android 9, implementors must
+explicitly grant or deny all privileged permissions or the device won’t
+boot.</p>
+
+<p>The <code>privapp-permissions.xml</code> file can only grant or deny
+permissions for privileged apps on the same partition. For example, if
+an app on the <code>/vendor</code> partition requests privileged permissions,
+the request can only be granted or denied by a
+<code>privapp-permissions.xml</code> file that’s also on
+<code>/vendor</code>.</p>
 
 <aside class="note">
-  <strong>Note:</strong>
-  Whitelisting is required only for
-  <a href="https://developer.android.com/guide/topics/manifest/permission-element">permissions</a>
-  declared by applications with
-  <a href="https://developer.android.com/guide/topics/manifest/manifest-element#package">package</a>="android".
+  <strong>Note:</strong> Only permissions defined by the core platform
+  (the "android" package) must be whitelisted. Privileged
+  permissions defined by device manufacturers will still be
+  automatically granted. Only list apps in the
+<code>privapp-permissions.xml</code> file that actually exist on the partition.
+If an application isn’t on the partition, the entry is ignored.
 </aside>
 
 <h2 id="adding-whitelists">Adding whitelists</h2>
 <p>
-  Permission whitelists for applications can be listed in a single or multiple
+  Permission whitelists for apps can be listed in a single XML or in multiple
   XML files located in the <code>frameworks/base/etc/permissions</code>
   directory as follows:
 </p>
@@ -52,19 +69,19 @@
 </ul>
 
 <p>There is no strict rule for organizing content. Device implementers can
-  determine content structure as long as all applications from
+  determine content structure as long as all apps from
   <code>/system/priv-app</code> are whitelisted. For example, Google has a
-  single whitelist for all privileged applications developed by Google. We
-  recommend the following organization:
+  single whitelist for all privileged apps developed by Google, and
+  recommends the following organization:
 </p>
 
 <ul>
   <li>Permissions for apps that are already included in the Android Open Source
     Project (AOSP) tree are listed in
   <code>/etc/permissions/privapp-permissions-platform.xml</code>.</li>
-  <li>Permissions for Google applications are listed in
+  <li>Permissions for Google apps are listed in
   <code>/etc/permissions/privapp-permissions-google.xml</code>.</li>
-  <li>For other applications, use files of the form:
+  <li>For other apps, use files of the form:
   <code>/etc/permissions/privapp-permissions-<var>DEVICE_NAME</var>.xml</code>.
   </li>
 </ul>
@@ -72,7 +89,7 @@
 <h3 id="generating-whitelists">Generating whitelists</h3>
 
 <p>
-  To automatically generate a whitelist for all applications available on the
+  To automatically generate a whitelist for all apps available on the
   system image, use the AOSP command line tool at
   <code>development/tools/privapp_permissions/privapp_permissions.py</code>. To
   generate an initial version of device-specific
@@ -90,16 +107,16 @@
     <code>privapp-permissions.xml</code>file that lists all
     signature|privileged permissions required to be whitelisted:
     <pre class="devsite-terminal devsite-click-to-copy">development/tools/privapp_permissions/privapp_permissions.py</pre>
-    This tool prints XML content that can be used as a single file or split into
-    multiple files in <code>/etc/permissions</code>.
+    This tool prints XML content that can be used either as a single file, or split into
+    multiple files in the <code>/etc/permissions</code> directory path.
     If the device already includes whitelists in the
-    <code>/etc/permissions</code> directory, the tool prints the differences
-    only (i.e. the missing signature|privileged permissions to be added to the
+    <code>/etc/permissions</code> directories, the tool only prints the differences
+    only (such as the missing signature|privileged permissions you need to add to the
     whitelist). This is also useful for audit purposes: When a new version of
     the app is added, the tool detects the additional permissions needed.
   </li>
-  <li>Copy the generated files to the <code>/etc/permissions</code> directory,
-    where the system will read those files during boot.</li>
+  <li>Copy the generated files to the appropriate <code>/etc/permissions</code> directory,
+    where the system reads the files during boot.</li>
 </ol>
 
 <h3 id="customizing-whitelists">Customizing whitelists</h3>
@@ -119,7 +136,7 @@
 
     <pre class="prettyprint">&lt;!--
     This XML file declares which signature|privileged permissions should be
-    granted to privileged applications that come with the platform
+    granted to privileged apps that come with the platform
     -->
     &lt;permissions>
 &lt;privapp-permissions package="com.android.backupconfirm">
@@ -139,16 +156,16 @@
 <h3 id="finding-missing-permissions">Finding missing permissions</h3>
 
 <p>
-  When bringing up a new device, find missing permissions by enabling
-  transitional log-mode:
+  To find missing permisisons when bringing up a new device, enable
+  transitional log mode:
 </p>
 
 <pre class="devsite-click-to-copy">ro.control_privapp_permissions=log</pre>
 
 <p>
-  Violations are reported in the log file, but permissions are still granted.
+  Violations are reported in the log file, but nonprivileged permissions are still granted.
   This keeps the device in a working state while providing the list of
-  violations. The error message format is as follows:
+  violations. This is the error message format:
 </p>
 
 <pre class="devsite-click-to-copy">
@@ -156,10 +173,16 @@ PackageManager: Privileged permission {PERMISSION_NAME} for package {PACKAGE_NAM
 </pre>
 
 <p>
-  All violations must be addressed by adding the apps to whitelists. If not
-  added, the apps will not be granted the missing permissions even if they are
-  in the priv-app path.
+  All violations must be addressed by adding the missing permissions to the
+  appropriate whitelists.
 </p>
+    <ul>
+      <li>On Android 8.0 and lower, the affected apps aren’t granted the missing
+        permissions even if they are in the <code>priv-app</code> path.</li>
+      <li>On Android 9 and higher, violations (of <em>privileged</em> permissions)
+        mean the <strong>device doesn’t boot</strong>. You must <em>explicitly</em>
+        either allow or deny <em>all privileged</em> permissions</li>
+    </ul>
 
 
 <h2 id="enforcing-whitelists">Enforcing whitelists</h2>
@@ -169,7 +192,8 @@ PackageManager: Privileged permission {PERMISSION_NAME} for package {PACKAGE_NAM
   property <code>ro.control_privapp_permissions=enforce</code>.
 </p>
 
-<aside class="note"><strong>Note:</strong> The
+<aside class="note"><strong>Note:</strong> Whitelisting is required only for
+  permissions declared by applications with package="android". The
   <code>ro.control_privapp_permissions</code> property state must adhere to
   <a href="/compatibility/android-cdd#9_1_permissions">CDD section 9.1
   requirements</a>.</aside>

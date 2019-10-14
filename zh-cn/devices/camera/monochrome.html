@@ -1,0 +1,101 @@
+<html devsite><head>
+
+  <meta name="book_path" value="/_book.yaml"/>
+
+  <meta name="project_path" value="/_project.yaml"/>
+</head>
+<body>
+
+<!--
+  Copyright 2019 The Android Open Source Project
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+<h1 id="monochrome_cameras" class="page-title">单色摄像头</h1>
+
+<p>搭载 Android 9 或更高版本的设备可以支持单色摄像头。Android 10 为 Y8 流格式、单色和近红外 (NIR) 色彩滤镜数组静态元数据提供了额外的支持，并为单色摄像头提供了 <code>DngCreator</code> 函数。</p>
+
+<p>借助此功能，设备制造商可以实现单色或近红外线摄像头设备，并通过使用 Y8 流格式减少内存使用量。单色摄像头可以用作<a href="https://developer.android.com/reference/android/hardware/camera2/CameraMetadata#REQUEST_AVAILABLE_CAPABILITIES_LOGICAL_MULTI_CAMERA" class="external">逻辑多摄像头设备</a>的底层物理摄像头以获取更出色的低光噪音特性。</p>
+
+<h2 id="implementation">实现</h2>
+
+<h3 id="hardware_requirements">硬件要求</h3>
+
+<p>要实现此功能，您的设备必须拥有单色摄像头传感器和图像信号处理器 (ISP) 以处理传感器输出。</p>
+
+<h3 id="implementing_a_monochrome_camera">实现单色摄像头</h3>
+
+<p>要将摄像头设备播发为单色摄像头，<a href="/devices/camera/camera3">相机 HAL</a> 必须满足以下要求：</p>
+
+<ul>
+<li><code>android.sensor.info.colorFilterArray</code> 设置为 <code>MONO</code> 或 <code>NIR</code>。</li>
+<li>支持 <code>BACKWARD_COMPATIBLE</code> 必需键，不支持 <code>MANUAL_POST_PROCESSING</code>。</li>
+<li><code>android.control.awbAvailableModes</code> 只包含 <code>AUTO</code>，且 <code>android.control.awbState</code> 为 <code>CONVERTED</code> 或 <code>LOCKED</code>（具体取决于 <code>android.control.awbLock</code>）。</li>
+<li><code>android.colorCorrection.mode</code>、<code>android.colorCorrection.transform</code> 和 <code>android.colorCorrection.gains</code> 不在可用的请求和结果键中。因此，摄像头设备是 <a href="https://developer.android.com/reference/android/hardware/camera2/CameraMetadata.html#INFO_SUPPORTED_HARDWARE_LEVEL_LIMITED" class="external"><code>LIMITED</code></a>。</li>
+<li><p>不存在以下与颜色相关的静态元数据键：</p>
+
+<ul>
+<li><code>android.sensor.referenceIlluminant*</code></li>
+<li><code>android.sensor.calibrationTransform*</code></li>
+<li><code>android.sensor.colorTransform*</code></li>
+<li><code>android.sensor.forwardMatrix*</code></li>
+<li><code>android.sensor.neutralColorPoint</code></li>
+<li><code>android.sensor.greenSplit</code></li>
+</ul></li>
+<li><p>对于以下元数据键，所有颜色通道的值都相同：</p>
+
+<ul>
+<li><code>android.sensor.blackLevelPattern</code></li>
+<li><code>android.sensor.dynamicBlackLevel</code></li>
+<li><code>android.statistics.lensShadingMap</code></li>
+<li><code>android.tonemap.curve</code></li>
+</ul></li>
+<li><p><code>android.sensor.noiseProfile</code> 只有一个颜色通道。</p></li>
+</ul>
+
+<p>对于支持 Y8 流格式的单色设备，相机 HAL 必须支持将强制性信息流组合中的 <code>YUV_420_888</code> 格式替换（包括重新处理）为 Y8 格式。</p>
+
+<p>该功能中会使用以下公共 API：</p>
+
+<ul>
+<li><a href="https://developer.android.com/reference/android/graphics/ImageFormat#Y8" class="external">Y8 映像格式</a> </li>
+<li><a href="https://developer.android.com/reference/android/hardware/camera2/CameraMetadata#SENSOR_INFO_COLOR_FILTER_ARRANGEMENT_MONO" class="external">SENSOR_INFO_COLOR_FILTER_ARRANGEMENT_MONO</a> </li>
+<li><a href="https://developer.android.com/reference/android/hardware/camera2/CameraMetadata#SENSOR_INFO_COLOR_FILTER_ARRANGEMENT_NIR" class="external">SENSOR_INFO_COLOR_FILTER_ARRANGEMENT_NIR</a> </li>
+<li><a href="https://developer.android.com/reference/android/hardware/camera2/CameraMetadata#REQUEST_AVAILABLE_CAPABILITIES_MONOCHROME" class="external">MONOCHROME 摄像头功能</a>（在 Android 9 中引入）</li>
+</ul>
+
+<p>要详细了解相机 HAL，请参阅 <a href="https://android.googlesource.com/platform/system/media/+/master/camera/docs/docs.html" class="external">docs.html</a>。要详细了解相关公共 API，请参阅 <a href="https://developer.android.com/reference/android/graphics/ImageFormat" class="external">ImageFormat</a>、<a href="https://developer.android.com/reference/android/hardware/camera2/CameraCharacteristics" class="external">CameraCharacteristics</a>、<a href="https://developer.android.com/reference/android/hardware/camera2/CaptureRequest" class="external">CaptureRequest</a> 和 <a href="https://developer.android.com/reference/android/hardware/camera2/CaptureResult" class="external">CaptureResult</a>。</p>
+
+<h2 id="validation">验证</h2>
+
+<p>要验证单色摄像头的实现情况，请运行以下 CTS 和 VTS 测试。</p>
+
+<h3 id="cts_tests">CTS 测试</h3>
+
+<ul>
+<li><code>testMonochromeCharacteristics</code></li>
+<li><code>CaptureRequestTest</code></li>
+<li><code>CaptureResultTest</code></li>
+<li><code>StillCaptureTest</code></li>
+<li><code>DngCreatorTest</code></li>
+</ul>
+
+<h3 id="vts_tests">VTS 测试</h3>
+
+<ul>
+<li><code>getCameraCharacteristics</code></li>
+<li><code>processMultiCaptureRequestPreview</code></li>
+</ul>
+
+</body></html>

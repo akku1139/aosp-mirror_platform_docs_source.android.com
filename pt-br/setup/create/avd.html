@@ -1,0 +1,140 @@
+<html devsite><head>
+
+  <meta name="book_path" value="/_book.yaml"/>
+
+  <meta name="project_path" value="/_project.yaml"/>
+</head>
+<body>
+
+<!--
+  Copyright 2019 The Android Open Source Project
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+<h1 id="building_custom_android_virtual_devices" class="page-title">Criar Dispositivos virtuais Android personalizados</h1>
+
+<p>É possível usar o Android Emulator para criar emulações de dispositivos Android que executam as próprias imagens personalizadas do sistema Android. Você também pode compartilhar suas imagens personalizadas do sistema Android para que outras pessoas possam executar emulações delas. Além disso, é possível adicionar compatibilidade com várias telas para emulações do Android Emulator.</p>
+
+<h2 id="android_emulator_architecture">Arquitetura do Android Emulator</h2>
+
+<p>O Android Emulator permite executar emulações de dispositivos Android em máquinas Windows, MacOS ou Linux. O Android Emulator executa o sistema operacional Android em uma máquina virtual chamada Dispositivo virtual Android (AVD, na sigla em inglês). O AVD contém a <a href="/devices/architecture">pilha de software do Android</a> completa e é executado como se estivesse em um dispositivo físico.  A Figura 1 é um diagrama da arquitetura de alto nível do Android Emulator. Para saber mais sobre o emulador, consulte <a href="https://developer.android.com/studio/run/emulator" class="external">Executar apps no Android Emulator</a>.</p>
+
+<p><img src="/setup/images/emulator-design.png" alt="Arquitetura do Android Emulator"/></p>
+
+<p><strong>Figura 1.</strong> Arquitetura do Android Emulator.</p>
+
+<h2 id="building_avd_images">Criar imagens para AVD</h2>
+
+<p>Cada AVD inclui uma imagem do sistema Android, que é executada nesse AVD. O AVD Manager inclui algumas imagens do sistema. É possível criar imagens personalizadas do sistema AVD a partir do seu código-fonte e criar emulações de dispositivos para executá-las.</p>
+<aside class="note"><strong>Observação:</strong><span> é necessário <a href="/setup/build/initializing">estabelecer um ambiente de criação</a> antes de criar imagens do sistema AVD.</span></aside>
+<p>Para criar e executar uma imagem do sistema AVD:</p>
+
+<ol>
+<li><p>Faça o download da origem do Android:</p>
+
+<pre class="prettyprint">
+<code class="devsite-terminal">mkdir aosp-master; cd aosp-master</code>
+<code class="devsite-terminal">repo init -u</code>
+<code class="devsite-terminal">repo sync -j24</code>
+</pre>
+
+<p>Se você quiser criar outras versões do Android, os nomes de branch delas podem ser encontrados no <a href="https://android.googlesource.com/platform/manifest/+refs">repositório público do Android</a> (link em inglês).
+Eles correspondem aos da página <a href="/setup/start/build-numbers#source-code-tags-and-builds">Codinomes, tags e números de versão do Android</a>.</p></li>
+<li><p>Crie uma imagem do sistema AVD. É o mesmo processo que o de <a href="/setup/build/building">criação de uma imagem do sistema do dispositivo Android</a>. Por exemplo, para criar um AVD x86 de 32 bits:</p>
+
+<pre class="prettyprint">
+<code class="devsite-terminal">mkdir aosp-master; cd aosp-master</code>
+<code class="devsite-terminal">source ./build/envsetup.sh</code>
+<code class="devsite-terminal">lunch sdk_phone_x86</code>
+<code class="devsite-terminal">make -j32</code>
+</pre>
+
+<p>Se você preferir criar um AVD x86 de 64 bits, execute <code>lunch</code> para o destino de 64 bits:</p>
+
+<pre class="prettyprint">
+<code class="devsite-terminal">lunch sdk_phone_x86_64</code>
+</pre></li>
+<li><p>Execute a imagem do sistema AVD no Android Emulator:</p>
+
+<pre class="prettyprint">
+<code class="devsite-terminal">emulator</code>
+</pre></li>
+</ol>
+
+<p>Consulte as <a href="https://developer.android.com/studio/run/emulator-commandline#startup-options">Opções de inicialização de linha de comando</a> para saber mais detalhes sobre a execução do emulador. A Figura 2 mostra um exemplo do Android Emulator executando um AVD.</p>
+
+<p><img src="/setup/images/emulator-run-ui.png" alt="Android Emulator executando um AVD"/></p>
+
+<p><strong>Figura 2.</strong> Android Emulator executando um AVD.</p>
+
+<h2 id="sharing_avd_system_images_for_others_to_use_with_android_studio">Compartilhar imagens do sistema AVD para outras pessoas usarem com o Android Studio</h2>
+
+<p>Siga estas instruções para compartilhar suas imagens do sistema AVD com outras pessoas. Elas podem usar essas imagens com o <a href="https://developer.android.com/studio">Android Studio</a> para desenvolver e testar apps.</p>
+
+<ol>
+<li><p>Crie outros pacotes <code>sdk</code> e <code>sdk_repo</code>:</p>
+<pre class="prettyprint"><code>$ make -j32 sdk sdk_repo
+</code></pre>
+<p>Isso cria dois arquivos em <code>aosp-master/out/host/linux-x86/sdk/sdk_phone_x86</code>:</p>
+
+<ul>
+<li><code>sdk-repo-linux-system-images-eng.[username].zip</code></li>
+<li><code>repo-sys-img.xml</code></li>
+</ul></li>
+<li><p>Hospede o arquivo <code>sdk-repo-linux-system-images-eng.[username].zip</code> em algum lugar que seus usuários possam acessar e providencie o URL dele para usar como o <strong>URL da imagem do sistema AVD</strong>.</p></li>
+<li><p>Edite <code>repo-sys-img.xml</code> de acordo:</p>
+
+<ul>
+<li>Atualize <code>&lt;sdk:url&gt;</code> para o <strong>URL da imagem do sistema AVD</strong>.</li>
+<li>Consulte <a href="https://android.googlesource.com/platform/prebuilts/devtools/+/refs/heads/master/repository/sdk-sys-img-03.xsd">sdk-sys-img-03.xsd</a> (link em inglês) para ver as outras atualizações no arquivo.</li>
+</ul></li>
+<li><p>Hospede <code>repo-sys-img.xml</code> em algum lugar que seus usuários possam acessar e providencie o URL dele para usar como o <strong>URL do site de atualização personalizado</strong>.</p></li>
+</ol>
+
+<p>Para usar uma imagem AVD personalizada, faça o seguinte no SDK Manager:</p>
+
+<ol>
+<li><p><a href="https://developer.android.com/studio/intro/update#adding-sites">Adicione o <strong>URL do site de atualização personalizado</strong> como um site de atualização do SDK</a>.</p>
+
+<p>Isso adiciona sua imagem personalizada do sistema AVD à página System Images.</p></li>
+<li><p><a href="https://developer.android.com/studio/run/managing-avds#createavd">Crie um AVD</a> fazendo o download da imagem personalizada do sistema AVD e selecionando-a.</p></li>
+</ol>
+
+<h2 id="adding_multi-display_support">Adicionar compatibilidade com várias telas</h2>
+
+<p>O Android 10 <a href="/devices/tech/display/multi_display">aprimora o recurso "Várias telas" (MD, na sigla em inglês)</a> para oferecer melhor compatibilidade com mais casos de uso, como o modo automotivo e para computadores. O Android Emulator também é compatível com a emulação de várias telas. Assim, é possível criar um ambiente de várias telas específico sem configurar o hardware real.</p>
+
+<p>Você pode adicionar a compatibilidade com várias telas a um AVD fazendo as seguintes alterações ou escolhendo um <a href="https://android-review.googlesource.com/q/topic:%22AVD+Multi-display%22+(status:open%20OR%20status:merged)">destes CLs</a> (link em inglês).</p>
+
+<ul>
+<li><p>Adicione o provedor de várias telas à versão adicionando estas linhas ao arquivo <code>build/target/product/sdk_phone_x86.mk</code>:</p>
+<pre class="prettyprint"><code>PRODUCT_ARTIFACT_PATH_REQUIREMENT_WHITELIST := \
+    system/lib/libemulator_multidisplay_jni.so \
+    system/lib64/libemulator_multidisplay_jni.so \
+    system/priv-app/MultiDisplayProvider/MultiDisplayProvider.apk \
+PRODUCT_PACKAGES += MultiDisplayProvider
+</code></pre></li>
+<li><p>Habilite a sinalização do recurso "Várias telas" adicionando esta linha ao arquivo <code>device/generic/goldfish/data/etc/advancedFeatures.ini</code>:</p>
+<pre class="prettyprint"><code>MultiDisplay = on
+</code></pre></li>
+</ul>
+
+<p>Os recursos e as informações de versão mais recentes do emulador estão disponíveis nas seguintes fontes:</p>
+
+<ul>
+<li><a href="https://developer.android.com/studio/run/emulator">Guia do usuário do Android Emulator</a></li>
+<li><a href="https://developer.android.com/studio/releases/emulator">Notas da versão do Android Emulator</a></li>
+</ul>
+
+</body></html>

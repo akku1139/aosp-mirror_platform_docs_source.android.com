@@ -1,0 +1,283 @@
+<html devsite><head>
+    <title>没有动态分区的 A/B 设备的 OTA</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+
+  <!--
+      Copyright 2019 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+    <p>Android 10 支持动态分区，这是一种可以在无线下载 (OTA) 更新期间创建和销毁分区以及调整分区大小的用户空间分区系统。本文档将介绍在未搭载动态分区支持的 A/B 设备更新期间，OTA 客户端如何调整动态分区的大小，以及 OTA 客户端如何升级到 Android 10。
+    </p>
+
+    <h2 id="background">背景</h2>
+
+      <p>在更新 A/B 设备以使其支持动态分区期间，会保留设备上的 GUID 分区表 (GPT)，因此设备上将不存在 <code>super</code> 分区。元数据将存储在 <code>system_a</code> 和 <code>system_b</code> 中，但可以通过更改 <code>BOARD_SUPER_PARTITION_METADATA_DEVICE</code> 对此进行自定义。</p>
+
+      <p>每个块设备中都有两个元数据槽位，其中只有一个元数据槽位会被使用。例如，位于 <code>system_a</code> 的元数据 0 和位于 <code>system_b</code> 的元数据 1 分别对应于 A 槽位和 B 槽位的分区。在运行时，更新哪个槽位并不重要。
+      </p>
+
+      <p>在本文档中，我们将元数据槽位称为元数据 S（源）和元数据 T（目标）。类似地，将分区命名为 <code>system_s</code>、<code>vendor_t</code> 等。
+      </p>
+
+      <p>要详细了解编译系统配置，请参阅<a href="/devices/tech/ota/dynamic_partitions/implement#upgrading-devices">升级设备</a>。<em></em>
+      </p>
+
+      <p>要详细了解哪些分区属于哪些更新组，请参阅适用于新设备的<a href="/devices/tech/ota/dynamic_partitions/implement#board-configuration-changes">板级配置更改</a>。<em></em>
+      </p>
+
+      <p>下面的示例显示了设备上的元数据：</p>
+
+      <ul>
+        <li>物理块设备 <code>system_a</code>
+          <ul>
+            <li>元数据 0<ul>
+                <li>组 <code>foo_a</code>
+                  <ul>
+                    <li>逻辑（动态）分区 <code>system_a</code></li>
+                    <li>逻辑（动态）分区 <code>product_services_a</code></li>
+                    <li>其他由 Foo 更新的分区</li>
+                  </ul>
+                </li>
+              </ul>
+              <ul>
+                <li>组 <code>bar_a</code>
+                  <ul>
+                    <li>逻辑（动态）分区 <code>vendor_a</code></li>
+                    <li>逻辑（动态）分区 <code>product_a</code></li>
+                    <li>其他由 Bar 更新的分区</li>
+                  </ul>
+                </li>
+              </ul>
+            </li>
+            <li>元数据 1（未使用）</li>
+          </ul>
+        </li>
+        <li>物理块设备 <code>system_b</code>
+          <ul>
+            <li>元数据 0（未使用）</li>
+            <li>元数据 1<ul>
+                <li>组 foo_b<ul>
+                    <li>逻辑（动态）分区 <code>system_b</code></li>
+                    <li>逻辑（动态）分区 <code>product_services_b</code></li>
+                    <li>其他由 Foo 更新的分区</li>
+                  </ul>
+                </li>
+                <li>组 bar_b<ul>
+                    <li>逻辑（动态）分区 <code>vendor_b</code></li>
+                    <li>逻辑（动态）分区 <code>product_b</code></li>
+                    <li>其他由 Bar 更新的分区</li>
+                  </ul>
+                </li>
+              </ul>
+            </li>
+          </ul>
+        </li>
+      </ul>
+
+      <p>您可以使用 <code>system/extras/partition_tools</code> 下的 <code>lpdump</code> 工具转储设备上的元数据。例如：</p>
+
+<pre class="devsite-click-to-copy">
+<code class="devsite-terminal">lpdump --slot 0 /dev/block/by-name/system_a</code>
+<code class="devsite-terminal">lpdump --slot 1 /dev/block/by-name/system_b</code>
+</pre>
+
+    <h2 id="retrofitting-an-update">改造更新</h2>
+
+      <p>在搭载 Android 9 及更低版本的设备上，设备上的 OTA 客户端不支持在更新之前映射动态分区。为此，我们额外创建了一组补丁程序，以便直接映射到现有的物理分区。
+      </p>
+
+      <p>OTA 生成器会编译包含所有动态分区内容的最终 <code>super.img</code> 文件，然后将该映像拆分为多个映像，这些映像的大小与 system、vendor 等分区所对应的物理块设备的大小相匹配。这些映像被命名为 <code>super_system.img</code>、<code>super_vendor.img</code> 等。OTA 客户端会将这些映像应用到物理分区而不是逻辑（动态）分区。
+      </p>
+
+      <p>由于 OTA 客户端不知道如何映射动态分区，因此在生成更新软件包时会自动停用针对这些分区的所有安装后步骤。要了解详情，请参阅<a href="/devices/tech/ota/ab/ab_implement#post-install">实现 A/B 更新：配置安装后步骤</a>。
+      </p>
+
+      <p>更新流程与 Android 9 中相同。
+      </p>
+
+      <p>更新之前：</p><p>
+
+</p><pre class="prettyprint">
+ro.boot.dynamic_partitions=
+ro.boot.dynamic_partitions_retrofit=
+</pre>
+
+      <p>更新之后：</p>
+
+<pre class="prettyprint">
+ro.boot.dynamic_partitions=true
+ro.boot.dynamic_partitions_retrofit=true
+</pre>
+
+    <h2 id="future-updates-after-retrofit">改造后的未来更新</h2>
+
+      <p>改造更新后，OTA 客户端将被更新为可以处理动态分区。源分区的区段从不跨越多个目标物理分区。
+      </p>
+
+      <h3 id="update-flow-using-a-regular-update-package">使用常规更新软件包的更新流程</h3>
+
+        <ol>
+          <li><strong>初始化 super 分区元数据。</strong>
+            <ol>
+              <li>根据元数据 S（源元数据）构建新的元数据 M。例如，如果元数据 S 使用 [<code>system_s</code>、<code>vendor_s</code>、<code>product_s</code>] 作为块设备，则新的元数据 M 将使用 [<code>system_t</code>、<code>vendor_t</code>、<code>product_t</code>] 作为块设备。在元数据 M 中会弃用所有组和分区。</li>
+              <li>根据更新清单中的 <code>dynamic_partition_metadata</code> 字段添加目标组和分区。每个分区的大小可以在 <code>new_partition_info</code> 中找到。
+              </li>
+              <li>将元数据 M 写入元数据 T。</li>
+              <li>在设备映射器上，将添加的分区映射为可写入分区。
+              </li>
+            </ol>
+          </li>
+          <li><strong>像往常一样在块设备上应用更新。</strong>
+            <ol>
+              <li>根据需要在设备映射器上将源分区映射为只读分区。对于旁加载来说，这是必要的，因为并未在更新之前映射源分区。
+              </li>
+              <li>将完整或增量更新应用到目标槽位上的所有块设备。
+              </li>
+              <li>装载分区以执行安装后步骤，然后再卸载分区。
+              </li>
+            </ol>
+          </li>
+          <li><strong>取消映射目标分区。</strong></li>
+        </ol>
+
+      <h3 id="update-flow-using-a-retrofit-update-package">使用改造更新软件包的更新流程</h3>
+
+        <p>如果将改造更新软件包应用到了启用动态分区的设备上，则 OTA 客户端会直接将拆分的 <code>super.img</code> 文件应用到块设备上。更新流程与改造更新类似。要了解详情，请参阅<a href="#retrofitting-an-update">改造更新</a>。
+        </p>
+
+        <p>例如，假设存在以下情况：</p>
+
+        <ul>
+          <li>槽位 A 为活动槽位。</li>
+          <li>
+            <code>system_a</code> 在槽位 0 中包含活动元数据。
+          </li>
+          <li>
+            <code>system_a</code>、<code>vendor_a</code> 以及 <code>product_a</code> 被用作块设备。
+          </li>
+        </ul>
+
+        <p>当 OTA 客户端收到改造更新软件包时，它会将 <code>super_system.img</code> 应用到物理 <code>system_b</code> 上、将 <code>super_vendor.img</code> 应用到物理 <code>vendor_b</code> 上，将 <code>super_product.img</code> 应用到物理 <code>product_b</code> 上。物理块设备 <code>system_b</code> 中包含在启动时用于映射逻辑 <code>system_b</code>、<code>vendor_b</code> 和 <code>product_b</code> 的正确元数据。
+        </p>
+
+        <aside class="note">
+          <strong>注意</strong>：这些值在更新前后不会发生变化：<p>
+            <code>PRODUCT_USE_LOGICAL_PARTITIONS := true</code><br />
+            <code>PRODUCT_RETROFIT_DYNAMIC_PARTITIONS := true</code>
+          </p>
+        </aside>
+
+    <h2 id="generating-update-packages">生成更新软件包</h2>
+
+      <h3 id="incremental-ota">增量 OTA</h3>
+
+        <p>为改造设备生成增量 OTA 时，具体属于哪种更新取决于基础版本是否定义了 <code>PRODUCT_USE_LOGICAL_PARTITIONS</code> 和 <code>PRODUCT_RETROFIT_DYNAMIC_PARTITIONS</code>：</p>
+
+        <ul>
+          <li>如果基本版本未定义这两个变量，那么这便是改造更新。更新软件包包含拆分的 <code>super.img</code> 文件，并且会停用安装后步骤。
+          </li>
+          <li>如果基础版本定义了这两个变量，那么这与动态分区的典型更新相同。更新软件包包含逻辑（动态）分区的映像。可以启用安装后步骤。
+          </li>
+        </ul>
+
+      <h3 id="full-ota">完整 OTA</h3>
+
+        <p>系统会针对改造设备生成两个完整的 OTA 软件包。
+        </p>
+
+        <ul>
+          <li>
+            <code>$(PRODUCT)-ota-retrofit-$(TAG).zip</code> 始终包含拆分的 <code>super.img</code>，并且会停用改造更新的安装后步骤。
+            <ul>
+              <li>该软件包是通过为 <code>ota_from_target_files</code> 脚本提供一个额外的 <code>--retrofit_dynamic_partitions</code> 参数生成的。
+              </li>
+              <li>该软件包可以应用于所有版本。
+              </li>
+            </ul>
+          </li>
+          <li>
+            <code>$(PRODUCT)-ota-$(TAG).zip</code> 包含用于未来更新的逻辑映像。
+            <ul>
+              <li>请仅将该软件包应用于启用了动态分区的版本。有关强制执行此操作的详细信息，请参见下文。
+              </li>
+            </ul>
+          </li>
+        </ul>
+
+      <h3 id="reject-non-retrofit-update-on-old-builds">拒绝对旧版本进行非改造更新</h3>
+
+      <p>常规的完整 OTA 软件包应仅应用于启用了动态分区的版本。如果因 OTA 服务器配置错误而将这些软件包推送给了搭载 Android 9 或更低版本的设备，则会造成这些设备无法启动。Android 9 及更低版本上的 OTA 客户端无法区分改造 OTA 软件包和常规的完整 OTA 软件包，因此客户端不会拒绝完整的软件包。
+      </p>
+
+      <p>为防止设备接受完整的 OTA 软件包，您可以要求执行安装后步骤来检查现有的设备配置。例如：</p>
+
+      <p>
+        <code>device/<var>device_name</var>/dynamic_partitions/check_dynamic_partitions</code>
+      </p>
+
+<pre class="prettyprint">
+#!/system/bin/sh
+DP_PROPERTY_NAME="ro.boot.dynamic_partitions"
+DP_RETROFIT_PROPERTY_NAME="ro.boot.dynamic_partitions_retrofit"
+
+DP_PROPERTY=$(getprop ${DP_PROPERTY_NAME})
+DP_RETROFIT_PROPERTY=$(getprop ${DP_RETROFIT_PROPERTY_NAME})
+
+if [ "${DP_PROPERTY}" != "true" ] || [ "${DP_RETROFIT_PROPERTY}" != "true" ] ; then
+    echo "Error: applied non-retrofit update on build without dynamic" \
+         "partitions."
+    echo "${DP_PROPERTY_NAME}=${DP_PROPERTY}"
+    echo "${DP_RETROFIT_PROPERTY_NAME}=${DP_RETROFIT_PROPERTY}"
+    exit 1
+fi
+</pre>
+
+      <p>
+        <code>device/<var>device_name</var>/dynamic_partitions/Android.mk</code>
+      </p>
+
+<pre class="prettyprint">
+LOCAL_PATH := $(call my-dir)
+include $(CLEAR_VARS)
+LOCAL_MODULE:= check_dynamic_partitions
+LOCAL_MODULE_TAGS := optional
+LOCAL_MODULE_CLASS := EXECUTABLES
+LOCAL_SRC_FILES := check_dynamic_partitions
+LOCAL_PRODUCT_MODULE := true
+include $(BUILD_PREBUILT)
+</pre>
+
+      <p>
+        <code>device/<var>device_name</var>/device.mk</code>
+      </p>
+
+<pre class="prettyprint">
+PRODUCT_PACKAGES += check_dynamic_partitions
+
+# OPTIONAL=false so that the error in check_dynamic_partitions will be
+# propagated to OTA client.
+AB_OTA_POSTINSTALL_CONFIG += \
+    RUN_POSTINSTALL_product=true \
+    POSTINSTALL_PATH_product=bin/check_dynamic_partitions \
+    FILESYSTEM_TYPE_product=ext4 \
+    POSTINSTALL_OPTIONAL_product=false \
+</pre>
+
+      <p>如果将常规 OTA 软件包应用于未启用动态分区的设备，OTA 客户端会在安装后运行 <code>check_dynamic_partitions</code> 步骤，并拒绝此次更新。
+      </p>
+
+</body></html>

@@ -3,8 +3,8 @@
     <meta name="project_path" value="/_project.yaml"/>
     <meta name="book_path" value="/_book.yaml"/>
   </head>
-
   <body>
+
   <!--
       Copyright 2018 The Android Open Source Project
 
@@ -100,16 +100,9 @@
 <li>在设备清单文件中修改 HAL 版本。</li>
 <li>在设备清单文件中修改目标 FCM 版本。</li>
 <li>移除已弃用的 HAL 版本。</li>
-<li>对于搭载 Android 9 或更低版本的设备，先择优挑选以下 CL，然后再生成 OTA 更新程序包：
-  <ul>
-    <li><a href="https://android-review.googlesource.com/722283">CL 722283</a></li>
-    <li><a href="https://android-review.googlesource.com/722284">CL 722284</a></li>
-    <li><a href="https://android-review.googlesource.com/722345">CL 722345</a></li>
-  </ul>
-</li>
 </ol>
 
-<p>例如，Google Pixel 和 Pixel XL 设备搭载的是 Android 7.0，因此它们的目标 FCM 版本一定至少是旧版。不过，<a href="https://android.googlesource.com/device/google/marlin/+/0a276ad8b98fde395ed99a4b303434800c07049e/manifest.xml#1" class="external">设备清单</a>中声明了目标 FCM 版本为 2，这是因为供应商映像已更新，以符合 <code>compatibility_matrix.2.xml</code>：</p>
+<p>例如，Google Pixel 和 Pixel XL 设备搭载的是 Android 7.0，因此它们的目标 FCM 版本一定至少是旧版。不过，<a href="https://android.googlesource.com/device/google/marlin/+/0a276ad8b98fde395ed99a4b303434800c07049e/manifest.xml#1" class="external">设备清单</a>中声明了目标 FCM 版本为 2，这是因为供应商映像已更新以符合 <code>compatibility_matrix.2.xml</code>：</p>
 
 <pre class="prettyprint">
 &lt;manifest version="1.0" type="device" target-level="2"&gt;
@@ -118,5 +111,29 @@
 <p>如果供应商未实现所有需要的新 HAL 版本或未移除弃用的 HAL 版本，则无法升级目标 FCM 版本。</p>
 
 <p>例如，Google Pixel 2 和 Pixel 2 XL 设备采用的是目标 FCM 版本 2。虽然它们实现了 <code>compatibility_matrix.3.xml</code> 所需的一些 HAL（例如音频 4.0、health 2.0 等），但未移除在 FCM 版本 3 (Android 9) 中弃用的 <code>android.hardware.radio.deprecated@1.0</code>。因此，这些设备无法将目标 FCM 版本升级至 3。</p>
+
+<h2 id="ota-kernel">在 OTA 期间强制执行内核要求</h2>
+<h3 id="ota-kernel-p">从 Android 9 或更低版本更新设备</h3>
+  <p>如果设备接收的是 Android 9 更新，请先按需挑选以下 CL，然后再生成 OTA 更新软件包：</p>
+  <ul>
+    <li><a href="https://android-review.googlesource.com/722283" class="external">CL 722283</a></li>
+    <li><a href="https://android-review.googlesource.com/722284" class="external">CL 722284</a></li>
+    <li><a href="https://android-review.googlesource.com/722345" class="external">CL 722345</a></li>
+  </ul>
+  <p>这些更改引入了编译标记 <code>PRODUCT_OTA_ENFORCE_VINTF_KERNEL_REQUIREMENTS</code>，并让该标记保持未设置状态（针对搭载 Android 9 或更低版本的设备）。搭载 Android 9 或更低版本的设备上的 OTA 客户端无法正确检查 OTA 软件包中的内核要求。需要执行这些更改才能舍弃生成的 OTA 软件包中的内核要求。要详细了解此编译标记，请参阅<a href="#ota-kernel-q">从 Android 10 更新设备</a>。
+  </p>
+  <p>这些更改已合并到 Android 10 中，因此如果设备是更新到 Android 10，则不用按需挑选更改。不过，请让 <code>PRODUCT_OTA_ENFORCE_VINTF_KERNEL_REQUIREMENTS</code> 保持未设置状态。
+  </p>
+
+<h3 id="ota-kernel-q">从 Android 10 更新设备</h3>
+  <p>Android 10 引入了一个新的编译标记 <code>PRODUCT_OTA_ENFORCE_VINTF_KERNEL_REQUIREMENTS</code>。对于搭载 Android 10 的设备，此标记会自动设置为 <code>true</code>。当该标记设置为 <code>true</code> 时，脚本会从已安装的内核映像中提取内核版本和内核配置，并将此信息写入 OTA 软件包元数据。搭载 Android 10 或更高版本的设备上的 OTA 客户端会读取此信息以检查兼容性。
+  </p>
+  <p>如果脚本无法针对内核映像提取此信息，请执行以下操作<strong>之一</strong>：</p>
+  <ul>
+    <li>将 <code>BOARD_KERNEL_VERSION</code> 设置为内核版本，并将 <code>BOARD_KERNEL_CONFIG_FILE</code> 设置为编译的内核配置文件 <code>.config</code> 的路径。更新内核映像时，必须更新这两个变量。</li>
+    <li>或者，将 <code>PRODUCT_OTA_ENFORCE_VINTF_KERNEL_REQUIREMENTS</code> 设置为 <code>false</code>，以从 OTA 软件包中移除内核要求。</li>
+  </ul>
+  <p>您可以查看内核信息提取脚本 <a href="https://android.googlesource.com/platform/build/+/refs/heads/master/tools/extract_kernel.py" class="external"><code>extract_kernel.py</code></a> 的源代码。
+  </p>
 
 </body></html>

@@ -1,0 +1,78 @@
+<html devsite>
+  <head>
+    <title>Verifying system_other Partition</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2019 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          //www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<h2 id="implementation">Implementation</h2>
+
+<p>Android-powered devices with Android 9 and lower that have A/B partitions can
+use the inactive <code>system_other</code> partition (for example,
+<code>system_b</code>when <code>slot_a</code> is active) to store preoptimized
+VDEX/ODEX files. When <code>system_other</code> is used,
+<code>ro.cp_system_other_odex</code> is set to 1 for the package manager
+service to set <code>sys.cppreopt=requested</code> for <code>cppreopts.rc</code>
+to act on it.</p>
+
+<p>In Android 10, <a
+href="https://android.googlesource.com/platform/system/core/+/refs/heads/master/fs_mgr/libfs_avb/"
+class="external"><code>libfs_avb</code></a>
+is introduced to support standalone AVB verification for the
+<code>system_other</code> partition. The VBMeta struct of such a partition is
+appended to the end of the partition, to be verified by an expected public key
+from the file system. The Android build system supports signing
+<code>system_other.img</code> while including the corresponding signing key
+under <code>/product/etc/security/avb/system_other.avbpubkey</code>. The release
+tool <code>sign_target_files_apks.py</code> also supports replacing the signing
+key to a release version.</p>
+
+<p>A/B devices launched before Android 10 have a physical
+<code>system_other</code> partition, even if it's upgraded to Android 10 with
+<code>PRODUCT_RETROFIT_DYNAMIC_PARTITIONS</code> set to <code>true</code>.
+
+<aside class="note"><strong>Note:</strong> It's not recommended to enable AVB on
+these devices. <code>system_other.img</code> isn't included in the over-the-air
+package, which can lead to verification errors after a few A/B updates.</aside>
+
+<p>A/B devices launched with Android 10 must have a logical
+<code>system_other</code> partition. The following example shows a typical
+<code>fstab.postinstall</code> file that enables AVB on
+<code>system_other</code>.</p>
+
+<pre class="prettyprint">
+#&#60;dev&#62; &#60;mnt_point&#62; &#60;type&#62;  &#60;mnt_flags options&#62;  &#60;fs_mgr_flags&#62;
+<strong>system</strong> /postinstall ext4 ro,nosuid,nodev,noexec
+<strong>slotselect_other</strong>,<strong>logical</strong>,<strong>avb_keys=</strong>/product/etc/security/avb/system_other.avbpubkey
+</pre>
+
+<p>Devices that need to enable AVB on the <code>system_other</code> partition
+should place the <code>fstab</code> file in the product partition and set the
+property <code>ro.postinstall.fstab.prefix</code> to <code>/product</code>.</p>
+
+<pre class="prettyprint">
+# Use /product/etc/fstab.postinstall to mount system_other. PRODUCT_PRODUCT_PROPERTIES += \
+ro.postinstall.fstab.prefix=/product
+
+PRODUCT_COPY_FILES += \
+$(LOCAL_PATH)/fstab.postinstall:$(TARGET_COPY_OUT_PRODUCT)/etc/fstab.postinstall
+</pre>
+
+  </body>
+</html>

@@ -23,186 +23,194 @@
 
 
 
+<p>A SurfaceTexture is a combination of a surface and an OpenGL ES (GLES)
+texture. SurfaceTextures are used to provide surfaces that output to GLES
+textures.</p>
 
-<p>The SurfaceTexture class was introduced in Android 3.0. Just as SurfaceView
-is the combination of a Surface and a View, SurfaceTexture is a rough
-combination of a Surface and a GLES texture (with a few caveats).</p>
-
-<p>When you create a SurfaceTexture, you are creating a BufferQueue for which
-your app is the consumer. When a new buffer is queued by the producer, your app
-is notified via callback (<code>onFrameAvailable()</code>). Your app calls
-<code>updateTexImage()</code>, which releases the previously-held buffer,
-acquires the new buffer from the queue, and makes some EGL calls to make the
+<p>A SurfaceTexture contains a BufferQueue for which
+apps are the consumer. The <code>onFrameAvailable()</code> callback
+notifies apps when the producer queues a new buffer. Then, apps call
+<code>updateTexImage()</code>, which releases the previously held buffer,
+acquires the new buffer from the queue, and makes EGL calls to make the
 buffer available to GLES as an external texture.</p>
 
+<h2 id="ext_texture">External GLES textures</h2>
 
-<h2 id=ext_texture>External textures</h2>
-<p>External textures (<code>GL_TEXTURE_EXTERNAL_OES</code>) are not quite the
-same as textures created by GLES (<code>GL_TEXTURE_2D</code>): You have to
-configure your renderer a bit differently, and there are things you can't do
-with them. The key point is that you can render textured polygons directly
-from the data received by your BufferQueue. gralloc supports a wide variety of
-formats, so we need to guarantee the format of the data in the buffer is
-something GLES can recognize. To do so, when SurfaceTexture creates the
-BufferQueue, it sets the consumer usage flags to
-<code>GRALLOC_USAGE_HW_TEXTURE</code>, ensuring that any buffer created by
-gralloc would be usable by GLES.</p>
+<p>An external GLES texture (<code>GL_TEXTURE_EXTERNAL_OES</code>) differ
+from traditional GLES textures (<code>GL_TEXTURE_2D</code>) in the following
+ways:</p>
 
-<p>Because SurfaceTexture interacts with an EGL context, you must be careful to
-call its methods from the correct thread (as detailed in the class
-documentation).</p>
+<ul>
+  <li>External textures render textured polygons directly from data received
+    from BufferQueue.</li>
+   <li>External texture renderers are configured differently than
+    traditional GLES texture renderers.</li>
+  <li>External textures can't perform all traditional GLES texture
+    activities.</li>
+</ul>
 
-<h2 id=time_transforms>Timestamps and transformations</h2>
-<p>If you look deeper into the class documentation, you will see a couple of odd
-calls. One call retrieves a timestamp, the other a transformation matrix, the
-value of each having been set by the previous call to
-<code>updateTexImage()</code>. It turns out that BufferQueue passes more than
-just a buffer handle to the consumer. Each buffer is accompanied by a timestamp
-and transformation parameters.</p>
+<p>The main benefit of external textures is
+their ability to render directly from BufferQueue data. SurfaceTexture sets the
+consumer usage flags to <code>GRALLOC_USAGE_HW_TEXTURE</code> when it creates
+BufferQueues for external textures to ensure that the data in the buffer is
+recognizable by GLES.</p>
 
-<p>The transformation is provided for efficiency. In some cases, the source data
-might be in the incorrect orientation for the consumer; but instead of rotating
-the data before sending it, we can send the data in its current orientation with
-a transform that corrects it. The transformation matrix can be merged with other
-transformations at the point the data is used, minimizing overhead.</p>
+<p>Because SurfaceTexture interacts with an EGL context, an app can only call
+its methods while the EGL context that owns the texture is current on the
+calling thread. For more information see the <a
+href="https://developer.android.com/reference/android/graphics/SurfaceTexture"
+class="external">SurfaceTexture</a> class documentation.</p>
 
-<p>The timestamp is useful for certain buffer sources. For example, suppose you
-connect the producer interface to the output of the camera (with
-<code>setPreviewTexture()</code>). To create a video, you need to set the
-presentation timestamp for each frame; but you want to base that on the time
-when the frame was captured, not the time when the buffer was received by your
-app. The timestamp provided with the buffer is set by the camera code, resulting
-in a more consistent series of timestamps.</p>
+<h2 id="time_transforms">Timestamps and transformations</h2>
 
-<h2 id=surfacet>SurfaceTexture and Surface</h2>
+<p>SurfaceTexture includes the <code>getTimeStamp()</code> method, which
+retrieves a timestamp, and <code>getTransformMatrix()</code> method, which
+retrieves a transformation matrix. Calling <code>updateTexImage()</code>
+sets both the timestamp and the transformation matrix. Each buffer that
+BufferQueue passes includes transformation parametes and a timestamp.</p>
 
-<p>If you look closely at the API you'll see the only way for an application
-to create a plain Surface is through a constructor that takes a SurfaceTexture
-as the sole argument. (Prior to API 11, there was no public constructor for
-Surface at all.) This might seem a bit backward if you view SurfaceTexture as a
-combination of a Surface and a texture.</p>
+<p>Transformation parameters are useful for efficiency. In some cases,
+source data might be in the incorrect orientation for the consumer.
+Instead of rotating the data before sending it to the consumer, send the data in
+its orientation with a transform that corrects it. The transformation
+matrix can be merged with other transformations when the data is used,
+minimizing overhead.</p>
 
-<p>Under the hood, SurfaceTexture is called GLConsumer, which more accurately
-reflects its role as the owner and consumer of a BufferQueue. When you create a
-Surface from a SurfaceTexture, what you're doing is creating an object that
-represents the producer side of the SurfaceTexture's BufferQueue.</p>
+<p>The timestamp is useful for buffer sources that are time dependent. For
+example, when <code>setPreviewTexture()</code> connects
+the producer interface to the output of the camera, frames from the camera can
+be used to create a video. Each frame needs to have a presentation
+timestamp from when the frame was captured, not from when the app received the
+frame. The camera code sets the timestamp provided with the buffer,
+resulting in a more consistent series of timestamps.</p>
 
-<h2 id=continuous_capture>Case Study: Grafika's continuous capture</h2>
+<h2 id="continuous_capture">Case study: Grafika's continuous capture</h2>
 
-<p>The camera can provide a stream of frames suitable for recording as a movie.
-To display it on screen, you create a SurfaceView, pass the Surface to
-<code>setPreviewDisplay()</code>, and let the producer (camera) and consumer
-(SurfaceFlinger) do all the work. To record the video, you create a Surface with
-MediaCodec's <code>createInputSurface()</code>, pass that to the camera, and
-again sit back and relax. To show and record the it at the same time, you have
-to get more involved.</p>
+<p><a href="https://github.com/google/grafika/blob/master/app/src/main/java/com/android/grafika/ContinuousCaptureActivity.java"
+class="external">Grafika's continuous capture</a> involves recording frames
+from a device's camera and displaying those frames on screen.
+To record frames, create a surface with the
+<a href="https://www.google.com/url?sa=D&q=https%3A%2F%2Fdeveloper.android.com%2Freference%2Fandroid%2Fmedia%2FMediaCodec"
+class="external">MediaCodec</a> class's
+<code>createInputSurface()</code> method and pass the surface to the camera. To
+display frames, create a SurfaceView and pass the surface to
+<code>setPreviewDisplay()</code>. However, recording frames and displaying
+them at the same time is a more involved process.</p>
 
 <p>The <em>continuous capture</em> activity displays video from the camera as
-the video is being recorded. In this case, encoded video is written to a
-circular buffer in memory that can be saved to disk at any time. It's
-straightforward to implement so long as you keep track of where everything is.
-</p>
+video is being recorded. In this case, encoded video is written to a
+circular buffer in memory that can be saved to disk at any time.</p>
 
-<p>This flow involves three BufferQueues: one created by the app, one created by
-SurfaceFlinger, and one created by mediaserver:</p>
+<p>This flow involves three BufferQueues:</p>
 <ul>
-<li><strong>Application</strong>. The app uses a SurfaceTexture to receive
-frames from Camera, converting them to an external GLES texture.</li>
-<li><strong>SurfaceFlinger</strong>. The app declares a SurfaceView, which we
-use to display the frames.</li>
-<li><strong>MediaServer</strong>. You configure a MediaCodec encoder with an
-input Surface to create the video.</li>
+<li><strong>App</strong> &mdash; The app uses a SurfaceTexture to receive
+frames from the camera, converting them to an external GLES texture.</li>
+<li><strong>SurfaceFlinger</strong> &mdash; The app declares a SurfaceView
+to display the frames.</li>
+<li><strong>MediaServer</strong> &mdash; Configure a MediaCodec encoder with an
+input surface to create the video.</li>
 </ul>
 
 <img src="images/continuous_capture_activity.png" alt="Grafika continuous
 capture activity" />
 
-<p class="img-caption"><strong>Figure 1.</strong>Grafika's continuous capture
-activity. Arrows indicate data propagation from the camera and BufferQueues are
-in color (producers are teal, consumers are green).</p>
+<p>In the figure below, the arrows indicate data propagation from the camera.
+BufferQueues are in color (producers are teal, consumers are green).</p>
 
-<p>Encoded H.264 video goes to a circular buffer in RAM in the app process, and
-is written to an MP4 file on disk using the MediaMuxer class when the capture
-button is hit.</p>
+<p class="img-caption"><strong>Figure 1.</strong> Grafika's continuous capture
+activity.</p>
 
-<p>All three of the BufferQueues are handled with a single EGL context in the
-app, and the GLES operations are performed on the UI thread.  Doing the
-SurfaceView rendering on the UI thread is generally discouraged, but since we're
-doing simple operations that are handled asynchronously by the GLES driver we
-should be fine.  (If the video encoder locks up and we block trying to dequeue a
-buffer, the app will become unresponsive. But at that point, we're probably
-failing anyway.)  The handling of the encoded data -- managing the circular
-buffer and writing it to disk -- is performed on a separate thread.</p>
+<p>Encoded H.264 video goes to a circular buffer in RAM in the app process.
+When a user presses the capture button, the <code>MediaMuxer</code> class
+writes the encoded video to an MP4 file on disk.</p>
 
-<p>The bulk of the configuration happens in the SurfaceView's <code>surfaceCreated()</code>
-callback.  The EGLContext is created, and EGLSurfaces are created for the
-display and for the video encoder.  When a new frame arrives, we tell
-SurfaceTexture to acquire it and make it available as a GLES texture, then
-render it with GLES commands on each EGLSurface (forwarding the transform and
-timestamp from SurfaceTexture).  The encoder thread pulls the encoded output
-from MediaCodec and stashes it in memory.</p>
+<p>All the BufferQueues are handled with a single EGL context in the
+app while the GLES operations are performed on the UI thread. The handling of
+encoded data (managing a circular buffer and writing it to disk) is done
+on a separate thread.</p>
 
-<h2 id=st_vid_play>Secure texture video playback</h2>
-<p>Android 7.0 supports GPU post-processing of protected video content. This
-allows using the GPU for complex non-linear video effects (such as warps),
+<aside class="warning"><strong>Warning:</strong> If the video encoder locks up
+and blocks a dequeueing buffer the app becomes unresponsive.</aside>
+
+<aside class="note"><strong>Note:</strong> Doing SurfaceView rendering on the UI
+thread is discouraged, but it's used in this case study for simplicity.
+More complex rendering should use a dedicated thread to isolate the GLES context
+and minimize interference with the rendering of another app's UI.</aside>
+
+<p>SurfaceView's <code>surfaceCreated()</code> callback creates the EGLContext
+and EGLSurfaces for the display and the video encoder. When a new frame arrives,
+SurfaceTexture performs four activities:</p>
+
+<ol>
+  <li>Acquires the frame.</li>
+  <li>Makes the frame available as a GLES texture.</li>
+  <li>Renders the frame with GLES commands.</li>
+  <li>Forwards the transform and timestamp for each EGLSurface.</li>
+</ol>
+
+<p>The encoder thread then pulls the encoded output from MediaCodec and stashes
+it in memory.</p>
+
+<h2 id="st_vid_play">Secure texture video playback</h2>
+
+<p>Android supports GPU post-processing of protected video content. This
+lets apps use the GPU for complex, nonlinear video effects (such as warps),
 mapping protected video content onto textures for use in general graphics scenes
-(e.g., using OpenGL ES), and virtual reality (VR).</p>
+(for example, using GLES), and virtual reality (VR).</p>
 
 <img src="images/graphics_secure_texture_playback.png" alt="Secure Texture Video Playback" />
-<p class="img-caption"><strong>Figure 2.</strong>Secure texture video playback</p>
+<p class="img-caption"><strong>Figure 2.</strong> Secure texture video playback</p>
 
 <p>Support is enabled using the following two extensions:</p>
 <ul>
-<li><strong>EGL extension</strong>
-(<code><a href="https://www.khronos.org/registry/egl/extensions/EXT/EGL_EXT_protected_content.txt">EGL_EXT_protected_content</code></a>).
-Allows the creation of protected GL contexts and surfaces, which can both
+<li><strong>EGL extension</strong> &mdash;
+(<code><a
+href="https://www.khronos.org/registry/egl/extensions/EXT/EGL_EXT_protected_content.txt"
+class="external">EGL_EXT_protected_content</code></a>)
+Enables the creation of protected GL contexts and surfaces, which can both
 operate on protected content.</li>
-<li><strong>GLES extension</strong>
-(<code><a href="https://www.khronos.org/registry/gles/extensions/EXT/EXT_protected_textures.txt">GL_EXT_protected_textures</code></a>).
-Allows tagging textures as protected so they can be used as framebuffer texture
+<li><strong>GLES extension</strong> &mdash;
+(<code><a href="https://www.khronos.org/registry/gles/extensions/EXT/EXT_protected_textures.txt"
+class="external">GL_EXT_protected_textures</code></a>)
+Enables tagging textures as protected so they can be used as framebuffer texture
 attachments.</li>
 </ul>
 
-<p>Android 7.0 also updates SurfaceTexture and ACodec
-(<code>libstagefright.so</code>) to allow protected content to be sent even if
-the windows surface does not queue to the window composer (i.e., SurfaceFlinger)
+<p>Android enables SurfaceTexture and ACodec
+(<code>libstagefright.so</code>) to send protected content even if
+the window's surface doesn't queue to SurfaceFlinger
 and provide a protected video surface for use within a protected context. This
-is done by setting the correct protected consumer bits
+is done by setting the protected consumer bit
 (<code>GRALLOC_USAGE_PROTECTED</code>) on surfaces created in a protected
 context (verified by ACodec).</p>
 
-<p>These changes benefit app developers who can create apps that perform
-enhanced video effects or apply video textures using protected content in GL
-(for example, in VR), end users who can view high-value video content (such as
-movies and TV shows) in GL environment (for example, in VR), and OEMs who can
-achieve higher sales due to added device functionality (for example, watching HD
-movies in VR). The new EGL and GLES extensions can be used by system on chip
-(SoCs) providers and other vendors, and are currently implemented on the
-Qualcomm MSM8994 SoC chipset used in the Nexus 6P.
-
 <p>Secure texture video playback sets the foundation for strong DRM
-implementation in the OpenGL ES environment. Without a strong DRM implementation
-such as Widevine Level 1, many content providers would not allow rendering of
+implementation in the OpenGL ES environment. Without a strong DRM implementation,
+such as Widevine Level 1, many content providers don't allow rendering of
 their high-value content in the OpenGL ES environment, preventing important VR
-use cases such as watching DRM protected content in VR.</p>
+use cases such as watching DRM-protected content in VR.</p>
 
-<p>AOSP includes framework code for secure texture video playback; driver
-support is up to the vendor. Device implementers must implement the
+<p>AOSP includes framework code for secure texture video playback. Driver
+support is up to OEMs. Device implementers must implement
 <code>EGL_EXT_protected_content</code> and
 <code>GL_EXT_protected_textures extensions</code>. When using your own codec
-library (to replace libstagefright), note the changes in
+library (to replace <code>libstagefright</code>), note the changes in
 <code>/frameworks/av/media/libstagefright/SurfaceUtils.cpp</code> that allow
 buffers marked with <code>GRALLOC_USAGE_PROTECTED</code> to be sent to
-ANativeWindows (even if the ANativeWindow does not queue directly to the window
+ANativeWindows (even if ANativeWindow doesn't queue directly to the window
 composer) as long as the consumer usage bits contain
 <code>GRALLOC_USAGE_PROTECTED</code>. For detailed documentation on implementing
-the extensions, refer to the Khronos Registry
-(<a href="https://www.khronos.org/registry/egl/extensions/EXT/EGL_EXT_protected_content.txt">EGL_EXT_protected_content</a>,
-<a href="https://www.khronos.org/registry/gles/extensions/EXT/EXT_protected_textures.txt">GL_EXT_protected_textures</a>).</p>
+the extensions, refer to the Khronos registries
+(<a
+href="https://www.khronos.org/registry/egl/extensions/EXT/EGL_EXT_protected_content.txt"
+class="external">EGL_EXT_protected_content</a>,
+and
+<a href="https://www.khronos.org/registry/gles/extensions/EXT/EXT_protected_textures.txt"
+class="external">GL_EXT_protected_textures</a>).</p>
 
-<p>Device implementers may also need to make hardware changes to ensure that
-protected memory mapped onto the GPU remains protected and unreadable by
-unprotected code.</p>
+<aside class="note"><strong>Note:</strong> Device implementers may need to
+make hardware changes to ensure that protected memory mapped onto the GPU
+remains protected and unreadable by unprotected code.</aside>
 
   </body>
 </html>

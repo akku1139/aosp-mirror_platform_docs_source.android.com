@@ -55,7 +55,7 @@ categorized as a
 ## Disabling Compatibility WAL
 
 To disable the Compatibility WAL mode, overlay the
-[`db_compatibility_wal_supported`](https://android.googlesource.com/platform/frameworks/base/+/master/core/res/res/values/config.xml#1844){: .external}
+[`db_compatibility_wal_supported`](https://android.googlesource.com/platform/frameworks/base/+/5bd43ad2e7e4e1ee2c31d920ba4b148bbdf74d11/core/res/res/values/config.xml#1692){: .external}
 config resource.
 
 For example:

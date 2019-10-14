@@ -22,25 +22,26 @@ Book: /_book.yaml
 Tethering offload enables devices to save power and improve performance by
 offloading the tethering traffic (over USB, Wi-Fi) to the hardware. The
 tethering traffic is offloaded by providing a direct path between the modem and
-the peripherals, bypassing the application processor.
+the peripherals, bypassing the app processor.
 
 ## Specifications
 
 Starting in Android 8.1, devices can use tethering offload to
 offload IPv4, IPv6, or IPv4+IPv6 forwarding to the hardware.
 
-The offload feature does not need to offload all packets. The framework is
+The offload feature doesn't need to offload all packets. The framework is
 capable of handling any packet in software. Control packets are typically
 processed in software. Because IPv4 ports are shared between tethered traffic
-and device traffic, IPv4 session setup/teardown packets (e.g., SYN/SYN+ACK, FIN)
-must be processed in software so the kernel can construct the flow state.
-The framework provides the control plane and state machines. It also provides
-the hardware with information on upstream and downstream interfaces/prefixes.
+and device traffic, IPv4 session setup/teardown packets (for
+example, SYN/SYN+ACK, FIN) must be processed in software so the kernel can
+construct the flow state. The framework provides the control plane and state
+machines. It also provides the hardware with information on upstream and
+downstream interfaces/prefixes.
 
 For IPv4, the hardware allows IPv4 network address translation (NAT) session
 setup packets to reach the CPU. The kernel creates NAT entries, and the HAL
 implementation observes the entries from the framework-provided file descriptors
-and handles these flows in hardware. This means the HAL implementation does not
+and handles these flows in hardware. This means the HAL implementation doesn't
 require `CAP_NET_*` because the HAL gets opened `NF_NETLINK_CONNTRACK` sockets
 from the framework. Periodically, the hardware sends NAT state updates for
 currently active flows to the framework, which refreshes the corresponding
@@ -64,19 +65,19 @@ main processor.
 To enable the tethering offload feature, you must implement the two following
 both a config HAL (`IOffloadConfig`) and a control HAL (`IOffloadControl`).
 
-### Config HAL: `IOffloadConfig`
+### Config HAL: IOffloadConfig
 
 The
-[`IOffloadConfig`](/reference/hidl/android/hardware/tetheroffload/config/1.0/IOffloadConfig)
+[`IOffloadConfig`](https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/master/tetheroffload/config/1.0/IOffloadConfig.hal){:.external}
 HAL starts the tethering offload implementation. The framework provides the HAL
 implementation with pre-connected `NF_NETLINK_CONNTRACK` sockets that the
 implementation can use to observe the IPv4 flows. Only forwarded flows must be
 accelerated.
 
-### Control HAL: `IOffloadControl`
+### Control HAL: IOffloadControl
 
 The
-[`IOffloadControl`](/reference/hidl/android/hardware/tetheroffload/control/1.0/IOffloadControl)
+[`IOffloadControl`](https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/master/tetheroffload/control/1.0/IOffloadControl.hal){:.external}
 HAL controls the offload implementation. The following methods must be
 implemented:
 
@@ -87,7 +88,7 @@ implemented:
     `addDownstream/removeDownstream`.
 +   Data usage accounting: Use `getForwardedStats/setDataLimit`.
 
-Your vendor HAL must also send callbacks via the `ITetheringOffloadCallback`
+Your vendor HAL must also send callbacks through the `ITetheringOffloadCallback`
 interface, which informs the framework of:
 
 +   Asynchronous events such as offload being started and stopped

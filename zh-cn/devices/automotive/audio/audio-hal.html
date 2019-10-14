@@ -1,10 +1,10 @@
 <html devsite><head>
-    <title>实现音频 HAL</title>
+    <title>实现车载音频 HAL</title>
     <meta name="project_path" value="/_project.yaml"/>
     <meta name="book_path" value="/_book.yaml"/>
   </head>
-
   <body>
+
   <!--
       Copyright 2018 The Android Open Source Project
 
@@ -21,22 +21,20 @@
       limitations under the License.
   -->
 
-<p>
-汽车音频实现依赖标准 <a href="/devices/audio/implement">Android 音频 HAL</a>，其中包括以下内容：
-</p>
+<p>车载音频实现依赖于标准 <a href="/devices/audio/implement">Android 音频 HAL</a>，其中包括以下内容：</p>
 
 <ul>
-  <li><code><strong>IDevice</strong></code> (<code>hardware/interfaces/audio/2.0/IDevice.hal</code>)。创建输入流和输出流、处理主音量和静音，以及使用：<ul>
+  <li><code><strong>IDevice</strong></code> (<code>hardware/interfaces/audio/2.0/IDevice.hal</code>)。负责创建输入流和输出流、处理主音量和静音操作，以及使用：<ul>
     <li><code>createAudioPatch</code> 在设备之间创建 external-external 补丁程序。</li>
     <li><code>IDevice.setAudioPortConfig()</code> 为各个物理音频流提供音量。</li>
   </ul>
-  </li><li><code><strong>IStream</strong></code> (<code>hardware/interfaces/audio/2.0/IStream.hal</code>)。连同它的输入和输出变体一起，管理进出硬件的实际样本音频流。</li>
+  </li><li><code><strong>IStream</strong></code> (<code>hardware/interfaces/audio/2.0/IStream.hal</code>)。连同它的输入和输出变体一起管理进出硬件的样本音频流。</li>
 </ul>
 
 <h2 id="automotive-device-types">车载设备类型</h2>
 
-<p>
-以下设备类型与汽车平台相关：</p>
+<p>以下设备类型与车载平台相关：
+</p>
 
 <table>
 <thead>
@@ -47,65 +45,61 @@
 </thead>
 <tbody>
 <tr>
-<td>AUDIO_DEVICE_OUT_BUS</td>
+<td><code>AUDIO_DEVICE_OUT_BUS</code></td>
 <td>Android 的主要输出（Android 的所有音频均通过这种方式提供给车辆）。用作消除各个上下文的信息流歧义的地址。</td>
 </tr>
 <tr>
-<td>AUDIO_DEVICE_OUT_TELEPHONY_TX</td>
+<td><code>AUDIO_DEVICE_OUT_TELEPHONY_TX</code></td>
 <td>用于传输路由到手机无线装置的音频。</td>
 </tr>
 <tr>
-<td>AUDIO_DEVICE_IN_BUS</td>
+<td><code>AUDIO_DEVICE_IN_BUS</code></td>
 <td>用于尚未进行分类的输入。</td>
 </tr>
 <tr>
-<td>AUDIO_DEVICE_IN_FM_TUNER</td>
+<td><code>AUDIO_DEVICE_IN_FM_TUNER</code></td>
 <td>仅用于广播无线装置输入。</td>
 </tr>
 <tr>
-<td>AUDIO_DEVICE_IN_TV_TUNER</td>
-<td>可用于电视设备（如果存在）。</td>
+<td><code>AUDIO_DEVICE_IN_TV_TUNER</code></td>
+<td>用于电视设备（如果存在）。</td>
 </tr>
 <tr>
-<td>AUDIO_DEVICE_IN_LINE</td>
+<td><code>AUDIO_DEVICE_IN_LINE</code></td>
 <td>用于 AUX 输入耳机插孔。</td>
 </tr>
 <tr>
-<td>AUDIO_DEVICE_IN_BLUETOOTH_A2DP</td>
+<td><code>AUDIO_DEVICE_IN_BLUETOOTH_A2DP</code></td>
 <td>通过蓝牙接收到的音乐。</td>
 </tr>
 <tr>
-<td>AUDIO_DEVICE_IN_TELEPHONY_RX</td>
-<td>用于从手机无线装置接收到与通话相关联的音频。</td>
+<td><code>AUDIO_DEVICE_IN_TELEPHONY_RX</code></td>
+<td>用于从手机无线装置接收到的与通话相关联的音频。</td>
 </tr>
 </tbody>
 </table>
 
 <h2 id="route-audio-sources">路由音频源</h2>
 
-<p>
-您应使用 <code>AudioRecord</code> 或相关 Android 机制来捕获大多数音频源。接下来，可为数据分配 <a href="/devices/audio/attributes">AudioAttributes</a> 并通过 <code>AndroidTrack</code> 播放数据，只需依赖默认的 Android 路由逻辑或通过显式调用 <code>AudioRecord</code> 和/或 <code>AudioTrack</code> 对象上的 <code>setPreferredDevice()</code> 即可。
+<p>您应使用 <code>AudioRecord</code> 或相关 Android 机制来捕获大多数音频源。接下来，可以<a href="/devices/audio/attributes">通过 <code>AudioAttributes</code> 类为数据分配音频属性</a>并通过 <code>AudioTrack</code> 播放数据，只需依赖默认的 Android 路由逻辑或通过对 <code>AudioRecord</code> 或 <code>AudioTrack</code> 对象显式调用 <code>setPreferredDevice()</code> 即可。
 </p><p>
 
-</p><p>
-对于与外部混音器之间有专用硬件连接的来源或具有极为严苛的延迟要求的来源而言，您可以使用 <code>createAudioPatch()</code> 和 <code>releaseAudioPatch()</code> 来启用和停用外部设备之间的路由（在样本传输过程中无需使用 <code>AudioFlinger</code>）。
+</p><p>对于与外部混音器之间有专用硬件连接的来源或具有极为严苛的延迟要求的来源而言，您可以使用 <code>createAudioPatch()</code> 和 <code>releaseAudioPatch()</code> 来启用和停用外部设备之间的路由（在样本传输过程中无需使用 <code>AudioFlinger</code>）。
 </p>
 
 <h2 id="configure-audio-devices">配置音频设备</h2>
 
-<p>
-Android 可见的音频设备必须在 <code>system/etc/audio_policy_configuration.xml</code> 中进行定义，其中包括以下组件：
-</p>
+<p>Android 可见的音频设备必须在 <code>/audio_policy_configuration.xml</code> 中进行定义，其中包括以下组件：</p>
 
 <ul>
-  <li><strong>module name</strong>。支持“primary”（用于汽车用例）、“A2DP”、“remote_submix”和“USB”。模块名称和相应音频驱动程序应编译到 <code>audio.primary.$(variant).so</code> 中。</li>
-  <li><strong>devicePorts</strong>。包含可从此模块访问的所有输入和输出设备（包括永久连接的设备和可移除设备）的设备描述符列表。
+  <li><strong>module name。</strong> 支持“primary”（用于车载使用场景）、“A2DP”、“remote_submix”和“USB”。模块名称和相应音频驱动程序应编译到 <code>audio.primary.$(variant).so</code> 中。</li>
+  <li><strong>devicePorts。</strong> 包含可从此模块访问的所有输入和输出设备（包括永久连接的设备和可移除设备）的设备描述符列表。
   <ul>
     <li>对于每种输出设备，您可以定义增益控制（包含以 millibel 为单位的 min/value/step/default 值，其中 1 millibel = 1/100 分贝 = 1/1000 贝尔）。</li>
-      <li><code>devicePort</code> 上的地址属性可用于查找设备（即使多个设备的设备类型与 <code>AUDIO_DEVICE_OUT_BUS</code> 相同）。</li>
+      <li><code>devicePort</code> 实例上的地址属性可用于查找设备（即使多个设备的设备类型均为 <code>AUDIO_DEVICE_OUT_BUS</code>）。</li>
   </ul>
-  </li><li><strong>mixPorts</strong>。包含由音频 HAL 提供的所有输出流和输入流的列表。每个 <code>mixPort</code> 都可被视为传输到 Android <code>AudioService</code> 的物理音频流。</li>
-  <li><strong>routes</strong>。定义输入和输出设备之间或音频流和设备之间可能存在的连接的列表。</li>
+  </li><li><strong>mixPorts。</strong> 包含由音频 HAL 提供的所有输出流和输入流的列表。每个 <code>mixPort</code> 实例都可被视为传输到 Android <code>AudioService</code> 的物理音频流。</li>
+  <li><strong>routes。</strong> 定义输入和输出设备之间或音频流和设备之间可能存在的连接的列表。</li>
 </ul>
 
 <p>
@@ -156,21 +150,16 @@ Android 可见的音频设备必须在 <code>system/etc/audio_policy_configurati
 
 <h2 id="device-ports">指定 devicePorts</h2>
 
-<p>
-汽车平台应该为每个输入到 Android 和从 Android 输出的物理音频流指定 <code>devicePort</code>。对于输出音频流，<code>devicePorts</code> 的类型应为 <code>AUDIO_DEVICE_OUT_BUS</code>，并采用整数（即总线 0、总线 1 等）编址。<code>mixPort</code> 与 <code>devicePorts</code> 的数量之比应为 1:1，并应允许指定可以路由到每个总线的数据格式。
+<p>车载平台应该为每个输入到 Android 和从 Android 输出的物理音频流指定 <code>devicePort</code> 实例。对于输出音频流，每个 <code>devicePort</code> 实例的类型都应该为 <code>AUDIO_DEVICE_OUT_BUS</code>，并采用整数（即总线 0、总线 1 等）编址。<code>mixPort</code> 实例与 <code>devicePort</code> 实例的数量之比应为 1:1，并应允许指定可以路由到每个总线的数据格式。
 </p>
 
-<p>
-汽车实现可以使用多个输入设备类型，包括 <code>FM_TUNER</code>（保留以用于广播无线装置输入）、<code>MIC</code> 设备（用于处理麦克风输入）和 <code>TYPE_AUX_LINE</code>（用于表示模拟线输入）。所有其他输入流都会分配到 <code>AUDIO_DEVICE_IN_BUS</code>，并在通过 <code>AudioManager.getDeviceList()</code> 调用枚举设备时被发现。各个来源可根据其 <code>AudioDeviceInfo.getProductName()</code> 进行区分。
+<p>车载实现可以使用多个输入设备类型，包括 <code>FM_TUNER</code>（保留以用于广播无线装置输入）、<code>MIC</code> 设备（用于处理麦克风输入）和 <code>TYPE_AUX_LINE</code>（用于表示模拟线输入）。所有其他输入流都会分配到 <code>AUDIO_DEVICE_IN_BUS</code> 并在通过 <code>AudioManager.getDeviceList()</code> 调用枚举设备时被发现。各个来源可根据其 <code>AudioDeviceInfo.getProductName()</code> 进行区分。
   </p><p>
 
-</p><p>
-您还可以将外部设备定义为端口，然后通过音频 HAL 的 <code>IDevice::createAudioPatch</code> 方法（通过新的 <code>CarAudioManager</code> 入口点提供）使用这些端口与外部硬件互动。
+</p><p>您还可以将外部设备定义为端口，然后通过音频 HAL 的 <code>IDevice::createAudioPatch</code> 方法（通过新的 <code>CarAudioManager</code> 入口点提供）使用这些端口与外部硬件互动。
 </p>
 
-<p>
-如果存在基于总线的音频驱动程序，则必须将 <code>audioUseDynamicRouting</code> 标记设置为 <code>true</code>：
-</p>
+<p>如果存在基于总线的音频驱动程序，则必须将 <code>audioUseDynamicRouting</code> 标记设置为 <code>true</code>：</p>
 
 <pre class="prettyprint">
 &lt;resources&gt;
@@ -178,8 +167,7 @@ Android 可见的音频设备必须在 <code>system/etc/audio_policy_configurati
 &lt;/resources&gt;
 </pre>
 
-<p>
-有关详情，请参阅 <code>device/generic/car/emulator/audio/overlay/packages/services/Car/service/res/values/config.xml</code>。
+<p>如需了解详情，请参阅 <code>device/generic/car/emulator/audio/overlay/packages/services/Car/service/res/values/config.xml</code>。
 </p>
 
 </body></html>

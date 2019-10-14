@@ -1,0 +1,245 @@
+<html devsite>
+  <head>
+    <title>Scudo</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2019 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>Scudo is a dynamic user-mode memory allocator, or <em>heap</em> allocator, designed
+to be resilient against heap-related vulnerabilities (such as <a
+href="https://cwe.mitre.org/data/definitions/122.html" class="external">heap-based buffer
+overflow</a>, <a
+href="https://cwe.mitre.org/data/definitions/416.html" class="external">use after free</a>,
+and <a
+href="https://cwe.mitre.org/data/definitions/415.html" class="external">double free</a>)
+while maintaining performance. It provides the standard C allocation and
+deallocation primitives (such as <a
+href="http://pubs.opengroup.org/onlinepubs/009695399/functions/malloc.html" class="external">
+malloc</a> and free), as well as the C++ primitives (such as new and delete).
+</p>
+
+<p>Scudo is more of a mitigation than a fully fledged memory error
+detector like <a
+href="/devices/tech/debug/sanitizers#addresssanitizer">AddressSanitizer (ASan)</a>.</p>
+
+<p>The allocator can be used for native binaries, on a per-binary basis, by
+toggling the associated option in the executable makefile. At runtime, all
+allocations and deallocations are serviced by Scudo for the binary and its
+dependencies, and the process is aborted if a corruption or suspicious
+behavior is detected in the heap.</p>
+
+<p>Scudo is <a
+href="https://github.com/llvm/llvm-project/tree/master/compiler-rt/lib/scudo" class="external">
+open source</a> and part of LLVM's compiler-rt project. Documentation is
+available at <a href="https://llvm.org/docs/ScudoHardenedAllocator.html" class="external">
+https://llvm.org/docs/ScudoHardenedAllocator.html</a>. The Scudo runtime ships
+as part of the Android toolchain and support was added to <a
+href="https://android.googlesource.com/platform/build/soong/" class="external" >Soong and Make</a>
+to allow for easy enabling of the allocator in a binary.</p>
+
+<p>You can enable or disable extra mitigation within
+the allocator using the options described below.</p>
+
+<h2 id="scudo-makefiles">Enabling Scudo in makefiles</h2>
+
+<p>To enable Scudo, add the following in the makefile of your
+<strong>main</strong> executable:</p>
+<pre>
+LOCAL_SANITIZE := scudo
+</pre>
+
+<h2 id="scudo-blueprint">Enabling Scudo in blueprint files</h2>
+<p>To enable Scudo in blueprint files, add the following in the makefile of your
+<strong>main</strong> executable:</p>
+<pre>
+sanitize: { scudo: true, }
+</pre>
+
+<h2 id="disable-scudo">Disabling Scudo globally</h2>
+
+<p>Scudo can be disabled globally, overriding potential local enablement, via
+the following variables:</p>
+
+<ul>
+  <li><strong>Make</strong>: <code>PRODUCT_DISABLE_SCUDO := true</code></li>
+  <li><strong>Soong</strong>: <code>DisableScudo: true,</code></li>
+    </ul>
+
+
+<h2 id="Customization">Customization</h2>
+
+<p>Some parameters of the allocator can be defined on a per-process basis
+through several ways:</p>
+<ul>
+<li><strong>Statically:</strong> Define a <code>__scudo_default_options</code> function
+in the program that returns the options string to be parsed. This function
+must have the following prototype: <code>extern "C" const char
+*__scudo_default_options()</code>.</li>
+<li><strong>Dynamically:</strong> Use the environment variable <code>SCUDO_OPTIONS</code>
+containing the options string to be parsed. Options defined this way
+override any definition made through <code>__scudo_default_options</code>.</li>
+</ul>
+<p>The following options are available.</p>
+<aside class="note"><b>Note:</b> Frontend options have a
+different name format than backend options.</aside>
+
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>64-bit default</th>
+<th>32-bit default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>QuarantineSizeKb</code></td>
+<td><code>256</code></td>
+<td><code>64</code></td>
+<td>The size (in KB) of quarantine used to delay the actual deallocation of
+chunks. A lower value may reduce memory usage but decrease the effectiveness
+of the mitigation; a negative value falls back to the defaults. Setting
+both this and <code>ThreadLocalQuarantineSizeKb</code> to zero disables the
+quarantine entirely.</td>
+</tr>
+<tr>
+<td><code>QuarantineChunksUpToSize</code></td>
+<td><code>2048</code></td>
+<td><code>512</code></td>
+<td>The size (in bytes) up to which chunks can be quarantined.</td>
+</tr>
+<tr>
+<td><code>ThreadLocalQuarantineSizeKb</code></td>
+<td><code>64</code></td>
+<td><code>16</code></td>
+<td>The size (in KB) of per-thread cache use to offload the global quarantine.
+A lower value may reduce memory usage but might increase contention on the
+global quarantine. Setting both this and <code>QuarantineSizeKb</code> to zero
+disables the quarantine entirely.</td>
+</tr>
+<tr>
+<td><code>DeallocationTypeMismatch</code></td>
+<td><code>false</code></td>
+<td><code>false</code></td>
+<td>Enables error reporting on malloc/delete, new/free, new/delete[]</td>
+</tr>
+<tr>
+<td><code>DeleteSizeMismatch</code></td>
+<td><code>true</code></td>
+<td><code>true</code></td>
+<td>Enables error reporting on mismatch between sizes of new and
+delete.</td>
+</tr>
+<tr>
+<td><code>ZeroContents</code></td>
+<td><code>false</code></td>
+<td><code>false</code></td>
+<td>Enables zero chunk contents on allocation and deallocation.</td>
+</tr>
+<tr>
+<td><code>allocator_may_return_null</code></td>
+<td><code>false</code></td>
+<td><code>false</code></td>
+<td>Specifies that the allocator can return null when a recoverable error
+occurs, instead of terminating the process.</td>
+</tr>
+<tr>
+<td><code>hard_rss_limit_mb</code></td>
+<td><code>0</code></td>
+<td><code>0</code></td>
+<td>When the process's RSS reaches this limit, the process terminates.</td>
+</tr>
+<tr>
+<td><code>soft_rss_limit_mb</code></td>
+<td><code>0</code></td>
+<td><code>0</code></td>
+<td>When the process's RSS reaches this limit, further allocations fail or
+return <code>null</code> (depending on the value of <code>allocator_may_return_null</code>), until
+the RSS goes back down to allow for new allocations.</td>
+</tr>
+<tr>
+<td><code>allocator_release_to_os_interval_ms</code></td>
+<td>N/A</td>
+<td><code>5000</code></td>
+<td>Only affects a 64-bit allocator. If set, tries to release unused memory to
+the OS, but not more often than this interval (in milliseconds).
+If the value is negative, memory isn't released to the OS.</td>
+</tr>
+<tr>
+<td><code>abort_on_error</code></td>
+<td><code>true</code></td>
+<td><code>true</code></td>
+<td>If set, the tool calls <code>abort()</code> instead of <code>_exit()</code>
+after printing the error message.</td>
+</tr>
+</tbody>
+</table>
+
+<h2 id="Validation">Validation</h2>
+
+<p>Currently, there are no CTS tests specifically for Scudo. Instead, make sure
+that CTS tests pass with or without Scudo enabled for a given binary to verify
+that it doesn't impact the device.</p>
+
+<h2 id="Troubleshooting">Troubleshooting</h2>
+
+<p>If a non-recoverable issue is detected, the allocator
+displays an error message to the standard error descriptor and then terminates the process.
+Stack traces that lead to the termination are added in the system log.
+The output usually starts with <code>Scudo ERROR:</code> followed by a
+short summary of the problem along with any pointers.
+<aside class="note"><b>Note:</b> Again, Scudo is meant to be a mitigation.
+Consider using ASan to determine the root cause of the issue.</aside>
+
+<p>Here is a list of the current error messages and their potential
+causes:</p>
+<ul>
+<li><code>corrupted chunk header</code>: The checksum verification of the
+chunk header has failed. This is likely due to one of two things: the header was
+overwritten (partially or totally), or the pointer passed to the function is not
+a chunk.</li>
+<li><code>race on chunk header</code>: Two different threads are attempting to
+manipulate the same header at the same time. This is usually symptomatic of a
+race-condition or general lack of locking when performing operations on that
+chunk.</li>
+<li><code>invalid chunk state</code>: The chunk isn't in the expected state for
+a given operation, for example, it's not allocated when trying to free it, or it's not
+quarantined when trying to recycle it. A double free is the typical reason
+for this error.</li>
+<li><code>misaligned pointer</code>: Basic alignment
+requirements are strongly enforced: 8 bytes on 32-bit platforms and 16 bytes on 64-bit platforms.
+If a pointer passed to our functions does not fit those, the pointer passed to one of the
+functions is out of alignment.</li>
+<li><code>allocation type mismatch</code>: When this option is enabled,
+a deallocation function called on a chunk has to
+match the type of function that was called to allocate it.
+This type of mismatch can introduce security issues.</li>
+<li><code>invalid sized delete</code>: When the C++14 sized delete operator is
+used, and the optional check is enabled, there's a mismatch between the size that
+was passed when deallocating a chunk and the size that was requested when allocating it.
+This is typically a compiler issue or a
+<a href="https://cwe.mitre.org/data/definitions/843.html" class="external">type confusion</a>
+on the object being deallocated.</li>
+<li><code>RSS limit exhausted</code>: The maximum RSS optionally specified has
+been exceeded.</li>
+</ul>
+
+  </body>
+</html>

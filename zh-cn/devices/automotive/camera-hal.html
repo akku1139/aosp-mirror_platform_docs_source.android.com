@@ -4,6 +4,7 @@
     <meta name="book_path" value="/_book.yaml"/>
   </head>
   <body>
+
   <!--
       Copyright 2017 The Android Open Source Project
 
@@ -29,13 +30,13 @@
 <img src="/devices/automotive/images/vhal_evs_components.png" alt="EVS 系统组件示意图。"/>
 <figcaption><strong>图 1</strong> EVS 系统组件概览。</figcaption>
 
-<h3 id="evs-application">EVS 应用</h3>
-<p>可作为参考实现的 C++ EVS 示例应用 (<code>/packages/services/Car/evs/sample_app</code>)。该应用负责从 EVS 管理器请求视频帧，并将用于显示的已完成的帧发送回 EVS 管理器。
+<h3 id="evs-application-component">EVS 应用</h3>
+<p>可作为参考实现的 C++ EVS 示例应用 (<code>/packages/services/Car/evs/app</code>)。该应用负责从 EVS 管理器请求视频帧，并将用于显示的已完成的帧发送回 EVS 管理器。
 EVS 和汽车服务可供使用后，它便立即由 init 启动（设置目标为在开机两 (2) 秒内启动）。原始设备制造商 (OEM) 可视需要修改或替换 EVS 应用。</p>
 
-<h3 id="evs-manager">EVS 管理器</h3>
+<h3 id="evs-manager-component">EVS 管理器</h3>
 
-<p>EVS 管理器 (<code>/packages/services/Car/evs/service</code>) 可提供 EVS 应用所需的编译块，以实现从简单的后视摄像头显示到 6DOF 多相机渲染的任何功能。它的接口通过 HIDL 呈现，并被编译为接受多个并发客户端。
+<p>EVS 管理器 (<code>/packages/services/Car/evs/manager</code>) 可提供 EVS 应用所需的构建块，以实现从简单的后视摄像头显示到 6DOF 多摄像头渲染的任何功能。它的接口通过 HIDL 呈现，并且能够接受多个并发客户端。
 其他应用和服务（特别是汽车服务）可以查询 EVS 管理器状态，以了解 EVS 系统何时处于活动状态。</p>
 
 <h3 id="evs-hidl-interface">EVS HIDL 接口</h3>
@@ -55,7 +56,7 @@ EVS 和汽车服务可供使用后，它便立即由 init 启动（设置目标�
 
 <p>本部分介绍 HAL。供应商应该会提供该 API 的实现（已针对其硬件进行调整）。</p>
 
-<h3 id="ievsenumerator">IEvsEnumerator</h3>
+<h3 id="ievsenumerator-hw">IEvsEnumerator</h3>
 
 <p>该对象负责枚举系统中可用的 EVS 硬件（一个或多个相机和单个显示设备）。</p>
 
@@ -76,7 +77,7 @@ openCamera(string camera_id) generates (IEvsCamera camera);
 closeCamera(IEvsCamera camera);
 </pre>
 
-<p>释放 IEvsCamera 接口（与 <code>openCamera()</code> 调用相反）。如果数据流尚未停止，此调用将自动停止数据流。</p>
+<p>释放 IEvsCamera 接口（与 <code>openCamera()</code> 调用相反）。必须通过依次调用 <code>stopVideoStream()</code> 和 <code>closeCamera</code> 来停止相机视频流。</p>
 
 <pre class="prettyprint">
 openDisplay() generates (IEvsDisplay display);
@@ -94,7 +95,7 @@ closeDisplay(IEvsDisplay display);
 getDisplayState() generates (DisplayState state);
 </pre>
 
-<p>获取当前的显示状态。HAL 实现应报告实际的当前状态，该状态可能与最近请求的状态不同。负责更改显示状态的逻辑应存在于设备层之上，从而使 HAL 实现无需自发更改显示状态。如果显示目前未被任何客户端持有（通过调用 openDisplay），则此函数会返回 <code>NOT_OPEN</code>。否则，它会报告 EVS 显示的当前状态（请参阅 <a href="#ievsdisplay">IEvsDisplay API</a>）。</p>
+<p>获取当前的显示状态。HAL 实现应报告实际的当前状态，该状态可能与最近请求的状态不同。负责更改显示状态的逻辑应存在于设备层之上，从而使 HAL 实现无需自发更改显示状态。如果显示目前未被任何客户端持有（通过调用 openDisplay），则此函数会返回 <code>NOT_OPEN</code>。否则，它会报告 EVS 显示的当前状态（请参阅 <a href="#ievsdisplay-hw">IEvsDisplay API</a>）。</p>
 
 <a name="cameradesc"></a>
 <pre class="prettyprint">
@@ -110,15 +111,15 @@ struct CameraDesc {
 <li><code>vendor_flags</code>。用于以不透明的方式将特殊相机信息从驱动程序传送到自定义 EVS 应用的一种方法。这些信息未经解释即从驱动程序向上直通到 EVS 应用，可直接将其忽略。</li>
 </ul>
 
-<h3 id="ievscamera">IEvsCamera</h3>
+<h3 id="ievscamera-hw">IEvsCamera</h3>
 
-<p>该对象表示单个相机，是用于捕获图像的主要接口。</p>
+<p>该对象表示单个相机，是用于拍摄图像的主要接口。</p>
 
 <pre class="prettyprint">
-getId() generates (hidl_string cameraId);
+getCameraInfo() generates (CameraDesc info);
 </pre>
 
-<p>返回此相机的字符串 ID。该值必须与 <code>EvsEnumerator::getCameraList()</code> 在 <code>CameraDesc</code> 结构的 <code>camera_id</code> 字段中报告的值相同。</p>
+<p>返回此相机的 <code>CameraDesc</code>。</p>
 
 <pre class="prettyprint">
 setMaxFramesInFlight(int32 bufferCount) generates (EvsResult result);
@@ -136,7 +137,7 @@ startVideoStream(IEvsCameraStream receiver) generates (EvsResult result);
 </p>
 
 <pre class="prettyprint">
-doneWithFrame(BufferDesc buffer) generates (EvsResult result);
+oneway doneWithFrame(BufferDesc buffer);
 </pre>
 
 <p>返回传送到 IEvsCameraStream 的帧。传送到 IEvsCameraStream 接口的帧用完以后，必须被返回到 IEvsCamera 以供重新使用。只有极少的数量有限（最少可能只有一个）的缓冲区可供使用；如果供应的缓冲区耗尽，则在返回缓冲区之前不再传送任何帧，这可能会导致产生跳过的帧（具有空句柄的缓冲区表示数据流结束，无需通过此函数返回）。成功时返回 OK，否则返回相应错误代码（可能包括 <code>INVALID_ARG</code> 或 <code>BUFFER_NOT_AVAILABLE</code>）。</p>
@@ -181,13 +182,13 @@ struct BufferDesc {
 <li><code>height</code>。所呈现图像的高度（以像素为单位）。</li>
 <li><code>stride</code>。每行在存储设备中实际占用的像素数；用来计算行对齐的任何内边距。以像素表示，用于匹配 gralloc 为其缓冲区说明采用的惯例。</li>
 <li><code>pixelSize</code>。由每个单独的像素占据的字节数；用于计算在图像中分隔开各个行所需的字节大小（以字节为单位的 <code>stride</code> = 以像素为单位的 <code>stride</code> × <code>pixelSize</code>）。</li>
-<li><code>format</code>。图像使用的像素格式。提供的格式必须与平台的 OpenGL 实现相兼容。要通过兼容性测试，<code>HAL_PIXEL_FORMAT_YCRCB_420_SP</code> 应优先用于相机，<code>RGBA</code> 应优先用于显示。</li>
+<li><code>format</code>。图像使用的像素格式。提供的格式必须与平台的 OpenGL 实现相兼容。要通过兼容性测试，相机使用应首选 <code>HAL_PIXEL_FORMAT_YCRCB_420_SP</code>；显示应首选 <code>RGBA</code> 或 <code>BGRA</code>。</li>
 <li><code>usage</code>。由 HAL 实现设置的使用标记。HAL 客户端应原封不动地传送这些标记（有关详细信息，请参阅 <code>Gralloc.h</code> 相关标记）。</li>
 <li><code>bufferId</code>。由 HAL 实现指定的唯一值，用于在通过 HAL API 进行往返之后识别缓冲区。存储在该字段中的值可由 HAL 实现任意选择。
 </li><li><code>memHandle</code>。包含图像数据的底层内存缓冲区的句柄。HAL 实现可能会选择在此处存储 Gralloc 缓冲区句柄。</li>
 </ul>
 
-<h3 id="ievscamerastream">IEvsCameraStream</h3>
+<h3 id="ievscamerastream-hw">IEvsCameraStream</h3>
 
 <p>客户端实现此接口以接收异步传送的视频帧。</p>
 
@@ -198,11 +199,11 @@ deliverFrame(BufferDesc buffer);
 <p>每次视频帧准备好进行检查时，都从 HAL 接收调用。
 通过此方法接收的缓冲区句柄必须通过调用 <code>IEvsCamera::doneWithFrame()</code> 来返回。当视频流通过调用 <code>IEvsCamera::stopVideoStream()</code> 停止时，此回调可能会像下水道排水一样持续一段时间。每个帧仍必须返回；当传送完流数据流中的最后一帧后，系统将传送一个 NULL bufferHandle，这表示数据流结束，不会再发生进一步的帧传递。NULL bufferHandle 本身不需要通过 <code>doneWithFrame()</code> 发回，但是必须返回所有其他句柄</p>
 
-<p>尽管专用缓冲区格式在技术上是可行的，但兼容性测试要求缓冲区采用以下四种受支持的格式之一：NV21 (YCrCb 4:2:0 Semi-Planar)、YV12 (YCrCb 4:2:0 Planar)、YUYV (YCrCb 4:2:2 Interleaved)、RGBA（32 位 R:G:B:x）。所选格式必须是平台的 GLES 实现上的有效 GL 纹理源。</p>
+<p>尽管专用缓冲区格式在技术上是可行的，但兼容性测试要求缓冲区采用以下五种受支持的格式之一：NV21 (YCrCb 4:2:0 Semi-Planar)、YV12 (YCrCb 4:2:0 Planar)、YUYV (YCrCb 4:2:2 Interleaved)、RGBA (32 位 R:G:B:x)、BGRA (32 位 B:G:R:x)。所选格式必须是平台的 GLES 实现上的有效 GL 纹理源。</p>
 
-<p>应用<strong>不</strong>得依赖 <code>bufferId</code> 字段与 <code>BufferDesc</code> 结构中的 <code>memHandle</code> 之间的任何对应关系。一般来说，<code>bufferId</code> 值对于 HAL 驱动程序实现是私有的，该实现可以在适当的情况下使用（和重新使用）这些值。</p>
+<p>应用<strong>不</strong>得依赖于 <code>bufferId</code> 字段与 <code>BufferDesc</code> 结构中的 <code>memHandle</code> 之间的任何对应关系。一般来说，<code>bufferId</code> 值对于 HAL 驱动程序实现是私有的，该实现可以在适当的情况下使用（和重新使用）这些值。</p>
 
-<h3 id="ievsdisplay">IEvsDisplay</h3>
+<h3 id="ievsdisplay-hw">IEvsDisplay</h3>
 
 <p>该对象可表示 EVS 显示，控制显示状态，并处理图像的实际呈现效果。</p>
 
@@ -234,7 +235,7 @@ getTargetBuffer() generates (handle bufferHandle);
 
 <p>将句柄返回到与显示相关联的帧缓冲区。该缓冲区可能会被软件和/或 GL 锁定和写入。此缓冲区必须通过调用 <code>returnTargetBufferForDisplay()</code> 来返回（即使显示已不再处于可见状态）。</p>
 
-<p>尽管专用缓冲区格式在技术上是可行的，但兼容性测试要求缓冲区采用以下四种受支持的格式之一：NV21 (YCrCb 4:2:0 Semi-Planar)、YV12 (YCrCb 4:2:0 Planar)、YUYV (YCrCb 4:2:2 Interleaved)、RGBA（32 位 R:G:B:x）。所选格式必须是平台的 GLES 实现上的有效 GL 渲染目标。</p>
+<p>尽管专用缓冲区格式在技术上是可行的，但兼容性测试要求缓冲区采用以下五种受支持的格式之一：NV21 (YCrCb 4:2:0 Semi-Planar)、YV12 (YCrCb 4:2:0 Planar)、YUYV (YCrCb 4:2:2 Interleaved)、RGBA (32 位 R:G:B:x)、BGRA (32 位 B:G:R:x)。所选格式必须是平台的 GLES 实现上的有效 GL 渲染目标。</p>
 
 <p>在出现错误时，系统会返回一个带有空句柄的缓冲区，但这种缓冲区不需要传送回 <code>returnTargetBufferForDisplay</code>。</p>
 
@@ -279,7 +280,7 @@ enum DisplayState : uint32 {
 <p>EVS 管理器实现与底层 HAL 驱动程序相同的 API，并通过支持多个并发客户端来提供扩展服务（多个客户端可以通过 EVS 管理器打开相机并接收视频流）。</p>
 
 <figure id="evs-manager">
-<img src="/devices/automotive/images/vhal_evs_manager.png" alt="EVS 管理器和 EVS 硬件 API 示意图。"/>
+<img src="/devices/automotive/images/vhal_evs_manager.png" alt="EVS 管理器和 EVS Hardware API 示意图。"/>
 <figcaption><strong>图 2.</strong> EVS 管理器镜像底层 EVS 硬件 API</figcaption>
 </figure>
 

@@ -1,0 +1,110 @@
+<html devsite><head>
+
+  <meta name="book_path" value="/_book.yaml"/>
+
+  <meta name="project_path" value="/_project.yaml"/>
+</head>
+<body>
+
+<!--
+  Copyright 2019 The Android Open Source Project
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+<h1 id="wi-fi_easy_connect" class="page-title">WLAN Easy Connect</h1>
+
+<p>Android 10 引入了对 WLAN Easy Connect 协议（也称为设备配置协议 (DPP)）的支持。
+<a href="https://www.wi-fi.org/discover-wi-fi/wi-fi-easy-connect" class="external">WLAN Easy Connect</a> 由 WLAN 联盟 (WFA) 引入，用于替代 WLAN 保护设置 (WPS)。WPS 在 Android 9 中已弃用。</p>
+
+<p>WLAN Easy Connect 可提供实现以下目的的简单且安全的方法：</p>
+
+<ul>
+<li>在不输入密码的情况下将 WLAN 设备（包括无头设备）连接到网络。</li>
+<li>在不知道或不输入密码的情况下接入 WLAN 网络。</li>
+</ul>
+
+<p>引导和身份验证使用 URI 进行配置；URI 通过扫描二维码（使用摄像头）获得或在带外进行配置（例如使用 BLE 或 NFC）。</p>
+
+<p>WLAN Easy Connect 使用加密渠道在设备之间发送 WLAN 凭据，而且由于使用了公开操作帧，设备可以使用现有接入点。</p>
+
+<p>Android 10 仅在发起程序模式下支持 WLAN Easy Connect（不支持响应程序模式）。支持以下操作模式：</p>
+
+<ul>
+<li><strong>Initiator-Configurator</strong>：通过扫描网络凭据的二维码将其发送到新设备。</li>
+<li><strong>Initiator-Enrollee</strong>：通过扫描网络二维码接入网络。</li>
+</ul>
+
+<p>Android 10 支持适用于 WPA2 的预共享密钥 (PSK) 协议和适用于 WPA3 的对等实体同时验证 (SAE) 协议。</p>
+
+<p>WLAN Easy Connect 仅在客户端模式下受支持（不支持 SoftAP 模式）。</p>
+
+<h2 id="implementation">实现</h2>
+
+<p>要支持 WLAN Easy Connect，请实现 Android 开源项目 (AOSP) 中提供的位于 <code>hardware/interfaces/wifi/supplicant/1.2/</code>（或更高版本）的客户端 HAL 接口设计语言 (HIDL)。</p>
+
+<p>要支持 DPP，必须具备以下几项：</p>
+
+<ul>
+<li><p>用以支持 DPP 的 Linux 内核补丁程序：</p>
+
+<ul>
+<li>cfg80211</li>
+<li>nl80211</li>
+</ul></li>
+<li><p>支持 DPP 的 <a href="https://android.googlesource.com/platform/external/wpa_supplicant_8/+/refs/heads/master" class="external"><code>wpa_supplicant</code></a></p></li>
+<li><p>支持 DPP 的 WLAN 驱动程序</p></li>
+<li><p>支持 DPP 的 WLAN 固件</p></li>
+</ul>
+
+<p>Android 10 中提供可供应用使用的公共 API：</p>
+
+<ul>
+<li><a href="https://android.googlesource.com/platform/frameworks/base/+/refs/heads/master/wifi/java/android/net/wifi/WifiManager.java#4576" class="external"><code>WifiManager#isEasyConnectSupported</code></a>：查询框架以便确定设备是否支持 WLAN Easy Connect。</li>
+<li><a href="https://android.googlesource.com/platform/frameworks/base/+/refs/heads/master/core/java/android/provider/Settings.java#524" class="external"><code>Activity#startActivityForResult(ACTION_PROCESS_WIFI_EASY_CONNECT_URI)</code></a>：允许应用将 WLAN Easy Connect 集成到其新手入门/设置流程中。</li>
+</ul>
+
+<h3 id="enabling_wi-fi_easy_connect">启用 WLAN Easy Connect</h3>
+
+<p>要在 Android 框架中启用 WLAN Easy Connect，请在 <code>wpa_supplicant</code> 配置文件 <a href="https://android.googlesource.com/platform/external/wpa_supplicant_8/+/refs/heads/master/wpa_supplicant/android.config" class="external"><code>android.config</code></a> 中添加 <code>CONFIG_DPP</code> 编译选项：</p>
+
+<pre class="devsite-click-to-copy">
+# Easy Connect (Device Provisioning Protocol - DPP)
+CONFIG_DPP=y
+</pre>
+
+<h2 id="validation">验证</h2>
+
+<p>要测试实现情况，请运行以下测试。</p>
+
+<h3 id="unit_tests">单元测试</h3>
+
+<p>运行 <code>DppManagerTest</code> 以验证 DPP 的功能标记的行为。</p>
+
+<pre class="devsite-terminal devsite-click-to-copy">
+atest DppManagerTest
+</pre>
+
+<h3 id="integration_test_acts">集成测试 (ACTS)</h3>
+
+<p>要运行集成测试，请使用位于 <code>tools/test/connectivity/acts/tests/google/wifi</code> 中的 Android 通讯测试套件 (ACTS) 文件 <code>WifiDppTest.py</code>。</p>
+
+<h3 id="vts_tests">VTS 测试</h3>
+
+<p>运行 <code>VtsHalWifiSupplicantV1_2Host</code> 以测试客户端 HAL v1.2 的行为。</p>
+
+<pre class="devsite-terminal devsite-click-to-copy">
+vts-tradefed run commandAndExit vts --skip-all-system-status-check --primary-abi-only --skip-preconditions --module VtsHalWifiSupplicantV1_2Host
+</pre>
+
+</body></html>

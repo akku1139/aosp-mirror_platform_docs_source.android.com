@@ -1,0 +1,71 @@
+<html devsite><head>
+
+  <meta name="book_path" value="/_book.yaml"/>
+
+  <meta name="project_path" value="/_project.yaml"/>
+</head>
+<body>
+<!--
+  Copyright 2019 The Android Open Source Project
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+<h1 id="high-level_structure_of_tradefed_xml_configuration" class="page-title">Tradefed XML 配置的高级结构</h1>
+
+<p>Tradefed 的配置遵循 XML 结构来描述要运行的测试以及要完成的准备/设置步骤。</p>
+
+<p>从理论上讲，可以在 XML 中定义一个命令的所有内容。但在实践中，更实用的做法是拥有基本模板 XML 文件，并使用额外的命令行参数对其进行自定义。</p>
+
+<h2 id="structure">结构</h2>
+<pre class="prettyprint lang-xml"><code>&lt;configuration description="&lt;description of the configuration&gt;"&gt;
+    &lt;!-- A build provider that takes local device information --&gt;
+    &lt;build_provider class="com.android.tradefed.build.BootstrapBuildProvider" /&gt;
+
+    &lt;!-- Some target preparation, disabled by default --&gt;
+    &lt;target_preparer class="com.android.tradefed.targetprep.PreloadedClassesPreparer"&gt;
+        &lt;option name="disable" value="true" /&gt;
+    &lt;/target_preparer&gt;
+
+    &lt;!-- One test running some unit tests --&gt;
+    &lt;test class="com.android.tradefed.testtype.HostTest"&gt;
+        &lt;option name="class" value="com.android.tradefed.build.BuildInfoTest" /&gt;
+    &lt;/test&gt;
+
+    &lt;!-- [OPTIONAL] --&gt;
+    &lt;logger class="com.android.tradefed.log.FileLogger"&gt;
+        &lt;option name="log-level" value="VERBOSE" /&gt;
+        &lt;option name="log-level-display" value="VERBOSE" /&gt;
+    &lt;/logger&gt;
+
+    &lt;!-- [OPTIONAL] --&gt;
+    &lt;log_saver class="com.android.tradefed.result.FileSystemLogSaver" /&gt;
+
+    &lt;!-- As many reporters as we want --&gt;
+    &lt;result_reporter class="com.android.tradefed.result.ConsoleResultReporter" /&gt;
+    &lt;result_reporter class="com.android.tradefed.result.suite.SuiteResultReporter" /&gt;
+    &lt;result_reporter class="com.android.tradefed.result.MetricsXMLResultReporter"/&gt;
+&lt;/configuration&gt;
+</code></pre>
+<p>整个 Tradefed XML 由 <code>&lt;configuration&gt;</code> 标记分隔。<code>Tradefed
+objects</code> 在它们各自的标记中定义，例如 <code>build_provider</code>、<code>target_preparer</code>、<code>test</code> 等。在<a href="/devices/tech/test_infra/tradefed/architecture/">架构</a>部分中，更详细地介绍了它们各自的用途。</p>
+
+<p>每个对象都有与其关联的 Java 类，该类在 <code>class=</code> 中定义，在运行时被解析。所以，只要包含该类的 JAR 文件在运行时位于 Tradefed Java 类路径上，就会被找到并解析。</p>
+
+<h2 id="orders_of_tradefed_objects">Tradefed 对象的顺序</h2>
+
+<p>如果对象具有不同的标记，它们的顺序无关紧要。例如，<code>build_provider</code> 是不是在 <code>target_preparer</code> 之后指定的并没有什么区别。测试调用的流程由自动化测试框架本身强制执行，因此它将始终按照正确的顺序调用这些对象。</p>
+
+<p>如果对象具有<strong>相同的标记</strong>，它们的顺序很重要。例如，定义的两个 <code>target_preparer</code> 对象将按照 XML 中的定义顺序进行调用。理解这一点很重要，因为它可以改变设备设置的结束状态。例如，“先刷写再安装 apk”与“先安装 apk 再刷写”不同，因为刷写操作会擦除设备。<em></em><em></em></p>
+
+</body></html>

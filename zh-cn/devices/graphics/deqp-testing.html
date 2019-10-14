@@ -1,0 +1,896 @@
+<html devsite><head>
+    <title>drawElements 质量计划 (deqp) 测试</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+
+  <!--
+      Copyright 2019 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<aside class="warning"><strong>警告</strong>：此页面未经维护，并且将会被弃用。如需了解最新信息，请参阅 <a href="https://gitlab.khronos.org/Tracker/vk-gl-cts/wikis/home" class="external">Vulkan 和 OpenGL CTS Wiki</a>。</aside>
+
+<p>AOSP 包含 drawElements 质量计划 (deqp) GPU 测试套件，该套件位于 <a href="https://android.googlesource.com/platform/external/deqp" class="external">https://android.googlesource.com/platform/external/deqp</a>。本页详细介绍了如何将 deqp 测试套件部署到新环境中。</p>
+
+<p>要采用最新提交的代码，请使用 <code>deqp-dev</code> 分支。要采用适用于特定 Android CTS 版本的代码，请使用 <code><em>release-code-name</em>-release</code> 分支（例如，针对 Android 6.0，请使用 <code>marshmallow-release</code> 分支）。</p>
+
+<h2 id="source_layout">源代码布局</h2>
+
+<p>deqp 测试模块和支持的库的源代码布局如下表所示（列出的内容并不全面，但突出显示了最重要的目录）。</p>
+
+<table>
+ <tbody><tr>
+   <th>目录</th>
+   <th>说明</th>
+ </tr>
+ <tr>
+    <td><code>android</code></td>
+    <td><p>Android 测试人员源代码和构建脚本</p></td>
+ </tr>
+ <tr>
+    <td><code>data</code></td>
+<td><p>测试数据文件</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>modules</code></td>
+<td><p>测试模块源代码</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+        modules/egl</code></td>
+<td><p>EGL 模块</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+        modules/gles2</code></td>
+<td><p>GLES2 模块</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+        modules/gles3</code></td>
+<td><p>GLES3 模块</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+        modules/gles31</code></td>
+<td><p>GLES3.1 模块</p>
+</td>
+ </tr>
+  <tr>
+    <td><code>
+        modules/gles32</code></td>
+<td><p>GLES3.2 模块</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>targets</code></td>
+<td><p>特定于目标的构建配置文件</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>framework</code></td>
+<td><p>deqp 测试模块框架和实用工具</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+        framework/delibs</code></td>
+<td><p>基础可移植性库和构建库</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+        framework/platform</code></td>
+<td><p>平台端口</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+        framework/qphelper</code></td>
+<td><p>测试程序集成库 (C)</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+        framework/common</code></td>
+<td><p>Deqp 框架 (C++)</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+        framework/opengl, framework/egl</code></td>
+<td><p>API 专用实用工具</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+execserver</code></td>
+<td><p>设备端 ExecServer 源代码</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+executor</code></td>
+<td><p>主机端测试执行器 shell 工具和实用工具</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+external</code></td>
+<td><p>适用于外部库 libpng 和 zlib 的构建存根目录</p>
+</td>
+ </tr>
+</tbody></table>
+
+<h3 id="open-source_components">开放源代码组件</h3>
+
+<p>deqp 使用 <code>libpng</code> 和 <code>zlib</code>，您可以使用脚本 <a href="https://android.googlesource.com/platform/external/deqp/+/master/external/fetch_sources.py"><code>platform/external/deqp/external/fetch_sources.py</code></a> 或通过 <code>platform/external/[libpng,zlib]</code> 中的 git 获取它们。</p>
+
+<h2 id="building">构建测试程序</h2>
+
+<p>相关人员在设计测试框架时考虑到了可移植性。仅有的强制性要求是针对 I/O、线程和套接字的全面 C++ 支持和标准系统库。</p>
+
+<h4 id="cmake_build_system">CMake 构建系统</h4>
+
+<p>deqp 来源具有适用于 CMake 的构建脚本，这是编译测试程序的首选工具。</p>
+
+<p>CMake 是一个开放源代码构建系统，支持多种平台和工具链。CMake 从与目标无关的配置文件生成原生 Makefile 或 IDE 项目文件。要详细了解 CMake，请参阅 <a href="http://www.cmake.org/cmake/help/documentation.html">CMake</a> 文档。</p>
+
+<p>CMake 支持且建议在源代码树之外进行构建，也就是说，您应该始终在源代码树之外的独立构建目录中创建 Makefile 或项目文件。CMake 没有任何类型的“distclean”目标，因此，您必须手动移除 CMake 生成的所有文件。</p>
+
+<p>您可以使用 <code>-D<var>OPTION_NAME</var>=<var>VALUE</var></code> 语法为 CMake 提供配置选项。deqp 的一些常用选项如下所示。</p>
+
+<table>
+ <tbody><tr>
+   <th>配置选项</th>
+   <th>说明</th>
+ </tr>
+
+ <tr>
+    <td><code>DEQP_TARGET</code></td>
+<td><p>目标名称，例如“android”</p>
+<p>deqp CMake 脚本将包含文件 <code>targets/<var>DEQP_TARGET</var>/<var>DEQP_TARGET</var>.cmake</code>，而且在此文件中应该可以找到针对特定目标的构建选项。</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>CMAKE_TOOLCHAIN_FILE</code></td>
+<td><p>CMake 的工具链文件路径。用于交叉编译。</p></td>
+ </tr>
+ <tr>
+    <td><code>CMAKE_BUILD_TYPE</code></td>
+<td><p>Makefile 目标的构建类型。有效值为“Debug”和“Release”</p>
+<p>注意，解释和默认类型取决于目标构建系统。如需了解详情，请参阅 CMake 文档。</p>
+</td>
+ </tr>
+</tbody></table>
+
+<h3 id="creating_target_build_file">创建目标构建文件</h3>
+
+<p>针对新目标的 deqp 构建系统使用目标构建文件进行配置。目标构建文件可定义平台支持哪些功能以及需要哪些库或其他包含路径。目标文件名采用 <code>targets/<var>NAME</var>/<var>NAME</var>.cmake</code> 格式，并且目标是使用 <code>DEQP_TARGET</code> 构建参数选择的。</p>
+
+<p>目标文件中的文件路径是相对于基本 <code>deqp</code> 目录（而非 <code>targets/<var>NAME</var></code> 目录）的路径。目标构建文件可以设置以下标准变量。</p>
+
+<table>
+ <tbody><tr>
+   <th>变量</th>
+   <th>说明</th>
+ </tr>
+ <tr>
+    <td><code>
+DEQP_TARGET_NAME</code></td>
+<td><p>目标名称（将包含在测试日志中）</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+DEQP_SUPPORT_GLES2</code></td>
+<td><p>是否支持 GLES2（默认值：OFF）</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+DEQP_GLES2_LIBRARIES</code></td>
+<td><p>GLES2 库（如果不受支持或使用的是动态加载，则留空）</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+DEQP_SUPPORT_GLES3</code></td>
+<td><p>是否支持 GLES3.x（默认值：OFF）</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+DEQP_GLES3_LIBRARIES</code></td>
+<td><p>GLES3.x 库（如果不受支持或使用的是动态加载，则留空）</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+DEQP_SUPPORT_VG</code></td>
+<td><p>是否支持 OpenVG（默认值：OFF）</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+DEQP_OPENVG_LIBRARIES</code></td>
+<td><p>OpenVG 库（如果不受支持或使用的是动态加载，则留空）</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+DEQP_SUPPORT_EGL</code></td>
+<td><p>是否支持 EGL（默认值：OFF）</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+DEQP_EGL_LIBRARIES</code></td>
+<td><p>EGL 库（如果不受支持或使用的是动态加载，则留空）</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+DEQP_PLATFORM_LIBRARIES</code></td>
+<td><p>进行链接所需的特定于平台的附加库</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+DEQP_PLATFORM_COPY_LIBRARIES</code></td>
+<td><p>复制到每个测试二进制文件构建目录的库列表。可用于复制运行测试所需但不在默认搜索路径中的库。</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+TCUTIL_PLATFORM_SRCS</code></td>
+<td><p>平台端口来源列表。默认来源取决于功能和操作系统。</p>
+
+<p><strong>注意</strong>：路径是相对于 <code>framework/platform</code> 的路径</p>
+</td>
+ </tr>
+</tbody></table>
+
+<p>目标构建文件可以使用 <code>include_directories()</code> 和 <code>link_directories()</code> CMake 函数添加其他包含或链接路径。</p>
+
+<h3 id="win32_build">Win32 构建</h3>
+
+<p>为 Windows 构建 deqp 模块最简单的方法是使用 CMake 构建系统。您需要使用 CMake 2.6.12 或更高版本以及 Microsoft Visual C/C++ 编译器。deqp 已通过 Visual Studio 2013 测试。</p>
+
+<p>可以使用以下命令生成 Visual Studio 项目文件：</p>
+
+<pre class="devsite-terminal devsite-click-to-copy">
+cmake path\to\src\deqp -G "Visual Studio 12"
+</pre>
+
+<p>选择“Visual Studio VERSION Win64”作为构建生成器可制作 64 位版本：<var></var></p>
+
+<pre class="devsite-terminal devsite-click-to-copy">
+cmake path\to\src\deqp -G "Visual Studio 12 Win64"
+</pre>
+
+<p>您还可以通过 <code>-G "NMake Makefiles"</code> 选项和构建类型（<code>-DCMAKE_BUILD_TYPE="Debug"</code> 或 <code>"Release"</code>）生成 NMake Makefile。</p>
+
+<h4 id="rendering_context_creation">渲染上下文的创建</h4>
+
+<p>渲染上下文可通过 WGL 或 Windows 上的 EGL 进行创建。</p>
+
+<h5 id="wgl_support">WGL 支持</h5>
+
+<p>所有 Win32 二进制文件都支持使用 WGL 创建 GL 上下文，因为它只需要标准库。使用 <code>--deqp-gl-context-type=wgl</code> 命令行参数可选择 WGL 上下文。在 WGL 模式下，deqp 使用 <code>WGL_EXT_create_context_es_profile</code> 扩展程序创建 OpenGL ES 上下文。经过测试，该程序可与 NVIDIA 和 Intel 的最新驱动程序配合使用。AMD 驱动程序不支持所需的扩展程序。</p>
+
+<h5 id="egl_support">EGL 支持</h5>
+
+<p>如果 DEQP_SUPPORT_EGL 的状态为“ON”（这是大多数目标中的默认状态），则通过动态加载为 Windows 上的 EGL 构建 deqp。接下来，如果主机有可用的 EGL 库，则可以通过命令行参数 <code>--deqp-gl-context-type=egl</code> 对其运行测试。</p>
+
+<h3 id="android_build">Android 构建</h3>
+
+<p>Android 构建使用 CMake 构建脚本来构建原生测试代码。Java 部分（即测试执行服务器和测试应用存根）使用标准的 Android 构建工具进行编译。</p>
+
+<p>要使用提供的构建脚本编译 Android 的 deqp 测试程序，您需要：</p>
+
+<ul>
+  <li>最新版本的 <a href="http://developer.android.com/tools/sdk/ndk/index.html">Android NDK</a>；<code>android/scripts/common.py</code> 文件中列出了所需的版本</li><li>Android 独立 SDK（已安装 API 13、SDK 工具、SDK 平台工具和 SDK 构建工具<a href="http://developer.android.com/sdk/index.html#Other">软件包</a>）
+  </li><li><a href="http://ant.apache.org/bindownload.cgi">Apache Ant 1.9.4</a>（Java 代码构建所需）
+  </li><li><a href="http://www.cmake.org/download/">CMake 2.8.12</a> 或更高版本
+  </li><li><a href="https://www.python.org/downloads/">Python 2.6</a> 或更高版本（2.x 系列）；不支持 Python 3.x
+  </li><li>对于 Windows：<code>PATH</code> 中的 NMake 或 JOM
+  <ul>
+    <li><a href="http://qt-project.org/wiki/jom">JOM</a> 的构建速度更快
+  </li></ul>
+  </li><li>可选：Linux 上还支持 Ninja make
+</li></ul>
+
+<p>Ant 和 SDK 二进制文件的位置取决于具有特定覆盖默认值的 PATH 环境变量。具体逻辑由 <code>android/scripts/common.py</code> 控制。</p>
+
+<p>NDK 目录必须为 <code>~/android-ndk-<var>VERSION</var></code> 或 <code>C:/android/android-ndk-<var>VERSION</var></code>，或者通过 <code>ANDROID_NDK_PATH</code> 环境变量进行定义。</p>
+
+<p>Deqp 设备组件、测试执行服务和测试程序都是通过执行 <code>android/scripts/build.py</code> 脚本进行构建的。最终 .apk 在 <code>android/package/bin</code> 中创建，并可通过 <code>install.py</code> 脚本进行安装。如果使用<a href="port-tests.html#test_execution_service">命令行执行程序</a>，则可以在设备上通过 ADB 使用 <code>launch.py</code> 脚本启动 ExecService。可以从任何目录执行这些脚本。</p>
+
+<h3 id="linux_build">Linux 构建</h3>
+
+<p>通过使用 CMake 生成 Makefile，可以构建适用于 Linux 的测试二进制文件和命令行实用工具。其中有多个预定义的构建目标对 Linux 构建很有帮助。</p>
+
+<table>
+ <tbody><tr>
+   <th>构建目标</th>
+   <th>说明</th>
+ </tr>
+
+ <tr>
+    <td><code>default</code></td>
+<td><p>默认目标；使用 CMake 平台自省来确定是否支持各种 API。</p>
+</td>
+ </tr>
+
+<tr>
+    <td><code>
+x11_glx</code></td>
+<td><p>使用 GLX 创建 OpenGL (ES) 上下文。</p>
+</td>
+ </tr>
+
+<tr>
+    <td><code>
+x11_egl</code></td>
+<td><p>使用 EGL 创建 OpenGL (ES) 上下文。</p>
+</td>
+ </tr>
+
+ <tr>
+    <td><code>
+x11_egl_glx</code></td>
+<td><p>同时支持带有 X11 的 GLX 和 EGL。</p>
+</td>
+ </tr>
+</tbody></table>
+
+<p>始终使用 <code>-DCMAKE_BUILD_TYPE=&lt;Debug|Release&gt;</code> 来定义构建类型。<code>Release</code> 是一个很实用的默认值。如果没有该值，则默认创建未优化的构建版本。</p>
+
+<p><code>-DCMAKE_C_FLAGS</code> 和 <code>-DCMAKE_CXX_FLAGS</code> 命令行参数可用于将额外的参数传递给编译器。例如，可以通过分别设置 <code>-DCMAKE_C(XX)_FLAGS="-m32"</code> 或 <code>"-m64"</code> 来实现 32 位或 64 位构建。如果未指定，则使用工具链原生架构（通常会为 64 位工具链生成 64 位版本）。</p>
+
+<p><code>-DCMAKE_LIBRARY_PATH</code> 和 <code>-DCMAKE_INCLUDE_PATH</code> 参数可用于 CMake，为 CMake 提供额外的库或包含搜索路径。</p>
+
+<p>用于针对自定义位置中的驱动程序头文件和库执行 32 位调试构建的完整命令行示例如下：</p>
+
+<pre class="devsite-click-to-copy">
+<code class="devsite-terminal">cmake &lt;path to src&gt;/deqp -DDEQP_TARGET=x11_egl -DCMAKE_C_FLAGS="-m32"
+-DCMAKE_CXX_FLAGS="-m32" -DCMAKE_BUILD_TYPE=Debug
+-DCMAKE_LIBRARY_PATH="<var>PATH_TO_DRIVER</var>/lib"
+-DCMAKE_INCLUDE_PATH="<var>PATH_TO_DRIVER</var>/inc"</code>
+<code class="devsite-terminal">make -j4</code>
+</pre>
+
+<h3 id="cross-compiling">交叉编译</h3>
+
+<p>使用 CMake 工具链文件可实现交叉编译。工具链文件可指定要使用的编译器，以及用于库和标头的自定义搜索路径。一些适用于常见场景的工具链文件包含在 <code>framework/delibs/cmake</code> 目录下的发布包中。</p>
+
+<p>除了标准的 CMake 变量之外，工具链文件还可以设置以下特定于 deqp 的变量。CMake 通常可以正确检测 <code>DE_OS</code>、<code>DE_COMPILER</code> 和 <code>DE_PTR_SIZE</code>，但 <code>DE_CPU</code> 必须由工具链文件设置。</p>
+
+<table>
+ <tbody><tr>
+   <th>变量</th>
+   <th>说明</th>
+ </tr>
+ <tr>
+   <td><code>
+DE_OS</code></td>
+   <td><p>操作系统。支持的值包括：<code>DE_OS_WIN32, DE_OS_UNIX, DE_OS_WINCE, DE_OS_OSX, DE_OS_ANDROID, DE_OS_SYMBIAN, DE_OS_IOS</code></p>
+   </td>
+ </tr>
+ <tr>
+    <td><code>
+DE_COMPILER</code></td>
+<td><p>编译器类型。支持的值包括：<code>DE_COMPILER_GCC, DE_COMPILER_MSC, DE_COMPILER_CLANG</code></p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+DE_CPU</code></td>
+<td><p>CPU 类型。支持的值包括：<code>DE_CPU_ARM, DE_CPU_X86</code>。</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+DE_PTR_SIZE</code></td>
+<td><p>平台上的 sizeof(void*)。支持的值包括：4 和 8</p>
+</td>
+ </tr>
+</tbody></table>
+
+<p>使用 <code>CMAKE_TOOLCHAIN_FILE</code> 构建参数可选择工具链文件。例如，以下代码将使用适用于 ARM/Linux 的 CodeSourcery 交叉编译器为构建创建 Makefile：</p>
+
+<pre class="devsite-terminal devsite-click-to-copy">
+cmake <var>PATH_TO_SRC</var>/deqp –DDEQP_BUILD_TYPE="Release"
+–DCMAKE_TOOLCHAIN_FILE=<var>PATH_TO_SRC</var>/delibs/cmake/toolchain-arm-cs.cmake
+–DARM_CC_BASE=<var>PATH_TO_CC_DIRECTORY</var>
+</pre>
+
+<h3 id="run-time_linking_of_gles_and_egl_libraries">GLES 和 EGL 库的运行时链接</h3>
+
+<p>deqp 在链接时期间不需要正在测试的 API 接入点。测试代码始终通过函数指针访问 API。这样接入点便可以在运行时动态加载，或者平台端口也可以在链接时提供接入点。</p>
+
+<p>如果在构建设置中启用了对 API 的支持且未提供链接库，则 deqp 将在运行时加载所需的接入点。如果需要使用静态链接，请在 <code>DEQP_&lt;API&gt;_LIBRARIES</code> 构建配置变量中提供所需的链接库。</p>
+
+<h2 id="porting">移植测试框架</h2>
+
+    <p>移植 deqp 需要三个步骤：调整基础可移植性库，实现测试框架平台集成接口以及移植执行服务。</p>
+
+<p>下表列出了可能发生移植更改的位置。在此范围之外的位置很可能是有异常情况。</p>
+
+<table>
+ <tbody><tr>
+   <th>位置</th>
+   <th>说明</th>
+ </tr>
+
+ <tr>
+    <td><code>
+framework/delibs/debase<br />
+framework/delibs/dethread<br />
+framework/delibs/deutil</code></td>
+<td><p>操作系统专用代码的任何必要实现。</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+framework/qphelper/qpCrashHandler.c</code></td>
+<td><p>可选：针对操作系统的实现。</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+framework/qphelper/qpWatchDog.c</code></td>
+<td><p>针对操作系统的实现。当前位置是以 <code>dethread</code> 和 C 语言的标准库为基础。</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+framework/platform</code></td>
+<td><p>新的平台端口和应用存根可按照<a href="#test_framework_platform_port">测试框架平台端口</a>中的说明来实现。</p>
+</td>
+ </tr>
+</tbody></table>
+
+<h3 id="base_portability_libraries">基础可移植性库</h3>
+
+<p>基础可移植性库已支持 Windows、大多数 Linux 变体、Mac OS、iOS 和 Android。若测试目标在其中一个操作系统上运行，很可能根本无需动用基础可移植性库。</p>
+
+<h3 id="test_framework_platform_port">测试框架平台端口</h3>
+
+<p>deqp 测试框架平台端口需要两个组件：应用入口点和平台接口实现。</p>
+
+<p>应用入口点负责创建平台对象、创建命令行 (<code>tcu::CommandLine</code>) 对象、打开测试日志 (<code>tcu::TestLog</code>) 以及迭代测试应用 (<code>tcu::App</code>)。若目标操作系统支持标准的 <code>main()</code> 入口点，<code>tcuMain.cpp</code> 可以用作入口点实现。</p>
+
+<p>以下文件详细说明了 deqp 平台 API。</p>
+
+<table>
+ <tbody><tr>
+   <th>文件</th>
+   <th>说明</th>
+ </tr>
+ <tr>
+    <td><code>
+framework/common/tcuPlatform.hpp</code></td>
+<td><p>所有平台端口的基类</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+framework/opengl/gluPlatform.hpp</code></td>
+<td><p>OpenGL 平台接口</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+framework/egl/egluPlatform.hpp</code></td>
+<td><p>EGL 平台接口</p>
+</td>
+ </tr>
+ <tr>
+    <td><code>
+framework/platform/tcuMain.cpp</code></td>
+<td><p>标准应用入口点</p>
+</td>
+ </tr>
+</tbody></table>
+
+<p>所有平台端口的基类都为 <code>tcu::Platform</code>。平台端口可选择性支持 GL 和 EGL 特定接口。请参见下表，大体上了解一下运行测试需要实现的内容。</p>
+
+<table>
+ <tbody><tr>
+   <th>模块</th>
+   <th>接口</th>
+ </tr>
+ <tr>
+    <td><p>OpenGL (ES) 测试模块</p>
+</td>
+    <td><p>GL 平台接口</p>
+</td>
+ </tr>
+ <tr>
+    <td><p>EGL 测试模块</p>
+</td>
+    <td><p>EGL 平台接口</p>
+</td>
+ </tr>
+</tbody></table>
+
+<p>有关实现平台端口的详细说明，请参阅移植层标头。</p>
+
+<h3 id="test_execution_service">测试执行服务</h3>
+
+<p>要使用 deqp 测试执行基础架构或命令行执行程序，目标上必须提供测试执行服务。该服务的可移植 C++ 实现是在 <code>execserver</code> 目录中提供。独立的二进制文件是作为计算机目标的 deqp 测试模块版本的一部分进行构建。您可以修改 <code>execserver/CMakeLists.txt</code>，以便在其他目标中启用相应版本。</p>
+
+<p>C++ 版的测试执行服务接受两个命令行参数：</p>
+
+<ul>
+  <li> <code>--port=&lt;port&gt;</code> 会设置服务器侦听的 TCP 端口。默认端口号为 50016。
+  </li><li> <code>--single</code> 会在客户端断开连接时终止服务器进程。默认情况下，为了进一步处理测试执行请求，服务器进程将保持运行。
+</li></ul>
+
+<h2 id="running">运行测试</h2>
+
+<p>本页介绍了如何在 Linux 和 Windows 环境中运行 deqp 测试、如何使用命令行参数，以及如何使用 Android 应用包。</p>
+
+<h3 id="linux_and_windows_environments">Linux 与 Windows 环境</h3>
+
+<p>首先，请将以下文件和目录复制到目标中。</p>
+
+<table>
+ <tbody><tr>
+   <th>模块</th>
+   <th>目录</th>
+   <th>目标</th>
+ </tr>
+
+ <tr>
+    <td>执行服务器</td>
+    <td><code>build/execserver/execserver</code></td>
+    <td><code>&lt;dst&gt;/execserver</code></td>
+ </tr>
+
+ <tr>
+    <td>EGL 模块</td>
+    <td><code>build/modules/egl/deqp-egl</code></td>
+    <td><code>&lt;dst&gt;/deqp-egl</code></td>
+ </tr>
+
+ <tr>
+    <td rowspan="2" style="vertical-align:middle">GLES2 模块</td>
+    <td><code>build/modules/gles2/deqp-gles2</code></td>
+    <td><code>&lt;dst&gt;/deqp-gles2</code></td>
+ </tr>
+
+ <tr>
+    <td><code>data/gles2</code></td>
+    <td><code>&lt;dst&gt;/gles2</code></td>
+ </tr>
+
+ <tr>
+    <td rowspan="2" style="vertical-align:middle">GLES3 模块</td>
+    <td><code>build/modules/gles3/deqp-gles3</code></td>
+    <td><code>&lt;dst&gt;/deqp-gles3</code></td>
+ </tr>
+
+ <tr>
+    <td><code>data/gles3</code></td>
+    <td><code>&lt;dst&gt;/gles3</code></td>
+ </tr>
+
+ <tr>
+    <td rowspan="2" style="vertical-align:middle">GLES3.1 模块</td>
+    <td><code>build/modules/gles31/deqp-gles31</code></td>
+    <td><code>&lt;dst&gt;/deqp-gles31</code></td>
+ </tr>
+
+ <tr>
+    <td><code>data/gles31</code></td>
+    <td><code>&lt;dst&gt;/gles31</code></td>
+ </tr>
+
+  <tr>
+    <td rowspan="2" style="vertical-align:middle">GLES3.2 模块</td>
+    <td><code>build/modules/gles32/deqp-gles32</code></td>
+    <td><code>&lt;dst&gt;/deqp-gles32</code></td>
+ </tr>
+
+  <tr>
+    <td><code>data/gles32</code></td>
+    <td><code>&lt;dst&gt;/gles32</code></td>
+ </tr>
+
+</tbody></table>
+
+<p>您可以在目标文件系统的任意位置部署执行服务和测试二进制文件，但是测试二进制文件需要在当前的工作目录中查找数据目录。准备就绪后，在目标设备上启动测试执行服务。有关如何启动服务的详细信息，请参阅<a href="/devices/graphics/port-tests.html#test_execution_service">测试执行服务</a>一节。</p>
+
+<h3 id="command_line_arguments">命令行参数</h3>
+
+<p>下表列出了影响所有测试程序执行的命令行参数。</p>
+
+<table width="100%">
+<colgroup><col style="width:50%" />
+<col style="width:50%" />
+ </colgroup><tbody><tr>
+   <th>参数</th>
+   <th>说明</th>
+ </tr>
+
+ <tr>
+<td><code>--deqp-case=&lt;casename&gt;</code></td>
+<td>运行与指定模式匹配的用例。支持通配符 (*)。</td>
+ </tr>
+
+ <tr>
+<td><code>--deqp-log-filename=&lt;filename&gt;</code></td>
+<td>将测试结果写入文件，文件名由您提供。测试执行服务将在开始测试时设置文件名。</td>
+ </tr>
+
+ <tr>
+ <td><code>--deqp-stdin-caselist<br />
+--deqp-caselist=&lt;caselist&gt;<br />
+--deqp-caselist-file=&lt;filename&gt;</code></td>
+<td>通过 stdin 或指定的参数读取用例列表。测试执行服务将根据收到的执行请求设置参数。有关用例列表格式的说明，请参阅下一节。</td>
+ </tr>
+ <tr>
+<td><code>--deqp-test-iteration-count=&lt;count&gt;</code></td>
+<td>覆盖迭代次数可变的测试的迭代计数。</td>
+ </tr>
+ <tr>
+    <td><code>--deqp-base-seed=&lt;seed&gt;</code></td>
+    <td>为采用随机测试的测试用例设定种子。</td>
+ </tr>
+</tbody></table>
+
+<h4 id="gles2_and_gles3-specific_arguments">特定于 GLES2 及 GLES3 的参数</h4>
+
+下表列出了特定于 GLES2 及 GLES3 的参数。
+
+<table>
+</table><table width="100%">
+<colgroup><col style="width:50%" />
+<col style="width:50%" />
+ </colgroup><tbody><tr>
+   <th>参数</th>
+   <th>说明</th>
+ </tr>
+ <tr>
+    <td><code>--deqp-gl-context-type=&lt;type&gt;</code></td>
+    <td>OpenGL 上下文类型。提供的上下文类型取决于平台。在支持 EGL 的平台上，值 <code>egl</code> 可用于选择 EGL 上下文。</td>
+ </tr>
+ <tr>
+    <td><code>--deqp-gl-config-id=&lt;id&gt;</code></td>
+    <td>对所提供的 GL 配置 ID 运行测试。解译取决于平台。在 EGL 平台上，该配置 ID 为 EGL 配置 ID。</td>
+ </tr>
+ <tr>
+    <td><code>--deqp-gl-config-name=&lt;name&gt;</code></td>
+    <td>对已命名的 GL 配置运行测试。解译取决于平台。对于 EGL，格式为 <code>rgb(a)&lt;bits&gt;d&lt;bits&gt;s&lt;bits&gt;</code>。例如，值 <code>rgb888s8</code> 会选择第一个配置，其中颜色缓冲区为 RGB888，模板缓冲区为 8 位。</td>
+ </tr>
+ <tr>
+    <td><code>--deqp-gl-context-flags=&lt;flags&gt;</code></td>
+    <td>创建一个上下文。指定 <code>robust</code> 或 <code>debug</code>。</td>
+ </tr>
+ <tr>
+    <td><code>--deqp-surface-width=&lt;width&gt;<br />
+    --deqp-surface-height=&lt;height&gt;</code></td>
+    <td>尝试使用指定的尺寸创建表面。对这项功能的支持为可选项。</td>
+ </tr>
+ <tr>
+    <td><code>--deqp-surface-type=&lt;type&gt;</code></td>
+    <td>将指定的表面类型用作主测试渲染目标。可取类型为 <code>window</code>、<code>pixmap</code>、<code>pbuffer</code> 和 <code>fbo</code>。</td>
+ </tr>
+ <tr>
+    <td><code>--deqp-screen-rotation=&lt;rotation&gt;</code></td>
+    <td>对于支持该参数的平台，屏幕方向的旋转增量为 90 度。</td>
+ </tr>
+</tbody></table>
+
+<h4 id="test_case_list_format">测试用例列表格式</h4>
+
+<p>测试用例列表有两种格式。第一种选项是在标准 ASCII 文件的单独一行中列出每个测试的全名。随着测试集的增长，重复添加前缀可能会很麻烦。为避免重复添加前缀，可使用以下所示的 trie（也称为前缀树）语法。</p>
+
+<pre class="devsite-click-to-copy">
+{nodeName{firstChild{…},…lastChild{…}}}
+</pre>
+
+<p>例如：</p>
+
+<pre class="devsite-click-to-copy">
+{dEQP-EGL{config-list,create_context{rgb565_depth_stencil}}}
+</pre>
+
+<p>会转换为以下两个测试用例：</p>
+
+<pre class="devsite-click-to-copy">
+dEQP-EGL.config_list
+dEQP-EGL.create_context.rgb565_depth_stencil
+</pre>
+
+<h3 id="android">Android</h3>
+
+<p>Android 应用包包含所需的所有组件，包括测试执行服务、测试二进制文件和数据文件。测试 Activity 是使用 EGL 的 <code>NativeActivity</code>（需要 Android 3.2 或更高版本）。</p>
+
+<p>应用包可使用以下命令安装（所示名称为 Android CTS 包中 APK 的名称；该名称因版本而异）：</p>
+<pre class="devsite-terminal devsite-click-to-copy">
+adb –d install –r com.drawelements.deqp.apk
+</pre>
+
+<p>要启动测试执行服务并设置端口转发，请使用以下命令：</p>
+<pre class="devsite-click-to-copy">
+<code class="devsite-terminal">adb –d forward tcp:50016 tcp:50016</code>
+<code class="devsite-terminal">adb –d shell am start –n com.drawelements.deqp/.execserver.ServiceStarter</code>
+</pre>
+
+<p>在开始测试之前，可执行以下命令来启用调试打印：</p>
+
+<pre class="devsite-terminal devsite-click-to-copy">
+adb –d shell setprop log.tag.dEQP DEBUG
+</pre>
+
+<h4 id="executing_tests_on_android_without_android_cts">在没有 Android CTS 的 Android 设备上执行测试</h4>
+
+<p>要手动启动测试执行 Activity，请构建一个目标为 <code>android.app.NativeActivity</code> 的 Android Intent。这些 Activity 可以在 <code>com.drawelements.deqp</code> 包中找到。在 Intent 中，命令行必须以含 <code>"cmdLine"</code> 键的额外字符串提供。</p>
+
+<p>测试日志会写入 <code>/sdcard/dEQP-log.qpa</code>。若测试运行无法正常启动，请查看设备日志，了解其他调试信息。</p>
+
+<p>您可使用 <code>am</code> 实用程序从命令行启动 Activity。例如，要在支持 <code>NativeActivity,</code> 的平台上运行 <code>dEQP-GLES2.info</code> 测试，请执行以下命令。</p>
+
+<pre class="devsite-terminal devsite-click-to-copy">
+adb -d shell am start -n com.drawelements.deqp/android.app.NativeActivity -e \
+'cmdLine "deqp --deqp-case=dEQP-GLES2.info.* --deqp-log-filename=/sdcard/dEQP-Log.qpa"'
+</pre>
+
+<h4 id="debugging_on_android">在 Android 系统上调试</h4>
+
+<p>要采用 Android 系统中的 GDB 调试器运行测试，首先要运行以下两个脚本来编译并安装调试版本：</p>
+
+<pre class="devsite-click-to-copy">
+<code class="devsite-terminal">python android/scripts/build.py --native-build-type=Debug</code>
+<code class="devsite-terminal">python android/scripts/install.py</code>
+</pre>
+
+<p>当设备上安装调试版本后，要采用主机上运行的 GDB 启动测试，请运行以下命令：</p>
+
+<pre class="devsite-terminal devsite-click-to-copy">
+python android/scripts/debug.py \
+--deqp-commandline="--deqp-log-filename=/sdcard/TestLog.qpa --deqp-case=dEQP-GLES2.functional.*"
+</pre>
+
+<p>deqp 命令行取决于要执行的测试用例和其他所需参数。脚本会在开始执行 deqp 时添加一个默认断点 (<code>tcu::App::App</code>)。</p>
+
+<p><code>debug.py</code> 脚本接受多个命令行参数用于相关操作，例如：设置调试断点、gdbserver 连接参数及要调试的其他二进制文件的路径（对于所有参数和解释，都执行 <code>debug.py
+--help</code>）。该脚本还会从目标设备中复制一些默认库，以获取符号列表。</p>
+
+<p>要逐步检查驱动程序代码（例如，当 GDB 需要了解具有完整调试信息的二进制文件的位置时），请通过 <code>debug.py</code> 命令行参数添加更多的库。该脚本从脚本文件的第 132 行开始写出 GDB 的配置文件。您还可以提供额外的二进制路径等信息，但提供正确的命令行参数就已足够。</p>
+
+<p class="note"><strong>注意</strong>：在 Windows 上，GDB 二进制文件需要使用 <code>libpython2.7.dll</code>。在启动 <code>debug.py</code> 前，请将 <code>&lt;path-to-ndk&gt;/prebuilt/windows/bin</code> 添加到 PATH 变量中。</p>
+
+<p class="note"><strong>注意</strong>：本机代码调试不适用于 Android 4.3 及之前的所有版本。有关解决方法，请参阅<a href="https://issuetracker.google.com/issues/36976703">此公开 Bug</a>。Android 4.4 及更高版本不包含此 Bug。</p>
+
+<h2 id="automating">自动执行测试</h2>
+
+<p>deqp 测试模块可通过多种方式集成到自动化测试系统中。最佳方式取决于现有的测试架构和目标环境。</p>
+
+<p>测试运行的主要输出始终是测试日志文件，即带 <code>.qpa</code> 后缀的文件。可以从测试日志中解析得到完整的测试结果。控制台输出仅包含调试信息，并且可能并非在所有平台上都可获得。</p>
+
+<p>测试二进制文件可以直接从测试自动化系统调用。可以针对特定用例、某个测试集或所有可用测试启动测试二进制文件。如果执行期间发生致命错误（如某些 API 错误或系统崩溃），测试执行过程将会中止。对于回归测试，最佳方式是为单个用例或小型测试集单独调用测试二进制文件，以便在发生严重故障时也可获得部分结果。</p>
+
+<p>deqp 附带命令行测试执行工具，这些工具可与执行服务结合使用，以实现更强大的集成。执行器检测测试过程的终止，然后会在下一个可用用例上恢复测试执行过程。由完整测试会话生成单个日志文件。对于不提供崩溃恢复机制的轻量级测试系统而言，该设置是一个理想之选。</p>
+
+<h3 id="command_line_test_execution_tools">命令行测试执行工具</h3>
+
+<p>当前的命令行工具集包含以下组件：远程测试执行工具、用于执行回归分析的测试日志比较生成器、测试日志转 CSV 文件的转换器、测试日志转 XML 文件的转换器和测试日志转 JUnit 的转换器。</p>
+
+<p>这些工具的源代码位于 <code>executor</code> 目录中，相关的二进制文件内置于 <code>&lt;builddir&gt;/executor</code> 目录中。</p>
+
+<h4 id="command_line_test_executor">命令行测试执行器</h4>
+
+<p>命令行测试执行器是一种便携式 C++ 工具，用于在设备上启动测试运行，并基于 TCP/IP 协议从设备收集生成的日志。该执行器与目标设备上的执行服务 (execserver) 进行通信。二者共同协作，提供从测试过程崩溃恢复等功能。以下示例演示了如何使用命令行测试执行器（使用 <code>--help</code> 可查看更多详细信息）：</p>
+
+<h5 id="example_1_run_gles2_functional_tests">示例 1：在 Android 设备上运行 GLES2 功能测试：</h5>
+
+<pre class="devsite-terminal devsite-click-to-copy">
+executor --connect=127.0.0.1 --port=50016 --binaryname=
+com.drawelements.deqp/android.app.NativeActivity
+--caselistdir=caselists
+--testset=dEQP-GLES2.* --out=BatchResult.qpa
+--cmdline="--deqp-crashhandler=enable --deqp-watchdog=enable
+--deqp-gl-config-name=rgba8888d24s8"
+</pre>
+
+<h5 id="example_2_continue_a_partial_opengl">示例 2：在本地继续执行部分 OpenGL ES 2 测试：</h5>
+
+<pre class="devsite-terminal devsite-click-to-copy">
+executor --start-server=execserver/execserver --port=50016
+--binaryname=deqp-gles2 --workdir=modules/opengl
+--caselistdir=caselists
+--testset=dEQP-GLES2.* --exclude=dEQP-GLES2.performance.* --in=BatchResult.qpa
+--out=BatchResult.qpa
+</pre>
+
+<h4 id="test_log_csv_export_and_compare">以 CSV 格式导出测试日志并进行比较</h4>
+
+<p>deqp 具有将测试日志（.<code>qpa </code>文件）转换为 CSV 文件的工具。CSV 输出中包含一系列测试用例及其结果。该工具还可以比较两个或多个批处理结果，并仅列出在输入批处理结果中具有不同状态代码的测试用例。该比较还会列出匹配用例的数量。</p>
+
+<p>CSV 格式的输出内容非常实用，可用于通过标准命令行实用程序或电子表格编辑器进行进一步处理。使用命令行参数 <code>--format=text</code> 还可以选择其他人类可读的纯文本格式。</p>
+
+<h5 id="example_1_export_test_log_in_csv_format">示例 1：以 CSV 格式导出测试日志</h5>
+
+<pre class="devsite-click-to-copy">
+<code class="devsite-terminal">testlog-to-csv --value=code BatchResult.qpa &gt; Result_statuscodes.csv</code>
+<code class="devsite-terminal">testlog-to-csv --value=details BatchResult.qpa &gt; Result_statusdetails.csv</code>
+</pre>
+
+<h5 id="example_2_list_differences">示例 2：列出两个测试日志中测试结果之间的差异</h5>
+
+<pre class="devsite-terminal devsite-click-to-copy">
+testlog-to-csv --mode=diff --format=text Device_v1.qpa Device_v2.qpa
+</pre>
+
+<p class="note"><strong>注意</strong>：参数 <code>--value=code</code> 会输出测试结果代码，如“Pass”或“Fail”。参数 <code>--value=details</code> 可选择对性能、功能或精度测试产生的结果或数值做进一步说明。</p>
+
+<h4 id="test_log_xml_export">以 XML 格式导出测试日志</h4>
+
+<p>测试日志文件可以使用 <code>testlog-to-xml</code> 实用程序转换为有效的 XML 文档。日志支持两种输出模式：</p>
+
+<ul>
+  <li>独立文档模式，其中每个测试用例和 <code>caselist.xml</code> 汇总文档都会写入目标目录</li><li>单个文件模式，其中 <code>.qpa</code> 文件中的所有结果都将写入单个 XML 文档。
+</li></ul>
+
+<p>可使用 XML 样式表在浏览器中查看导出的测试日志文件。示例样式表文档（<code>testlog.xsl</code> 和 <code>testlog.css</code>）位于 <code>doc/testlog-stylesheet</code> 目录中。若要在浏览器中查看日志文件，可将两个样式表文件复制到导出的 XML 文档所在的同一目录。</p>
+
+<p>如果您使用的是 Google Chrome，则必须通过 HTTP 访问这些文件，因为 Chrome 出于安全考虑，会限制对本地文件的访问。标准的 Python 安装包括一个基本的 HTTP 服务器，该服务器可通过 <code>python –m SimpleHTTPServer 8000</code> 命令启动，以作为当前目录。启动服务器后，只需将 Chrome 浏览器指向 <code>http://localhost:8000</code> 即可查看测试日志。</p>
+
+<h4 id="conversion_to_a_junit_test_log">转换为 JUnit 测试日志</h4>
+
+<p>很多测试自动化系统都可以从 JUnit 输出生成测试运行结果报告。可使用 testlog-to-junit 工具将 deqp 测试日志文件转换为 JUnit 输出格式。</p>
+
+<p>该工具目前仅支持转换测试用例判定表。由于 JUnit 仅支持“pass”和“fail”结果，deqp 的通过结果会映射到“JUnit pass”，其他结果则会被视为失败。原始的 deqp 结果代码可从 JUnit 输出中获得。转换时将不会保留日志消息或结果图片等其他数据。</p>
+
+<h2 id="special-groups">使用特殊测试组</h2>
+
+<p>某些测试组可能需要或支持特殊命令行选项，或在特定系统上使用时需要特别注意。</p>
+
+<h3 id="memory_allocation_stress_tests">内存分配压力测试</h3>
+
+<p>内存分配压力测试会模拟测试内存不足的情况，方法是重复分配特定资源，直到驱动程序报告内存不足错误。</p>
+
+<p>在某些平台（例如 Android 和大多数 Linux 变体）上，可能会发生以下情况：操作系统可能会终止测试进程，而非允许驱动程序处理或以其他方式产生内存不足错误。在此类平台上，旨在产生内存不足错误的测试默认处于停用状态，必须使用 <code>--deqp-test-oom=enable</code> 命令行参数来启用。建议您手动运行此类测试，以检查系统在面临资源压力时是否正常运行。不过在这种情况下，测试过程崩溃应被视为通过测试。</p>
+
+<h4 id="test_groups">测试组</h4>
+
+<pre class="devsite-click-to-copy">
+dEQP-GLES2.stress.memory.*
+dEQP-GLES3.stress.memory.*
+</pre>
+
+<h3 id="long-running_rendering_stress_tests">长时间运行的渲染压力测试</h3>
+
+<p>渲染压力测试旨在揭示持续渲染负载下的稳健性问题。默认情况下，测试仅会执行几次迭代，但可通过提供 <code>--deqp-test-iteration-count=-1</code> 命令行参数来配置为无限期运行。如果要长时间运行这些测试，应停用测试监控程序 (<code>--deqp-watchdog=disable</code>)。</p>
+
+<h4 id="test_groups2">测试组</h4>
+
+<pre class="devsite-click-to-copy">
+dEQP-GLES2.stress.long.*
+dEQP-GLES3.stress.long.*
+</pre>
+
+</body></html>

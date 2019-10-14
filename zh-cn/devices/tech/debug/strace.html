@@ -20,9 +20,9 @@
       limitations under the License.
   -->
 
-<p>通过 <a href="https://strace.io">strace</a>，您可以看到进程执行的系统调用，以及这些系统调用返回的内容。通常情况下，一次进程会执行大量系统调用，因此您需要查看 <a href="http://man7.org/linux/man-pages/man1/strace.1.html">strace 手册页面</a>，了解如何只收集您真正感兴趣的数据。</p>
+<p>通过 <a href="https://strace.io">strace</a>，您可以看到进程发出的系统调用，以及这些系统调用返回的内容。</p>
 
-<h2 id="build-strace">构建 strace</h2>
+<h2 id="build-strace">编译 strace</h2>
 
 <p>要构建 strace，请运行以下命令：</p><pre class="devsite-terminal devsite-click-to-copy">
 mmma -j6 external/strace
@@ -34,21 +34,32 @@ mmma -j6 external/strace
 <pre class="devsite-terminal devsite-click-to-copy">
 adb shell strace -f -p PID
 </pre>
-<p><code>-f</code> 标记表明 strace 会附加到相应进程中的所有现有线程，以及之后会产生的所有新线程。</p>
+<p><code>-f</code> 标记告诉 strace 应附加到相应进程中的所有现有线程，以及之后会产生的所有新线程。</p>
 
-<h2 id="app-strace">在应用上使用</h2>
+<p>一个典型进程会发出大量系统调用，因此您需要查看 <a href="http://man7.org/linux/man-pages/man1/strace.1.html">strace 手册页面</a>，了解如何只收集您真正感兴趣的数据。</p>
+
+<h2 id="app-strace">在应用上使用 strace</h2>
 <p>要在应用上使用 strace，请执行以下操作：</p>
 
 <ol>
-<li>为 strace 日志设置一个目录：<pre class="devsite-click-to-copy">
+<li>设置设备，以便您可以运行 strace。您必须启用 root 权限、停用 SELinux，然后重新启动运行时以移除 seccomp 过滤器，否则此过滤器会阻止 strace 运行：
+<pre class="devsite-click-to-copy">
+<code class="devsite-terminal">adb root</code>
 <code class="devsite-terminal">adb shell setenforce 0</code>
-<code class="devsite-terminal">adb shell mkdir /data/local/tmp/strace</code>
-<code class="devsite-terminal">adb shell chmod 777 /data/local/tmp/strace</code>
+<code class="devsite-terminal">adb shell stop</code>
+<code class="devsite-terminal">adb shell start</code>
 </pre>
 </li>
 
-<li>在启动前选择要跟踪的进程：<pre class="devsite-terminal devsite-click-to-copy">
-adb shell setprop wrap.com.google.android.browser "logwrapper strace -f -o /data/local/tmp/strace/strace.com.google.android.browser.txt"
+<li>为 strace 日志设置一个全局可写目录，因为 strace 将在应用的 uid 下运行：
+<pre class="devsite-click-to-copy">
+<code class="devsite-terminal">adb shell mkdir -m 777 /data/local/tmp/strace</code>
+</pre>
+</li>
+
+<li>选择要跟踪的进程并启动该进程：
+<pre class="devsite-terminal devsite-click-to-copy">
+adb shell setprop wrap.com.android.calendar '"logwrapper strace -f -o /data/local/tmp/strace/strace.com.android.calendar.txt"'
 </pre>
 </li>
 <li>正常启动该进程。</li>
@@ -64,7 +75,7 @@ adb shell setprop wrap.com.google.android.browser "logwrapper strace -f -o /data
 +++ b/rootdir/init.zygote32.rc
 @@ -1,4 +1,4 @@
 -service zygote /system/bin/app_process -Xzygote /system/bin --zygote --start-system-server
-+service zygote /system/xbin/strace -o /data/local/tmp/zygote.strace /system/bin/app_process -Xzygote /system/bin --zygote --start-system-server
++service zygote /system/bin/strace -o /data/local/tmp/zygote.strace /system/bin/app_process -Xzygote /system/bin --zygote --start-system-server
      class main
      socket zygote stream 660 root system
      onrestart write /sys/android_power/request_state wake
@@ -78,7 +89,7 @@ EOF</code>
 <ul>
 <li>由于进程名称已从 <code>zygote</code> 改为 <code>strace</code>，给定服务可能会因缺少用于 <code>strace</code> 的 SELinux <code>file_context</code> 而无法启动。解决方法：在 <code>system/sepolicy/private/file_contexts</code> 中为 strace 添加一个新行，并将原始文件上下文复制过来。例如：<pre class="devsite-click-to-copy">
 /dev/socket/zygote      u:object_r:zygote_socket:s0
-+ /system/xbin/strace u:object_r:zygote_socket:s0
++ /system/bin/strace u:object_r:zygote_socket:s0
 </pre>
 </li>
 
@@ -89,7 +100,7 @@ EOF</code>
 - BOARD_KERNEL_CMDLINE := ....  androidboot.hardware=sailfish ...
 +BOARD_KERNEL_CMDLINE := ....  androidboot.hardware=sailfish ...  androidboot.selinux=permissive
 </pre>
-在完成上述更改之后，编译并刷写启动映像，设备便会以宽容模式启动。
+在完成上述更改之后，编译并刷写启动映像，设备会以宽容模式启动。
 </li>
 </ul>
 

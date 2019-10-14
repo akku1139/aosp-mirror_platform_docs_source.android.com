@@ -1,0 +1,351 @@
+<html devsite><head>
+    <title>多媒体隧道</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+
+  <!--
+      Copyright 2019 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>您可以在 Android 框架 5.0 及更高版本中实现多媒体隧道。虽然对于 Android TV 来说，该隧道并不是必需的，但在播放超高清 (4K) 内容时，它可以给用户带来最佳体验。</p>
+
+<h2 id="background">背景</h2>
+
+<p>Android 媒体框架能够以 4 种方式处理音频/视频内容：</p>
+
+<ul> <li><strong>纯软件</strong>（本地解码）：应用处理器 (AP) 会在本地解码音频以进行脉冲编码调制 (PCM)，而不进行特殊加速。对于 Ogg Vorbis，会始终使用此方式；对于 MP3 和 AAC，在系统不支持压缩分流时，会使用此方式。</li>
+  <li><strong><a href="https://developer.android.com/about/versions/kitkat.html#44-audio-tunneling" class="external">压缩音频分流</a></strong>：将经过压缩的音频数据直接发送到数字信号处理器 (DSP)，并尽可能使 AP 处于关闭状态。此方式用于在屏幕处于关闭状态时播放音乐文件。</li>
+  <li><strong>压缩音频直通</strong>：通过 HDMI 将经过压缩的音频（具体来说就是 AC3 和 E-AC3）直接发送到外部电视或音频接收器，而不在 Android TV 设备上对其进行解码。系统会单独处理视频部分。</li>
+  <li><strong>多媒体隧道</strong>：一起发送经过压缩的音频和视频数据。视频和音频解码器接收编码流后，编码流不会返回到框架。理想情况下，编码流不会打扰 AP。</li> </ul>
+
+<img src="images/multimedia_tunneling_flo_diag.png" alt="多媒体隧道流程图"/>
+    <figcaption><strong>图 1.</strong> 多媒体隧道流程</figcaption>
+
+<h3 id="approach_comparison">方式比较</h3>
+
+<table>
+  <tbody>
+    <tr>
+      <th> </th>
+      <th>纯软件</th>
+      <th>压缩音频分流</th>
+      <th>压缩音频直通</th>
+      <th>多媒体隧道</th>
+    </tr>
+    <tr>
+      <td>解码位置</td>
+      <td>AP</td>
+      <td>DSP</td>
+      <td>电视或音频/视频接收器 (AVR)</td>
+      <td>电视或 AVR</td>
+    </tr>
+    <tr>
+      <td>是否处理音频</td>
+      <td>是</td>
+      <td>是</td>
+      <td>是</td>
+      <td>是</td>
+    </tr>
+    <tr>
+      <td>是否处理视频</td>
+      <td>是</td>
+      <td>否</td>
+      <td>否</td>
+      <td>是</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 id="for_application_developers">针对应用开发者的说明</h2>
+    <p>需要创建 <code>SurfaceView</code>，获取音频会话 ID，然后创建 <code>AudioTrack</code> 和 <code>MediaCodec</code> 实例，以便为播放和视频帧解码提供必要的时间信息和配置。</p>
+
+<h3 id="a_v_sync">A/V 同步</h3>
+
+<p>在多媒体隧道模式下，音频和视频会按照主时钟同步。在 Android 中，音频时钟是进行 A/V 播放时使用的主时钟。</p>
+
+<p>如果隧道式视频 <code>MediaCodec</code> 实例已关联到 <code>AudioTrack</code> 中的 <code>HW_AV_SYNC</code> 实例，系统便会根据实际视频帧的显示时间戳 (PTS)，利用从显示的音频样本数推断出的隐式时钟来限制每个视频帧的显示时间。</p>
+
+<h3 id="api_call_flow">API 调用流程</h3>
+
+<ol>
+  <li>创建 SurfaceView。
+      <pre class="prettyprint">
+<code>SurfaceView sv = new SurfaceView(mContext);</code></pre>
+  </li>
+  <li>获取音频会话 ID。在创建音轨 (<code>AudioTrack</code>) 时，需要用到这个具有唯一性的 ID。该 ID 会传递到媒体编解码器 (<code>MediaCodec</code>)，并供媒体框架用于关联音频和视频路径。
+      <pre class="prettyprint">
+<code>AudioManager am = mContext.getSystemService(AUDIO_SERVICE);
+int audioSessionId = am.generateAudioSessionId();</code></pre>
+  </li>
+  <li>创建具有 HW A/V 同步 <code>AudioAttributes</code> 的 <code>AudioTrack</code>。
+    <p>音频政策管理器会询问硬件抽象层 (HAL) 哪个设备输出支持 <code>FLAG_HW_AV_SYNC</code>，并创建直接连接到该输出的音轨（不使用中间混音器）。</p>
+
+      <pre class="prettyprint">
+<code>AudioAttributes.Builder aab = new AudioAttributes.Builder();
+aab.setUsage(AudioAttributes.USAGE_MEDIA);
+aab.setContentType(AudioAttributes.CONTENT_TYPE_MOVIE);
+aab.setFlag(AudioAttributes.FLAG_HW_AV_SYNC);
+AudioAttributes aa = aab.build();
+AudioTrack at = new AudioTrack(aa);</code></pre>
+  </li>
+  <li>创建视频 <code>MediaCodec</code> 实例，并对其进行配置，以实现隧道式视频播放。
+      <pre class="prettyprint">
+<code>// retrieve codec with tunneled video playback feature
+MediaFormat mf = MediaFormat.createVideoFormat(“video/hevc”, 3840, 2160);
+mf.setFeatureEnabled(CodecCapabilities.FEATURE_TunneledPlayback, true);
+MediaCodecList mcl = new MediaCodecList(MediaCodecList.ALL_CODECS);
+String codecName = mcl.findDecoderForFormat(mf);
+if (codecName == null) {
+return FAILURE;
+}
+// create codec and configure it
+mf.setInteger(MediaFormat.KEY_AUDIO_SESSION_ID, audioSessionId);
+MediaCodec mc = MediaCodec.createCodecByName(codecName);
+mc.configure(mf, sv.getSurfaceHolder().getSurface(), null, 0);</code></pre>
+  </li>
+  <li>对视频帧进行解码。
+      <pre class="prettyprint">
+<code> mc.start();
+ for (;;) {
+   int ibi = mc.dequeueInputBuffer(timeoutUs);
+   if (ibi &gt;= 0) {
+     ByteBuffer ib = mc.getInputBuffer(ibi);
+     // fill input buffer (ib) with valid data
+     ...
+     mc.queueInputBuffer(ibi, ...);
+   }
+   // no need to dequeue explicitly output buffers. The codec
+   // does this directly to the sideband layer.
+ }
+ mc.stop();
+ mc.release();
+ mc = null; </code></pre>
+  </li>
+</ol>
+
+<div class="note">
+  <p><strong>注意</strong>：您可以在此过程中颠倒第 3 步和第 4 步的顺序，如以下两个图表中所示。</p>
+</div>
+
+<img src="images/audio_track_created_before_codec_configure.png" alt="在配置编解码器之前创建的音轨的示意图"/>
+<figcaption><strong>图 2.</strong> 在配置编解码器之前创建的音轨</figcaption>
+
+<img src="images/audio_track_created_after_codec_configure.png" alt="在配置编解码器之后创建的音轨的示意图"/>
+    <figcaption><strong>图 3.</strong> 在配置编解码器之后创建的音轨</figcaption>
+
+<h2 id="for_device_manufacturers">针对设备制造商的说明</h2>
+
+    <p>原始设备制造商 (OEM) 应创建单独的视频解码器 <a href="https://www.khronos.org/openmax/">OpenMAX IL</a> (OMX) 组件，以支持隧道式视频播放。该 OMX 组件必须公告其能够进行隧道式播放（在 <code>media_codecs.xml</code> 中）。</p>
+<code>&lt;Feature name=”tunneled-playback” required=”true” /&gt; </code>
+
+<p>该组件还必须支持采用 <code>ConfigureVideoTunnelModeParams</code> 结构的 OMX 扩展参数 <code>OMX.google.android.index.configureVideoTunnelMode</code>。</p>
+
+  <pre class="prettyprint">
+<code>struct ConfigureVideoTunnelModeParams {
+    OMX_U32 nSize;              // IN
+    OMX_VERSIONTYPE nVersion;   // IN
+    OMX_U32 nPortIndex;         // IN
+    OMX_BOOL bTunneled;         // IN/OUT
+    OMX_U32 nAudioHwSync;       // IN
+    OMX_PTR pSidebandWindow;    // OUT
+};</code></pre>
+
+<p>创建隧道式 <code>MediaCodec</code> 的请求一经提出，框架便会将该 OMX 组件配置为隧道模式（通过将 <code>bTunneled</code> 设为 <code>OMX_TRUE</code>），并会将关联的音频输出设备（使用 <code>AUDIO_HW_AV_SYNC</code> 标记创建的）传递到该 OMX 组件（在 <code>nAudioHwSync</code> 中）。</p>
+
+<p>如果该组件支持此配置，则应该为这个编解码器分配一个边带句柄，并通过 <code>pSidebandWindow</code> 成员将其传回。边带句柄是隧道式层的 ID 标记，<a href="https://source.android.com/devices/graphics/index.html#hardware_composer">硬件合成器</a>可通过该标记识别隧道式层。如果该组件不支持此配置，则应该将 <code>bTunneled</code> 设为 <code>OMX_FALSE</code>。</p>
+
+<p>框架会检索该 OMX 组件分配的隧道式层（边带句柄），并将其传递给硬件合成器。该层的 <code>compositionType</code> 会设为 <code>HWC_SIDEBAND</code>（请参阅 <a href="https://source.android.com/devices/graphics/index#hardware_composer">hardware/libhardware/include/hardware/hwcomposer.h</a>）。</p>
+
+<p>硬件合成器负责在适当的时间从数据流接收新的图像缓存内容（例如，同步到关联的音频输出设备）、将这些缓存内容与其他层的当前内容进行合成，以及展示所生成的图像。这是独立于正常的准备/设置周期而发生的。仅在其他层发生变化或边带层的属性（例如位置或大小）变化时，准备/设置调用才会发生。</p>
+
+<h3 id="configuration">配置</h3>
+
+<h4 id="frameworks_av_services_audioflinger_audioflinger_cpp">frameworks/av/services/audioflinger/Audiof
+linger.cpp</h4> <p>HAL 会返回 <code>HW_AV_SYNC</code> ID 作为某个 64 位整数的字符串十进制表示（请参考 <a href="https://android.googlesource.com/platform/frameworks/av/+/master/services/audioflinger/AudioFl
+inger.cpp#1604">frameworks/av/services/audioflinger/Audioflinger.cpp</a>）。</p>
+
+  <pre class="prettyprint">
+<code>audio_hw_device_t *dev = mPrimaryHardwareDev-&gt;hwDevice();
+char *reply = dev-&gt;get_parameters(dev, AUDIO_PARAMETER_HW_AV_SYNC);
+AudioParameter param = AudioParameter(String8(reply));
+int hwAVSyncId;
+param.getInt(String8(AUDIO_PARAMETER_HW_AV_SYNC), hwAVSyncId);</code></pre>
+
+<h4 id="frameworks_av_services_audioflinger_threads_cpp">frameworks/av/services/audioflinger/Threads.cpp
+</h4>
+
+<p>音频框架必须查找与此会话 ID 相对应的 HAL 输出流，并通过 <code>set_parameters</code> 向 HAL 查询 <code>hwAVSyncId</code>。
+    </p>
+
+  <pre class="prettyprint">
+<code>mOutput-&gt;stream-&gt;common.set_parameters(&amp;mOutput-&gt;stream-&gt;common,
+AUDIO_PARAMETER_STREAM_HW_AV_SYNC=hwAVSyncId);
+</code></pre>
+
+<h3 id="omx_decoder_configuration">OMX 解码器配置</h3>
+
+<h4 id="mediacodec_java">MediaCodec.java</h4>
+
+<p>音频框架会查找与此会话 ID 相对应的 HAL 输出流，并会通过 <code>get_parameters</code> 向 HAL 查询 <code>AUDIO_PARAMETER_STREAM_HW_AV_SYNC</code> 标记，以便获得 <code>audio-hw-sync</code> ID。</p>
+
+  <pre class="prettyprint">
+<code>
+// Retrieve HW AV sync audio output device from Audio Service
+// in MediaCodec.configure()
+if (entry.getKey().equals(MediaFormat.KEY_AUDIO_SESSION_ID)) {
+    int sessionId = 0;
+    try {
+        sessionId = (Integer)entry.getValue();
+    }
+    catch (Exception e) {
+        throw new IllegalArgumentException("Wrong Session ID Parameter!");
+    }
+    keys[i] = "audio-hw-sync";
+    values[i] = AudioSystem.getAudioHwSyncForSession(sessionId);
+}
+
+// ...
+</code></pre>
+
+<p>系统会使用自定义参数 <code>OMX.google.android.index.configureVideoTunnelMode</code> 将该 HW 同步 ID 传递到 OMX 隧道式视频解码器。</p>
+
+<h4 id="acodec_cpp">ACodec.cpp</h4>
+
+<p>在您获得音频硬件同步 ID 后，ACodec 会使用该 ID 来配置隧道式视频解码器，以便让隧道式视频解码器知道要同步哪个音轨。</p>
+
+  <pre class="prettyprint">
+<code>// Assume you're going to use tunneled video rendering.
+// Configure OMX component in tunneled mode and grab sideband handle (sidebandHandle) from OMX
+// component.
+
+native_handle_t* sidebandHandle;
+
+// Configure OMX component in tunneled mode
+status_t err = mOMX-&gt;configureVideoTunnelMode(mNode, kPortIndexOutput,
+        OMX_TRUE, audioHwSync, &amp;sidebandHandle);</code></pre>
+
+<h4 id="omxnodeinstance_cpp">OMXNodeInstance.cpp</h4>
+
+<p>该 OMX 组件由上述 <code>configureVideoTunnelMode</code> 方法配置。</p>
+
+  <pre class="prettyprint">
+<code>
+// paraphrased
+
+OMX_INDEXTYPE index;
+OMX_STRING name = const_cast&lt;OMX_STRING&gt;(
+        "OMX.google.android.index.configureVideoTunnelMode");
+
+OMX_ERRORTYPE err = OMX_GetExtensionIndex(mHandle, name, &amp;index);
+
+ConfigureVideoTunnelModeParams tunnelParams;
+InitOMXParams(&amp;tunnelParams);
+tunnelParams.nPortIndex = portIndex;
+tunnelParams.bTunneled = tunneled;
+tunnelParams.nAudioHwSync = audioHwSync;
+err = OMX_SetParameter(mHandle, index, &amp;tunnelParams);
+
+err = OMX_GetParameter(mHandle, index, &amp;tunnelParams);
+
+sidebandHandle = (native_handle_t*)tunnelParams.pSidebandWindow;
+
+</code></pre>
+
+<h4 id="acodec_cpp">ACodec.cpp</h4>
+
+<p>在隧道模式下配置该 OMX 组件后，边带句柄会与呈现表面相关联。</p>
+
+  <pre class="prettyprint"> <code>  err = native_window_set_sideband_stream(nativeWindow.get(),
+  sidebandHandle); if (err != OK) { ALOGE("native_window_set_sideband_stream(%p) failed! (err %d).",
+  sidebandHandle, err); return err; }</code></pre>
+
+<p>然后，系统会将最高分辨率提示（如果存在）发送到该组件。</p>
+
+  <pre class="prettyprint">
+<code>
+// Configure max adaptive playback resolution - as for any other video decoder
+int32_t maxWidth = 0, maxHeight = 0;
+if (msg-&gt;findInt32("max-width", &amp;maxWidth) &amp;&amp;
+    msg-&gt;findInt32("max-height", &amp;maxHeight)) {
+    err = mOMX-&gt;prepareForAdaptivePlayback(
+              mNode, kPortIndexOutput, OMX_TRUE, maxWidth, maxHeight);
+}
+</code></pre>
+
+<h3 id="pause_support">对暂停功能的支持</h3>
+
+<p>Android 5.0 及更低版本不支持暂停功能。您只能通过 A/V 匮乏来暂停隧道式播放，但如果内部缓存了大量视频（例如，OpenMax 组件中有 1 秒钟的数据），则会导致暂停操作看起来没有响应。</p>
+
+<p>在 Android 5.1 及更高版本中，AudioFlinger 支持暂停和恢复直接（隧道式）音频输出。如果 HAL 实现了暂停/恢复功能，系统会将轨道暂停/恢复请求转发到 HAL。</p>
+
+<p>系统会在播放线程中执行 HAL 调用，以便遵循暂停、刷新、恢复调用序列（与分流相同）。</p>
+
+<h3 id="implementation_suggestions">实现方面的建议</h3>
+
+<h4 id="audio_hal">音频 HAL</h4>
+
+<p>对于支持隧道式视频播放的设备，其 <code>audio_policy.conf</code> 文件中应该至少有一个包含 <code>FLAG_HW_AV_SYNC</code> 和 <code>AUDIO_OUTPUT_FLAG_DIRECT</code> 标记的音频输出流配置。这些标记用于根据音频时钟来设置系统时钟。</p>
+
+<h4 id="omx">OMX</h4>
+
+<p>设备制造商应该有一个单独的 OMX 组件，以便用于隧道式视频播放。制造商可以有更多 OMX 组件，以用于其他类型的音频和视频播放，例如安全播放。</p>
+
+<p>该组件应在其输出端口上指定 0 缓存内容（<code>nBufferCountMin</code>、<code>nBufferCountActual</code>）</p>
+
+<p>该隧道式组件还必须实现 <code>OMX.google.android.index.prepareForAdaptivePlayback setParameter</code> 扩展。</p>
+
+<p>该隧道式组件必须在 <code>media_codecs.xml</code> 文件中指定其功能，并声明隧道式播放功能。该组件还应阐明在帧尺寸、帧定位或比特率方面的所有限制。</p>
+
+  <pre class="prettyprint">
+<code>
+    &lt;MediaCodec name="OMX.<em>OEM_NAME</em>.VIDEO.DECODER.AVC.<strong>tunneled</strong>"
+    type="video/avc" &gt;
+        &lt;Feature name="adaptive-playback" /&gt;
+        &lt;Feature name="tunneled-playback" <strong>required=”true”</strong> /&gt;
+        &lt;Limit name="size" min="32x32" max="3840x2160" /&gt;
+        &lt;Limit name="alignment" value="2x2" /&gt;
+        &lt;Limit name="bitrate" range="1-20000000" /&gt;
+            ...
+    &lt;/MediaCodec&gt;
+</code></pre>
+
+<p>如果该 OMX 组件还用于支持隧道式和非隧道式解码，那么该组件应该使隧道式播放功能保持非必需状态。这样一来，隧道式和非隧道式解码器便会具有相同的功能限制。</p>
+
+  <pre class="prettyprint">
+<code>
+    &lt;MediaCodec name="OMX.<em>OEM_NAME</em>.VIDEO.DECODER.AVC" type="video/avc" &gt;
+        &lt;Feature name="adaptive-playback" /&gt;
+        &lt;Feature name="tunneled-playback" /&gt;
+        &lt;Limit name="size" min="32x32" max="3840x2160" /&gt;
+        &lt;Limit name="alignment" value="2x2" /&gt;
+        &lt;Limit name="bitrate" range="1-20000000" /&gt;
+            ...
+    &lt;/MediaCodec&gt;
+</code></pre>
+
+<h4 id="hw_composer">硬件合成器</h4>
+
+<p>当显示器存在隧道式层（包含 <code>HWC_SIDEBAND</code> <code>compositionType</code> 的层）时，该层的 <code>sidebandStream</code> 就是 OMX 视频组件所分配的边带句柄。</p>
+
+<p>硬件合成器会将解码的视频帧（来自隧道式 OMX 组件）同步到关联的音轨（包含 <code>audio-hw-sync</code> ID）。当某个新的视频帧成为当前帧时，硬件合成器便会将其与在上一个准备/设置调用过程中接收的所有层的当前内容进行合成，然后显示所生成的图像。仅在其他层发生变化或边带层的属性（例如位置或大小）发生变化时，准备/设置调用才会发生。</p>
+
+<p>图 4 展示了硬件合成器如何与 HW（或内核/驱动程序）同步管理程序合作，以便将视频帧 (7b) 与最新的合成内容 (7a) 进行合并，进而根据音频 (7c) 在正确的时间显示合并后的内容。
+</p>
+
+<img src="images/hardware_composer_and_synchronizer.png" alt="硬件合成器与 HW（或内核/驱动程序）同步管理程序合作，以便将视频帧 (7b) 与最新的合成内容 (7a) 进行合并，进而根据音频 (7c) 在正确的时间显示合并后的内容。"/> <figcaption><strong>图 4.</strong> 硬件合成器与 HW（或内核/驱动程序）同步管理程序合作</figcaption>
+
+</body></html>

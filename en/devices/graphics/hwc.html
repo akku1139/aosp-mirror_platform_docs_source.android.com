@@ -1,0 +1,78 @@
+<html devsite>
+  <head>
+    <title>Hardware Composer HAL</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+{% include "_versions.html" %}
+
+
+<p>The Hardware Composer (HWC) HAL determines the most efficient
+way to composite buffers with the available hardware. As a HAL, its
+implementation is device-specific and usually done by the display hardware OEM.</p>
+
+<p>The value of this approach is easy to recognize when you consider <em>overlay
+planes</em>, which composite multiple buffers in
+the display hardware rather than the GPU. For example, consider a typical
+Android phone in portrait orientation, with the status bar on top, navigation
+bar at the bottom, and app content everywhere else. The contents for each layer
+are in separate buffers. You can handle composition using either of the
+following methods:</p>
+
+<ul>
+<li>Rendering the app content into a scratch buffer, then rendering the status
+bar over it, the navigation bar on top of that, and finally passing the scratch
+buffer to the display hardware.</li>
+<li>Passing all three buffers to the display hardware and instructing it to read data
+from different buffers for different parts of the screen.</li>
+</ul>
+
+<p>The latter approach can be significantly more efficient.</p>
+
+<p>Display processor capabilities vary significantly. The number of overlays,
+whether layers can be rotated or blended, and restrictions on positioning and
+overlap can be difficult to express through an API. To accommodate these options, the HWC performs
+following calculations:</p>
+
+<ol>
+<li>SurfaceFlinger provides HWC with a full list of layers and asks, "How do
+you want to handle this?"</li>
+<li>HWC responds by marking each layer as device or client composition.</li>
+<li>SurfaceFlinger takes care of any client, passing the output buffer
+to HWC, and lets HWC handle the rest.</li>
+</ol>
+
+<p>Because hardware vendors can custom tailor decision-making code, it's possible
+to get the best performance out of every device.</p>
+
+<p>Overlay planes may be less efficient than GL composition when nothing on the
+screen is changing. This is particularly true when overlay contents have
+transparent pixels and overlapping layers are blended. In such cases,
+the HWC can request GLES composition for some or all layers and retain
+the composited buffer. If SurfaceFlinger asks to composite the same
+set of buffers, the HWC can show the previously composited scratch
+buffer. This can improve the battery life of an idle device.</p>
+
+<p>Android devices typically support four overlay planes.
+Attempting to composite more layers than overlays causes the system to use GLES
+composition for some of them, meaning the number of layers used by an app can
+have a measurable impact on power consumption and performance.</p>
+
+  </body>
+</html>

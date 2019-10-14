@@ -1,0 +1,156 @@
+<html devsite><head>
+
+  <meta name="book_path" value="/_book.yaml"/>
+
+  <meta name="project_path" value="/_project.yaml"/>
+</head>
+<body>
+<!--
+  Copyright 2019 The Android Open Source Project
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+<h1 id="run_tests_with_multiple_devices" class="page-title">使用多台设备运行测试</h1>
+
+<p>本文的适用对象是希望在测试期间将 Trade Federation 与多台设备配合使用的 TF 用户。这是 TF 的高级用例，我们建议您熟悉一下<a href="https://source.android.com/devices/tech/test_infra/tradefed/fundamentals/full_example">常规用法</a>。</p>
+
+<p>[TOC]</p>
+
+<h2 id="what_is_different_with_multiple_devices">使用多台设备时有什么不同之处？</h2>
+
+<p>在 Trade Federation 中配置和运行多设备测试时，一些方面会有所不同，尤其是以下方面：</p>
+
+<ul>
+<li><a href="https://source.android.com/devices/tech/test_infra/tradefed/architecture/xml-config">XML 配置</a></li>
+<li><a href="https://source.android.com/devices/tech/test_infra/tradefed/fundamentals/options">命令行选项</a></li>
+</ul>
+
+<p>需要说明的是，任何现有的单设备配置都应按照与以前完全相同的方式运行，但涉及本文介绍的任何内容时，也可以用作特殊的单设备用例。</p>
+
+<h3 id="multiple_device_configuration">多设备配置</h3>
+
+<p>我们假设您已非常熟悉典型的 TF 测试配置。</p>
+
+<p>使用 2 台设备的典型测试配置大致如下所示：</p>
+<pre class="prettyprint lang-xml"><code>&lt;configuration description="A simple multi-devices example in Tradefed"&gt;
+
+    &lt;device name="device1"&gt;
+        &lt;target_preparer class="com.android.tradefed.targetprep.DeviceSetup" /&gt;
+    &lt;/device&gt;
+
+    &lt;device name="device2"&gt;
+        &lt;target_preparer class="com.android.tradefed.targetprep.DeviceSetup" /&gt;
+    &lt;/device&gt;
+
+    &lt;option name="log-level" value="verbose" /&gt;
+    &lt;test class="com.android.tradefed.HelloWorldMultiDevices" /&gt;
+
+    &lt;logger class="com.android.tradefed.log.FileLogger" /&gt;
+    &lt;result_reporter class="com.android.tradefed.result.ConsoleResultReporter" /&gt;
+
+&lt;/configuration&gt;
+</code></pre>
+<p>关于结构，需要注意以下几点：</p>
+
+<ul>
+<li>对于所需的每台设备，应该使用 <code>&lt;device&gt;</code>。</li>
+<li><code>&lt;build_provider&gt;</code>、<code>&lt;target_preparer&gt;</code>、<code>&lt;device_recovery&gt;</code>、<code>&lt;device_requirements&gt;</code>、<code>&lt;device_options&gt;</code>（如果需要）应该位于 <code>&lt;device&gt;</code> 标记内，否则会抛出异常。</li>
+<li><code>&lt;device&gt;</code> 的 <code>name</code> 属性必不可少，并且在配置中存在的所有设备之间应该是唯一的。该属性用于引用与之关联的特定设备。在测试中，您可以使用此名称来定位特定设备。</li>
+<li><code>&lt;option&gt;</code> 可以具有全局作用域（位于配置的根位置时），也可以仅具有单个设备作用域（在 <code>&lt;device&gt;</code> 标记内指定时）。</li>
+</ul>
+
+<p>适用于单设备配置的所有其他规则仍然适用。</p>
+
+<p><a href="#multi_devices_hello_world_example">如需了解详情，请参阅 Hello World 示例。</a></p>
+
+<h3 id="command_line_update">命令行更新</h3>
+
+<p>在 TF 命令行中指定选项时，现在还可以使用 <code>{&lt;device name&gt;}</code> 指定设备作用域。其中 <code>&lt;device name&gt;</code> 是在 XML 配置中指定的名称。</p>
+
+<p>在上面的示例中，允许使用以下选项：</p>
+
+<ul>
+<li><code>--com.android.tradefed.targetprep.DeviceSetup:disable</code></li>
+<li><code>--device-setup:disable</code></li>
+</ul>
+
+<p>现在还可以使用设备名称仅定位某一个设备 <code>build_provider</code> 对象：</p>
+
+<ul>
+<li><code>--{device2}device-setup:disable</code></li>
+</ul>
+
+<p>在此示例中，仅 <code>device2</code> 会跳过设备设置。</p>
+
+<h3 id="how_is_tf_going_to_select_the_devices">TF 将如何选择设备？</h3>
+
+<p>Trade Federation 会按照设备在配置中显示的顺序，查找符合 <code>device_requirements</code>（通常是设备类型、产品等）的设备。每当分配一台设备后，TF 都会尝试分配下一台设备，如果无法分配所有设备，则它会释放所有设备，并在所有设备均符合要求时重新尝试运行该命令。</p>
+
+<p><a href="#example">如需了解详情，请参阅 Hello World 示例。</a></p>
+
+<h3 id="how_is_tf_going_to_prepare_the_devices">TF 将如何为设备做准备？</h3>
+
+<p>设备的准备步骤将与之前大致相同，系统会按照设备在 <code>&lt;device&gt;</code> 内显示的顺序调用 <code>&lt;target_preparer&gt;</code>，为每台设备做好准备。</p>
+
+<p>设备的添加一直以来都是通过 <code>&lt;multi_target_preparer&gt;</code> 实现，后者在配置的根位置指定，并且支持需要多台设备的准备步骤（例如，设备配对）。它在 <code>target_preparer</code> 步骤之后运行。<em></em></p>
+
+<p>您也可以使用 <code>&lt;pre_multi_target_preparer&gt;</code>，它在 <code>target_preparer</code> 步骤之前运行。<em></em></p>
+
+<h3 id="i_want_to_write_a_multi-device_test">我想编写多设备测试！</h3>
+
+<p>编写常规单设备测试时，您通常会实现 <a href="https://source.android.com/reference/tradefed/com/android/tradefed/testtype/IDeviceTest">IDeviceTest</a> 接口。现在，您可以实现 <a href="https://source.android.com/reference/tradefed/com/android/tradefed/testtype/IMultiDeviceTest">IMultiDeviceTest</a>，以接收分配的所有设备与相关联的 <a href="https://source.android.com/reference/tradefed/com/android/tradefed/build/IBuildInfo">IBuildInfo</a> 之间的映射，或者您也可以实现 <a href="https://source.android.com/reference/tradefed/com/android/tradefed/testtype/IInvocationContextReceiver">IInvocationContextReceiver</a>，以接收测试的完整调用元数据。</p>
+
+<p>然后，您可以使用 TF 配置的常见 <a href="https://source.android.com/reference/tradefed/com/android/tradefed/device/ITestDevice">ITestDevice</a> API 编写测试。</p>
+
+<p>我们并不完全确定当前的所有用例，因此尚未添加任何 API 来执行设备之间的操作，例如 <code>device1.sync(device2)</code>。如果您认为自己的用例极具吸引力，需要我们添加进来以让所有人受益，请通过 <a href="https://groups.google.com/forum/?fromgroups#!forum/android-platform">android-platform</a> 列表与我们联系。</p>
+
+<h3 id="multi_devices_hello_world_example">多设备 hello world 示例</h3>
+
+<p>我们添加了类似 Hello World 的示例配置：<a href="https://android.googlesource.com/platform/tools/tradefederation/contrib/+/master/res/config/example/multi-devices.xml">multi-devices.xml</a>
+此外，还有一个 <code>multi_target_preparer</code> 实现的示例 - <a href="https://source.android.com/reference/tradefed/com/android/tradefed/targetprep/multi/HelloWorldMultiTargetPreparer">HelloWorldMultiTargetPreparer</a>，该示例展示了如何接收设备及其版本的列表。</p>
+
+<p>它是一个完整示例，其中涉及：</p>
+
+<ul>
+<li>分配两台设备</li>
+<li>让 multi_target_preparer 访问这两台设备</li>
+<li>运行使用这两台设备的测试</li>
+</ul>
+
+<p>构建 Tradefed 后，您可以在 TF shell 中使用以下命令：</p>
+
+<p><code>run example/multi-devices</code></p>
+
+<p>您应该会看到部分输出包含以下内容：</p>
+<pre><code>08-15 10:52:43 I/HelloWorldMultiDevices: Hello World! device '00b4e73b4cbcd162' with build id '3146108'
+08-15 10:52:43 I/HelloWorldMultiDevices: Hello World! device 'LP5A390056' with build id '3146108'
+08-15 10:52:43 I/HelloWorldMultiDevices: Hello World! device '00b4e73b4cbcd162' from context with build 'com.android.tradefed.build.DeviceBuildInfo@c99cbc1'
+08-15 10:52:43 I/HelloWorldMultiDevices: Hello World! device 'LP5A390056' from context with build 'com.android.tradefed.build.DeviceBuildInfo@b41f20c5'
+</code></pre>
+<p>您需要连接这两台设备才能运行上述内容。这可通过 <code>adb devices</code> 进行检查。</p>
+
+<p>在调用过程中，您可以像之前一样使用 <code>list i</code> 和 <code>list d</code> 进行监控：</p>
+<pre><code>tf &gt;list i
+Command Id  Exec Time  Device                          State
+1           0m:35      [00b4e73b4cbcd162, LP5A390056]  fetching build
+tf &gt;list d
+Serial            State      Product   Variant   Build   Battery
+00b4e73b4cbcd162  Allocated  bullhead  bullhead  NRD90O  100
+LP5A390056        Allocated  shamu     shamu     NRD90I  100
+</code></pre>
+<p>您应该能够看到每次调用涉及的所有设备，以及所有设备及其各自的状态。</p>
+
+<p>请注意，在此示例中，我们将配置中的这两台设备称为 <code>device1</code> 和 <code>device2</code>，如果可能，您应该提供更具描述性的名称，具体取决于您真正想要设置的设备的类型。</p>
+
+</body></html>

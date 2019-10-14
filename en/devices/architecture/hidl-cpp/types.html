@@ -4,6 +4,7 @@
     <meta name="project_path" value="/_project.yaml" />
     <meta name="book_path" value="/_book.yaml" />
   </head>
+  {% include "_versions.html" %}
   <body>
   <!--
       Copyright 2017 The Android Open Source Project
@@ -95,10 +96,9 @@ required to explicitly serialize or deserialize data structures.</p>
 </tr>
 
 <tr>
-<td><pre>opaque</pre></td>
-<td><pre>uint64_t</pre></td>
-<td><pre>&lt;stdint.h&gt;</pre>
-</td>
+<td><pre>safe_union</pre></td>
+<td><pre>(custom) struct</pre></td>
+<td></td>
 </tr>
 
 <tr>
@@ -134,12 +134,32 @@ required to explicitly serialize or deserialize data structures.</p>
 <p>An enum in HIDL becomes an enum in C++. For example:</p>
 <pre class="prettyprint">
 enum Mode : uint8_t { WRITE = 1 &lt;&lt; 0, READ = 1 &lt;&lt; 1 };
+enum SpecialMode : Mode { NONE = 0, COMPARE = 1 &lt;&lt; 2 };
 </pre>
 
 <p>&hellip; becomes:</p>
 <pre class="prettyprint">
 enum class Mode : uint8_t { WRITE = 1, READ = 2 };
+enum class SpecialMode : uint8_t { WRITE = 1, READ = 2, NONE = 0, COMPARE = 4 };
 </pre>
+
+<p>Starting in Android {{ androidQVersionNumber }}, an enum can be iterated
+over using <code>::android::hardware::hidl_enum_range</code>. This range
+includes every enumerator in the order it appears in HIDL source code, starting
+from the parent enum down to the last child. For example, this code iterates
+over <code>WRITE</code>, <code>READ</code>, <code>NONE</code>, and
+<code>COMPARE</code> in that order. Given <code>SpecialMode</code> above:</p>
+
+<pre class="prettyprint">
+template &lt;typename T&gt;
+using hidl_enum_range = ::android::hardware::hidl_enum_range&lt;T&gt;
+
+for (SpecialMode mode : hidl_enum_range&lt;SpecialMode&gt;) {...}
+</pre>
+
+<p><code>hidl_enum_range</code> also implements reverse iterators and can be
+used in <code>constexpr</code> contexts. If a value appears in an enumeration
+multiple times, the value appears in the range multiple times.</p>
 
 <h2 id=bitfield>bitfield&lt;T&gt;</h2>
 <p><code>bitfield&lt;T&gt;</code> (where <code>T</code> is a user-defined enum)

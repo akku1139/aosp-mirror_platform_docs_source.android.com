@@ -1,0 +1,50 @@
+<html devsite><head>
+    <title>DNS 解析器</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+
+  <!--
+      Copyright 2019 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>DNS 解析器模块针对 DNS 拦截和配置更新攻击提供用户保护，并且改进了 DNS 解析的网络性能。此模块包含用于实现 DNS 存根解析器的代码，该解析器可将 <strong>www.google.com</strong> 等名称转换为 IP 地址（例如 <strong>2001:db8::1</strong>）。DNS 存根解析器支持 Java API 元素（如 <a href="https://developer.android.com/reference/java/net/InetAddress#getAllByName(java.lang.String)" class="external">InetAddress#getAllByName</a> 和 <a href="https://developer.android.com/reference/android/net/Network#getAllByName(java.lang.String)" class="external">Network#getAllByName</a>）以及<a href="https://developer.android.com/ndk/reference/group/networking" class="external">原生网络功能</a>，且可发送和接收 DNS 查询以及缓存结果。
+</p>
+
+<h2 id="dns-q">Android 10 中的变化</h2>
+
+<p>在搭载 Android 9 及更低版本的设备上，DNS 解析器代码分布在 Bionic 和 <code>netd</code> 中。DNS 查找集中在 <code>netd</code> 守护进程中，以便进行系统级缓存，而应用在 Bionic 中调用函数（例如 <code>getaddrinfo</code>）。查询通过 UNIX 套接字发送到 <code>/dev/socket/dnsproxyd</code>，再到 <code>netd</code> 守护进程，该守护进程会解析请求并再次调用 <code>getaddrinfo</code>，以发出 DNS 查找，然后它会缓存结果以便其他应用可以使用它们。DNS 解析器实现主要包含在 <code>bionic/libc/dns/</code> 中，部分包含在 <code>system/netd/server/dns</code> 中。
+</p>
+
+<p>Android 10 将 DNS 解析器代码移至 <code>system/netd/resolv,</code>将其转换为 C++，然后对代码进行翻新和重构。由于应用兼容性方面的原因，Bionic 中的代码继续存在，但系统不会再调用它们。以下源文件路径受到重构的影响：</p>
+
+<ul>
+  <li><code>bionic/libc/dns</code></li>
+  <li><code>system/netd/client</code></li>
+  <li><code>system/netd/server/dns</code></li>
+  <li><code>system/netd/server/DnsProxyListener.*</code></li>
+  <li><code>system/netd/resolv</code></li>
+</ul>
+
+<h2 id="dns-format">格式和依赖项</h2>
+
+<p>DNS 解析器模块以 <a href="/devices/tech/ota/apex">APEX</a> 文件的形式提供，并由 <code>netd</code> 动态链接；但是，<code>netd</code> <strong>不是</strong>依赖项，因为模块直接提供本地套接字 <code>/dev/socket/dnsproxyd</code>。解析器配置的 Binder 端点从 <code>netd</code> 移至解析器，这意味着系统服务可以直接调用解析器模块（无需通过 <code>netd</code>）。
+</p>
+
+<p>DNS 解析器模块依赖 <code>libc</code> (Bionic) 并静态链接其依赖项；不需要使用其他库。
+</p>
+
+</body></html>

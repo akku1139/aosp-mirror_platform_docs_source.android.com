@@ -1,0 +1,130 @@
+<html devsite>
+  <head>
+    <title>Garage Mode</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+    {% include "_versions.html" %}
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>
+  To provide periods of idle time in vehicles, <em>Garage Mode</em> keeps the system
+  awake so that jobs in the <a
+href="https://developer.android.com/reference/android/app/job/JobScheduler" class="external">JobScheduler</a>
+  constrained with <a
+href="https://developer.android.com/reference/android/app/job/JobInfo.Builder#setRequiresDeviceIdle(boolean)" class="external">idleness</a> can be executed.
+</p>
+
+<h2>What is Garage Mode?</h2>
+
+<p>
+  On connected devices such as phones, users rely on the system to ensure devices
+  are stable, up-to-date, and optimized. To achieve that state, the Android platform
+  provides an <a
+href="https://developer.android.com/reference/android/app/job/JobInfo.Builder#setRequiresDeviceIdle(boolean)" class="external">idle
+time</a> window during which applications can perform tasks when the user does not
+  interact with the device. A phone is considered to be <em>idle</em> when the user does
+  not touch it for an extended duration (60 minutes or more) and the screen is turned off.
+  Unlike a phone, when a car is not being used, it is turned off, which means the car
+  has no <a
+href="https://developer.android.com/reference/android/app/job/JobInfo.Builder#setRequiresDeviceIdle(boolean)" class="external">idle time</a> window. Garage Mode ensures idle time in a car.
+</p>
+
+<p>
+  When a car is turned off by the user, the system enters Garage Mode. While a
+  car is in Garage Mode, the system is powered on, the display is turned off, and
+  idle jobs in the JobScheduler queue are executed. To implement Garage Mode, see
+  <a href="garage_mode.html#device">Device implementation guidelines</a> below.
+</p>
+
+<h2>Device implementation guidelines<a name="device"></a></h2>
+
+<p>
+  To activate Garage Mode, when turning off the vehicle, the Vehicle HAL (VHAL)
+  must send
+  <code><a href="https://developer.android.com/reference/android/car/VehiclePropertyIds.html#AP_POWER_STATE_REQ" class="external">AP_POWER_STATE_REQ</a></code> with the state <code>SHUTDOWN_PREPARE</code> with the parameter
+  set to <code>SHUTDOWN_ONLY</code> or <code>CAN_SLEEP</code>.
+</p>
+
+<p>
+  For the state <code>SHUTDOWN_PREPARE</code> to be effective, the VHAL must specify the two
+  parameters (state and the additional parameter) for the <code><a
+href="https://developer.android.com/reference/android/car/VehiclePropertyIds.html#AP_POWER_STATE_REQ" class="external">AP_POWER_STATE_REQ</a></code> command. This enables the device to enter Garage Mode,
+  which detects scheduled jobs in the <a
+href="https://developer.android.com/reference/android/app/job/JobScheduler" class="external">JobScheduler</a>
+  and prevents the system from proceeding to either suspend or shut down until the jobs
+  are completed.
+</p>
+
+<h2>How do device implementations connect to the Android framework?</h2>
+
+<p>
+  For Garage Mode, the framework requests the VHAL to extend the shutdown time
+  until either the required duration is exceeded or all jobs have been executed,
+  at which time the system will be shut down. Under specific circumstances defined
+  in the CDD, device implementations can shut down the system sooner. (For details
+  on Android compatibility requirements, see the Android <a href="https://source.android.com/compatibility/cdd">Compatibility Definition Document (CDD)</a>.)
+  If the VHAL must shut down the system before Garage Mode completes, the VHAL can issue
+  <code>SHUTDOWN_PREPARE</code> with the parameter set to
+  <code>SHUTDOWN_IMMEDIATELY</code> or <code>SUSPEND_IMMEDIATELY</code>. Device
+  implementations can use this under specific circumstances <em>only</em>, typically
+  when the resources needed to keep the system running are unavailable. For
+  example, when battery capacity is insufficient.
+</p>
+
+<p><img src="/devices/automotive/images/garage_mode.png"></p>
+
+<h2>How do application developers work with Garage Mode?</h2>
+
+<p>
+  Applications and services do not interact directly with Garage Mode. Instead,
+  apps schedule jobs in the <a href="https://developer.android.com/reference/android/app/job/JobScheduler" class="external">JobScheduler</a>.
+  Those jobs constrained by
+  <a
+href="https://developer.android.com/reference/android/app/job/JobInfo.Builder#setRequiresDeviceIdle(boolean)" class="external">idleness</a>
+  will be executed during Garage Mode.
+</p>
+
+<p>The following code shows how to schedule a job to run during Garage Mode:</p>
+
+<p>
+<pre class="prettyprint">
+public class MyGarageModeJob extends JobService { ... }
+
+Context context = ...;
+int jobId = ...;
+
+ComponentName myGarageModeJobName = new componentName(context,
+                                                      MyGarageModeJob.class);
+
+JobInfo.Builder infoBuilder = new JobInfo.Builder(jobId, myGarageModeJobName)
+                    .setRequiresDeviceIdle(true);
+
+// Example of an optional constraint:
+infoBuilder.setRequiredNetworkType(NetworkType.NETWORK_TYPE_UNMETERED);
+
+JobScheduler jobScheduler = (JobScheduler) context
+                    .getSystemService(Context.JOB_SCHEDULER_SERVICE);
+
+jobScheduler.schedule(infoBuilder.build());
+</pre>
+</p>
+
+
+</body>
+</html>

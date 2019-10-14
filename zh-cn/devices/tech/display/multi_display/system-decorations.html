@@ -1,0 +1,158 @@
+<html devsite><head>
+    <title>系统装饰支持</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+
+  <!--
+      Copyright 2019 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>下文介绍对这些与显示相关的部分进行的更新：</p>
+
+<ul>
+  <li><a href="system-decorations#decorations">系统装饰</a></li>
+  <li><a href="system-decorations#ui-decor">系统界面装饰窗口</a></li>
+  <li><a href="system-decorations#launcher">启动器</a></li>
+  <li><a href="system-decorations#wallpaper">壁纸</a></li>
+</ul>
+
+<h2 id="decorations">系统装饰</h2>
+
+<p>Android 10 增加了对于配置辅助屏幕的支持，以显示特定的系统装饰（例如壁纸、导航栏和启动器）。默认情况下，主屏幕会显示所有系统装饰项，而辅助屏幕会显示选择性启用的装饰项。对输入法 (IME) 的支持可以与其他系统装饰项分开设置。</p>
+
+<p>使用 <code>DisplayWindowSettings#setShouldShowSystemDecorsLocked()</code> 在特定屏幕上添加对于系统装饰的支持，或在 <code>/data/system/display_settings.xml</code> 中提供默认值。如需查看相关示例，请参阅<a href="/devices/tech/display/multi_display/displays#windows">屏幕窗口设置</a>。</p>
+
+<h3 id="implementation-decor">实现</h3>
+
+<p>为便于测试，<code>WindowManager#setShouldShowSystemDecors()</code> 中还公开了 <code>DisplayWindowSettings#setShouldShowSystemDecorsLocked()</code>。出于支持系统装饰的目的触发此方法，既不会添加先前没有的装饰窗口，也不会移除先前已存在的装饰窗口。在大多数情况下，有关系统装饰支持的更改只有在设备重启后才会完全生效。</p>
+
+<p>在 WindowManager 代码库中检查对于系统装饰的支持通常通过 <code>DisplayContent#supportsSystemDecorations()</code> 进行，而检查对于外部服务的支持（例如检查对于系统界面的支持，以确定是否应显示导航栏）则使用 <code>WindowManager#shouldShowSystemDecors()</code> 进行。要了解此设置控制的内容，请查看这些方法的调用点。</p>
+
+<h2 id="ui-decor">系统界面装饰窗口</h2>
+
+<p>Android 10 仅针对导航栏增加了系统装饰窗口支持，因为导航栏对于在 Activity 和应用之间导航是必不可少的。<em></em>默认情况下，导航栏会显示“返回”和“主屏幕”图标。仅当目标屏幕支持系统装饰时才包含此功能（请参阅 <code>DisplayWindowSettings</code>）。</p>
+
+<p><em></em>状态栏是一个更为复杂的系统窗口，因为它还包含通知栏、快捷设置和锁定屏幕。在 Android 10 中，辅助屏幕不支持状态栏。因此，通知、设置和完整锁屏仅在主屏幕上可用。</p>
+
+<p>辅助屏幕不支持“概览/最近”系统窗口。<em></em>在 Android 10 中，AOSP 仅在默认屏幕上显示“最近”，并包含所有屏幕中的 Activity。从“最近”启动时，默认会将辅助屏幕上的 Activity 放到默认屏幕的最前端。此方法存在一些已知的问题，例如当应用显示在其他屏幕上时不会立即更新。</p>
+
+<h3 id="implementation-decor">实现</h3>
+
+<p>要实现其他系统界面功能，设备制造商应使用单个系统界面组件来侦听添加/移除屏幕并显示适当的内容。</p>
+
+<p>支持多屏幕 (MD) 的系统界面组件需要处理以下情况：</p>
+
+<ul>
+<li>在启动时执行多屏幕初始化</li>
+<li>在运行时添加屏幕</li>
+<li>在运行时移除屏幕</li>
+</ul>
+
+<p>如果系统界面先于 WindowManager 检测到添加屏幕，就会创建一个竞态条件。可以通过以下方法来避免发生这种情况，即在添加屏幕时实现一个从 WindowManager 到系统界面的自定义回调，而不是订阅 DisplayManager<code>.DisplayListener</code> 事件。有关参考实现，请参阅 <code>CommandQueue.Callbacks#onDisplayReady</code>（适用于导航栏支持）和 <code>WallpaperManagerInternal#onDisplayReady</code>（适用于壁纸）。</p>
+
+<p>此外，Android 10 还提供了以下更新：</p>
+
+<ul>
+<li><code>NavigationBarController</code> 类可控制特定于导航栏的所有功能。</li>
+<li>要查看自定义导航栏，请参阅 <code>CarStatusBar</code>。</li>
+<li><code>TYPE_NAVIGATION_BAR</code> 不再局限于单个实例，而可以在每个屏幕中使用。</li>
+<li><code>IWindowManager#hasNavigationBar()</code> 已更新为仅包含系统界面的 <code>displayId</code> 参数。</li>
+</ul>
+
+<h2 id="launcher">启动器</h2>
+
+<p>在 Android 10 中，每个配置为支持系统装饰的屏幕，默认情况下都有一个专用于启动器 Activity 的主屏幕堆栈，该堆栈的类型为 <code>WindowConfiguration#ACTIVITY_TYPE_HOME</code>。每个屏幕使用一个单独的启动器 Activity 实例。</p>
+
+<p><img src="/devices/tech/display/images/multi_display_05a.png"/></p>
+
+<p><img src="/devices/tech/display/images/multi_display_05b.png"/></p>
+
+<p><strong>图 1.</strong> <code>platform/development/samples/MultiDisplay</code> 的多屏幕启动器示例</p>
+
+<p>大多数现有的启动器都不支持多个实例，也没有针对大屏幕尺寸进行过优化。此外，在辅助/外部屏幕上通常需要不同类型的体验。为了提供针对辅助屏幕的专用 Activity，Android 10 在 Intent 过滤器中引入了 <code>SECONDARY_HOME</code> 类别。此 Activity 的实例将在支持系统装饰的所有屏幕上使用，每个屏幕对应一个实例。</p>
+
+<pre class="prettyprint">
+&lt;activity&gt;
+    ...
+    &lt;intent-filter&gt;
+        &lt;category android:name="android.intent.category.SECONDARY_HOME" /&gt;
+        ...
+    &lt;/intent-filter&gt;
+&lt;/activity&gt;
+</pre>
+
+<p>该 Activity 的启动模式必须符合以下条件：不会阻止多个实例，并且可以适应不同屏幕尺寸。启动模式不能是 <code>singleInstance</code> 或 <code>singleTask</code>。</p>
+
+<h3 id="implementation-launcher">实现</h3>
+
+<p>在 Android 10 中，<code>RootActivityContainer#startHomeOnDisplay()</code> 会根据主屏幕所在的屏幕自动选择所需的组件和 intent。<code>RootActivityContainer#resolveSecondaryHomeActivity()</code> 包含根据当前选定的启动器查询启动器 Activity 组件的逻辑，并且可以根据需要使用系统默认设置（请参阅 <code>ActivityTaskManagerService#getSecondaryHomeIntent()</code>）。</p>
+
+<aside class="note"><strong>注意</strong>：使用 <code>WindowConfiguration#ACTIVITY_TYPE_HOME</code> 启动 Activity，会自动在屏幕上创建相应类型的堆栈。每个屏幕最多可以有一个这样的堆栈。</aside>
+
+<h3 id="launcher-security">安全限制</h3>
+
+<p>为了避免恶意应用创建启用了<a href="/devices/tech/display/multi_display/system-decorations#decorations">系统装饰</a>的虚拟屏幕并从界面读取用户敏感信息，除了对辅助屏幕上的 Activity 施加限制外，启动器还仅会显示在归系统所有的虚拟屏幕上。启动器不会在非系统虚拟屏幕上显示内容。</p>
+
+<h2 id="wallpaper">壁纸</h2>
+
+<p>在 Android 10 及更高版本中，辅助屏幕可支持壁纸：</p>
+
+<p><img src="/devices/tech/display/images/multi_display_06a.png"/></p>
+<p><img src="/devices/tech/display/images/multi_display_06b.png"/></p>
+
+<p><strong>图 2.</strong> 内部（上方）和外部（下方）屏幕上的动态壁纸</p>
+
+<p>开发者可以通过在 <code>WallpaperInfo</code> XML 定义中提供 <code>android:supportsMultipleDisplays="true"</code> 来声明对壁纸功能的支持。壁纸开发者还可以使用 <code>WallpaperService.Engine#getDisplayContext()</code> 中的屏幕上下文加载资源。</p>
+
+<p>框架会为每个屏幕创建一个 <code>WallpaperService.Engine</code> 实例，以便每个引擎都拥有自己的界面和屏幕上下文。开发者需要确保每个引擎都能够根据 VSYNC 以不同的帧频独立绘制。</p>
+
+<h3 id="individual-wallpaper">针对单个屏幕选择壁纸</h3>
+
+<p>Android 10 平台无法直接支持针对单个屏幕选择壁纸。为了实现此功能，每个屏幕都需要一个稳定的屏幕标识符来保留壁纸设置。
+<code>Display#getDisplayId()</code> 是动态的，因此无法保证物理屏幕在重启后仍具有相同的 ID。</p>
+
+<p>不过，Android 10 新增了 <code>DisplayInfo.mAddress</code>，它包含用于物理屏幕的稳定标识符，将来可以用于完整实现。遗憾的是，现在为 Android 10 实现该逻辑已经太迟了。建议采用以下解决方案：</p>
+
+<ol>
+<li>使用 <code>WallpaperManager</code> API 来设置壁纸。</li>
+<li><code>WallpaperManager</code> 是从 <code>Context</code> 对象获得的，每个 <code>Context</code> 对象均具有关于相应屏幕的信息 (<code>Context#getDisplay()/getDisplayId()</code>)。因此，您可以从 <code>WallpaperManager</code> 实例获得 <code>displayId</code>，而无需添加新方法。</li>
+<li>在框架端，使用从 <code>Context</code> 对象获得的 <code>displayId</code> 并将其映射到静态标识符（例如物理屏幕的端口）。使用该静态标识符来保留所选壁纸。</li>
+</ol>
+
+<p>此解决方案利用了壁纸选择器的现有实现。如果在特定屏幕上打开壁纸选择器并使用正确的 Context，则当选择器请求设置壁纸时，系统可以自动识别该屏幕。</p>
+
+<p>如果需要为当前屏幕以外的屏幕设置壁纸，则需要为目标屏幕创建新的 <code>Context</code> 对象 (<code>Context#createDisplayContext</code>)，并从该屏幕中获取 <code>WallpaperManager</code> 实例。</p>
+
+<h3 id="security-launcher">安全限制</h3>
+
+<p>系统不会在不属于自己的虚拟屏幕上显示壁纸。这是出于安全考虑，因为恶意应用可能会创建启用了系统装饰支持的虚拟屏幕，并从界面读取用户敏感信息（例如个人照片）。</p>
+
+<h3 id="implementation-launcher">实现</h3>
+
+<p>在 Android 10 中，<code>IWallpaperConnection#attachEngine()</code> 和 <code>IWallpaperService#attach()</code> 接口接受 <code>displayId</code> 参数来创建与每个屏幕之间的连接。
+<code>WallpaperManagerService.DisplayConnector</code> 中包含了每个屏幕的壁纸引擎和连接。在 WindowManager 中，会在构建时为每个 <code>DisplayContent</code> 对象创建一个壁纸控制器，而不是为所有屏幕创建一个 <code>WallpaperController</code>。</p>
+
+<p>一些公共 <code>WallpaperManager</code> 方法实现（如 <code>WallpaperManager#getDesiredMinimumWidth()</code>）已更新，可计算并提供相应屏幕的信息。
+新增了 <code>WallpaperInfo#supportsMultipleDisplays()</code> 和相应的资源属性，以便应用开发者可以报告哪些壁纸已可供多个屏幕使用。</p>
+
+<p>如果默认屏幕上显示的壁纸服务不支持多个屏幕，则系统会在辅助屏幕上显示默认壁纸。</p>
+
+<p><img src="/devices/tech/display/images/multi_display_07.png"/></p>
+
+<p><strong>图 3. </strong>辅助屏幕的壁纸回退逻辑</p>
+
+</body></html>

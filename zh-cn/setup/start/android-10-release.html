@@ -1,0 +1,742 @@
+<html devsite><head>
+
+  <meta name="book_path" value="/_book.yaml"/>
+
+  <meta name="project_path" value="/_project.yaml"/>
+</head>
+<body>
+
+<!--
+    Copyright 2019 The Android Open Source Project
+    Licensed under the Apache License, Version 2.0 (the "License");
+    you may not use this file except in compliance with the License.
+    You may obtain a copy of the License at
+    http://www.apache.org/licenses/LICENSE-2.0
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    See the License for the specific language governing permissions and
+    limitations under the License.
+-->
+<h1 id="android_release_notes" class="page-title">Android 10 版本说明</h1>
+
+<p>本页总结了 Android 10 版本中的主要功能，并提供了其他信息的链接。这些功能摘要按照功能文档在本网站上的位置进行整理。</p>
+
+<h2 id="build">编译</h2>
+
+<h3 id="java_sdk_library">java_sdk_library</h3>
+
+<p>Android 10 引入了 <a href="/devices/architecture/java-library"><code>java_sdk_library</code></a>，这是一个新的编译规则，可修复共享 Java 库的兼容性问题。设备制造商可以将此机制用于自己的共享 Java 库，以保持其 API 的向后兼容性。</p>
+
+<h2 id="architecture">架构</h2>
+
+<h3 id="modular_system_components">模块化系统组件</h3>
+
+<p>Android 10 中采用了<a href="/devices/architecture/modular-system/">一些模块化 Android 系统组件</a>，使其能够在正常的 Android 发布周期之外进行更新。下面列举了几种模块：</p>
+
+<ul>
+<li><a href="/devices/architecture/modular-system/runtime">Android Runtime</a></li>
+<li><a href="/devices/architecture/modular-system/conscrypt">Conscrypt</a></li>
+<li><a href="/devices/architecture/modular-system/dns-resolver">DNS Resolver</a></li>
+<li><a href="/devices/architecture/modular-system/documentsui">DocumentsUI</a></li>
+<li><a href="/devices/architecture/modular-system/extservices">ExtServices</a></li>
+<li><a href="/devices/architecture/modular-system/media">Media</a></li>
+<li><a href="/devices/architecture/modular-system/metadata">ModuleMetadata</a></li>
+<li><a href="/devices/architecture/modular-system/networking">Networking</a></li>
+<li><a href="/devices/architecture/modular-system/permissioncontroller">PermissionController</a></li>
+<li><a href="/devices/architecture/modular-system/timezone">Time Zone Data</a></li>
+</ul>
+
+<h3 id="hardware_abstraction_layer_hal">硬件抽象层 (HAL)</h3>
+
+<p>Android 10 增加了对 HAL 的支持，以便它们在没有任何客户端时<a href="/devices/architecture/hal/dynamic-lifecycle#automatic-lifecycles">自动关停</a>。</p>
+
+<h3 id="kernel">内核</h3>
+
+<h4 id="abi">ABI</h4>
+
+<p>Android 10 支持新的 <a href="https://android.googlesource.com/kernel/build/+/refs/heads/master/abi/" class="external">ABI 监控实用程序</a>，可帮助比较、跟踪和减少那些会影响与内核模块的兼容性的内核 ABI 更改。</p>
+
+<p>Android 10 还引入了基于符号的 <a href="/devices/architecture/vndk/abi-use-check.md">ABI 使用情况检查工具</a>。该检查工具可以在编译时检测过时的预编译二进制文件，以便共享库开发者了解哪些预编译二进制文件可能会因更改而遭到破坏，以及哪些预编译二进制文件必须重新编译。</p>
+
+<h4 id="android_live-lock_daemon">Android Live-Lock 守护进程</h4>
+
+<p>Android 10 包含 <a href="/devices/architecture/kernel/config#llkd">Android Live-Lock 守护进程 (llkd)</a>，它旨在发现和减少内核死锁问题。</p>
+
+<h4 id="vdso32_on_arm64">ARM64 上的 vDSO32</h4>
+
+<p>Android 10 支持<a href="/devices/architecture/kernel/config#vdso32-on-arm64">在 64 位内核上使用 vDSO32</a>，它可以使电池续航时间提升 0.4%，并带来其他性能提升。</p>
+
+<h4 id="fstab_entries_for_early_mounted_partitions">适用于提前装载分区的 fstab 条目</h4>
+
+<p>Android 10 要求设备使用第一阶段 ramdisk 中的 <code>fstab</code> 文件为<a href="/devices/architecture/kernel/mounting-partitions-early">提前装载的分区</a>指定 <code>fstab</code> 条目。</p>
+
+<h3 id="hidl">HIDL</h3>
+
+<h4 id="offload_broadcastqueue">分流 BroadcastQueue</h4>
+
+<p>Android 10 在现有的后台和前台队列中添加了一个新的分流 <code>BroadcastQueue</code>。<em></em><em></em><em></em>分流队列具有与后台队列相同的优先级和超时行为。为了防止屏蔽后台队列（该队列中可能会出现更加有趣或用户可见的广播），分流队列会处理 <code>BOOT_COMPLETED</code> 广播（该广播受到多个应用的监听并且需要很长时间才能完成）。分流队列目前仅处理 <code>BOOT_COMPLETED</code> 广播，但可能会处理其他较长的广播。</p>
+
+<h4 id="systemsuspend_service">SystemSuspend 服务</h4>
+
+<p>Android 10 使用 <a href="/devices/architecture/systemsuspend">SystemSuspend HIDL 服务</a>替换了 <code>libsuspend</code> 中负责启动系统挂起功能的线程。此实现提供了与之前版本相同的功能，同时利用了 Android HIDL 基础架构带来的各种优势。</p>
+
+<h4 id="safe_union_in_hidl">HIDL 中的 safe_union</h4>
+
+<p>Android 10 在 HIDL 中引入了一种显式标记联合类型 <a href="/devices/architecture/hidl/safe_union"><code>safe_union</code></a>。</p>
+
+<h3 id="configuration">配置</h3>
+
+<h4 id="configstore_hal">ConfigStore HAL</h4>
+
+<p>Android 10 用<a href="/devices/architecture/sysprops-apis">系统属性</a>替换了 <a href="/devices/architecture/configuration">ConfigStore HAL</a>，因为这个 HAL 内存耗用量高且难以使用。</p>
+
+<h4 id="config_file_schema_api">Config File Schema API</h4>
+
+<p>Android 平台包含大量用于存储配置数据的 XML 文件。很多 XML 文件都位于 <code>vendor</code> 分区中，但读取它们的操作在 <code>system</code> 分区进行。在这种情况下，XML 文件的架构充当这两个分区之间的接口，因此您必须明确指定架构，并且必须以向后兼容的方式改进该架构。在 Android 10 之前的版本中，Android 平台没有提供需要指定和使用 XML 架构的机制，也没有提供防止架构中出现不兼容更改的机制。Android 10 提供了这种机制，称为 <a href="/devices/architecture/config-file-schema-api">Config File Schema API</a>。</p>
+
+<h4 id="system_properties_as_apis">系统属性作为 API</h4>
+
+<p>跨分区访问的<a href="/devices/architecture/sysprops-apis">系统属性</a>系统化为 <code>sysprop</code> 说明文件，并且访问属性的 API 会生成为 C++ 具体函数和 Java 类。</p>
+
+<h3 id="vendor_interface_vintf_object">供应商接口 (VINTF) 对象</h3>
+
+<h4 id="vintf">VINTF</h4>
+
+<p>Android 10 中对 VINTF 的更改包括：</p>
+
+<ul>
+<li>弃用了 AVB 版本标记</li>
+<li>在 OTA 软件包中添加了内核信息</li>
+<li>正式编译了 ODM 清单</li>
+<li>添加了产品兼容性矩阵</li>
+<li>在编译系统中将<a href="/devices/architecture/vintf/objects#manifest-fragments">清单条目与 HAL 模块</a>相关联</li>
+</ul>
+
+<h3 id="bootloader">引导加载程序</h3>
+
+<h4 id="ramdisk">Ramdisk</h4>
+
+<p>在 Android 10 中，<a href="/devices/bootloader/system-as-root#ramdisk">根文件系统</a>已不再包含在 <code>ramdisk.img</code> 中，而是合并到了 <code>system.img</code>。</p>
+
+<h4 id="building_odm_partitions">编译 ODM 分区</h4>
+
+<p>Android 10 支持使用 Android 编译系统<a href="/devices/bootloader/odm-partitions">编译 <code>odm</code> 分区</a>。您可以使用单独的 <code>/odm</code> 分区进行自定义，因而可以针对多个硬件 SKU 使用单个供应商映像。这样，原始设计制造商 (ODM) 能够为其特定设备（开发板）自定义系统芯片 (SoC) 供应商板级支持包 (BSP)。他们可以为板级组件、板级守护进程或者其基于硬件抽象层 (HAL) 的自有功能实现内核模块，还可以替换或自定义 SoC 组件。</p>
+
+<h4 id="boot_image_header_versioning">启动映像头文件版本编号</h4>
+
+<p>Android 10 将<a href="/devices/bootloader/boot-image-header">启动映像头文件</a>更新为版本 2，其中包括用于存储设备树 Blob (DTB) 映像的部分。Android 10 VTS 测试会验证搭载 Android 10 的所有设备是否使用启动映像头文件版本 2，并且添加了有效的 DTB 映像作为启动/恢复映像的一部分。</p>
+
+<h4 id="recovery_images_for_non-ab_devices">非 A/B 设备的恢复映像</h4>
+
+<p>在 Android 9 及更高版本中，设备的<a href="/devices/bootloader/recovery-image#acpio-implementation">恢复映像必须包含来自叠加层映像的信息</a>。设备制造商可以使用设备树或高级配置与电源接口 (ACPI) 描述所有无法检测到的设备。Android 10 及更高版本支持使用 ACPI（而非叠加层设备树 Blob (DTBO)）的架构。</p>
+
+<h4 id="stable_aidl">稳定的 AIDL</h4>
+
+<p>Android 10 添加了对稳定的 <a href="/devices/bootloader/stable-aidl">Android 接口定义语言 (AIDL)</a> 的支持，这是一种跟踪由 AIDL 接口提供的应用编程接口 (API)/应用二进制接口 (ABI) 的新方法。</p>
+
+<h4 id="moving_fastboot_to_user_space">将 fastboot 移至用户空间</h4>
+
+<p>Android 10 通过将 <a href="/devices/bootloader/fastbootd">fastboot 实现</a>从引导加载程序转移至用户空间，添加了对可调整大小的分区的支持。</p>
+
+<h2 id="display">显示</h2>
+
+<h3 id="hdr_video_playback">HDR 视频播放</h3>
+
+<p>Android 10 支持 <a href="/devices/tech/display/hdr">HDR10、VP9 以及 HDR10+ 播放</a>。</p>
+
+<h3 id="text_classification">文本分类</h3>
+
+<p><a href="/devices/tech/display/textclassifier">文本分类</a>使用机器学习技术协助开发者对文本进行分类。Android 10 针对 TextClassifier API 引入了两种方法：<a href="https://developer.android.com/reference/android/view/textclassifier/TextClassifier#suggestConversationActions(android.view.textclassifier.ConversationActions.Request)" class="external"><code>suggestConversationActions</code></a> 和 <a href="https://developer.android.com/reference/android/view/textclassifier/TextClassifier#detectLanguage(android.view.textclassifier.TextLanguage.Request)" class="external"><code>detectLanguage</code></a>。<code>suggestConversationActions</code> 方法可根据给定的对话生成建议的回复和操作，而 <code>detectLanguage</code> 方法可检测文本所使用的语言。</p>
+
+<h3 id="support_for_zawgyi_font_rendering">支持 Zawgyi 字体渲染</h3>
+
+<p>Zawgyi 是缅甸最受欢迎的字体。Android 9 及更低版本不支持渲染 Zawgyi，因为它<a href="https://www.unicode.org/faq/myanmar.html" class="external">不符合 Unicode 标准</a>。Android 10 通过添加一个能够同时渲染 Unicode Burmese 和 Zawgyi 的 Unicode 字体，解决了这个问题。无需执行其他实现工作，即支持在搭载 Android 10 的设备上渲染 Zawgyi 字体。如果您的设备具有支持 Zawgyi 的自定义实现，您可以：</p>
+
+<ul>
+<li>还原这些更改，并使用平台支持的方法。</li>
+<li>将通用的 Zawgyi 字体保留在您的系统中，并在 <code>fonts.xml</code> 中使用语言区域代码 <code>my-qaag</code>。如需了解详情，请参阅<a href="http://unicode.org/reports/tr35/#unicode_script_subtag_validity" class="external">关于 Zawgyi (Qaag) 的 Unicode CLDR 版本说明</a>。</li>
+</ul>
+
+<h3 id="limitations_to_hiding_app_icons">隐藏应用图标的限制</h3>
+
+<p>Android 10 限制了在启动器中隐藏应用图标的功能。除非满足以下任一条件，否则应用必须具有图标：</p>
+
+<ul>
+<li>它是系统应用，即使是更新后的应用。</li>
+<li>它是托管式配置文件管理应用（工作资料所有者）。</li>
+<li>它未请求任何权限。</li>
+<li>它不包含任何组件（例如，Activity、内容提供程序、广播接收器和服务）。</li>
+</ul>
+
+<p>具有图标且拥有已启用的可启动 Activity 的应用不受影响。除了上面列出的例外情况，所有应用均会显示一个图标。如果应用没有图标，则会显示默认的系统图标。点按没有可启动 Activity 的应用图标时会打开应用信息屏幕。</p>
+
+<h2 id="settings">设置</h2>
+
+<p>为了改进无障碍功能，Android 10 添加了用户可自定义的超时设置。API 和“设置”在 Android 10 中得到了更改。如果您要自定义“设置”，请确保支持此功能。如果您的设备上有超时的界面元素，请针对这些元素使用<a href="https://developer.android.com/reference/android/view/accessibility/AccessibilityManager#getRecommendedTimeoutMillis(int,%2520int)" class="external">超时 API</a>。如需了解详情，请参阅 <a href="https://developer.android.com/guide/topics/ui/accessibility" class="external">Android 开发者无障碍功能指南</a>。</p>
+
+<h2 id="compatibility">兼容性</h2>
+
+<h3 id="android_compatibility_definition_document_cdd">Android 兼容性定义文档 (CDD)</h3>
+
+<p><a href="/compatibility/android-cdd">Android 10 兼容性定义文档</a>是在<a href="/compatibility/cdd">之前版本</a>的基础上编写的，并进行了一些更新，以涵盖新功能以及对之前已发布功能的要求进行的更改。</p>
+
+<h2 id="tests">测试</h2>
+
+<h3 id="compatibility_test_suite_cts">兼容性测试套件 (CTS)</h3>
+
+<p>Android CTS 有一个单独的<a href="/compatibility/cts/cts-release-notes">版本说明页面</a>，其中列出了 Android 10 的许多重要更改。</p>
+
+<h4 id="cts_downloads">CTS 下载</h4>
+
+<p>支持 Android 10 的 CTS 包可在 <a href="/compatibility/cts/downloads">CTS 下载</a>页面上找到。随附测试的源代码可以与开放源代码树中的 <code>android-cts-10_r1</code> 标记同步。</p>
+
+<h4 id="cts_shim_apex">CTS Shim APEX</h4>
+
+<p>Android 10 中引入了一个名为 <code>CtsShimApex</code> 的软件包，它必须预安装在设备上，以便为 APEX 管理编写 CTS 测试。</p>
+
+<h4 id="test_harness_mode">自动化测试框架模式</h4>
+
+<p><a href="/compatibility/cts/harness">CTS 自动化测试框架模式</a>可帮助开发者自动测试设备或设备群。</p>
+
+<h4 id="instant_apps_mode">免安装应用模式</h4>
+
+<p>自 Android 10 起，CTS 会在<a href="/compatibility/cts/cts-instant">免安装应用模式</a>下运行，这意味着 CTS 会将测试 APK 安装为免安装应用并运行测试。</p>
+
+<p>除了适用于免安装应用的 CTS 模式，Android 10 还提供<a href="/compatibility/cts/verifier-instant-apps">适用于免安装应用的 CTS 验证程序</a>。</p>
+
+<h4 id="cts_verifier_pro_audio_test">CTS 验证程序专业音频测试</h4>
+
+<p>Android 10 添加了 CTS 验证程序测试，以确保<a href="/compatibility/cts/Verifier-Pro-Audio">专业音频合规性</a>。</p>
+
+<h4 id="cts_verifier_midi_tests">CTS 验证程序 MIDI 测试</h4>
+
+<p>在 Android 10 中，<a href="/compatibility/cts/cts-midi">CTS 验证程序 MIDI 测试</a>可使用 USB MIDI 接口、蓝牙 MIDI 接口和虚拟 MIDI 设备路径测试 MIDI 功能。</p>
+
+<h4 id="cts_test_interpretation">CTS 测试解释</h4>
+
+<p>Android 10 更新了<a href="/compatibility/cts/interpret">解释 CTS 结果</a>的机制。</p>
+
+<h3 id="vendor_test_suite_vts">供应商测试套件 (VTS)</h3>
+
+<h4 id="vts_testing_with_debug_ramdisk">使用调试 ramdisk 进行 VTS 测试</h4>
+
+<p>在 Android 10 中，用于运行 CTS-on-GSI/VTS 合规性测试的常规系统映像 (GSI) 从 userdebug 更改为用户编译版本类型，因为 GSI 已进行版本签名。但是，用户编译版本中未提供 <code>adb root</code> 命令，该命令可向受测 Android 设备授予主机 root 权限。这会带来问题，因为 VTS 需要 <code>adb root</code> 才能运行。</p>
+
+<p>Android 10 中引入了<a href="/compatibility/vts/vts-on-gsi">调试 ramdisk</a>，以便在设备处于解锁状态时启动 <code>adb root</code>。这样就可以重复使用相同的用户编译版本 <code>system.img</code>（GSI 或 OEM 的 <code>system.img</code>），从而简化测试流程。</p>
+
+<h4 id="hardware_composer_validation">Hardware Composer 验证</h4>
+
+<p>Android 10 通过 <a href="https://android.googlesource.com/platform/hardware/interfaces/+/master/graphics/composer/2.2/IComposerClient.hal" class="external"><code>IComposerClient.hal</code></a> 中的 <code>readback</code> 接口为 Hardware Composer 验证提供了新的 VTS 测试类。如果供应商未实现 <code>readback</code>，则会自动通过测试。</p>
+
+<h3 id="debugging">调试</h3>
+
+<h4 id="loading_shared_libraries_with_different_class_loaders">使用不同的类加载器加载共享库</h4>
+
+<p>在 Android 9 及更低版本中，应用会在应用的类加载器中加载其关联的 Java 共享库。Android 10 框架使用与应用的类加载器不同的类加载器来加载通过 <code>uses-library</code> 或 <code>uses-static-library</code> 关联的 Java 共享库。</p>
+
+<p>通常，应用不应依赖于使用特定的类加载器，因此该更改不会破坏应用行为。但是，如果应用依赖于使用单个类加载器，则该行为将会遭到破坏。此外，Android 10 仍支持对同一软件包内的类进行包级私有的访问，但这一功能在共享库中不受支持。</p>
+
+<p>设备制造商在测试搭载 Android 10 的设备时，可能会遇到应用兼容性问题。</p>
+
+<h2 id="security_features">安全功能</h2>
+
+<h3 id="face_authentication">人脸识别身份验证</h3>
+
+<p>借助<a href="/security/biometric/face-authentication">人脸识别身份验证</a>功能，用户只需将面孔对准设备正面即可将其解锁。Android 10 添加了对一种全新人脸识别身份验证堆栈的支持，该堆栈可安全处理摄像头帧，从而在支持的硬件上进行人脸识别身份验证时保障安全和隐私。Android 10 还提供了一种可确保安全性的简单实现，以便通过应用集成来完成交易（例如网上银行或其他服务）。</p>
+
+<h3 id="extended_access">扩展访问权限</h3>
+
+<p>可信代理是 Smart Lock 等三重身份验证机制使用的底层机制，只能在 Android 10 中延长解锁时间。可信代理无法再解锁锁定的设备，并且最多只能将设备解锁状态维持四个小时。</p>
+
+<h3 id="encryption">加密</h3>
+
+<h4 id="oemcrypto">OEMCrypto</h4>
+
+<p>Android 10 使用 OEMCrypto API 版本 15。</p>
+
+<h3 id="testing">测试</h3>
+
+<h4 id="boundssanitizer">BoundsSanitizer</h4>
+
+<p>Android 10 在蓝牙和编解码器中部署了 <a href="/devices/tech/debug/bounds-sanitizer">BoundsSanitizer (BoundSan)</a>。BoundSan 使用 UBSan 的边界排错程序。此缓解功能在各个模块级别启用，有助于确保 Android 关键组件的安全性，因此不应停用。以下编解码器启用了 BoundSan：</p>
+
+<ul>
+<li><code>libFLAC</code></li>
+<li><code>libavcdec</code></li>
+<li><code>libavcenc</code></li>
+<li><code>libhevcdec</code></li>
+<li><code>libmpeg2</code></li>
+<li><code>libopus</code></li>
+<li><code>libvpx</code></li>
+<li><code>libspeexresampler</code></li>
+<li><code>libvorbisidec</code></li>
+<li><code>libaac</code></li>
+<li><code>libxaac</code></li>
+</ul>
+
+<h4 id="integer_overflow_sanitization">整数溢出排错功能</h4>
+
+<p>Android 10 在软件编解码器中启用了<a href="/devices/tech/debug/intsan">整数溢出排错功能 (IntSan)</a>。确保播放性能对于设备硬件中不支持的任何编解码器而言都在接受范围内。以下编解码器启用了 IntSan：</p>
+
+<ul>
+<li><code>libFLAC</code></li>
+<li><code>libavcdec</code></li>
+<li><code>libavcenc</code></li>
+<li><code>libhevcdec</code></li>
+<li><code>libmpeg2</code></li>
+<li><code>libopus</code></li>
+<li><code>libvpx</code></li>
+<li><code>libspeexresampler</code></li>
+<li><code>libvorbisidec</code></li>
+</ul>
+
+<h4 id="execute-only_memory">只执行内存</h4>
+
+<p>默认情况下，AArch64 系统二进制文件的可执行代码部分会被标记为只执行（不可读取），作为应对即时代码重用攻击的安全强化缓解方法。将数据和代码混合在一起的代码以及有目的地检查这些部分的代码（无需首先将内存段重新映射为可读）将不再起作用。如果目标 SDK 为 Android 10（API 级别 29 或更高）的应用尝试读取内存中已启用<a href="/devices/tech/debug/execute-only-memory">只执行内存 (XOM)</a> 的系统库的代码部分，而未首先将该部分标记为可读，则此类应用将会受到影响。</p>
+
+<h4 id="scudo">Scudo</h4>
+
+<p><a href="/devices/tech/debug/scudo">Scudo</a> 是一个动态的用户模式内存分配器，旨在提高在遇到堆相关漏洞时的复原能力。它提供了标准 C 分配和取消分配基元，以及 C++ 基元。</p>
+
+<h4 id="shadowcallstack">ShadowCallStack</h4>
+
+<p><a href="/devices/tech/debug/shadow-call-stack"><code>ShadowCallStack</code> (SCS)</a> 是一种 <a href="https://clang.llvm.org/docs/ShadowCallStack.html" class="external">LLVM 插桩</a>模式，可将函数的返回地址保存到非叶函数的函数 prolog 中单独分配的 <code>ShadowCallStack</code> 实例，并从函数 epilog 中的 <code>ShadowCallStack</code> 实例中加载返回地址，从而防止返回地址被覆盖（比如堆栈缓冲区溢出）。</p>
+
+<h2 id="audio">音频</h2>
+
+<h3 id="audio_hal">音频 HAL</h3>
+
+<p>Android 10 包含以下适用于<a href="/devices/audio/implement">音频 HAL</a> 的新功能：</p>
+
+<ul>
+<li><code>AudioSource</code></li>
+<li><code>AudioFormat</code></li>
+<li><code>AudioChannelMask</code></li>
+</ul>
+
+<p>针对音频 HAL 和子系统实现添加了其他要求。</p>
+
+<h3 id="preprocessing_effects">预处理效果</h3>
+
+<p>Android 提供了<a href="/devices/audio/implement-pre-processing">预处理效果</a>，如回声消除、自动增益控制和噪音抑制。Android 10 添加了针对使用 <code>VOICE_COMMUNICATION</code> 进行捕获的新要求。</p>
+
+<h3 id="audio_policy_manager">音频政策管理器</h3>
+
+<p>Android 10 对<a href="/devices/audio/implement-policy">音频政策管理器</a>进行了重大重构，以提供更大的灵活性来支持复杂的车载使用场景。</p>
+
+<h3 id="high-resolution_audio">高解析度音频</h3>
+
+<p>Android 10 对<a href="/devices/audio/highres-effects">高解析度音频</a>进行了如下改进。</p>
+
+<ul>
+<li>浮动支持</li>
+<li>192 KHz 频率支持</li>
+<li>八声道支持</li>
+<li>添加了时间信息</li>
+</ul>
+
+<h3 id="concurrent_capture">并发捕获</h3>
+
+<p>Android 10 改进了需要同时进行多个活动音频捕获的<a href="/devices/audio/concurrent">并发捕获</a>用户体验。</p>
+
+<h3 id="audioplaybackcapture">AudioPlaybackCapture</h3>
+
+<p>Android 10 包含一个名为 <code>AudioPlaybackCapture</code> 的新 API，应用可以借助此 API 复制其他应用正在播放的音频。此功能类似于屏幕截图，但针对的是音频。主要使用场景是让影音在线播放应用能够捕获游戏当前播放的音频。</p>
+
+<p>对于其音频正在由其他应用捕获的应用，Capture API 不会影响此应用的延迟时间。</p>
+
+<h3 id="midi">MIDI</h3>
+
+<p>Android 10 可更轻松地将使用 MIDI 的专业音频应用移植到使用 <a href="/devices/audio/midi#midi-ndk"><code>AMidi</code> NDK API</a> 的 Android 平台。</p>
+
+<h2 id="camera">摄像头</h2>
+
+<p>有关 Android 10 中引入的对 Camera API、Camera HAL 以及摄像头模块的变更摘要，请参阅 <a href="/devices/camera/versioning#q-version">Android 10 摄像头更新</a>。</p>
+
+<h3 id="camera_framework_privacy_improvements">摄像头框架隐私性改进</h3>
+
+<p>Android 10 针对摄像头框架引入了隐私增强功能。为避免在未经用户同意的情况下泄露 <a href="https://developer.android.com/reference/android/hardware/camera2/CameraCharacteristics" class="external"><code>CameraCharacteristics</code></a> 中潜在的敏感静态摄像头信息，应用必须获取 <a href="https://developer.android.com/reference/android/Manifest.permission.html#CAMERA" class="external"><code>CAMERA</code></a> 权限，才能使用 <a href="https://developer.android.com/reference/android/hardware/camera2/CameraManager#getCameraCharacteristics(java.lang.String)" class="external"><code>getCameraCharacteristics</code></a> 方法检索具有敏感隐私标记的静态元数据。</p>
+
+<p>要获取需要 <code>CAMERA</code> 权限的摄像头特征密钥列表，请调用 <a href="https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/hardware/camera2/CameraCharacteristics.java#303" class="external"><code>getKeysNeedingPermission</code></a> 方法。</p>
+
+<h3 id="session_reconfiguration_query">会话重新配置查询</h3>
+
+<p>Android 10 添加了<a href="/devices/camera/session-parameters#session_reconfiguration_query">会话重新配置查询</a>功能，该功能可更好地控制内部会话参数重新配置逻辑，从而提高性能。</p>
+
+<h3 id="camera_hal3_buffer_management_apis">Camera HAL3 缓冲区管理 API</h3>
+
+<p>Android 10 引入了可选的 <a href="/devices/camera/buffer-management-api">Camera HAL3 缓冲区管理 API</a>，它使您能够实现缓冲区管理逻辑，以便在 Camera HAL 实现中达成不同的内存和捕获延迟折衷权衡。</p>
+
+<h3 id="camera_hal_dynamic_physical_camera_switch">Camera HAL 动态物理摄像头开关</h3>
+
+<p>Android 10 引入了动态元数据标记 <code>ANDROID_LOGICAL_MULTI_CAMERA_ACTIVE_PHYSICAL_ID</code>，它表示逻辑摄像头设备的底层活动物理摄像头。如需了解详情，请参阅<a href="/devices/camera/multi-camera#support_checklist">多摄像头支持</a>。</p>
+
+<h3 id="support_for_hiding_physical_cameras">对隐藏物理摄像头的支持</h3>
+
+<p>在 Android 10 中，Camera HAL 可减少应用能直接打开的物理摄像头数量。如需了解详情，请参阅<a href="/devices/camera/multi-camera#support_checklist">多摄像头支持</a>。</p>
+
+<h3 id="camera2_vndk_api">Camera2 VNDK API</h3>
+
+<p>在 Android 10 中，供应商模块可以通过两个新的标准 HIDL 接口 <code>android.frameworks.cameraservice.service@2.0</code> 和 <code>android.frameworks.cameraservice.device@2.0</code> 来访问和控制摄像头设备。为了更方便地使用 HIDL 接口，Android 10 还引入了一个供应商可用的库 <code>libcamera2_vendor</code>。此库类似于<a href="https://developer.android.com/ndk/reference/group/camera" class="external">摄像头 NDK 库</a>，但经过了一些小的修改。</p>
+
+<h3 id="stream_configurations">信息流配置</h3>
+
+<p>Android 10 添加了一些功能，可允许摄像头供应商向摄像头客户端宣传<a href="/devices/camera/stream-config#recommended_stream_configurations">推荐的摄像头信息流</a>，并支持 <a href="/devices/camera/stream-config#api_to_query_stream_combinations">API 查询信息流组合</a>。</p>
+
+<h3 id="camera_stream_combination_requirements">摄像头信息流组合要求</h3>
+
+<p>搭载 Android 10 的设备不再需要支持与物理子摄像头信息流的信息流组合。但是，搭载 Android 10 且 Camera HAL 设备版本为 3.5 的设备必须支持 <code>isStreamCombinationSupported()</code>，以便应用查询是否支持包含物理信息流的信息流组合。</p>
+
+<p>如需了解详情，请参阅<a href="/devices/camera/multi-camera#support_checklist">多摄像头支持</a>。</p>
+
+<h3 id="heif_imaging">HEIF 图片处理</h3>
+
+<p>Android 10 提供针对<a href="/devices/camera/heif">高效图片文件格式 (HEIF) 图片</a>的原生摄像头支持，从而能够提供具有更高图片质量和更小尺寸的 JPEG 图片。设备必须具有 HEIC 或 HEVC 编码器才能支持 HEIF 图片。</p>
+
+<h3 id="monochrome_cameras">单色摄像头</h3>
+
+<p>Android 10 为 Y8 流格式、单色和近红外 (NIR) 色彩滤镜数组静态元数据提供了额外的支持，并为<a href="/devices/camera/monochrome">单色摄像头</a>提供了 <code>DngCreator</code> 函数。</p>
+
+<h2 id="connectivity">连接</h2>
+
+<h3 id="calling_and_messaging">通话和短信</h3>
+
+<h4 id="emergency_numbers_and_emergency_calling">紧急电话号码和紧急呼叫</h4>
+
+<p>Android 10 改进了对<a href="/devices/tech/connect/emergency-call">紧急呼叫</a>的支持。在紧急情况下，支持 IRadio HAL v1.4 的设备可以使用从 SIM 卡、网络信号或 Android 数据库等来源检索到的紧急电话号码发起紧急呼叫。可以根据警察、消防和救护等紧急服务类别对这些电话号码进行分类。</p>
+
+<h4 id="group_call_apis">群组通话 API</h4>
+
+<p>群组通话 API 是对 Android 9 中添加的 eMBMS API 的扩展。新的 API 定义了应用通过与 eMBMS 中间件数据包互动来联接和播放小区广播群组通话的标准。群组通话需要芯片供应商、中间件供应商以及移动运营商的支持才能正常运行。开发者文档位于 <a href="https://developer.android.com/reference/android/telephony/MbmsGroupCallSession" class="external">developer.google.com</a>。</p>
+
+<h4 id="remote_sim_capabilities">远程 SIM 功能</h4>
+
+<p>Android 10 引入了远程 SIM 功能，该功能允许 Android 主机设备上的通讯应用通过手机使用蓝牙等机制发送短信。如需了解详情，请参阅 <a href="https://developer.android.com/reference/android/telephony/SubscriptionInfo.html#getSubscriptionType()" class="external"><code>getSubscriptionType</code></a> 方法和 <a href="https://developer.android.com/reference/android/telephony/SubscriptionManager.html#SUBSCRIPTION_TYPE_REMOTE_SIM" class="external"><code>SUBSCRIPTION_TYPE_REMOTE_SIM</code></a> 常量的参考文档。</p>
+
+<h4 id="multiple_esims">多个 eSIM 卡</h4>
+
+<p>在 Android 10 中，<code>EuiccManager</code> 类支持设备使用<a href="/devices/tech/connect/esim-overview#supporting_multiple_esims">多个嵌入式 SIM（eSIM 卡）</a>或 eUICC。</p>
+
+<h4 id="esim_updates">eSIM 卡更新</h4>
+
+<p>对于搭载 Android 10 且支持 eSIM 卡的设备，必须定义不可移除的 eUICC 卡插槽 ID 数组。设备还必须支持 IRadio HAL v1.4 和 IRadioConfig HAL v1.2。如需了解详情，请参阅<a href="/devices/tech/connect/esim-overview#hardwaremodem_requirements">实现 eSIM 卡</a>和<a href="/devices/tech/connect/esim-modem-requirements#hal_requirements">调制解调器要求</a>。</p>
+
+<h4 id="5g_non-standalone_nsa">5G 非独立组网 (NSA)</h4>
+
+<p>Android 10 增加了对 <a href="/devices/tech/connect/5g-nsa">5G 非独立组网 (NSA)</a> 的支持。5G NSA 是一种 5G 网络解决方案，其网络由现有的 4G 基础架构提供支持。Android 10 设备在连接到 5G 网络后，便可以在状态栏上显示 5G 图标。</p>
+
+<h4 id="phone_account_suggestion">电话帐号建议</h4>
+
+<p>Android 10 引入了<a href="/devices/tech/connect/phone-account-suggestion">电话帐号建议服务</a>，该服务允许在用户拨打电话时向其显示电话帐号建议。</p>
+
+<h3 id="carrier">运营商</h3>
+
+<h4 id="migrating_mobile_network_settings">迁移移动网络设置</h4>
+
+<p>Android 10 重新设计了移动网络设置界面代码的架构，并将其从电话堆栈移动至设置堆栈。要支持迁移后的代码，请将以下移动网络设置配置值从 Android 资源更改为 <code>CarrierConfig</code> 资源：</p>
+
+<p><code>config_world_mode</code> -&gt;
+<code>CarrierConfigManager#KEY_WORLD_MODE_ENABLED_BOOL</code></p>
+
+<p><code>config_support_tdscdma</code> -&gt;
+<code>CarrierConfigManager#KEY_SUPPORT_TDSCDMA_BOOL</code></p>
+
+<p><code>config_support_tdscdma_roaming_on_networks</code> -&gt;
+<code>CarrierConfigManager#KEY_SUPPORT_TDSCDMA_ROAMING_NETWORKS_STRING_ARRAY</code></p>
+
+<p><code>config_enabled_lte</code> -&gt;
+<code>CarrierConfigManager#KEY_LTE_ENABLED_BOOL</code></p>
+
+<h4 id="device_identifiers">设备标识符</h4>
+
+<p>永久性<a href="/devices/tech/config/device-identifiers">设备标识符</a>（IMEI/MEID、IMSI 以及版本序列号）由特许权限进行保护，并且还会向设备和资料所有者应用授予访问权限。由于 IMSI 和 SIM 序列号由运营商提供，因此会对具有运营商权限的软件包提供对这些标识符的访问权限。</p>
+
+<h3 id="wi-fi">WLAN</h3>
+
+<h4 id="network_selection">网络选择</h4>
+
+<p>Android 会不断评估已连接网络的质量，并评定可用网络的质量。Android 10 更新了用于<a href="/devices/tech/connect/wifi-network-selection">在 WLAN 网络之间进行选择和切换</a>的算法和流程。</p>
+
+<h4 id="wi-fi_preferred_network_offload_scanning">WLAN 首选分流网络扫描</h4>
+
+<p>Android 10 在 <code>WifiManager</code> 中引入了一个名为 <code>setDeviceMobilityState()</code> 的可选 API 方法，可在设备静止时增加<a href="/devices/tech/connect/wifi-scan">首选分流网络 (PNO)</a> 扫描之间的间隔，从而减少耗电量。</p>
+
+<h4 id="carrier_wi-fi">运营商 WLAN</h4>
+
+<p>具有<a href="/devices/tech/connect/carrier-wifi">运营商 WLAN 功能</a>的 Android 10 设备会自动连接到已配置的运营商 WLAN 网络（具有公钥证书的网络）。</p>
+
+<h4 id="wi-fi_easy_connect">WLAN Easy Connect</h4>
+
+<p>Android 10 设备可以使用 <a href="/devices/tech/connect/wifi-easy-connect">WLAN Easy Connect</a>，该功能使用由 WLAN 联盟 (WFA) 引入的设备配置协议 (DPP) 来配置 WLAN 设备。</p>
+
+<h4 id="wi-fi_low-latency_mode">WLAN 低延迟模式</h4>
+
+<p>Android 10 引入了 <a href="/devices/tech/connect/wifi-low-latency">WLAN 低延迟模式</a>，该模式可配置 WLAN 芯片以降低延迟。</p>
+
+<h4 id="updated_dhcp_server">已更新 DHCP 服务器</h4>
+
+<p>为了更好地构造“IP 服务器”服务体系，我们删除了 <code>dnsmasq</code>。Android 10 将其 DHCPv4 服务器功能替换为单独的组件，该组件主要使用 Java 编写，以便更好地与 Java 框架控制平面集成。这提高了 DHCP 服务器的安全性和可更新性。如需了解详情，请参阅 <a href="https://android.googlesource.com/platform/packages/modules/NetworkStack/+/refs/heads/master/src/android/net/dhcp/DhcpServer.java" class="external"><code>packages/modules/NetworkStack/src/android/net/dhcp/DhcpServer.java</code></a>。</p>
+
+<p>此更改无需任何操作即可实现：默认情况下，发布和更新到 Android 10 的所有设备均使用 <code>DhcpServer</code>。如果您对 DHCP 服务器进行了自定义，则可以通过设置全局设置 <code>tether_enable_legacy_dhcp_server=1</code> 来还原 Android 9 行为。新的 <code>DhcpServer</code> 包含在网络组件模块中，因此，对 DHCP 服务器功能的任何自定义都应在上游进行。</p>
+
+<h4 id="wpa3_and_wi-fi_enhanced_open">WPA3 和 Wi-Fi Enhanced Open</h4>
+
+<p>Android 10 添加了对 <a href="/devices/tech/connect/wifi-wpa3-owe">Wi-Fi Protected Access 3 (WPA3) 和 Wi-Fi Enhanced Open</a> 安全标准的支持，以便提供更好的隐私保护和稳健性来抵御已知攻击。</p>
+
+<h4 id="wi-fi_direct">WLAN 直连</h4>
+
+<p><a href="/devices/tech/connect/wifi-direct">WLAN 直连</a>又称“WLAN 点对点”，它允许支持设备直接使用 WLAN 直连协议发现其他设备并与之互连（无需连接到互联网或移动网络）。</p>
+
+<h4 id="mac_randomization_enhancements">随机分配 MAC 地址增强功能</h4>
+
+<p>自 Android 10 起，默认会为客户端模式、SoftAp 和 WLAN 直连启用<a href="/devices/tech/connect/wifi-mac-randomization">随机分配 MAC 地址</a>功能。设备必须在系统界面中提供为每个 SSID 启用或停用随机分配 MAC 地址功能的选项。</p>
+
+<h4 id="passpoint_r2">Passpoint R2</h4>
+
+<p>Android 10 提供了对 <a href="/devices/tech/connect/wifi-passpoint#passpoint_r2">Passpoint R2 功能</a>的支持。Passpoint R2 实现了在线注册 (OSU)，这是一种配置新的 Passpoint 配置文件的标准方法。Android 10 支持使用 SOAP-XML 配置 EAP-TTLS 配置文件。</p>
+
+<h3 id="nfc">NFC</h3>
+
+<h4 id="secure_nfc">安全 NFC</h4>
+
+<p><a href="/devices/tech/connect/secure-nfc">安全 NFC</a> 允许仅在设备屏幕处于解锁状态时启用脱离主机的 NFC 卡模拟。通过实现此功能，用户可以选择启用安全 NFC，以提高安全性。</p>
+
+<h4 id="android_beam_deprecated">Android Beam 已弃用</h4>
+
+<p>在 Android 10 中，不再需要 Android Beam，并且以下接口和方法已弃用。</p>
+
+<p>接口：</p>
+
+<ul>
+<li><a href="https://developer.android.com/reference/android/nfc/NfcAdapter.CreateBeamUrisCallback.html" class="external"><code>NfcAdapter.CreateBeamUrisCallback</code></a> </li>
+<li><a href="https://developer.android.com/reference/android/nfc/NfcAdapter.CreateNdefMessageCallback.html" class="external"><code>NfcAdapter.CreateNdefMessageCallback</code></a> </li>
+<li><a href="https://developer.android.com/reference/android/nfc/NfcAdapter.OnNdefPushCompleteCallback.html" class="external"><code>NfcAdapter.OnNdefPushCompleteCallback</code></a> </li>
+</ul>
+
+<p>方法：</p>
+
+<ul>
+<li class="external"><a href="https://developer.android.com/reference/android/nfc/NfcAdapter.CreateBeamUrisCallback#createBeamUris(android.nfc.NfcEvent)"><code>createBeamUris</code></a></li>
+<li class="external"><a href="https://developer.android.com/reference/android/nfc/NfcAdapter.html#invokeBeam(android.app.Activity)"><code>invokeBeam</code></a></li>
+<li class="external"><a href="https://developer.android.com/reference/android/nfc/NfcAdapter.html#isNdefPushEnabled()"><code>isNdefPushEnabled</code></a></li>
+<li class="external"><a href="https://developer.android.com/reference/android/nfc/NfcAdapter.html#setBeamPushUris(android.net.Uri%5B%5D,%2520android.app.Activity)"><code>setBeamPushUris</code></a></li>
+<li class="external"><a href="https://developer.android.com/reference/android/nfc/NfcAdapter.html#setNdefPushMessage(android.nfc.NdefMessage,%2520android.app.Activity,%2520android.app.Activity...)"><code>setNdefPushMessage</code></a></li>
+<li class="external"><a href="https://developer.android.com/reference/android/nfc/NfcAdapter.html#setNdefPushMessageCallback(android.nfc.NfcAdapter.CreateNdefMessageCallback,%2520android.app.Activity,%2520android.app.Activity...)"><code>setNdefPushMessageCallback</code></a></li>
+<li class="external"><a href="https://developer.android.com/reference/android/nfc/NfcAdapter.html#setOnNdefPushCompleteCallback(android.nfc.NfcAdapter.OnNdefPushCompleteCallback,%2520android.app.Activity,%2520android.app.Activity...)"><code>setOnNdefPushCompleteCallback</code></a></li>
+</ul>
+
+<p>要使用 Android Beam，请报告 <a href="https://developer.android.com/reference/android/content/pm/PackageManager#FEATURE_NFC_BEAM" class="external"><code>android.sofware.nfc.beam</code></a> 功能常量。</p>
+
+<h2 id="graphics">图形</h2>
+
+<h3 id="asurfacecontrol">ASurfaceControl</h3>
+
+<p>Android 10 添加了 <a href="/devices/graphics/arch-sf-hwc#surfaceflinger"><code>ASurfaceControl</code></a>，这是让 <code>SurfaceFlinger</code> 接受缓冲区的新方法。</p>
+
+<h3 id="graphics_implementation">图形实现</h3>
+
+<h4 id="opengl_es_layers">OpenGL ES 层</h4>
+
+<p>Android 10 针对 GLES 引入了一个<a href="/devices/graphics/implement-opengl-es#gles_layers">分层系统</a>。</p>
+
+<h4 id="egl_15">EGL 1.5</h4>
+
+<p>Android 10 实现了 <a href="https://www.khronos.org/registry/EGL/specs/eglspec.1.5.pdf" class="external">EGL 1.5 接口</a>。如需了解 EGL 1.5 中的新功能，请查看 <a href="https://www.khronos.org/news/press/khronos-releases-egl-1.5-specification" class="external">Khronos 发布 EGL 1.5 规范</a>。</p>
+
+<h4 id="vulkan">Vulkan</h4>
+
+<p>Android 10 新增了对 Vulkan 1.1 图形的支持。该平台还支持 <code>VK_KHR_swapchain</code> v70，因此 Vulkan 应用能够创建由交换链内存支持的 <code>VkImage</code>。</p>
+
+<h4 id="performance_refresh_rate">性能刷新频率</h4>
+
+<p>Android 10 增加了对性能刷新频率的支持。此功能默认停用。</p>
+
+<h2 id="interaction">交互</h2>
+
+<h3 id="automotive">车载</h3>
+
+<h4 id="automotive_audio">车载音频</h4>
+
+<p>在 Android 10 中，音频 HAL 上下文会映射到 <code>AudioAttributes.usage</code>，以识别声音。Android 支持每个上下文拥有一个 <code>AUDIO_DEVICE_OUT_BUS</code> 实例。<code>IAudioControl</code> HAL 可<a href="/devices/automotive/audio">向音频 HAL 提供车辆专用扩展</a>。</p>
+
+<h3 id="gestural_navigation">手势导航</h3>
+
+<p>Android 10 引入了一个完全通过手势进行系统导航的选项。如需了解如何准备应用以使用此功能，请参阅 Android 开发者网站上的<a href="https://developer.android.com/preview/features/gesturalnav" class="external">手势导航</a>页面。</p>
+
+<h3 id="neural_networks">神经网络</h3>
+
+<p>Android 10 中更新了 Neural Networks API 和 Neural Networks HAL。有关变更摘要，请参阅<a href="/devices/neural-networks/#android-q">神经网络</a>。</p>
+
+<p>针对 Android 10 新建及更新的神经网络文档如下：</p>
+
+<ul>
+<li><a href="/devices/neural-networks/">概览</a></li>
+<li><a href="/devices/neural-networks/ahardwarebuffer">AHardwareBuffer</a></li>
+<li><a href="/devices/neural-networks/burst-executions">突发执行和快速消息队列</a></li>
+<li><a href="/devices/neural-networks/compilation-caching">编译缓存</a></li>
+<li><a href="/devices/neural-networks/device-discovery">设备发现和分配</a></li>
+<li><a href="/devices/neural-networks/vendor-extensions">供应商扩展程序</a></li>
+</ul>
+
+<h3 id="sensors">传感器</h3>
+
+<h4 id="sensors_hal_20">传感器 HAL 2.0</h4>
+
+<p><a href="/devices/sensors/sensors-hal2">传感器 HAL 2.0</a> 支持使用<a href="/devices/architecture/hidl/fmq">快速消息队列 (FMQ)</a> 将传感器事件从 HAL 发送到 Android 传感器框架。</p>
+
+<h4 id="sensors_off">关闭传感器</h4>
+
+<p>Android 10 中包含一个开发者设置，用于<a href="/devices/sensors/sensors-off">关闭设备上的所有传感器</a>。此功能可帮助开发者在这些传感器不可用的情况下测试其应用的功能，也为用户提供了控制其设备中的传感器的方法。</p>
+
+<p>如果您的设备使用 <code>SensorService</code>、<code>CameraService</code> 和 <code>AudioPolicyService</code> 的默认实现，则无需对参考设计进行额外的自定义。如果您有其他传感器，请参阅<a href="/devices/sensors/sensors-off#customization">自定义</a>，详细了解如何支持此功能。</p>
+
+<h2 id="media">媒体</h2>
+
+<h3 id="updatable_media_components">可更新的媒体组件</h3>
+
+<p>Android 10 提供<a href="/devices/media/updatable-media">可更新的媒体组件</a>，它们可以通过 Google Play 商店基础架构或通过合作伙伴提供的无线下载 (OTA) 机制更新与媒体相关的<a href="/devices/architecture/modular-system/">模块化系统组件</a>。</p>
+
+<h3 id="media_drm">媒体数字版权管理</h3>
+
+<p>Android 10 提高了 <code>MediaDrm</code> Java 和 NDK API 的实用性和易用性。</p>
+
+<h3 id="decoding">解码</h3>
+
+<p>Android 10 支持 AV1 软件解码。</p>
+
+<h2 id="permissions">权限</h2>
+
+<p>Android 10 提供了其他权限配置，用于确保透明度和用户隐私。</p>
+
+<h3 id="contacts_provider_and_affinities_information">联系人提供器和亲密程度信息</h3>
+
+<p>从 Android 10 开始，由<a href="/devices/tech/config/contacts-affinities">联系人提供器组件</a>管理的联系人亲密程度相关数据的访问方式将与 Android 9 及更低版本不同。这些有关数据可访问性的变更可以在使用联系人提供器组件的所有 Android 10 设备中增强用户隐私保护。底层数据库中不再包含联系人亲密程度数据。因此，应用无法将内容写入该数据库或从中读取内容。</p>
+
+<p>Android 10 中的变更预计会对 API 产生巨大的影响。如果您的应用依赖于“联系人提供器和亲密程度信息”中提到的已弃用的功能，则您可能需要更新应用以抵补任何变更带来的差异。此外，如果您使用联系人提供器的派生版本，则必须更新联系人提供器。</p>
+
+<h3 id="tristate_location_permissions">三态位置权限</h3>
+
+<p>Android 10 中的<a href="/devices/tech/config/tristate-perms">三态位置权限</a>可让用户更好地控制应用如何访问其设备位置信息。</p>
+
+<h3 id="background_location_access_reminder">后台位置信息访问权限提醒</h3>
+
+<p>Android 10 具有<a href="/devices/tech/config/background-location-access">后台位置信息访问权限提醒</a>功能，它有助于用户进一步了解应用对设备的位置信息有多大的访问权限，并可帮助用户保持对此类访问权限的控制。</p>
+
+<h3 id="restrict_opportunistic_locations">限制机会性位置信息</h3>
+
+<p>应用在请求设备的位置信息时，它可以等待请求响应，也可以通过使用处于活动状态的位置信息监听器来获取机会性位置信息更新。从 Android 10 开始，要获取<a href="/devices/tech/config/restrict-opportunistic-locations">机会性位置信息更新</a>，开发者必须指明他们需要从 <code>FusedLocationProviderClient</code> 类获取被动位置信息更新。</p>
+
+<h3 id="background_apps_launching">后台应用启动</h3>
+
+<p>在 Android 10 中，没有可见窗口的非特权应用无法在前台自动自行启动。此项变更可禁止广告弹出和恶意接管。此功能无需执行任何操作即可启用。</p>
+
+<h3 id="app_sandboxing">应用沙盒</h3>
+
+<p>在 Android 10 中，应用对文件系统只有未经处理的有限了解，且无法直接访问 <code>/sdcard/DCIM</code> 之类的路径。不过，应用保留对任何适用方法（例如 <a href="https://developer.android.com/reference/android/content/Context.html#getExternalFilesDir(java.lang.String)" class="external"><code>Context.getExternalFilesDir()</code></a>）返回的软件包专用路径的完整原始访问权限。应用仍保留对其软件包专用路径的完整原始访问权限。</p>
+
+<p>使用应用沙盒<a href="/security/app-sandbox#guidelines-for-sharing-files">文件共享指南</a>可提供适当的数据共享粒度。</p>
+
+<h3 id="restrict_app_clipboard_access">限制应用剪贴板访问权限</h3>
+
+<p>Android 10 已对剪贴板访问权限进行了更改，因此无法通过调用 <a href="https://developer.android.com/reference/android/content/ClipboardManager.html#getPrimaryClip()" class="external"><code>ClipboardManager.getPrimaryClip</code></a> 或在剪贴板发生更改时添加针对通知的 <a href="https://developer.android.com/reference/android/content/ClipboardManager.OnPrimaryClipChangedListener" class="external"><code>onPrimaryClipChanged</code></a> 监听器来查看剪贴板内容。这样可以增强用户隐私，并禁止恶意应用修改剪贴板。</p>
+
+<p>在 Android 10 中，只有具有输入焦点的当前应用或当前键盘可拥有读取权限。<a href="https://developer.android.com/reference/android/content/ClipboardManager.OnPrimaryClipChangedListener#public-methods_1" class="external"><code>ClipboardManager.onPrimaryClipChanged()</code></a> 监听器调用目前仅触发满足此类限制的应用。
+如果发起请求的应用既不是默认的输入法 (IME)，也没有输入焦点，则 <a href="https://developer.android.com/reference/android/content/ClipboardManager.html#getPrimaryClip()" class="external"><code>ClipboardManager.getPrimaryClip</code></a> 和 <a href="https://developer.android.com/reference/android/content/ClipboardManager.html#getPrimaryClipDescription()" class="external"><code>ClipboardManager.getPrimaryClipDescription</code></a> 会返回 <code>null</code>。</p>
+
+<h3 id="runtime_permissions_include_activity_recognition">运行时权限包括运动状态识别</h3>
+
+<p>当应用在后台访问设备位置信息时，用户现在可以看到运动状态识别对话框。在 Android 10 中，必须将受到硬性限制的运行时权限正确列入白名单。</p>
+
+<h3 id="manage_device_admins_permission">MANAGE_DEVICE_ADMINS 权限</h3>
+
+<p>Android 10 将 <a href="https://android.googlesource.com/platform/frameworks/base/+/master/core/res/AndroidManifest.xml" class="external"><code>MANAGE_DEVICE_ADMINS</code></a> 权限从签名权限或特许权限更改为仅签名权限。这意味着仅经平台签名的应用才可将其他应用设置为设备管理员。</p>
+
+<h3 id="sharing_api_improvements">共享 API 方面的改进</h3>
+
+<p>Android 10 提供了许多<a href="https://developer.android.com/preview/features/sharing" class="external">与共享相关的 Android Platform API 新功能</a>。如果您已在实现中修改了共享表单代码，请确保您的实现支持这些新功能。如果您尚未在实现中修改共享表单代码，则无需执行任何操作即可支持这些新功能。</p>
+
+<h2 id="android_runtime_art">Android Runtime (ART)</h2>
+
+<h3 id="signed_config">签名配置</h3>
+
+<p><a href="/devices/tech/dalvik/signed-config">签名配置</a>功能允许在 APK 中嵌入有关非 SDK 接口受限情况的配置。借助此功能，可以从黑名单中移除特定的非 SDK 接口，以便 AndroidX 能够安全地使用它们。在进行这项更改后，AndroidX 可针对旧版 Android 上的新功能添加支持。</p>
+
+<h2 id="performance">性能</h2>
+
+<h3 id="cgroup_abstraction_layer">Cgroup 抽象层</h3>
+
+<p>Android 10 包含一个 <a href="/devices/tech/perf/cgroups">cgroup 抽象层</a>和一些任务配置文件，开发者可以使用它们来描述一系列可应用到线程或进程的限制。</p>
+
+<h3 id="low_memory_killer_daemon_lmkd">低内存终止守护进程 (lmkd)</h3>
+
+<p>Android 10 支持新的 <a href="/devices/tech/perf/lmkd"><code>lmkd</code> 模式</a>，它使用内核压力失速信息 (PSI) 监视器来检测内存压力。</p>
+
+<h2 id="power">电源</h2>
+
+<h3 id="platform_power_management">平台电源管理</h3>
+
+<p>始终开启的 Android 10 设备以及电池供电的 Android 10 设备始终可以启用<a href="/devices/tech/power/platform_mgmt">低电耗模式</a>。</p>
+
+<h3 id="routine_battery_saver">常规省电模式</h3>
+
+<p>Android 10 引入了一个称为<strong>基于常规</strong>的全新省电模式调度选项。
+<a href="/devices/tech/power/routine-battery-saver">常规省电模式</a>使原始设备制造商 (OEM) 选择的应用可以向系统提供信号，以实现更智能的省电模式调度。此选项需要配置，在实现上是可选的。</p>
+
+<h3 id="power_stats_hal">电量统计信息 HAL</h3>
+
+<p>在 Android 10 中，<a href="https://android.googlesource.com/platform/hardware/interfaces/+/master/power/stats/1.0/IPowerStats.hal" class="external"><code>IPowerStats.hal</code></a> 取代了 <a href="https://android.googlesource.com/platform/hardware/interfaces/+/master/power/1.3/IPower.hal" class="external"><code>IPower.hal</code></a> 中的电量统计信息收集 API。尽管电量 HAL 仍支持这些 API，但它们未来将会被专门迁移至电量统计信息 HAL。</p>
+
+<p>电量统计信息 HAL 中包括新的 API，可用于通过支持设备上的功耗测量收集数据。现有的电量统计信息收集 API 也经过更新，可提高灵活性。电量提示 API 仍位于电量 HAL 中，并未发生变化。</p>
+
+<h3 id="thermal_mitigation">热缓解</h3>
+
+<p>Android 10 中的热框架为热子系统温度传感器抽象出了设备接口，包括 CPU、GPU、电池、皮肤和制冷设备。该框架引入了一个可通过查询热状态来启动限制的轮询接口，以及一个可在温度超出阈值时向用户发送消息的回调接口。</p>
+
+<p>Android 10 通过 <code>IThermalService</code> 接口并使用以下三种新方法来提供新的数据类型：</p>
+
+<ul>
+<li><a href="https://developer.android.com/reference/android/os/PowerManager#getCurrentThermalStatus()" class="external"><code>getCurrentThermalStatus()</code></a> 能够以整数形式返回设备的当前热状态（除非该设备正处于受限状态）。</li>
+<li><a href="https://developer.android.com/reference/android/os/PowerManager#addThermalStatusListener(android.os.PowerManager.OnThermalStatusChangedListener)" class="external"><code>addThermalStatusListener()</code></a> 可添加一个监听器。</li>
+<li><a href="https://developer.android.com/reference/android/os/PowerManager#removeThermalStatusListener(android.os.PowerManager.OnThermalStatusChangedListener)" class="external"><code>removeThermalStatusListener()</code></a> 可移除之前添加的监听器。</li>
+</ul>
+
+<p>应用通过 <a href="https://developer.android.com/reference/android/os/PowerManager" class="external"><code>PowerManager</code></a> 类来添加和移除监听器以及获取温度状态。只有可信系统服务（例如 Android API 或设备制造商 API）才能访问有关因果关联事件的信息。设备制造商或 SoC 制造商必须实现 <code>thermal HAL 2.0</code> 才能启用全新热框架的完整功能。</p>
+
+<p>有关热缓解实现的示例，请参阅<a href="https://android.googlesource.com/platform/hardware/google/pixel/+/refs/heads/master/thermal/" class="external">参考实现</a>。</p>
+
+<h2 id="updates">更新</h2>
+
+<h3 id="apex_file_format">APEX 文件格式</h3>
+
+<p><a href="/devices/tech/ota/apex">Android Pony EXpress (APEX)</a> 是一种在模块化系统组件的安装流程中使用的新容器格式。</p>
+
+<h3 id="dynamic_partitions">动态分区</h3>
+
+<p><a href="/devices/tech/ota/dynamic_partitions">动态分区</a>为 Android 引入了一个用户空间分区系统，可允许在 OTA 更新期间创建或销毁分区，或调整其大小。设备制造商无需担心各个分区（比如 <code>system</code>、<code>vendor</code> 和 <code>product</code>）的大小。取而代之的是，系统会分配一个大的 <code>super</code> 分区，其中的子分区可动态地调整大小。</p>
+
+<h3 id="dynamic_system_updates">动态系统更新</h3>
+
+<p>借助<a href="/devices/tech/ota/dynamic-system-updates">动态系统更新 (DSU)</a>，您能够制作 Android 系统映像，供用户从互联网下载并试用，而不会遇到损坏当前系统映像的风险。</p>
+
+<h3 id="multiuser_backup_and_restore">多用户备份和恢复</h3>
+
+<p>Android 10 针对设备上的所有用户提供<a href="https://developer.android.com/reference/android/app/backup/package-summary" class="external">备份和恢复</a>功能支持。之前，备份和恢复功能仅供系统用户使用。对非系统用户来说，备份和恢复功能默认处于停用状态，因为它仅涉及部分设置、墙纸和系统组件。</p>
+
+<h3 id="overlayfs">Overlayfs</h3>
+
+<p>使用 <code>userdebug</code> 或 <code>eng</code> 编译版本的用户希望能够高效地将系统分区重新装载为读写分区，然后添加或修改任意数量的文件，而无需重新刷新系统映像。您可以使用 <code>Overlayfs</code>，它能够自动将可写文件系统的后备存储设置为上层参考，并装载在下层参考之上。这些操作在 <code>adb disable-verity</code> 和 <code>adb remount</code> 请求中执行。如需了解详情，请参阅 AOSP 中的 <a href="https://android.googlesource.com/platform/system/core/+/a9a3b73163fda5abf237cc0f0cee97ff33e6254d/fs_mgr/README.overlayfs.md" class="external">Overlayfs 自述文件</a>。</p>
+
+<h3 id="shared_library_support_in_recovery_mode">恢复模式下的共享库支持</h3>
+
+<p>在 Android 10 中，共享库在恢复分区内可用，无需再使所有恢复模式可执行文件都处于静态。共享库位于该分区内的 <code>/system/lib</code>（在 64 位设备中，则为 <code>/system/lib64</code>）目录下。</p>
+
+<p>要将新的共享库添加到恢复分区，请将 <code>recovery_available: true</code> 或 <code>recovery: true</code> 添加到共享库的 <code>Android.bp</code> 中。前者会将库安装到系统和恢复分区，而后者仅将其安装到恢复分区。</p>
+
+<p>无法使用 Android 基于 Make 的编译系统构建共享库支持。要将恢复模式的现有静态可执行文件转换为动态的可执行文件，请移除 <code>Android.mk</code> 中的 <code>LOCAL_FORCE_STATIC_EXECUTABLE := true</code> 或 <code>Android.bp</code> 中的 <code>static_executable: true</code>。</p>
+
+<h3 id="user_data_checkpoint_udc">用户数据检查点 (UDC)</h3>
+
+<p>Android 10 引入了<a href="/devices/tech/ota/user-data-checkpoint">用户数据检查点 (UDC) 功能</a>，该功能允许 Android 在 Android 无线下载 (OTA) 更新失败时回滚至之前的状态。</p>
+
+</body></html>

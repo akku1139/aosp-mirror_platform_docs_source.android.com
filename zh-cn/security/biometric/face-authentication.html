@@ -1,0 +1,158 @@
+<html devsite><head>
+    <title>人脸识别身份验证 HIDL</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+
+  <!--
+      Copyright 2019 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<h2 id="overview">概览</h2>
+
+<p>借助人脸识别身份验证功能，用户只需将自己的面孔对准设备即可将其解锁。Android 10 增加了对一种新的人脸识别身份验证堆栈的支持，这种堆栈可安全处理摄像头帧，从而在支持的硬件上进行人脸识别身份验证时保障安全和隐私。Android 10 还提供了一种简单的安全合规实现方法，以支持通过应用集成来完成交易（例如网上银行或其他服务）。</p>
+
+<p>Android 人脸识别身份验证堆栈是 Android 10 中的新实现。该新实现引入了 <a href="https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/master/biometrics/face/1.0/IBiometricsFace.hal" class="external"><code>IBiometricsFace.hal</code></a>、<a href="https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/master/biometrics/face/1.0/IBiometricsFaceClientCallback.hal" class="external"><code>IBiometricsFaceClientCallback.hal</code></a> 和 <a href="https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/master/biometrics/face/1.0/types.hal" class="external"><code>types.hal</code></a> 接口。</p>
+
+<h2 id="architecture">架构</h2>
+<p>BiometricPrompt API 包括人脸识别、指纹识别和虹膜识别在内的所有生物识别身份验证方法。Face HAL 会与以下组件交互。</p>
+
+<figure>
+  <img src="/security/images/biometricStack.png" alt="生物识别堆栈" style="margin: 10px 10px 10px 10px;"/>
+  <figcaption>
+    <strong>图 1.</strong> 生物识别堆栈</figcaption>
+</figure>
+
+<h3 id="facemanager">FaceManager</h3>
+<p><code>FaceManager</code> 是一个私有接口，用于维护与 <code>FaceService</code> 的之间连接。Keyguard 通过该接口访问具有自定义界面的人脸识别身份验证硬件。应用无权访问 FaceManager，必须改为使用 <code>BiometricPrompt</code>。</p>
+
+<h3 id="faceservice">FaceService</h3>
+<p>该框架实现用于管理对人脸识别身份验证硬件的访问权限。它包含基本的注册和身份验证状态机以及各种其他辅助程序（例如枚举程序）。出于稳定性和安全性方面的考虑，不允许在此进程中运行任何供应商代码。所有供应商代码都通过 <a href="https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/master/biometrics/face/1.0/IBiometricsFace.hal" class="external">Face 1.0 HIDL 接口</a>访问。</p>
+
+<h3 id="faced">faced</h3>
+<p>这是一个 Linux 可执行文件，用于实现供 <code>FaceService</code> 使用的 Face 1.0 HIDL 接口。它会将自身注册为 IBiometricsFace@1.0 以便 <code>FaceService</code> 能够找到它。</p>
+
+<h2 id="implementation">实现</h2>
+
+<h3 id="facehidl">Face HIDL</h3>
+<p>要实现 Face HIDL，您必须在某个供应商专用库中实现 <code>IBiometricsFace.hal</code> 的所有<a href="#methods">方法</a>。</p>
+
+<h4 id="error-messages">错误消息</h4>
+<p>错误消息由回调程序发送，并且在消息发送后，状态机会返回到<strong>闲置</strong>状态。大多数消息都有面向用户的相应字符串，以将相关错误通知用户，但并非所有错误都有面向用户的字符串。如需详细了解错误消息，请参阅 <a href="https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/master/biometrics/face/1.0/types.hal" class="external"><code>types.hal</code></a>。所有错误消息均表示某种终止状态，也就是说框架假定 HAL 会在发送错误消息后返回到闲置状态。</p>
+
+<h4 id="acquisition-messages">采集消息</h4>
+<p>注册或身份验证期间会传递采集消息，目的是指导用户成功完成注册或身份验证。每个序数在 <a href="https://android.googlesource.com/platform/frameworks/base/+/refs/heads/master/core/java/android/hardware/face/FaceManager.java" class="external"><code>FaceAuthenticationManager.java</code></a> 文件中都有一条关联消息。只要提供相应的帮助字符串，就可以添加供应商专用消息。采集消息本身并不表示终止状态，HAL 应根据需要发送尽可能多的消息以完成当前的注册或身份验证过程。如果某条采集消息引发终止状态而使系统无法进一步执行操作，则 HAL 应该在采集消息之后显示错误消息，例如，图片过暗且保持过暗状态而使系统无法进一步执行操作的情况。在这种情况下，在多次尝试仍无进展之后可以发送 <code>UNABLE_TO_PROCESS</code>。</p>
+
+<h4 id="hardware">硬件</h4>
+<p>设备要满足 Android 10 <strong>安全系数较高的生物识别技术</strong>要求，就必须采用安全的硬件来确保人脸数据的完整性以及进行最终的身份验证比较。Android 兼容性定义文档 (CDD) 列出了所需的安全级别以及可接受的欺骗接受率 (SAR)。不仅需要可信执行环境 (TEE) 来确保处理和识别的安全，还需要安全的摄像头硬件来防止人脸识别身份验证过程中出现的注入式攻击。例如，图片数据的相关内存页可享有特权并标记为只读，因此只有摄像头硬件才能更新这些内存页。理想情况下，除 TEE 和硬件外，其他任何进程都不应访问这些内存页。</p>
+
+<p>由于人脸识别身份验证硬件之间的差异很大，因此必须开发特定于硬件的驱动程序来实现人脸识别身份验证，具体取决于特定的设备架构。因此，<code>faced</code> 没有参考实现。</p>
+
+<h4 id="methods">方法</h4>
+<p>以下均是异步方法，必须立即返回到框架，否则会导致系统运行速度变慢，并且可能导致监控程序重置。建议使用包含多个线程的消息队列，以免阻塞调用程序。所有 GET 请求都应尽可能缓存信息，将调用程序被阻塞的时间缩至最短。</p>
+
+<table>
+  <thead>
+  <tr>
+    <th>方法</th>
+    <th>说明</th>
+  </tr>
+  </thead>
+<tbody>
+  <tr>
+    <td><code>setCallback()</code></td>
+    <td>由 <code>FaceService</code> 调用以使所有消息回归自身。</td>
+  </tr>
+  <tr>
+    <td><code>setActiveUser()</code></td>
+    <td>设置为其应用所有后续 HAL 操作的活跃用户。在再次调用该方法之前，始终针对此用户进行身份验证。</td>
+  </tr>
+  <tr>
+    <td><code>revokeChallenge()</code></td>
+    <td>通过使 <code>generateChallenge()</code> 生成的质询代码无效来完成安全交易。</td>
+  </tr>
+  <tr>
+    <td><code>enroll()</code></td>
+    <td>注册用户的人脸。</td>
+  </tr>
+  <tr>
+    <td><code>cancel()</code></td>
+    <td>取消当前操作（例如注册、身份验证、移除或枚举）并将 <code>faced</code> 返回到闲置状态。</td>
+  </tr>
+  <tr>
+    <td><code>enumerate()</code></td>
+    <td>枚举与活跃用户关联的所有人脸模板。</td>
+  </tr>
+  <tr>
+    <td><code>remove()</code></td>
+    <td>移除与活跃用户关联的某个或所有人脸模板。</td>
+  </tr>
+  <tr>
+    <td><code>authenticate()</code></td>
+    <td>对活跃用户进行身份验证。</td>
+  </tr>
+  <tr>
+    <td><code>userActivity()</code></td>
+    <td>仅应在 HAL 处于“正在进行身份验证”或“备用”状态时使用此方法。在 HAL 未处于其中一种状态时使用此方法会返回 <code>OPERATION_NOT_SUPPORTED</code>。在 HAL 已在进行身份验证时调用此方法可能会延长系统查找人脸的时间。</td>
+  </tr>
+  <tr>
+    <td><code>resetLockout()</code></td>
+    <td>如果识别时被拒绝的次数过多，<code>faced</code> 需要进入锁定状态（<code>LOCKOUT</code> 或 <code>LOCKOUT_PERMANENT</code>）。进入锁定状态后，需要将剩余时间发送到框架以向用户显示。就像 <code>setFeature()</code> 一样，此方法需要有效的硬件身份验证令牌 (HAT) 才能安全重置内部状态。重置锁定<strong>仅</strong>针对当前用户。</td>
+  </tr>
+</tbody>
+</table>
+
+<aside class="key-point"><b>要点</b>：调用上述方法应插入一条消息并返回。请务必使上述方法立即返回到闲置状态。</aside>
+
+<p>其余三个都是同步方法，应将其阻塞时间缩至最短以免拖延框架。</p>
+
+<table>
+<thead>
+  <tr>
+    <th>方法</th>
+    <th>说明</th>
+  </tr>
+</thead>
+<tbody>
+  <tr>
+    <td><code>generateChallenge()</code></td>
+    <td>生成唯一且能够确保加密安全性的随机令牌，以指明安全交易已开始。</td>
+  </tr>
+  <tr>
+    <td><code>setFeature()</code></td>
+    <td>为当前用户启用或停用某项功能。出于安全方面的考虑，此方法需要 HAT 根据上述质询代码检查用户的 PIN 码/解锁图案/密码</td>
+  </tr>
+  <tr>
+    <td><code>getFeature()</code></td>
+    <td>检索该功能的当前启用状态，默认指明或对上述 <code>setFeature()</code> 的调用。如果 Face ID 无效，则实现必须返回 <code>ILLEGAL_ARGUMENT</code></td>
+  </tr>
+  <tr>
+    <td><code>getAuthenticatorId()</code></td>
+    <td>返回与当前人脸集关联的标识符。每当添加人脸时，此标识符都<strong>必须</strong>发生变更</td>
+  </tr>
+</tbody>
+</table>
+
+<h3 id="state-diagram">状态图</h3>
+<p>框架要求 <code>faced</code> 遵循以下状态图。</p>
+
+<figure>
+  <img src="/security/images/faceAuthStateFlow.png" alt="状态图"/>
+  <figcaption>
+    <strong>图 2.</strong> 人脸识别身份验证状态流程</figcaption>
+</figure>
+
+</body></html>

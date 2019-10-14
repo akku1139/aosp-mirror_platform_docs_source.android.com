@@ -1,0 +1,161 @@
+<html devsite><head>
+
+  <meta name="book_path" value="/_book.yaml"/>
+
+  <meta name="project_path" value="/_project.yaml"/>
+</head>
+<body>
+
+<!--
+  Copyright 2019 The Android Open Source Project
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+<h1 id="vendor_extensions" class="page-title">供应商扩展</h1>
+
+<p>Android 10 中引入了 Neural Networks API (NNAPI) 供应商扩展，它是供应商定义的运算和数据类型的集合。在运行 NN HAL 1.2 或更高版本的设备上，驱动程序可以通过支持相应的供应商扩展来提供自定义硬件加速运算。供应商扩展不会修改现有运算的行为。</p>
+
+<p>供应商扩展为 OEM 运算和数据类型（在 Android 10 中已弃用）提供更加结构化的替代方案。如需了解详情，请参阅 <a href="#oem-ops">OEM 运算和数据类型</a>。</p>
+
+<h2 id="allowlist">允许使用供应商扩展的许可列表</h2>
+
+<p>供应商扩展只能由 <code>/product</code>、<code>/vendor</code>、<code>/odm</code> 和 <code>/data</code> 分区上明确指定的 Android 应用和原生二进制文件使用。位于 <code>/system</code> 分区上的应用和原生二进制文件无法使用供应商扩展。</p>
+
+<p>允许使用 NNAPI 供应商扩展的 Android 应用和二进制文件列表存储在 <code>/vendor/etc/nnapi_extensions_app_allowlist</code> 中。该文件的每一行都包含一个新条目。条目可以是以斜杠 (/) 为前缀的原生二进制文件路径，例如 <code>/data/foo</code>，也可以是 Android 应用软件包的名称，例如 <code>com.foo.bar</code>。</p>
+
+<p>许可列表会从 NNAPI 运行时共享库强制实施。此库可防止意外使用，但不会阻止直接使用 NNAPI 驱动程序 HAL 接口的应用故意规避。</p>
+
+<h2 id="extension-def">供应商扩展定义</h2>
+
+<p>供应商会创建并维护一个包含扩展定义的头文件。您可以在 <a href="https://android.googlesource.com/platform/frameworks/ml/+/refs/heads/master/nn/extensions/example/fibonacci/FibonacciExtension.h" class="external"><code>example/fibonacci/FibonacciExtension.h</code></a> 中找到扩展定义的完整示例。</p>
+
+<p>每个扩展必须具有以供应商的反向域名开头的唯一名称。</p>
+<aside class="note"><strong>注意</strong>：<span>扩展运算和运算数类型的名称必须使用供应商名称加以限定。在此页面的代码示例中，供应商名称由 <code>EXAMPLE</code> 表示。</span></aside><pre class="prettyprint"><code>const char EXAMPLE_EXTENSION_NAME[] = "com.example.my_extension";
+</code></pre>
+<p>此名称充当运算和数据类型的命名空间。NNAPI 使用此名称来区分供应商扩展。</p>
+
+<p>运算和数据类型的声明方式类似于 <a href="https://android.googlesource.com/platform/frameworks/ml/+/refs/heads/master/nn/runtime/include/NeuralNetworks.h" class="external"><code>runtime/include/NeuralNetworks.h</code></a> 中的声明方式。</p>
+<pre class="prettyprint"><code>enum {
+    /**
+     * A custom scalar type.
+     */
+    EXAMPLE_SCALAR = 0,
+
+    /**
+     * A custom tensor type.
+     *
+     * Attached to this tensor is {@link ExampleTensorParams}.
+     */
+    EXAMPLE_TENSOR = 1,
+};
+
+enum {
+    /**
+     * Computes example function.
+     *
+     * Inputs:
+     * * 0: A scalar of {@link EXAMPLE_SCALAR}.
+     *
+     * Outputs:
+     * * 0: A tensor of {@link EXAMPLE_TENSOR}.
+     */
+    EXAMPLE_FUNCTION = 0,
+};
+</code></pre>
+<p>扩展运算可以使用任何运算数类型，包括非扩展运算数类型和来自其他扩展的运算数类型。当使用来自另一个扩展的运算数类型时，驱动程序必须支持另一个扩展。</p>
+
+<p>扩展还可以声明用于扩展运算数的自定义结构。</p>
+<pre class="prettyprint"><code>/**
+ * Quantization parameters for {@link EXAMPLE_TENSOR}.
+ */
+typedef struct ExampleTensorParams {
+    double scale;
+    int64_t zeroPoint;
+} ExampleTensorParams;
+</code></pre>
+<h2 id="nnapi-client">在 NNAPI 客户端中使用扩展</h2>
+
+<p><a href="https://android.googlesource.com/platform/frameworks/ml/+/refs/heads/master/nn/runtime/include/NeuralNetworksExtensions.h" class="external"><code>runtime/include/NeuralNetworksExtensions.h</code></a> (C API) 文件提供了运行时扩展支持。本部分概要介绍了 C API。</p>
+
+<p>要查看设备是否支持某个扩展，请使用 <a href="https://android.googlesource.com/platform/frameworks/ml/+/refs/heads/master/nn/runtime/include/NeuralNetworksExtensions.h#53" class="external"><code>ANeuralNetworksDevice_getExtensionSupport</code></a>。</p>
+<pre class="prettyprint"><code>bool isExtensionSupported;
+CHECK_EQ(ANeuralNetworksDevice_getExtensionSupport(device, EXAMPLE_EXTENSION_NAME,
+                                                   &amp;isExtensionSupported),
+         ANEURALNETWORKS_NO_ERROR);
+if (isExtensionSupported) {
+    // The device supports the extension.
+    ...
+}
+</code></pre>
+<p>要使用扩展运算数构建模型，请使用 <a href="https://android.googlesource.com/platform/frameworks/ml/+/refs/heads/master/nn/runtime/include/NeuralNetworksExtensions.h#71" class="external"><code>ANeuralNetworksModel_getExtensionOperandType</code></a> 获取运算数类型并调用 <a href="https://developer.android.com/ndk/reference/group/neural-networks#aneuralnetworksmodel_addoperand" class="external"><code>ANeuralNetworksModel_addOperand</code></a>。</p>
+<pre class="prettyprint"><code>int32_t type;
+CHECK_EQ(ANeuralNetworksModel_getExtensionOperandType(model, EXAMPLE_EXTENSION_NAME, EXAMPLE_TENSOR, &amp;type),
+         ANEURALNETWORKS_NO_ERROR);
+ANeuralNetworksOperandType operandType{
+        .type = type,
+        .dimensionCount = dimensionCount,
+        .dimensions = dimensions,
+};
+CHECK_EQ(ANeuralNetworksModel_addOperand(model, &amp;operandType), ANEURALNETWORKS_NO_ERROR);
+</code></pre>
+<p>（可选）使用 <a href="https://android.googlesource.com/platform/frameworks/ml/+/refs/heads/master/nn/runtime/include/NeuralNetworksExtensions.h#109" class="external"><code>ANeuralNetworksModel_setOperandExtensionData</code></a> 将其他数据与扩展运算数相关联。</p>
+<pre class="prettyprint"><code>ExampleTensorParams params{
+        .scale = 0.5,
+        .zeroPoint = 128,
+};
+CHECK_EQ(ANeuralNetworksModel_setOperandExtensionData(model, operandIndex, &amp;params, sizeof(params)),
+         ANEURALNETWORKS_NO_ERROR);
+</code></pre>
+<p>要使用扩展运算构建模型，请使用 <a href="https://android.googlesource.com/platform/frameworks/ml/+/refs/heads/master/nn/runtime/include/NeuralNetworksExtensions.h#90" class="external"><code>ANeuralNetworksModel_getExtensionOperationType</code></a> 获取运算类型并调用 <a href="https://developer.android.com/ndk/reference/group/neural-networks#aneuralnetworksmodel_addoperand" class="external"><code>ANeuralNetworksModel_addOperation</code></a>。</p>
+<pre class="prettyprint"><code>ANeuralNetworksOperationType type;
+CHECK_EQ(ANeuralNetworksModel_getExtensionOperationType(model, EXAMPLE_EXTENSION_NAME, EXAMPLE_FUNCTION,
+                                                        &amp;type),
+         ANEURALNETWORKS_NO_ERROR);
+CHECK_EQ(ANeuralNetworksModel_addOperation(model, type, inputCount, inputs, outputCount, outputs),
+         ANEURALNETWORKS_NO_ERROR);
+</code></pre>
+<h2 id="nnapi-driver">向 NNAPI 驱动程序添加扩展支持</h2>
+
+<p>驱动程序通过 <a href="https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/master/neuralnetworks/1.2/IDevice.hal#101" class="external"><code>IDevice::getSupportedExtensions</code></a> 方法报告支持的扩展。返回的列表必须包含描述每个受支持扩展的条目。</p>
+<pre class="prettyprint"><code>Extension {
+    .name = EXAMPLE_EXTENSION_NAME,
+    .operandTypes = {
+        {
+            .type = EXAMPLE_SCALAR,
+            .isTensor = false,
+            .byteSize = 8,
+        },
+        {
+            .type = EXAMPLE_TENSOR,
+            .isTensor = true,
+            .byteSize = 8,
+        },
+    },
+}
+</code></pre>
+<p>在用于标识类型和运算的 32 位中，高 <a href="https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/master/neuralnetworks/1.2/types.hal#5058" class="external"><code>Model::ExtensionTypeEncoding::HIGH_BITS_PREFIX</code></a> 位是扩展前缀，低 <a href="https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/master/neuralnetworks/1.2/types.hal#5059" class="external"><code>Model::ExtensionTypeEncoding::LOW_BITS_TYPE</code></a> 位表示扩展的类型或运算。<em></em></p>
+
+<p>处理运算或运算数类型时，驱动程序必须检查扩展前缀。如果扩展前缀的值非零，则运算或运算数类型是扩展类型。如果值为 <code>0</code>，则运算或运算数类型不是扩展类型。</p>
+
+<p>要将前缀映射到扩展名称，请在 <a href="https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/master/neuralnetworks/1.2/types.hal#5028" class="external"><code>model.extensionNameToPrefix</code></a> 中查找。对于指定模型来说，从前缀到扩展名称的映射是一对一对应关系（双射）。不同的前缀值可能对应于不同模型中的相同扩展名称。</p>
+
+<p>驱动程序必须验证扩展运算和数据类型，因为 NNAPI 运行时无法验证特定的扩展运算和数据类型。</p>
+
+<p>扩展运算数可以在 <a href="https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/master/neuralnetworks/1.2/types.hal#4941" class="external"><code>operand.extraParams.extension</code></a> 中具有关联数据，运行时将其视为任意大小的原始数据 blob。</p>
+
+<h2 id="oem-ops">OEM 运算和数据类型</h2>
+<aside class="note"><strong>注意</strong>：<span>OEM 运算和数据类型已弃用。对于搭载 Android 10 或更高版本的设备，请改用<a href="/devices/neural-networks/vendor-extensions">供应商扩展</a>。</span></aside>
+<p>NNAPI 具有 OEM 运算和 OEM 数据类型，使设备制造商能提供自定义驱动程序专属功能。这些运算和数据类型仅供 OEM 应用使用。OEM 运算和数据类型的语义特定于 OEM，随时可能会发生变化。OEM 运算和数据类型使用 <code>OperationType::OEM_OPERATION</code>、<code>OperandType::OEM</code> 和 <code>OperandType::TENSOR_OEM_BYTE</code> 进行编码。</p>
+
+</body></html>

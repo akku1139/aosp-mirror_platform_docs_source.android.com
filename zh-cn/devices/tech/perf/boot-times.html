@@ -363,16 +363,19 @@ Init 是从内核到框架建立之前的衔接过程，设备通常会在不同
 </p>
 
 <pre class="prettyprint">on init
-    # update cpusets now that processors are up
-    write /dev/cpuset/top-app/cpus 0-3
-    write /dev/cpuset/foreground/cpus 0-3
-    write /dev/cpuset/foreground/boost/cpus 0-3
-    write /dev/cpuset/background/cpus 0-3
-    write /dev/cpuset/system-background/cpus 0-3
-    # set default schedTune value for foreground/top-app (only affects EAS)
-    write /dev/stune/foreground/schedtune.prefer_idle 1
-    write /dev/stune/top-app/schedtune.boost 10
-    write /dev/stune/top-app/schedtune.prefer_idle 1</pre>
+    # boottime stune
+    write /dev/stune/schedtune.prefer_idle 1
+    write /dev/stune/schedtune.boost 100
+    on property:sys.boot_completed=1
+    # reset stune
+    write /dev/stune/schedtune.prefer_idle 0
+    write /dev/stune/schedtune.boost 0
+
+    # or just disable EAS during boot
+    on init
+    write /sys/kernel/debug/sched_features NO_ENERGY_AWARE
+    on property:sys.boot_completed=1
+    write /sys/kernel/debug/sched_features ENERGY_AWARE</pre>
 
 <p>
 部分服务在启动过程中可能需要进行优先级提升。例如：
@@ -531,7 +534,9 @@ systrace 的可视化可以帮助分析启动过程中的具体问题。（不�
 
 <li>在 <code>device.mk</code> 文件中，添加下面这行内容：
 
-<pre class="prettyprint">PRODUCT_PROPERTY_OVERRIDES +=    debug.atrace.tags.enableflags=802922</pre>
+<pre class="prettyprint">
+PRODUCT_PROPERTY_OVERRIDES +=    debug.atrace.tags.enableflags=802922
+PRODUCT_PROPERTY_OVERRIDES +=    persist.traced.enable=0</pre>
 </li>
 
 <li>在设备 <code>BoardConfig.mk</code> 文件中，添加以下内容：
@@ -540,7 +545,7 @@ systrace 的可视化可以帮助分析启动过程中的具体问题。（不�
 </li>
 
 <p>
-要获得详细的 I/O 分析，还需要添加块和 ext4。
+如果是详细的 I/O 分析，还要添加块以及 ext4 和 f2fs。
 </p>
 
 <li>在设备专用的 <code>init.rc</code> 文件中，进行以下更改：
@@ -548,6 +553,7 @@ systrace 的可视化可以帮助分析启动过程中的具体问题。（不�
  <li><code>on property:sys.boot_completed=1</code>（这会在启动完成后停止跟踪）</li>
  <li><code>write /d/tracing/tracing_on 0</code></li>
  <li><code>write /d/tracing/events/ext4/enable 0</code></li>
+ <li><code>write /d/tracing/events/f2fs/enable 0</code></li>
  <li><code>write /d/tracing/events/block/enable 0</code></li>
  </ul>
 </li>
@@ -557,8 +563,10 @@ systrace 的可视化可以帮助分析启动过程中的具体问题。（不�
 在设备启动后，获取跟踪记录：
 </p>
 
-<pre class="devsite-terminal">adb root &amp;&amp; adb shell "cat /d/tracing/trace" &lt; boot_trace
-./external/chromium-trace/catapult/tracing/bin/trace2html boot_trace --output boot_trace.html
+<pre class="devsite-click-to-copy">
+<code class="devsite-terminal">adb root &amp;&amp; adb shell atrace --async_stop -z -c -o /data/local/tmp/boot_trace</code>
+<code class="devsite-terminal">adb pull /data/local/tmp/boot_trace</code>
+<code class="devsite-terminal">$ANDROID_BUILD_TOP/external/chromium-trace/systrace.py --from-file=boot_trace</code>
 </pre>
 
 <p class="note">

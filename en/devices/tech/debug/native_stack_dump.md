@@ -94,7 +94,7 @@ index 000000000000..dac185062634
 +#endif /* _TRACE_SELINUX_H */
 +
 +/* This part ust be outside protection */
-+#include &lt;trace/define_trace.&gt;
++#include &lt;trace/define_trace.h&gt;
 diff --git a/security/selinux/avc.c b/security/selinux/avc.c
 index 84d9a2e2bbaf..ab04b7c2dd01 100644
 --- a/security/selinux/avc.c
@@ -128,7 +128,7 @@ index 84d9a2e2bbaf..ab04b7c2dd01 100644
 To trace stacks when the SELinux denial tracepoint is hit, run the following command:
 <pre class="prettyprint">
 <code class="devsite-terminal">adeb shell</code>
-<code class="devsite-terminal">trace -K -U 't:selinux:selinux_denial'</code>
+<code class="devsite-terminal">trace -K -U 't:selinux:selinux_denied'</code>
 </pre>
 
 You should see something like this when denials are triggered:

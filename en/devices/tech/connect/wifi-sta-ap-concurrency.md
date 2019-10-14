@@ -51,6 +51,11 @@ To implement Wi-Fi STA/AP concurrency on your device:
 Note: To avoid performance issues, only use this feature on devices with a Wi-Fi
 chip that supports multiple independent hardware MACs (radio chains).
 
+The `WIFI_HIDL_FEATURE_DUAL_INTERFACE` flag is ignored if the
+`WIFI_HAL_INTERFACE_COMBINATIONS`
+flag is specified. For more information, see
+[Wi-Fi multi-interface concurrency](/devices/tech/connect/wifi-hal#wi-fi_multi-interface_concurrency).
+
 ## Validation
 
 To validate that the feature is working as intended, run both an integration

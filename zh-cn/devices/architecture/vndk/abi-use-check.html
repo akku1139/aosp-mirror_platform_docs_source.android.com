@@ -1,0 +1,76 @@
+<html devsite><head>
+
+  <meta name="book_path" value="/_book.yaml"/>
+
+  <meta name="project_path" value="/_project.yaml"/>
+</head>
+<body>
+
+<!--
+  Copyright 2019 The Android Open Source Project
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+<h1 id="prebuilt_abi_usages_checker" class="page-title">预编译 ABI 使用情况检查工具</h1>
+
+<p>Android 共享库会不时改进。使预编译二进制文件保持最新状态需要投入大量的努力。在 Android 9 或更早版本中，依赖于已移除的库或 ABI 的预编译二进制文件仅在运行时无法成功关联。开发者必须跟踪日志以查找过时的预编译二进制文件。Android 10 中引入了基于符号的 ABI 使用情况检查工具。该检查工具可以在编译时检测过时的预编译二进制文件，以便共享库开发者了解哪些预编译二进制文件可能会因更改而遭到破坏，以及哪些预编译二进制文件必须重新编译。</p>
+
+<h2 id="symbol-based_abi_usages_checker">基于符号的 ABI 使用情况检查工具</h2>
+
+<p>基于符号的 ABI 使用情况检查工具可模拟主机上的 Android 动态链接器。该检查工具会将预编译的二进制文件与预编译的二进制文件的依赖项关联起来，并检查是否所有未定义符号均已解析。</p>
+
+<p>首先，检查工具会检查预编译二进制文件的目标架构。如果预编译的二进制文件不以 ARM、AArch64、x86 或 x86-64 架构为目标，则检查工具将跳过该预编译二进制文件。</p>
+
+<p>其次，必须在 <code>LOCAL_SHARED_LIBRARIES</code> 或 <code>shared_libs</code> 中列出预编译二进制文件的依赖项。编译系统会将模块名称解析为共享库的匹配变体（即 <code>core</code> 与 <code>vendor</code>）。</p>
+
+<p>第三，检查工具会将 <code>DT_NEEDED</code> 条目与 <code>LOCAL_SHARED_LIBRARIES</code> 或 <code>shared_libs</code> 进行比较。尤其是，该检查工具会从每个共享库中提取 <code>DT_SONAME</code> 条目，并将这些 <code>DT_SONAME</code> 与预编译二进制文件中记录的 <code>DT_NEEDED</code> 条目进行比较。如果存在不匹配，则系统会发出错误消息。</p>
+
+<p>第四，该检查工具会解析预编译二进制文件中未定义的符号。这些未定义的符号必须在一个依赖项中进行定义，并且符号绑定必须为 <code>GLOBAL</code> 或 <code>WEAK</code>。如果无法解析某个未定义的符号，则平台会发出错误消息。</p>
+
+<h2 id="prebuilts_module_properties">预编译模块属性</h2>
+
+<p>必须在以下一项中指定预编译二进制文件的依赖项：</p>
+
+<ul>
+<li>Android.bp：<code>shared_libs: ["libc", "libdl", "libm"],</code></li>
+<li>Android.mk：<code>LOCAL_SHARED_LIBRARIES := libc libdl libm</code></li>
+</ul>
+
+<p>如果预编译二进制文件具有一些<strong>无法解析的未定义符号</strong>，请指定以下内容之一：</p>
+
+<ul>
+<li>Android.bp：<code>allow_undefined_symbols: true,</code></li>
+<li>Android.mk：<code>LOCAL_ALLOW_UNDEFINED_SYMBOLS := true</code></li>
+</ul>
+
+<p>要使预编译二进制文件跳过 ELF 文件检查，请指定以下内容之一：</p>
+
+<ul>
+<li>Android.bp：<code>check_elf_files: false,</code></li>
+<li>Android.mk：<code>LOCAL_CHECK_ELF_FILES := false</code></li>
+</ul>
+
+<h2 id="run_the_checker">运行检查工具</h2>
+
+<p>要运行检查工具，请将环境变量 <code>CHECK_ELF_FILES</code> 设置为 <code>true</code>，并运行 <code>make check-elf-files</code>：</p>
+<pre class="prettyprint"><code>CHECK_ELF_FILES=true make check-elf-files
+</code></pre>
+<p>要默认启用检查工具，请将 <code>PRODUCT_CHECK_ELF_FILES</code> 添加到 <code>BoardConfig.mk</code>：</p>
+<pre class="prettyprint"><code>PRODUCT_CHECK_ELF_FILES := true
+</code></pre>
+<p>在 Android 的编译过程中会对预编译自动进行检查：</p>
+<pre class="prettyprint"><code>make
+</code></pre>
+
+</body></html>

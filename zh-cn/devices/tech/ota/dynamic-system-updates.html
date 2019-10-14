@@ -1,0 +1,170 @@
+<html devsite><head>
+
+  <meta name="book_path" value="/_book.yaml"/>
+
+  <meta name="project_path" value="/_project.yaml"/>
+</head>
+<body>
+
+<!--
+  Copyright 2019 The Android Open Source Project
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+<h1 id="dynamic_system_updates" class="page-title">动态系统更新</h1>
+
+<p>借助动态系统更新 (DSU)，您能够制作 Android 系统映像，供用户从互联网下载并试用，而不会出现损坏当前系统映像的风险。本文档介绍了如何支持 DSU。</p>
+
+<h2 id="kernel_requirements">内核要求</h2>
+
+<p>如需了解内核要求，请参阅<a href="/devices/tech/ota/dynamic_partitions">实现动态分区</a>。</p>
+
+<p>此外，DSU 依靠 device-mapper-verity (dm-verity) 内核功能来验证 Android 系统映像。因此，您必须启用以下内核配置：</p>
+
+<ul>
+<li><code>CONFIG_DM_VERITY=y</code></li>
+<li><code>CONFIG_DM_VERITY_FEC=y</code></li>
+</ul>
+
+<h2 id="partition_requirements">分区要求</h2>
+
+<p>存储与已安装映像相关的数据需要使用 <code>metadata</code> 分区（16 MB 或更大）。必须在第一阶段装载期间装载该分区。</p>
+
+<p><code>userdata</code> 分区必须使用 f2fs 或 ext4 文件系统。使用 f2fs 时，请纳入 <a href="/devices/architecture/kernel/android-common">Android 通用内核</a>中提供的所有 f2fs 相关补丁程序。</p>
+
+<p>DSU 是用通用内核 4.9 进行开发和测试的。建议使用内核 4.9 及更高版本来实现此功能。</p>
+
+<h2 id="vendor_hal_behavior">供应商 HAL 行为</h2>
+
+<h3 id="weaver_hal">Weaver HAL</h3>
+
+<p>Weaver HAL 提供固定数量的槽来存储用户密钥。DSU 使用两个额外的密钥槽。如果 OEM 具有 Weaver HAL，则需要有足够的槽来存储通用系统映像 (GSI) 和主机映像。</p>
+
+<h3 id="gatekeeper_hal">Gatekeeper HAL</h3>
+
+<p><a href="/security/authentication/gatekeeper">Gatekeeper HAL</a> 需要支持较大的 USER_ID 值，因为 GSI 使 UID 偏移 1000000 到 HAL。</p>
+
+<h2 id="verify_boot">验证启动</h2>
+
+<p>ramdisk 中必须包含三个 GSI 密钥：Q-GSI、R-GSI 和 S-GSI。因此，设备可以使用 DSU 或修改 fstab 设置来验证包含这些密钥的 GSI 映像。</p>
+
+<p>要包含 GSI 密钥，请将下面这行代码添加到文件 <code>device/&lt;device_name&gt;/device.mk</code> 中：</p>
+<pre class="prettyprint"><code>$(call inherit-product, $(SRC_TARGET_DIR)/product/gsi_keys.mk)
+</code></pre>
+<h3 id="rollback_protection">回滚保护</h3>
+
+<p>使用 DSU 时，下载的 Android 系统映像必须比设备上的当前系统映像新。具体方法是比较两个系统映像的 <a href="https://android.googlesource.com/platform/external/avb/">Android 启动时验证</a> (AVB) <a href="https://android-review.googlesource.com/c/platform/build/+/909173">AVB 属性描述符</a>中的安全补丁程序级别：<code>Prop: com.android.build.system.security_patch -&gt;
+'2019-04-05'</code>。</p>
+
+<p>对于没有使用 AVB 的设备，将当前系统映像的安全补丁程序级别放入引导加载程序内核 cmdline 中：<code>androidboot.system.security_patch=2019-04-05</code>。</p>
+
+<h2 id="hardware_requirements">硬件要求</h2>
+
+<p>启动 DSU 实例时，系统会分配两个临时文件：</p>
+
+<ul>
+<li>存储 <code>GSI.img</code> 的逻辑分区 (1~1.5 G)</li>
+<li>一个 8 GB 的空 <code>/data</code> 分区，作为运行 GSI 的沙盒</li>
+</ul>
+
+<p>我们建议在启动 DSU 实例之前保留至少 10 GB 的可用空间。DSU 还支持从 SD 卡分配。当存在 SD 卡时，它具有最高的分配优先级。SD 卡支持对于可能没有足够内部存储空间的低功耗设备至关重要。当存在 SD 卡时，请确保未合并该卡。DSU 不支持<a href="/devices/storage/adoptable">合并的</a> SD 卡。</p>
+
+<h2 id="available_frontends">可用的前端</h2>
+
+<p>您可以使用 <code>adb</code> 或使用应用启动 DSU。</p>
+
+<h3 id="launching_dsu_using_adb">使用 adb 启动 DSU</h3>
+
+<p>要使用 adb 启动 DSU，请输入以下命令：</p>
+<pre class="prettyprint"><code>$&gt;simg2img out/target/product/.../system.img system.raw
+$&gt;gzip -c system.raw &gt; system.raw.gz
+$&gt;adb push system.raw.gz /storage/emulated/0/Download
+$&gt;adb shell am start-activity \
+-n com.android.dynsystem/com.android.dynsystem.VerificationActivity  \
+-a android.os.image.action.START_INSTALL    \
+-d file:///storage/emulated/0/Download/system.raw.gz  \
+--el KEY_SYSTEM_SIZE $(du -b system.raw|cut -f1)  \
+--el KEY_USERDATA_SIZE 8589934592
+</code></pre>
+<h3 id="launching_dsu_using_an_app">使用应用启动 DSU</h3>
+
+<p>DSU 的主要入口点是 <code>android.os.image.DynamicSystemClient.java</code> API：</p>
+<pre class="prettyprint"><code>public class DynamicSystemClient {
+
+...
+...
+
+     /**
+     * Start installing DynamicSystem from URL with default userdata size.
+     *
+     * @param systemUrl A network URL or a file URL to system image.
+     * @param systemSize size of system image.
+     */
+    public void start(String systemUrl, long systemSize) {
+        start(systemUrl, systemSize, DEFAULT_USERDATA_SIZE);
+    }
+</code></pre>
+<p>您必须在设备上捆绑/预安装此应用。由于 <code>DynamicSystemClient</code> 是系统 API，因此您无法使用常规 SDK API 编译该应用，也无法将其发布到 Play 商店。此应用的目的如下：</p>
+
+<ol>
+<li>使用供应商定义的方案获取映像列表和相应的网址。</li>
+<li>将列表中的映像与设备进行匹配，并显示兼容的映像供用户选择。</li>
+<li><p>调用 <code>DynamicSystemClient.start</code>，如下所示：</p>
+<pre class="prettyprint"><code>DynamicSystemClient aot = new DynamicSystemClient(...)
+   aot.start(
+        ...URL of the selected image...,
+        ...uncompressed size of the selected image...);
+
+</code></pre></li>
+</ol>
+
+<p>该网址指向经过 gzip 压缩的非稀疏系统映像文件，您可以使用以下命令编译此文件：</p>
+<pre class="prettyprint"><code>$&gt; simg2img ${OUT}/system.img ${OUT}/system.raw
+$&gt; gzip ${OUT}/system.raw
+$&gt; ls ${OUT}/system.raw.gz
+</code></pre>
+<p>文件名应遵循以下格式：</p>
+<pre class="prettyprint"><code>&lt;android version&gt;.&lt;lunch name&gt;.&lt;user defined title&gt;.raw.gz
+</code></pre>
+<p>例如：</p>
+
+<ul>
+<li><code>o.aosp_taimen-userdebug.2018dev.raw.gz</code></li>
+<li><code>p.aosp_taimen-userdebug.2018dev.raw.gz</code></li>
+</ul>
+
+<h2 id="feature_flag">功能标记</h2>
+
+<p>DSU 功能位于 <code>settings_dynamic_android</code> 功能标记下。在使用 DSU 之前，请确保已启用相应的功能标记。</p>
+
+<p><img src="/devices/tech/images/aot-settings.png" alt="启用功能标记。"/></p>
+
+<p><strong>图 1.</strong> 启用功能标记</p>
+
+<p>功能标记界面在运行用户编译版本的设备上可能不可用。在这种情况下，请改用 <code>adb</code> 命令：</p>
+<pre class="prettyprint"><code>adb shell setprop persist.sys.fflag.override.settings_dynamic_system 1
+</code></pre>
+<h2 id="vendor_host_system_images_on_gce_optional">GCE 上的供应商主机系统映像（可选）</h2>
+
+<p>系统映像的可能存储位置之一是 Google Compute Engine (GCE) 存储分区。发布管理员使用 <a href="https://console.cloud.google.com/storage">GCP 存储控制台</a>添加/删除/更改已发布的系统映像。</p>
+
+<p>映像必须可公开访问，如下所示：</p>
+
+<p><img src="/devices/tech/images/aot-image-access.png" alt="在 GCE 中公开访问"/></p>
+
+<p><strong>图 2.</strong> 在 GCE 中公开访问</p>
+
+<p><a href="https://cloud.google.com/storage/docs/access-control/making-data-public">此处</a>提供了公开某项内容的过程。</p>
+
+</body></html>

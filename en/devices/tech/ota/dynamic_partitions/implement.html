@@ -1,0 +1,737 @@
+<html devsite>
+  <head>
+    <title>Implementing Dynamic Partitions</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2019 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+  {% include "_versions.html" %}
+
+  <p>
+    Dynamic partitioning is implemented using the dm-linear device-mapper
+    module in the Linux kernel. The <code>super</code> partition contains
+    metadata listing the names and block ranges of each dynamic partition
+    within <code>super</code>. During first-stage <code>init</code>, this
+    metadata is parsed and validated, and virtual block devices are created to
+    represent each dynamic partition.
+  </p>
+
+  <p>
+    When applying an OTA, dynamic partitions are automatically created,
+    resized, or deleted as needed. For A/B devices, there are two copies of
+    the metadata, and changes are applied only to the copy representing the
+    target slot.
+  </p>
+
+  <p>
+    Because dynamic partitions are implemented in userspace, partitions needed
+    by the bootloader can't be made dynamic. For example, <code>boot</code>,
+    <code>dtbo</code>, and <code>vbmeta</code> are read by the bootloader, and
+    so must remain as physical partitions.
+  </p>
+
+  <p>
+    Each dynamic partition can belong to an <em>update group</em>. These
+    groups limit the maximum space that partitions in that group can consume.
+    For example, <code>system</code> and <code>vendor</code> can belong to a
+    group that restricts the total size of <code>system</code> and
+    <code>vendor</code>.
+  </p>
+
+  <h2 id="implement-dynamic-partitions-new-devices">
+    Implementing dynamic partitions on new devices
+  </h2>
+
+    <p>
+      This section details how to implement dynamic partitions on new devices
+      launching with Android {{ androidQVersionNumber }} and higher. To update
+      existing devices, see <a href="#upgrading-devices">Upgrading Android
+      devices</a>.
+    </p>
+
+    <h3 id="partitioning-changes">Partitioning changes</h3>
+
+      <p>
+        For devices launching with Android {{ androidQVersionNumber }}, create
+        a partition called <code>super</code>. The <code>super</code>
+        partition handles A/B slots internally, so A/B devices don't need
+        separate <code>super_a</code> and <code>super_b</code> partitions.
+        All read-only AOSP partitions that aren't used by the bootloader must
+        be dynamic and must be removed from the GUID Partition Table (GPT).
+        Vendor-specific partitions don't have to be dynamic and may be placed
+        in the GPT.
+      </p>
+
+      <aside class="note">
+        <strong>Note:</strong> Avoid placing <code>userdata</code> or any other
+        permanent read-write partition inside <code>super</code>.
+    </aside>
+
+      <p>
+        To estimate the size of <code>super</code>, add the sizes of the
+        partitions being deleted from the GPT. For A/B devices, this
+        should include the size of both slots. <strong>Figure 1</strong> shows
+        an example partition table before and after converting to dynamic
+        partitions.
+      </p>
+
+      <figure>
+        <img src="/devices/tech/ota/images/dynamic_partitions_table.png"
+        alt="Partition table layout">
+        <figcaption>
+          <strong>Figure 1.</strong> New physical partition table layout when
+          converting to dynamic partitions
+        </figcaption>
+      </figure>
+
+      <p>
+        The supported dynamic partitions are:
+      </p>
+
+      <ul>
+        <li>System</li>
+        <li>Vendor</li>
+        <li>Product</li>
+        <li>System Ext</li>
+        <li>ODM</li>
+      </ul>
+
+      <p>
+        For devices launching with Android {{ androidQVersionNumber}}, the
+        kernel command line option <code>androidboot.super_partition</code>
+        must be empty so that the command sysprop
+        <code>ro.boot.super_partition</code> is empty.
+      </p>
+
+    <h3 id="partition-alignment">Partition alignment</h3>
+
+      <p>
+        The device-mapper module may operate less efficiently if the
+        <code>super</code> partition is not properly aligned. The
+        <code>super</code> partition MUST be aligned to the <em>minimum I/O
+        request size</em> as determined by the block layer. By default, the
+        build system (via <code>lpmake</code>, which generates the
+        <code>super</code> partition image), assumes that a 1&nbsp;MiB alignment
+        is sufficient for every dynamic partition. However, vendors should
+        ensure that the <code>super</code> partition is properly aligned.
+      </p>
+
+      <p>
+        You can determine the minimum request size of a block device by
+        inspecting <code>sysfs</code>. For example:
+      </p>
+
+<pre class="prettyprint">
+# ls -l /dev/block/by-name/super
+lrwxrwxrwx 1 root root 16 1970-04-05 01:41 /dev/block/by-name/super -&gt; /dev/block/sda17
+# cat /sys/block/sda/queue/minimum_io_size
+786432
+</pre>
+
+      <p>
+        You can verify the <code>super</code> partition's alignment in a
+        similar manner:
+      </p>
+
+<pre class="prettyprint">
+# cat /sys/block/sda/sda17/alignment_offset
+</pre>
+
+      <p>
+        The alignment offset MUST be 0.
+      </p>
+
+    <h3 id="device-configuration-changes">Device configuration changes</h3>
+
+      <p>
+        To enable dynamic partitioning, add the following flag in
+        <code>device.mk</code>:
+      </p>
+
+<pre class="prettyprint">PRODUCT_USE_DYNAMIC_PARTITIONS := true</pre>
+
+    <h3 id="board-configuration-changes">Board configuration changes</h3>
+
+      <p>
+        You're required to set the size of the <code>super</code> partition:
+      </p>
+
+<pre class="prettyprint">
+BOARD_SUPER_PARTITION_SIZE := &lt;size-in-bytes&gt;
+</pre>
+
+      <p>
+        On A/B devices, the build system throws an error if the total size
+        of dynamic partition images is more than half of the <code>super</code>
+        partition size.
+      </p>
+
+      <p>
+        You can configure the list of dynamic partitions as follows. For
+        devices using update groups, list the groups in the
+        <code>BOARD_SUPER_PARTITION_GROUPS</code> variable. Each group name
+        then has a <code>BOARD_<var>group</var>_SIZE</code>
+        and <code>BOARD_<var>group</var>_PARTITION_LIST</code> variable.
+        For A/B devices, the maximum size of a group should cover only one
+        slot, as the group names are slot-suffixed internally.
+      </p>
+
+      <p>
+        Here's an example device that places all partitions into a group
+        called <code>example_dynamic_partitions</code>:
+      </p>
+
+<pre class="prettyprint">
+BOARD_SUPER_PARTITION_GROUPS := example_dynamic_partitions
+BOARD_EXAMPLE_DYNAMIC_PARTITIONS_SIZE := 6442450944
+BOARD_EXAMPLE_DYNAMIC_PARTITIONS_PARTITION_LIST := system vendor product
+</pre>
+
+      <p>
+        Here's an example device that places system and product services into
+        <code>group_foo</code>, and <code>vendor</code>, <code>product</code>,
+        and <code>odm</code> into <code>group_bar</code>:
+      </p>
+
+<pre class="prettyprint">
+BOARD_SUPER_PARTITION_GROUPS := group_foo group_bar
+BOARD_GROUP_FOO_SIZE := 4831838208
+BOARD_GROUP_FOO_PARTITION_LIST := system product_services
+BOARD_GROUP_BAR_SIZE := 1610612736
+BOARD_GROUP_BAR_PARTITION_LIST := vendor product odm
+</pre>
+
+      <aside class="note">
+        <strong>Note:</strong> Avoid choosing names that can conflict with
+        build variables, such as <em>super</em> and <em>super_partition</em>.
+        For readability,  choose names such as <em>foo_dp</em>,
+        <em>foo_dynamic_partitions</em>, <em>foo_dp_group</em>,
+        <em>super_foo</em>, or <em>group_foo</em> (where foo is the name
+        of the party that updates a given group). For example,
+        <code>group_OEM</code> or <code>group_VENDOR</code>.
+      </aside>
+
+      <aside class="note">
+        <strong>Note:</strong> There may be one or more update groups on your
+        device.
+      </aside>
+
+      <ul>
+        <li>
+          For A/B launch devices, the sum of maximum sizes of all groups must
+          be:<br />
+          <em><code>BOARD_SUPER_PARTITION_SIZE</code> / 2 - overhead</em>
+        </li>
+        <li>
+          For non-A/B devices and retrofit A/B devices, the sum of maximum
+          sizes of all groups must be:<br />
+          <em><code>BOARD_SUPER_PARTITION_SIZE</code> - overhead</em>
+        </li>
+        <li>
+          At build time, the sum of the sizes of the images of each partition
+          in an update group must not exceed the maximum size of the group.
+        </li>
+        <li>
+          Overhead is required in the computation to account for metadata,
+          alignments, and so on. A reasonable overhead is 4&nbsp;MiB, but you
+          can pick a larger overhead as needed by the device.
+        </li>
+      </ul>
+
+    <h3 id="dyanimic-partitions-sizing">Sizing dynamic partitions</h3>
+
+      <p>
+        Before dynamic partitions, partition sizes were over-allocated to
+        ensure that they had enough room for future updates. The actual size
+        was taken as is and most read-only partitions had some amount of free
+        space in their file system. In dynamic partitions, that free space is
+        unusable and could be used to grow partitions during an OTA.
+        It's critical to ensure that partitions aren't wasting space and are
+        allocated to a minimum possible size.
+      </p>
+
+      <p>
+        For read-only ext4 images, the build system automatically allocates
+        the minimum size if no hardcoded partition size is specified. The
+        build system fits the image so that the file system has as little
+        unused space as possible. This ensures that the device doesn't waste
+        space that can be used for OTAs.
+      </p>
+
+      <p>
+        Additionally, ext4 images can be further compressed by enabling block-
+        level deduplication. To enable this, use the following configuration:
+      </p>
+
+<pre class="prettyprint">
+BOARD_EXT4_SHARE_DUP_BLOCKS := true
+</pre>
+
+      <p>
+        If automatic allocation of a partition minimum size is undesirable,
+        there are two ways to control the partition size. You can specify a
+        minimum amount of free space with
+        <code>BOARD_<var>partition</var>IMAGE_PARTITION_RESERVED_SIZE</code>,
+        or you can specify
+        <code>BOARD_<var>partition</var>IMAGE_PARTITION_SIZE</code> to force
+        dynamic partitions to a specific size. Neither of these is
+        recommended unless necessary.
+      </p>
+
+      <p>
+        For example:
+      </p>
+
+<pre class="prettyprint">
+BOARD_PRODUCTIMAGE_PARTITION_RESERVED_SIZE := 52428800
+</pre>
+
+      <p>
+        This forces the file system in <code>product.img</code> to have
+        50&nbsp;MiB of unused space.
+      </p>
+
+      <aside class="note">
+        <strong>Note:</strong> The build system <strong>can only</strong>
+        best-fit ext4 file system images, and only on images produced by the
+        build. For prebuilt images, or images using other file systems, it's
+        important to manually ensure that the file system isn't wasting
+        on-disk space.
+      </aside>
+
+    <h3 id="system-as-root-changes">System-as-root changes</h3>
+
+      <p>
+        Devices launching with Android {{ androidQVersionNumber }} must not
+        use system-as-root.
+      </p>
+
+      <p>
+        Devices with dynamic partitions (whether it launches with or retrofits
+        dynamic partitions) must not use system-as-root. The Linux kernel can't
+        interpret the <code>super</code> partition and so can't mount
+        <code>system</code> itself. <code>system</code> is now mounted by
+        first-stage <code>init</code>, which resides in the ramdisk.
+      </p>
+
+      <p>
+        Don't set <code>BOARD_BUILD_SYSTEM_ROOT_IMAGE</code>. In
+        Android {{ androidQVersionNumber}}, the
+        <code>BOARD_BUILD_SYSTEM_ROOT_IMAGE</code> flag is only used to
+        differentiate whether the system is mounted by the kernel or by the
+        first-stage <code>init</code> in ramdisk.
+      </p>
+
+      <p>
+        Setting <code>BOARD_BUILD_SYSTEM_ROOT_IMAGE</code> to <code>true</code>
+        causes a build error when
+        <code>PRODUCT_USES_DYNAMIC_PARTITIONS</code> is also <code>true</code>.
+      </p>
+
+      <p>
+        When <code>BOARD_USES_RECOVERY_AS_BOOT</code> is set to true, the
+        recovery image is built as boot.img, containing the recovery's
+        ramdisk. Previously, bootloader used the <code>skip_initramfs</code> kernel
+        command line parameter to decide which mode to boot into. For Android
+        {{ androidQVersionNumber }} devices, the bootloader MUST NOT pass
+        <code>skip_initramfs</code> to the kernel command-line. Instead, bootloader
+        should pass <code>androidboot.force_normal_boot=1</code> to skip recovery
+        and boot normal Android.
+      </p>
+
+    <h3 id="avb-configuration-changes">AVB configuration changes</h3>
+
+      <aside class="caution">
+        <strong>Caution:</strong> Dynamic partitions require Android Verified
+        Boot (AVB) and won't work with Verified Boot 1.0.
+      </aside>
+
+      <p>
+        When using <a
+        href="https://source.android.com/security/verifiedboot/avb">Android
+        Verified Boot 2.0</a>, if the device isn't using <em>chained partition
+        descriptors</em>, then no change is necessary. If using chained
+        partitions, however, and one of the verified partitions is dynamic,
+        then changes are necessary.
+      </p>
+
+      <p>
+        Here's an example configuration for a device that chains
+        <code>vbmeta</code> for the <code>system</code> and
+        <code>vendor</code> partitions.
+      </p>
+
+<pre class="prettyprint">
+BOARD_AVB_SYSTEM_KEY_PATH := external/avb/test/data/testkey_rsa2048.pem
+BOARD_AVB_SYSTEM_ALGORITHM := SHA256_RSA2048
+BOARD_AVB_SYSTEM_ROLLBACK_INDEX := $(PLATFORM_SECURITY_PATCH_TIMESTAMP)
+BOARD_AVB_SYSTEM_ROLLBACK_INDEX_LOCATION := 1
+
+BOARD_AVB_VENDOR_KEY_PATH := external/avb/test/data/testkey_rsa2048.pem
+BOARD_AVB_VENDOR_ALGORITHM := SHA256_RSA2048
+BOARD_AVB_VENDOR_ROLLBACK_INDEX := $(PLATFORM_SECURITY_PATCH_TIMESTAMP)
+BOARD_AVB_VENDOR_ROLLBACK_INDEX_LOCATION := 1
+</pre>
+
+      <p>
+        With this configuration, the bootloader expects to find a <a
+        href="https://android.googlesource.com/platform/external/avb/+/master/README.md">vbmeta
+        footer</a> at the end of the <code>system</code> and
+        <code>vendor</code> partitions. Because these partitions are no longer
+        visible to the bootloader (they reside in <code>super</code>), two
+        changes are needed.
+      </p>
+
+      <ul>
+        <li>
+          Add <code>vbmeta_system</code> and <code>vbmeta_vendor</code>
+          partitions to the device's partition table. For A/B devices, add
+          <code>vbmeta_system_a</code>, <code>vbmeta_system_b</code>,
+          <code>vbmeta_vendor_a</code>, and <code>vbmeta_vendor_b</code>. If
+          adding one or more of these partitions, they should be the same size
+          as the <code>vbmeta</code> partition.
+        </li>
+        <li>
+          Rename the configuration flags by adding <code>VBMETA_</code> and
+          specify which partitions the chaining extends to:
+
+<pre class="prettyprint">
+BOARD_AVB_VBMETA_SYSTEM := system
+BOARD_AVB_VBMETA_SYSTEM_KEY_PATH := external/avb/test/data/testkey_rsa2048.pem
+BOARD_AVB_VBMETA_SYSTEM_ALGORITHM := SHA256_RSA2048
+BOARD_AVB_VBMETA_SYSTEM_ROLLBACK_INDEX := $(PLATFORM_SECURITY_PATCH_TIMESTAMP)
+BOARD_AVB_VBMETA_SYSTEM_ROLLBACK_INDEX_LOCATION := 1
+
+BOARD_AVB_VBMETA_VENDOR := vendor
+BOARD_AVB_VBMETA_VENDOR_KEY_PATH := external/avb/test/data/testkey_rsa2048.pem
+BOARD_AVB_VBMETA_VENDOR_ALGORITHM := SHA256_RSA2048
+BOARD_AVB_VBMETA_VENDOR_ROLLBACK_INDEX := $(PLATFORM_SECURITY_PATCH_TIMESTAMP)
+BOARD_AVB_VBMETA_VENDOR_ROLLBACK_INDEX_LOCATION := 1
+</pre>
+        </li>
+      </ul>
+
+      <p>
+        A device may be using one, both, or none of these partitions. Changes
+        are need only when chaining to a logical partition.
+      </p>
+
+    <h3 id="avb-bootloader-changes">AVB bootloader changes</h3>
+
+      <p>
+        If the bootloader has embedded <a
+        href="https://android.googlesource.com/platform/external/avb/">libavb</a>,
+        include the following patches:
+      </p>
+
+      <ul>
+        <li>
+          <a href="https://android.googlesource.com/platform/external/avb/+/818cf56740775446285466eda984acedd4baeac0" class="external">818cf56740775446285466eda984acedd4baeac0</a>
+          &mdash; "libavb: Only query partition GUIDs when the cmdline needs
+          them."
+        </li>
+        <li>
+          <a href="https://android.googlesource.com/platform/external/avb/+/5abd6bc2578968d24406d834471adfd995a0c2e9" class="external">5abd6bc2578968d24406d834471adfd995a0c2e9</a>
+          &mdash; "Allow system partition to be absent"
+        </li>
+        <li>
+          <a href="https://android.googlesource.com/platform/external/avb/+/9ba3b6613b4e5130fa01a11d984c6b5f0eb3af05" class="external">9ba3b6613b4e5130fa01a11d984c6b5f0eb3af05</a>
+          &mdash; "Fix AvbSlotVerifyData->cmdline might be NULL"
+        </li>
+      </ul>
+
+      <p>
+        If using chained partitions, include an additional patch:
+      </p>
+
+      <ul>
+        <li>
+          <a href="https://android.googlesource.com/platform/external/avb/+/49936b4c0109411fdd38bd4ba3a32a01c40439a9">49936b4c0109411fdd38bd4ba3a32a01c40439a9</a>
+          &mdash; "libavb: Support vbmeta blobs in beginning of partition."
+
+          <aside class="note">
+            <strong>Note:</strong> Previously, it was optional to implement
+            <code>get_size_of_partition</code> in <code>AvbOps</code>. After
+            this change it's required, and the bootloader must
+            implement this function.
+          </aside>
+        </li>
+      </ul>
+
+    <h3 id="kernel-command-line-changes">Kernel command line changes</h3>
+
+      <p>
+        A new parameter, <code>androidboot.boot_devices</code>, must be added
+        to the kernel command line. This is used by <code>init</code> to
+        enable <code>/dev/block/by-name</code> symlinks. It should be the
+        device path component to the underlying by-name symlink created by
+        <code>ueventd</code>, that is,
+        <code>/dev/block/platform/<var>device-path</var>/by-name/<var>partition-name</var></code>.
+      </p>
+
+      <p>
+        For example, if the super partition by-name symlink is
+        <code>/dev/block/platform/<strong>soc/100000.ufshc</strong>/by-name/super</code>,
+        you can add the command line parameter in the BoardConfig.mk file as
+        follows:
+
+<pre class="prettyprint">
+BOARD_KERNEL_CMDLINE += androidboot.boot_devices=soc/100000.ufshc
+</pre>
+
+    <h3 id="fstab-changes">fstab changes</h3>
+
+      <p>
+        The device tree and device tree overlays must not contain fstab
+        entries. Use an fstab file that will be part of the ramdisk.
+      </p>
+
+      <p>
+        Changes must be made to the fstab file for logical partitions:
+      </p>
+
+      <ul>
+        <li>
+          The fs_mgr flags field must include the <code>logical</code> flag
+          and the <code>first_stage_mount</code> flag, introduced in Android
+          {{ androidQVersionNumber }}, which indicates that a partition is to
+          be mounted in the first stage.
+        </li>
+        <li>
+          A partition may specify
+          <code>avb=<var>vbmeta partition name</var></code> as an
+          <code>fs_mgr</code> flag and then the specified <code>vbmeta</code>
+          partition is initialized by first stage <code>init</code> before
+          attempting to mount any devices.
+        </li>
+        <li>
+          The <code>dev</code> field must be the partition name.
+        </li>
+      </ul>
+
+      <p>
+        The following fstab entries set system, vendor, and product as logical
+        partitions following the above rules.
+      </p>
+
+<pre class="prettyprint">
+#&lt;dev&gt;  &lt;mnt_point&gt; &lt;type&gt;  &lt;mnt_flags options&gt; &lt;fs_mgr_flags&gt;
+system   /system     ext4    ro,barrier=1        wait,slotselect,avb=vbmeta,logical,first_stage_mount
+vendor   /vendor     ext4    ro,barrier=1        wait,slotselect,avb,logical,first_stage_mount
+product  /product    ext4    ro,barrier=1        wait,slotselect,avb,logical,first_stage_mount</pre>
+
+      <aside class="note">
+        <strong>Note:</strong> Do not include <code>slotselect</code> for a non-A/B device.
+      </aside>
+
+      <p>
+        Copy the fstab file into the first stage ramdisk.
+      </p>
+
+    <h3 id="selinux-launch">SELinux changes</h3>
+      <p>
+        The super partition block device must be marked with the label
+        <code>super_block_device</code>. For example, if the super partition by-name symlink is
+        <code>/dev/block/platform/<strong>soc/100000.ufshc</strong>/by-name/super</code>,
+        add the following line to <code>file_contexts</code>:
+      </p>
+
+<pre class="prettyprint">
+/dev/block/platform/soc/10000\.ufshc/by-name/super   u:object_r:super_block_device:s0
+</pre>
+
+    <h3 id="fastbootd">fastbootd</h3>
+
+      <p>
+        The bootloader (or any non-userspace flashing tool) doesn't understand
+        dynamic partitions, so it can't flash them. To address this, devices
+        must use a user-space implementation of the fastboot protocol, called
+        fastbootd.
+      </p>
+
+      <p>
+        For more information on how to implement fastbootd, see <a
+        href="/devices/bootloader/fastbootd">Moving Fastboot to User Space</a>.
+      </p>
+
+
+    <h3 id="adb-remount">adb remount</h3>
+
+      <p>
+        For developers using eng or userdebug builds, <code>adb remount</code>
+        is extremely useful for fast iteration. Dynamic partitions pose a
+        problem for <code>adb remount</code> because there is no longer free
+        space within each file system. To address this, devices can enable
+        overlayfs. As long as there is free space within the super partition,
+        <code>adb remount</code> automatically creates a temporary dynamic
+        partition and uses overlayfs for writes. The temporary partition is
+        named <code>scratch</code>, so don't use this name for other
+        partitions.
+      </p>
+
+      <p>
+        For more information on how to enable overlayfs, see the <a
+        href="https://android.googlesource.com/platform/system/core/+/a9a3b73163fda5abf237cc0f0cee97ff33e6254d/fs_mgr/README.overlayfs.md">overlayfs
+        README</a> in AOSP.
+      </p>
+
+  <h2 id="upgrading-devices">Upgrading Android devices</h2>
+
+    <p>
+      If you upgrade a device to Android {{ androidQVersionNumber }}, and
+      want to include dynamic partitions support in the OTA, you don't need to
+      change the built-in partition table. Some extra configuration is
+      required.
+    </p>
+
+    <h3 id="device-configuration-changes-retrofit">Device configuration changes</h3>
+
+      <p>
+        To retrofit dynamic partitioning, add the following flags in
+        <code>device.mk</code>:
+      </p>
+
+<pre class="prettyprint">
+PRODUCT_USE_DYNAMIC_PARTITIONS := true
+PRODUCT_RETROFIT_DYNAMIC_PARTITIONS := true
+</pre>
+
+    <h3 id="board-configuration-changes-retrofit">Board configuration changes</h3>
+
+      <p>
+        You're required to set the following board variables:
+      </p>
+        <ul>
+          <li>Set <code>BOARD_SUPER_PARTITION_BLOCK_DEVICES</code> to the list of block devices used
+            to store extents of dynamic partitions. This is the list of names of existing physical
+            partitions on the device.</li>
+          <li>Set <code>BOARD_SUPER_PARTITION_<var>partition</var>_DEVICE_SIZE</code> to the sizes
+            of each block device in <code>BOARD_SUPER_PARTITION_BLOCK_DEVICES</code>, respectively.
+            This is the list of sizes of existing physical partitions on the device. This is usually
+            <code>BOARD_<var>partition</var>IMAGE_PARTITION_SIZE</code> in existing board
+            configurations.</li>
+          <li>Unset existing <code>BOARD_<var>partition</var>IMAGE_PARTITION_SIZE</code> for all
+            partitions in <code>BOARD_SUPER_PARTITION_BLOCK_DEVICES</code>.</li>
+          <li>Set <code>BOARD_SUPER_PARTITION_SIZE</code> to the sum of
+            <code>BOARD_SUPER_PARTITION_<var>partition</var>_DEVICE_SIZE</code>.</li>
+          <li>Set <code>BOARD_SUPER_PARTITION_METADATA_DEVICE</code> to the block device where
+            dynamic partition metadata is stored. It must be one of
+            <code>BOARD_SUPER_PARTITION_BLOCK_DEVICES</code>. Usually, this is set to
+            <code>system</code>.</li>
+          <li>Set <code>BOARD_SUPER_PARTITION_GROUPS</code>,
+            <code>BOARD_<var>group</var>_SIZE</code>, and
+            <code>BOARD_<var>group</var>_PARTITION_LIST</code>, respectively. See
+            <a href="#board-configuration-changes">Board configuration changes on new devices</a>
+            for details.</li>
+        </ul>
+      <p>
+        For example, if the device already has system and vendor partitions, and you want to convert
+        them to dynamic partitions and add a new product partition during the update, set this board configuration:
+      </p>
+<pre class="prettyprint">
+BOARD_SUPER_PARTITION_BLOCK_DEVICES := system vendor
+BOARD_SUPER_PARTITION_METADATA_DEVICE := system
+
+# Rename BOARD_SYSTEMIMAGE_PARTITION_SIZE to BOARD_SUPER_PARTITION_SYSTEM_DEVICE_SIZE.
+BOARD_SUPER_PARTITION_SYSTEM_DEVICE_SIZE := &lt;size-in-bytes&gt;
+
+# Rename BOARD_VENDORIMAGE_PARTITION_SIZE to BOARD_SUPER_PARTITION_VENDOR_DEVICE_SIZE
+BOARD_SUPER_PARTITION_VENDOR_DEVICE_SIZE := &lt;size-in-bytes&gt;
+
+# This is BOARD_SUPER_PARTITION_SYSTEM_DEVICE_SIZE + BOARD_SUPER_PARTITION_VENDOR_DEVICE_SIZE
+BOARD_SUPER_PARTITION_SIZE := &lt;size-in-bytes&gt;
+
+# Configuration for dynamic partitions. For example:
+BOARD_SUPER_PARTITION_GROUPS := group_foo
+BOARD_GROUP_FOO_SIZE := &lt;size-in-bytes&gt;
+BOARD_GROUP_FOO_PARTITION_LIST := system vendor product
+</pre>
+
+    <h3 id="selinux-legacy">SELinux changes</h3>
+      <p>
+        The super partition block devices must be marked with the attribute
+        <code>super_block_device_type</code>. For example, if the device already has
+        <code>system</code> and <code>vendor</code> partitions, you want to use them as block
+        devices to store extents of dynamic partitions, and their by-name symlinks are marked as
+        <code>system_block_device</code>:
+      </p>
+
+<pre class="prettyprint">
+/dev/block/platform/soc/10000\.ufshc/by-name/system   u:object_r:system_block_device:s0
+/dev/block/platform/soc/10000\.ufshc/by-name/vendor   u:object_r:system_block_device:s0
+</pre>
+
+      <p>
+        Then, add the following line to <code>device.te</code>:
+      </p>
+
+<pre class="prettyprint">
+typeattribute system_block_device super_block_device_type;
+</pre>
+
+
+    <p>
+      For other configurations, see <a href="#implement-dynamic-partitions-new-devices">Implementing
+      dynamic partitions on new devices</a>.
+    </p>
+
+    <p>
+      For more information about retrofit updates, see
+      <a href="/devices/tech/ota/dynamic_partitions/ab_legacy">OTA for A/B Devices without Dynamic
+        Partitions</a>.
+    </p>
+
+  <h2 id="factory-images">Factory images</h2>
+
+    <p>
+      For a device launching with dynamic partitions support, avoid using
+      userspace fastboot to flash factory images, as booting to userspace is
+      slower than other flashing methods.
+    </p>
+
+    <p>
+      To address this, <code>make dist</code> now builds an additional
+      <code>super.img</code> image that can be flashed directly to the super
+      partition. It automatically bundles the contents of logical
+      partitions, meaning it contains <code>system.img</code>,
+      <code>vendor.img</code>, and so on, in addition to the <code>super</code>
+      partition metadata. This image can be flashed directly to the
+      <code>super</code> partition without any additional tooling or using
+      fastbootd. After the build, <code>super.img</code> is placed in
+      <code>${ANDROID_PRODUCT_OUT}</code>.
+    </p>
+
+    <p>
+      For A/B devices that launch with dynamic partitions,
+      <code>super.img</code> contains images in the A slot. After flashing the
+      super image directly, mark slot A as bootable before rebooting the
+      device.
+    </p>
+
+    <p>
+      For retrofit devices, <code>make dist</code> builds a set of
+      <code>super_*.img</code> images that can be flashed directly to
+      corresponding physical partitions. For example, <code>make dist</code>
+      builds <code>super_system.img</code> and <code>super_vendor.img</code>
+      when <code>BOARD_SUPER_PARTITION_BLOCK_DEVICES</code> is the system
+      vendor. These images are placed in the OTA folder in
+      <code>target_files.zip</code>.
+    </p>
+  </body>
+</html>

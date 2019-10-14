@@ -22,7 +22,6 @@
       limitations under the License.
   -->
 
-
 <p>
   This section details the audio architecture for automotive-related Android
   implementations. OEMs and other Android developers implementing an automotive
@@ -33,29 +32,29 @@
 <h2 id="key-concepts">Key concepts</h2>
 
 <p>
-  Android is responsible for infotainment sounds (i.e. media, navigation, and
-  communications) but is not directly responsible for chimes and warnings that
+  Android is responsible for infotainment sounds (that is, media, navigation, and
+  communications) but isn't directly responsible for chimes and warnings that
   have strict availability and timing requirements. External sources are
-  represented by applications, which are responsible for audio focus. However,
-  you cannot rely on focus for sound selection and mixing.
+  represented by apps, which are responsible for audio focus. However,
+  you can't rely on focus for sound selection and mixing.
 </p>
 
 <p>
-  Android {{ androidPVersionNumber }} includes the following changes to
+  Android {{androidQVersionNumber }} includes the following changes to
   automotive-related audio support:
 </p>
 
 <ul>
-  <li>The Audio HAL Context maps to <code>AudioAttributes.usage</code> to
+  <li>The Audio HAL context maps to <code>AudioAttributes.usage</code> to
   identify sounds; the Audio HAL implementation is responsible for
-  Context-specific mixing/routing.</li>
+  context-specific mixing/routing.</li>
   <li>Vehicles define a generic output device
   (<code>AUDIO_DEVICE_OUT_BUS</code>) for use in vehicle audio systems; Android
-  supports one <code>AUDIO_DEVICE_OUT_BUS</code> per Context.</li>
+  supports one <code>AUDIO_DEVICE_OUT_BUS</code> instance per Context.</li>
   <li><code>IAudioControl HAL</code> provides vehicle-specific extensions to the
   Audio HAL; for an example implementation, refer to
   <code>device/generic/car/emulator/audio</code>. Android
-  {{ androidPVersionNumber }} does not include <code>AUDIO_* VHAL</code>
+  {{ androidPVersionNumber }} doesn't include <code>AUDIO_* VHAL</code>
   properties.</li>
 </ul>
 
@@ -70,15 +69,14 @@
 </figcaption>
 
 <p>
-  Android is responsible for sounds coming from Android applications,
-  controlling those applications and routing their sounds to individual streams
+  Android manages the sounds coming from Android apps,
+  controlling those apps and routing their sounds to individual streams
   at the HAL based on the type of sound:
 </p>
 
 <ul>
   <li><strong>Logical</strong> streams, known as <em>sources</em> in core audio
-  nomenclature, are tagged with <a href="/devices/audio/attributes">Audio
-  Attributes</a>.</li>
+  nomenclature, are tagged with <a href="/devices/audio/attributes">AudioAttributes</a>.</li>
   <li><strong>Physical</strong> streams, known as <em>devices</em> in core audio
   nomenclature, have no context information after mixing.</li>
 </ul>
@@ -89,7 +87,7 @@
   separate hardware. System implementers must provide a mixer that accepts one
   or more streams of sound input from Android and then combines those streams in
   a suitable way with the external sound sources required by the vehicle.
-  External streams can be always on, or controlled via
+  External streams can be always on, or controlled with
   <code>createAudioPatch</code> entry points in the HAL.
 </p>
 
@@ -102,47 +100,49 @@
 <h3 id="android-sounds">Android sounds</h3>
 
 <p>
-  Applications may have one or more players that interact through the standard
-  Android APIs (e.g.
-  <a href="https://developer.android.com/reference/android/media/AudioManager.html" class="external">AudioManager</a>
+  Apps may have one or more players that interact through the standard
+  Android APIs (for example,
+  <a href="https://developer.android.com/reference/android/media/AudioManager.html" class="external">
+  <code>AudioManager</code></a>
   for focus control or
-  <a href="https://developer.android.com/reference/android/media/MediaPlayer.html" class="external">MediaPlayer</a>
+  <a href="https://developer.android.com/reference/android/media/MediaPlayer.html" class="external">
+  <code>MediaPlayer</code></a>
   for streaming) to emit one or more logical streams of audio data. This data
   could be single channel mono or 7.1 surround, but is routed and treated as a
-  single source. The application stream is associated with
+  single source. The app stream is associated with
   <a href="/devices/audio/attributes">AudioAttributes</a> that give the system
   hints about how the audio should be expressed.
 </p>
 
 <p>
-  The logical streams are sent through the <code>AudioService</code> and routed
+  The logical streams are sent through <code>AudioService</code> and routed
   to one (and only one) of the available physical output streams, each of which
-  is the output of a mixer within <code>AudioFlinger</code>. After
-  <code>AudioAttributes</code> have been mixed down to a physical stream, they
+  is the output of a mixer within AudioFlinger. After
+  the audio attributes have been mixed down to a physical stream, they
   are no longer available.
 </p>
 
 <p>
   Each physical stream is then delivered to the Audio HAL for rendering on the
-  hardware. In automotive applications, rendering hardware can be local codecs
+  hardware. In automotive apps, rendering hardware can be local codecs
   (similar to mobile devices) or a remote processor across the vehicle's
-  physical network. Either way, it is the job of the Audio HAL implementation to
+  physical network. Either way, it's the job of the Audio HAL implementation to
   deliver the actual sample data and cause it to become audible.
 </p>
 
 <h3 id="external-streams">External streams</h3>
 
 <p>
-  Sound streams that should not be routed through Android (for certification or
+  Sound streams that shouldn't be routed through Android (for certification or
   timing reasons) may be sent directly to the external mixer. In many cases,
-  Android doesn't need to know these sounds exist as the external mixer can mix
+  Android doesn't need to know that these sounds exist as the external mixer can mix
   them over Android sounds. If a sound needs to be ducked or routed to different
   speakers, the external mixer can do that invisibly to Android.
 </p>
 
 <p>
   If external streams are media sources that should interact with the sound
-  environment Android is generating (e.g. stop MP3 playback when an external
+  environment Android is generating (for example, stop MP3 playback when an external
   tuner is turned on), those external streams should be represented by an
   Android app. Such an app would request audio focus and respond to focus
   notifications by starting/stopping the external source as necessary to fit
@@ -153,42 +153,42 @@
 <h3 id="audio-focus">Audio focus</h3>
 
 <p>
-  Before starting a logical stream, an application should request audio focus
-  using the same <code>AudioAttributes</code> as it will use for its logical
-  stream. While sending such a focus request is recommended, it is not enforced
-  by the system. Some applications may explicitly skip sending the request to
-  achieve specific behaviors (e.g. to intentionally play sound during a phone
+  Before starting a logical stream, an app should request audio focus
+  using the same audio attributes as it will use for its logical
+  stream. While sending such a focus request is recommended, it isn't enforced
+  by the system. Some apps may explicitly skip sending the request to
+  achieve specific behaviors (for example, to intentionally play sound during a phone
   call).
 </p>
 
 <p>
   For this reason, you should consider focus as a way to indirectly control
-  and deconflict media playback and not as a primary audio control
-  mechanism—the vehicle should not depend on the focus system for operation of
+  and deconflict the media playback and not as a primary audio control
+  mechanism; the vehicle shouldn't depend on the focus system for operation of
   the audio subsystem. Focus awareness is <strong>not part of the HAL</strong>
   and should <strong>not be used to influence audio routing</strong>.
 </p>
 
-<h3 id="output-bus">Output BUS</h3>
+<h3 id="output-bus">Output bus</h3>
 
 <p>
   At the Audio HAL level, the device type <code>AUDIO_DEVICE_OUT_BUS</code>
-  provides a generic output device for use in vehicle audio systems. The BUS
+  provides a generic output device for use in vehicle audio systems. The bus
   device supports addressable ports (where each port is the end point for a
   physical stream) and is expected to be the only supported output device type
   in a vehicle.
 </p>
 
 <p>
-  A system implementation can use one BUS port for all Android sounds, in which
+  A system implementation can use one bus port for all Android sounds, in which
   case Android mixes everything together and delivers it as one stream.
-  Alternatively, the HAL can provide one BUS port for each Context to allow
+  Alternatively, the HAL can provide one bus port for each context to allow
   concurrent delivery of any sound type. This makes it possible for the HAL
   implementation to mix or duck the different sounds as desired.</p>
 
 <p>
-  The assignment of Contexts to BUS ports is done through the Audio Control
-  HAL and creates a many:one relationship between Contexts and BUS ports.
+  The assignment of contexts to bus ports is done through the audio control
+  HAL and creates a many:one relationship between contexts and bus ports.
 </p>
 
 <h2 id="mic-input">Microphone input</h2>
@@ -199,7 +199,7 @@
   microphone input should be processed.</p>
 
 <p>
-  <code>VOICE_RECOGNITION</code> (specifically the Google Assistant) expects a
+  The <code>VOICE_RECOGNITION</code> source (specifically the Google Assistant) expects a
   stereo microphone stream that has an echo cancellation effect (if available)
   but no other processing applied to it. Beamforming is expected to be done by
   the Assistant itself.
@@ -234,20 +234,20 @@ audioRecord.setPreferredDevice(someAudioDeviceInfo);
 <h3 id="concurrent-capture">Concurrent capture</h3>
 
 <p>
-  The Android framework does not allow concurrent capture for most input audio
+  The Android framework doesn't allow concurrent capture for most input audio
   device types but makes exceptions for <code>AUDIO_DEVICE_IN_BUS</code> and
   <code>AUDIO_DEVICE_IN_FM_TUNER</code> by handling them as virtual devices.
-  Doing so means the framework assumes no competition for resources exists
-  between/among these devices and thus any/all of them are allowed to be
+  Doing so means the framework assumes that there's no competition for resources
+  among these devices and thus any/all of them are allowed to be
   captured concurrently along with one regular input device (such as the
   microphone). If hardware constraints on concurrent capture do exist
-  between/among these devices, such constraints must be handled by custom
-  application logic in the first party applications designed to use these input
+  among these devices, such constraints must be handled by custom
+  app logic in the first-party apps designed to use these input
   devices.
 </p>
 
 <p>
-  Applications designed to work with <code>AUDIO_DEVICE_IN_BUS</code> devices or
+  Apps designed to work with <code>AUDIO_DEVICE_IN_BUS</code> devices or
   with secondary <code>AUDIO_DEVICE_IN_FM_TUNER</code> devices must rely on
   explicitly identifying those devices and using
   <code>AudioRecord.setPreferredDevice()</code> to bypass the Android default
@@ -264,8 +264,8 @@ audioRecord.setPreferredDevice(someAudioDeviceInfo);
 </p>
 
 <p>
-  Android {{ androidPVersionNumber }} adds a <em>speech</em> volume group and
-  the automotive-related contexts as shown below:
+  Android {{ androidPVersionNumber }} and higher includes a <em>speech</em> volume group and
+  the automotive-related contexts as shown below.
 </p>
 
 <table>
@@ -279,42 +279,42 @@ audioRecord.setPreferredDevice(someAudioDeviceInfo);
 <tbody>
 <tr>
 <td>Ring</td>
-<td>CALL_RING_CONTEXT</td>
+<td><code>CALL_RING_CONTEXT</code></td>
 <td>Voice call ringing</td>
 </tr>
 <tr>
 <td></td>
-<td>NOTIFICATION_CONTEXT</td>
+<td><code>NOTIFICATION_CONTEXT</code></td>
 <td>Notifications</td>
 </tr>
 <tr>
 <td></td>
-<td>ALARM_CONTEXT</td>
+<td><code>ALARM_CONTEXT</code></td>
 <td>Alarm sound from Android</td>
 </tr>
 <tr>
 <td></td>
-<td>SYSTEM_SOUND_CONTEXT</td>
+<td><code>SYSTEM_SOUND_CONTEXT</code></td>
 <td>System sound from Android</td>
 </tr>
 <tr>
 <td>Media</td>
-<td>MUSIC_CONTEXT</td>
+<td><code>MUSIC_CONTEXT</code></td>
 <td>Music playback</td>
 </tr>
 <tr>
 <td>Phone</td>
-<td>CALL_CONTEXT</td>
+<td><code>CALL_CONTEXT</code></td>
 <td>Voice call</td>
 </tr>
 <tr>
 <td>Speech</td>
-<td>NAVIGATION_CONTEXT</td>
+<td><code>NAVIGATION_CONTEXT</code></td>
 <td>Navigation directions</td>
 </tr>
 <tr>
 <td></td>
-<td>VOICE_COMMAND_CONTEXT</td>
+<td><code>VOICE_COMMAND_CONTEXT</code></td>
 <td>Voice command session</td>
 </tr>
 </tbody>
@@ -324,9 +324,9 @@ audioRecord.setPreferredDevice(someAudioDeviceInfo);
   When the value for a volume group is updated, the framework's
   <code>CarAudioService</code> handles setting the affected physical stream
   gains. Physical stream volume in a vehicle is based on volume group (rather
-  than stream_type) and each volume group consists of one or more Audio
-  Contexts. Each <code>AudioAttributes.USAGE</code> maps to an Audio Context in
-  a <code>CarAudioService</code> and can be configured to be routed to an output
+  than <code>stream_type</code>) and each volume group consists of one or more audio
+  contexts. Each instance of <code>AudioAttributes.USAGE</code> maps to an audio context in
+  <code>CarAudioService</code> and can be configured to be routed to an output
   bus (see
   <a href="/devices/automotive/audio/audio-control.html#configure-volume">Configuring
   volume</a> and
@@ -335,18 +335,18 @@ audioRecord.setPreferredDevice(someAudioDeviceInfo);
 </p>
 
 <p>
-  Android {{ androidPVersionNumber }} simplifies controlling the hardware volume
+  Android {{ androidPVersionNumber }} simplified controlling the hardware volume
 in the amplifier:
 </p>
 
 <ul>
   <li>Each volume group is routed to one or more output buses. The volume for a
   specific group can be changed using the Car Settings UI or via an
-  externally-generated
+  externally generated
   <code>KEYCODE_VOLUME_DOWN</code> or <code>KEYCODE_VOLUME_UP</code> key event.
   </li>
   <li>In response, <code>CarAudioService</code> calls
-  <code>AudioManager.setAudioPortGain()</code> with the audio device port(s)
+  <code>AudioManager.setAudioPortGain()</code> with the audio device ports
   bound to targeted volume group. At the HAL, this appears as a series of one or
   more calls to <code>IDevice.setAudioPortConfig()</code> with the volume gain
   value for each physical output stream associated with the targeted volume

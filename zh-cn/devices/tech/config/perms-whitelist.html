@@ -4,6 +4,7 @@
     <meta name="book_path" value="/_book.yaml"/>
   </head>
   <body>
+
   <!--
       Copyright 2017 The Android Open Source Project
 
@@ -19,39 +20,44 @@
       See the License for the specific language governing permissions and
       limitations under the License.
   -->
-<p>
-  特权应用是位于系统映像 <code>/system/priv-app</code> 目录下的系统应用。过去，设备实现人员几乎无法控制可以向特权应用授予哪些签名|特许权限。从 Android 8.0 开始，实现人员可以将特权应用显式加入到 <code>/etc/permissions</code> 目录下的系统配置 XML 文件的白名单中。未在这些 XML 文件中明确列出的应用不会被授予特许权限。
-</p>
+
+<p>特权应用是位于其中一个系统映像分区上的 <code>priv-app</code> 目录下的系统应用。用于 Android 版本的分区有：</p>
+<ul>
+<li>Android 8.0 及更低版本 - <code>/system</code></li>
+<li>Android 9 及更高版本 - <code>/system, /product, /vendor</code></li>
+<li>Android 10 及更高版本 - <code>/system, /product, /vendor,
+/product-services</code></li>
+</ul>
+
+<p>在整个页面中，<code>/etc/permissions/priv-app</code> 解析为 <code><var>partition</var>/etc/permissions/priv-app</code>。</p>
+<p>过去，设备制造商几乎无法控制可以向特权应用授予哪些<strong>签名|特许</strong>权限。从 Android 8.0 开始，制造商必须在 <code>/etc/permissions</code> 目录下的系统配置 XML 文件中明确授予特许权限。从 Android 9 开始，实现人员必须明确授予或拒绝所有特许权限，否则设备将无法启动。</p>
+
+<p><code>privapp-permissions.xml</code> 文件只能为同一分区上的特权应用授予或拒绝权限。例如，如果 <code>/vendor</code> 分区上的应用请求特许权限，则该请求权限只能由同样位于 <code>/vendor</code> 上的 <code>privapp-permissions.xml</code> 文件授予或拒绝。</p>
 
 <aside class="note">
-  <strong>注意</strong>：仅<a href="https://developer.android.com/guide/topics/manifest/manifest-element#package">软件包</a>=“android”的应用所声明的<a href="https://developer.android.com/guide/topics/manifest/permission-element">权限</a>需列入相应白名单中。
+  <strong>注意</strong>：仅核心平台（“android”软件包）定义的权限必须列入白名单。设备制造商定义的特许权限仍将自动授予。仅列出 <code>privapp-permissions.xml</code> 文件中实际存在于分区上的应用。如果应用不在该分区上，则忽略该条目。
 </aside>
 
 <h2 id="adding-whitelists">添加白名单</h2>
-<p>
-  应用的权限白名单可列在位于 <code>frameworks/base/etc/permissions</code> 目录下的单个或多个 XML 文件中，如下所示：
-</p>
+<p>应用的权限白名单可列在位于 <code>frameworks/base/etc/permissions</code> 目录下的单个或多个 XML 文件中，如下所示：</p>
 
 <ul>
   <li><code>/etc/permissions/privapp-permissions-<var>OEM_NAME</var>.xml</code>
   </li><li><code>/etc/permissions/privapp-permissions-<var>DEVICE_NAME</var>.xml</code>
 </li></ul>
 
-<p>对于如何组织内容，没有严格的规则。设备实现人员可以决定内容结构，只要将 <code>/system/priv-app</code> 下的所有应用均列入白名单即可。例如，Google 针对由 Google 开发的所有特权应用提供了一个白名单。我们建议使用以下组织方式：
-</p>
+<p>对于如何组织内容，没有严格的规则。设备实现人员可以决定内容结构，只要 <code>/system/priv-app</code> 下的所有应用均列入白名单即可。例如，Google 针对由 Google 开发的所有特权应用提供了一个白名单，建议使用以下组织方式：</p>
 
 <ul>
-  <li>对于已包含在 Android 开源项目 (AOSP) 树中的应用，将其权限列在 <code>/etc/permissions/privapp-permissions-platform.xml</code> 中。</li>
+  <li>对于已包含在 Android 开源项目 (AOSP) 树中的应用，请将其权限列在 <code>/etc/permissions/privapp-permissions-platform.xml</code> 中。</li>
   <li>对于 Google 应用，请将其权限列在 <code>/etc/permissions/privapp-permissions-google.xml</code> 中。</li>
-  <li>对于其他应用，请使用以下格式的文件：<code>/etc/permissions/privapp-permissions-<var>DEVICE_NAME</var>.xml</code>。
+  <li>对于其他应用，请使用以下格式的文件： <code>/etc/permissions/privapp-permissions-<var>DEVICE_NAME</var>.xml</code>。
   </li>
 </ul>
 
 <h3 id="generating-whitelists">生成白名单</h3>
 
-<p>
-  要针对系统映像上提供的所有应用自动生成白名单，请使用位于以下位置的 AOSP 命令行工具：<code>development/tools/privapp_permissions/privapp_permissions.py</code>。要生成特定于设备的 <code>privapp-permissions.xml</code> 的初始版本，请执行以下操作：
-</p>
+<p>要针对系统映像上提供的所有应用自动生成白名单，请使用位于以下位置的 AOSP 命令行工具： <code>development/tools/privapp_permissions/privapp_permissions.py</code>。要生成特定于设备的 <code>privapp-permissions.xml</code> 的初始版本，请执行以下操作：</p>
 
 <ol>
   <li>编译系统映像：
@@ -60,12 +66,9 @@
     <code class="devsite-terminal">lunch <var>PRODUCT_NAME</var></code>
     <code class="devsite-terminal">make -j</code></pre>
     </li>
-  <li>运行 <code>privapp_permissions.py</code> 脚本以生成一个 <code>privapp-permissions.xml</code> 文件，该文件会列出需要列入白名单的所有签名|特许权限：
-      <pre class="devsite-terminal devsite-click-to-copy">development/tools/privapp_permissions/privapp_permissions.py</pre>
-    此工具会打印可在 <code>/etc/permissions</code> 下作为单个文件或拆分为多个文件的 XML 内容。
-    如果设备已在 <code>/etc/permissions</code> 目录下包含白名单，则该工具将仅打印出差异内容（也就是说，只打印缺少的将列入白名单的签名|特许权限）。这对审核也很有用，当添加新版本的应用时，该工具会检测所需的其他权限。
+  <li>运行 <code>privapp_permissions.py</code> 脚本以生成一个 <code>privapp-permissions.xml</code> 文件，该文件会列出需要列入白名单的所有签名|特许权限：<pre class="devsite-terminal devsite-click-to-copy">development/tools/privapp_permissions/privapp_permissions.py</pre>此工具会输出可在 <code>/etc/permissions</code> 目录路径下作为单个文件或拆分为多个文件的 XML 内容。如果设备已在 <code>/etc/permissions</code> 目录下包含白名单，则该工具将仅输出差异内容（也就是说，只输出缺少的将列入白名单的签名|特许权限）。这对审核也很有用，当添加新版本的应用时，该工具会检测所需的其他权限。
   </li>
-  <li>将生成的文件复制到 <code>/etc/permissions</code> 目录下，系统在启动过程中将从这里读取这些文件。</li>
+  <li>将生成的文件复制到相应的 <code>/etc/permissions</code> 目录下，系统将在启动过程中从这里读取这些文件。</li>
 </ol>
 
 <h3 id="customizing-whitelists">自定义白名单</h3>
@@ -76,12 +79,11 @@
 </p>
 
 <p>
-  默认情况下，<code>privapp_permissions.py</code> 脚本生成的输出会自动授予特权应用所请求的任何权限。如果有应被拒绝的权限，请修改 XML 以使用“拒绝权限”标记而非“权限”标记。例如：
-</p>
+  默认情况下，<code>privapp_permissions.py</code> 脚本生成的输出会自动授予特权应用所请求的任何权限。如果有应被拒绝的权限，请修改 XML 以使用“拒绝权限”标记而非“权限”标记。示例：</p>
 
     <pre class="prettyprint">&lt;!--
     This XML file declares which signature|privileged permissions should be
-    granted to privileged applications that come with the platform
+    granted to privileged apps that come with the platform
     --&gt;
     &lt;permissions&gt;
 &lt;privapp-permissions package="com.android.backupconfirm"&gt;
@@ -100,31 +102,28 @@
 
 <h3 id="finding-missing-permissions">查找缺少的权限</h3>
 
-<p>
-  在启动新设备时，可通过启用过渡日志模式来查找缺少的权限：
-</p>
+<p>要在启动新设备时查找缺少的权限，请启用过渡日志模式：</p>
 
 <pre class="devsite-click-to-copy">ro.control_privapp_permissions=log</pre>
 
-<p>
-  违规行为会在日志文件中予以报告，但仍然会授予权限。
-  这样可在提供违规行为列表的同时，使设备仍然处于工作状态。错误消息格式如下：
-</p>
+<p>违规行为会在日志文件中予以报告，但仍然会授予非特许权限。这样可在提供违规行为列表的同时，使设备仍然处于工作状态。下面是错误消息格式：</p>
 
 <pre class="devsite-click-to-copy">
 PackageManager: Privileged permission {PERMISSION_NAME} for package {PACKAGE_NAME} - not in privapp-permissions whitelist
 </pre>
 
-<p>
-  所有违规行为均必须通过将应用加入白名单来予以解决。如果未加入，这些应用将不会被授予缺少的权限，即使它们位于 priv-app 路径中也是如此。
+<p>所有违规行为均必须通过将缺少的权限加入相应的白名单来予以解决。
 </p>
+    <ul>
+      <li>在 Android 8.0 及更低版本中，受影响的应用即使位于 <code>priv-app</code> 路径中也不会被授予缺少的权限。</li>
+      <li>在 Android 9 及更高版本中，违反（特许权限）意味着<strong>设备无法启动</strong>。<em></em>您必须明确允许或拒绝所有特许权限。<em></em><em></em></li>
+    </ul>
 
 <h2 id="enforcing-whitelists">强制执行白名单</h2>
 
-<p>
-  白名单列好后，可通过设置版本属性 <code>ro.control_privapp_permissions=enforce</code> 来启用运行时强制执行。
+<p>白名单列好后，可通过设置版本属性 <code>ro.control_privapp_permissions=enforce</code> 来启用运行时强制执行。
 </p>
 
-<aside class="note"><strong>注意</strong>：<code>ro.control_privapp_permissions</code> 属性状态必须符合 <a href="/compatibility/android-cdd#9_1_permissions">CDD 部分 9.1 的要求</a>。</aside>
+<aside class="note"><strong>注意</strong>：仅软件包=“android”的应用所声明的权限需列入相应白名单中。<code>ro.control_privapp_permissions</code> 属性状态必须符合 <a href="/compatibility/android-cdd#9_1_permissions">CDD 部分 9.1 的要求</a>。</aside>
 
 </body></html>

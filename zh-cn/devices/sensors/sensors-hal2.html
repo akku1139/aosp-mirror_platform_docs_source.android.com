@@ -1,0 +1,204 @@
+<html devsite><head>
+
+  <meta name="book_path" value="/_book.yaml"/>
+
+  <meta name="project_path" value="/_project.yaml"/>
+</head>
+<body>
+
+<!--
+  Copyright 2019 The Android Open Source Project
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+<h1 id="sensors_hal_20" class="page-title">传感器 HAL 2.0</h1>
+
+<p>传感器硬件抽象层 (HAL) 是 Android 传感器框架与设备传感器（如加速度计或陀螺仪）之间的接口。传感器 HAL 定义了一系列函数，要使传感器框架能够控制传感器，必须先实现这些函数。</p>
+
+<p>传感器 HAL 2.0 适用于搭载 Android 10 及更高版本的新设备和升级设备。传感器 HAL 2.0 基于<a href="/devices/sensors/hal-interface">传感器 HAL 1.0</a> 构建，但与 1.0 版有几个关键的区别，这使得它无法向后兼容。传感器 HAL 2.0 使用<a href="/devices/architecture/hidl/fmq">快速消息队列</a> (FMQ) 将传感器事件从 HAL 发送到 Android 传感器框架。</p>
+
+<h2 id="examples_and_source">示例和来源</h2>
+
+<p>传感器 HAL 2.0 文档的主要来源位于 HAL 定义内，该定义位于：hardware/interfaces/sensors/2.0/ISensors.hal。如果本页中的要求与 <code>ISensors.hal</code> 中的要求存在冲突，请遵循 <code>ISensors.hal</code> 中的要求。</p>
+
+<p>默认实现在 hardware/interfaces/sensors/2.0/default 中提供。与先前版本的传感器 HAL 不同，现在默认实现仅作为参考提供，不应装载在任何产品上。下面的实现说明了使用两个 FMQ 与该框架通信的概念。</p>
+
+<h2 id="implementing_sensors_hal_20">实现传感器 HAL 2.0</h2>
+
+<p>要实现传感器 HAL 2.0，则必须有一个对象来扩展 ISensors 接口并实现 <code>ISensors.hal</code> 中定义的所有函数。</p>
+
+<h3 id="initializing_the_hal">初始化 HAL</h3>
+
+<p>传感器 HAL 必须先经过 Android 传感器框架初始化，然后才能使用。该框架调用 <code>initialize()</code> 函数为传感器 HAL 提供三个参数：两个 FMQ 描述符和一个指向 <code>ISensorsCallback</code> 对象的指针。</p>
+
+<p>HAL 使用第一个描述符来创建事件 FMQ，该 FMQ 将用于向框架写入传感器事件。HAL 使用第二个描述符来创建唤醒锁 FMQ，该 FMQ 将在 HAL 为 <code>WAKE_UP</code> 传感器事件解锁其唤醒锁时，用于执行同步。HAL 必须保存指向 <code>ISensorsCallback</code> 对象的指针，以便可以调用任何必要的回调函数。</p>
+
+<p><code>initialize()</code> 函数应该是初始化传感器 HAL 时调用的第一个函数。</p>
+
+<h3 id="exposing_available_sensors">公开可用的传感器</h3>
+
+<p>要获取设备中所有可用的静态传感器的列表，请使用 <code>getSensorsList()</code> 函数。此函数会返回传感器的列表，其中的每个传感器由其句柄唯一标识。当托管传感器 HAL 的进程重启时，指定传感器的句柄不得发生改变。而在设备和系统服务器重启时，句柄可以发生改变。</p>
+
+<p>如果多个传感器具有相同的传感器类型和唤醒属性，则列表中的第一个传感器就叫做“默认”传感器，该传感器会返回给使用 <code>getDefaultSensor(int sensorType, bool wakeUp)</code> API 的应用。</p>
+
+<h4 id="stability_of_sensors_list">传感器列表的稳定性</h4>
+
+<p>在传感器 HAL 重启后，如果 <code>getSensorsList()</code> 返回的数据表明与重启之前检索到的传感器列表相比发生了明显变化，则框架会触发重启 Android Runtime。传感器列表的明显变化包括以下这些情况：具有指定句柄的传感器缺失或属性发生变化、引入了新传感器等等。虽然重启 Android Runtime 会对用户造成干扰，但是必须这样做，因为 Android 框架不再符合 Android API 合同要求，即静态（非动态）传感器在应用的有效期内保持不变。这还可能使框架无法重建应用提出的活动传感器请求。因此，建议 HAL 供应商尽可能避免传感器列表发生改变。</p>
+
+<p>为了确保传感器句柄的稳定性，HAL 必须明确将设备中的指定物理传感器映射到其句柄。虽然传感器 HAL 接口没有强制要求执行具体的实现，但开发者可以通过多种方法来满足此要求。</p>
+
+<p>例如，可以使用每个传感器的固定属性（例如供应商、型号和传感器类型）的组合对传感器列表进行排序。另一种方法则需要设备的静态传感器组在硬件中固定不变，因此 HAL 需要知道所需的全部传感器都已完成初始化，然后再从 <code>getSensorsList()</code> 返回值。
+LX: so the HAL needs to know when all expected sensors have completed initialization before returning from getSensorsList(). 这部分不确定该所需传感器的列表可以编译为 HAL 二进制文件或存储在文件系统中的配置文件中，并且可以根据列表中传感器的显示顺序确定哪些句柄是稳定的。
+LX: and the order of appearance can be used to derive stable handles. 这部分不确定虽然最佳解决方案取决于 HAL 的具体实现细节，但关键要求是传感器句柄不会在 HAL 重启时发生改变。</p>
+
+<h3 id="configuring_sensors">配置传感器</h3>
+
+<p>激活传感器之前，必须先通过 <code>batch()</code> 函数为传感器配置采样周期和最大报告延迟。</p>
+
+<p>必须能够通过 <code>batch()</code> 随时重新配置传感器，且不会丢失传感器数据。</p>
+
+<h4 id="sampling_period">采样周期</h4>
+
+<p>根据所配置的传感器类型，采样周期具有不同的含义：</p>
+
+<ul>
+<li>连续模式：生成传感器事件的频率</li>
+<li>变化模式：生成事件的频率不会高于采样周期；如果测量值没有变化，则可能会以低于采样周期的频率生成事件。</li>
+<li>单次模式：忽略采样周期</li>
+<li>特殊模式：有关详情，请参阅<a href="/devices/sensors/sensor-types">传感器类型说明</a>。</li>
+</ul>
+
+<p>要了解采样周期与传感器报告模式之间的交互，请参阅<a href="/devices/sensors/report-modes">报告模式</a>。</p>
+
+<h4 id="maximum_reporting_latency">最大报告延迟</h4>
+
+<p>最大报告延迟设置了一个最长时间值（以纳秒为单位），该值是指在 SoC 唤醒期间，通过 HAL 将事件写入事件 FMQ 之前，事件可以延迟并存储在硬件 FIFO 中的最长时间。</p>
+
+<p>值为零表示事件必须在测量完成后立即报告，即完全跳过 FIFO，或者在传感器发出的事件出现在 FIFO 中时立即清空 FIFO。</p>
+
+<p>例如，以 50Hz 激活的加速度计，如果最大报告延迟为 0，则在 SoC 唤醒期间，每秒会触发 50 次中断。</p>
+
+<p>当最大报告延迟大于零时，则在检测到传感器事件后无需立即进行报告。只要所有事件的延迟均未超过最大报告延迟，就可以将事件暂时存储在硬件 FIFO 中并以批量方式进行报告。自上一批报告的事件之后产生的所有事件，都将一次性记录并返回。这样就可以减少发送到 SoC 的中断数量，并且在传感器捕获数据并进行批量处理时，SoC 可以切换到低耗电模式。</p>
+
+<p>每个事件都具有相关联的时间戳。推迟事件的报告时间不得影响事件的时间戳。时间戳必须准确，并与事件的实际发生时间而非报告时间相对应。</p>
+
+<p>要详细了解如何在最大报告延迟不为零的情况下报告传感器事件以及相关的要求，请参阅<a href="/devices/sensors/batching">批处理</a>。</p>
+
+<h3 id="activating_sensors">激活传感器</h3>
+
+<p>框架通过 <code>activate()</code> 函数启用和停用传感器。在激活传感器之前，框架必须先通过 <code>batch()</code> 配置传感器。</p>
+
+<p>传感器一旦被停用，其发出的事件就不能再写入到事件 FMQ 中。</p>
+
+<h3 id="flushing_sensors">刷写传感器</h3>
+
+<p>如果某个传感器配置为批处理传感器数据，则框架可以通过调用 <code>flush()</code> 强制立即刷写经过批处理的传感器事件。这会使指定传感器句柄的经过批处理的传感器事件立即写入事件 FMQ 中。传感器 HAL 必须将刷写完成事件作为 <code>flush()</code> 的结果附加到写入的传感器事件的末尾。</p>
+
+<p>刷写会异步执行（即该函数必须立即返回）。如果实现将一个 FIFO 用于多个传感器，则会刷写该 FIFO，并且仅会针对指定传感器添加刷写完成事件。</p>
+
+<p>如果指定传感器没有 FIFO（无法缓冲），或者 FIFO 在调用 flush() 时为空，则 <code>flush()</code> 仍会成功并且会针对该传感器发送刷写完成事件。这适用于除单次传感器以外的所有传感器。</p>
+
+<p>如果针对单次传感器调用 <code>flush()</code>，则 <code>flush()</code> 会返回 BAD_VALUE 并且不会生成刷写完成事件。</p>
+
+<h3 id="writing_sensor_events_to_the_fmq">将传感器事件写入 FMQ</h3>
+
+<p>传感器 HAL 使用事件 FMQ 将传感器事件推送给 Android 传感器框架。</p>
+
+<p>事件 FMQ 是同步 FMQ，这意味着如果尝试向 FMQ 写入超出可用空间容量的事件，则会导致写入失败。在这种情况下，HAL 需要决定是将当前这组事件分成两个较小的组进行写入，还是等到有足够的可用空间时将所有事件一起写入。</p>
+
+<p>当传感器 HAL 将所需数量的传感器事件写入事件 FMQ 后，传感器 HAL 必须将 <code>EventQueueFlagBits::READ_AND_PROCESS</code> 位写入事件 FMQ 的 <code>EventFlag::wake</code> 函数，以通知框架这些事件已准备就绪。可以通过 <code>EventFlag::createEventFlag</code> 和事件 FMQ 的 <code>getEventFlagWord()</code> 函数从事件 FMQ 创建 EventFlag。</p>
+
+<p>传感器 HAL 2.0 支持对事件 FMQ 使用 <code>write</code> 和 <code>writeBlocking</code>。默认实现提供使用 <code>write</code> 的引用。如果使用 <code>writeBlocking</code> 函数，则必须将 <code>readNotification</code> 标记设置为 <code>EventQueueFlagBits::EVENTS_READ</code>，该标记由框架在从事件 FMQ 中读取事件时设置。写入通知标记必须设置为 <code>EventQueueFlagBits::READ_AND_PROCESS</code>，以通知框架已将事件写入事件 FMQ。</p>
+
+<h3 id="wake_up_events">WAKE_UP 事件</h3>
+
+<p><code>WAKE_UP</code> 事件是这样一类传感器事件，它们会立即唤醒应用处理器 (AP) 来处理事件。每次将 <code>WAKE_UP</code> 事件写入事件 FMQ 时，传感器 HAL 都必须锁住唤醒锁，以确保在框架能够处理事件之前系统不会锁定屏幕。收到 <code>WAKE_UP</code> 事件后，框架会锁住自己的唤醒锁，以允许传感器 HAL 解锁其唤醒锁。要在传感器 HAL 解锁其唤醒锁时执行同步，请使用唤醒锁 FMQ。</p>
+
+<p>传感器 HAL 必须读取唤醒锁 FMQ 来确定框架已处理的 <code>WAKE_UP</code> 事件数量。只有当未处理的 <code>WAKE_UP</code> 事件的总数为零时，HAL 才应针对 <code>WAKE_UP</code> 事件解锁其唤醒锁。处理传感器事件后，框架会计算标记为 <code>WAKE_UP</code> 事件的事件数量，并将此数量写回唤醒锁 FMQ。</p>
+
+<p>每次将数据写入唤醒锁 FMQ 时，框架都会在唤醒锁 FMQ 上设置 <code>WakeLockQueueFlagBits::DATA_WRITTEN</code> 写入通知。</p>
+
+<h3 id="dynamic_sensors">动态传感器</h3>
+
+<p>动态传感器不是设备的一部分，但可以作为设备的输入，例如带有加速度计的游戏手柄。</p>
+
+<p>当动态传感器连接时，必须从传感器 HAL 调用 <code>ISensorsCallback</code> 中的 <code>onDynamicSensorConnected</code> 函数。这会通知框架连接了新的动态传感器，从而允许通过框架控制传感器，并让客户端能够使用传感器的事件。</p>
+
+<p>同样地，当动态传感器断开连接时，必须调用 <code>ISensorsCallback</code> 中的 <code>onDynamicSensorDisconnected</code> 函数，以便框架能够移除已不再可用的传感器。</p>
+
+<h3 id="direct_channel">直接通道</h3>
+
+<p>直接通道是一种操作方法，这种方法会绕过 Android 传感器框架，将传感器事件写入特定的内存而不是事件 FMQ 中。注册直接通道的客户端，必须直接从用于创建直接通道的内存中读取传感器事件，而不是通过框架接收传感器事件。就一般操作而言，<code>configDirectReport()</code> 函数与 <code>batch()</code> 类似，但它会配置直接报告通道。</p>
+
+<p><code>registerDirectChannel()</code> 和 <code>unregisterDirectChannel()</code> 函数分别用于创建和销毁新的直接通道。</p>
+
+<h3 id="operation_modes">操作模式</h3>
+
+<p>框架可以使用 <code>setOperationMode()</code> 函数来配置传感器，以便能够将传感器数据注入传感器。这对于测试非常有用，尤其是对于框架下存在的算法。</p>
+
+<p><code>injectSensorData()</code> 函数通常用于将操作参数推送到传感器 HAL 中。该函数还可用于将传感器事件注入特定传感器。</p>
+
+<h2 id="validation">验证</h2>
+
+<p>要验证传感器 HAL 的实现，请运行传感器 CTS 和 VTS 测试。</p>
+
+<h3 id="cts_tests">CTS 测试</h3>
+
+<p>传感器 CTS 测试存在于自动化 CTS 测试和手动 CTS 验证程序应用中。</p>
+
+<p>自动化测试位于 <a href="https://android.googlesource.com/platform/cts/+/master/tests/sensor/src/android/hardware/cts" class="external">cts/tests/sensor/src/android/hardware/cts</a>。这些测试用于验证传感器的标准功能，例如激活传感器、批处理和传感器事件频率。</p>
+
+<p>CTS 验证程序测试位于 <a href="https://android.googlesource.com/platform/cts/+/master/apps/CtsVerifier/src/com/android/cts/verifier/sensors/" class="external">cts/apps/CtsVerifier/src/com/android/cts/verifier/sensors</a>。这些测试需要测试操作员手动输入，以确保传感器报告准确的值。</p>
+
+<p>通过 CTS 测试是确保受测设备满足所有 CDD 要求的关键所在。</p>
+
+<h3 id="vts_tests">VTS 测试</h3>
+
+<p>适用于传感器 HAL 2.0 的 VTS 测试位于 hardware/interfaces/sensors/2.0/vts。这些测试可确保能够正确实现传感器 HAL，并完全满足 <code>ISensors.hal</code> 和 <code>ISensorsCallback.hal</code> 的所有要求。</p>
+
+<h2 id="upgrading_to_sensors_hal_20_from_10">从传感器 HAL 1.0 升级到 2.0</h2>
+
+<p>从传感器 HAL 1.0 升级到 2.0 时，请确保您的 HAL 实现满足以下要求。</p>
+
+<h3 id="initializing_the_hal_2">初始化 HAL</h3>
+
+<p>为了在框架和 HAL 之间建立 FMQ，必须支持 <code>initialize()</code> 函数。</p>
+
+<h3 id="exposing_available_sensors_2">公开可用的传感器</h3>
+
+<p>在传感器 HAL 2.0 中，<code>getSensorsList()</code> 函数在单次设备启动期间必须返回相同的值，即使传感器 HAL 在此期间进行了重启也是如此。<code>getSensorsList()</code> 函数的一项新要求就是，它在单次设备启动期间必须返回相同的值，即使传感器 HAL 在此期间进行了重启也是如此。这样一来，框架就可以在系统服务器重启时尝试重建传感器连接。在设备重启时，<code>getSensorsList()</code> 返回的值可以更改。</p>
+
+<h3 id="writing_sensor_events_to_the_fmq_2">将传感器事件写入 FMQ</h3>
+
+<p>在传感器 HAL 2.0 中，传感器 HAL 必须在有可用的传感器事件时主动将传感器事件写入事件 FMQ，而不是等待调用 <code>poll()</code>。HAL 还需要将正确的位写入 EventFlag，以在框架内触发 FMQ 读取。</p>
+
+<h3 id="wake_up_events_2">WAKE_UP 事件</h3>
+
+<p>在传感器 HAL 1.0 中，当 <code>WAKE_UP</code> 发布到 <code>poll()</code> 后，HAL 能够在随后的任何一次 <code>poll()</code> 调用中，针对任何 <code>WAKE_UP</code> 事件解锁其唤醒锁，因为这表明框架已经处理了所有传感器事件并且已经获得了唤醒锁（如有必要）。在传感器 HAL 2.0 中，HAL 不会再获知框架是否已处理了写入 FMQ 的事件，框架在处理 <code>WAKE_UP</code> 事件后，可以通过唤醒锁 FMQ 通知 HAL。</p>
+
+<p>在传感器 HAL 2.0 中，由传感器 HAL 针对 <code>WAKE_UP</code> 事件锁住的唤醒锁必须以 <code>SensorsHAL_WAKEUP</code> 开头。</p>
+
+<h3 id="dynamic_sensors_2">动态传感器</h3>
+
+<p>在传感器 HAL 1.0 中，动态传感器通过 <code>poll()</code> 函数返回。传感器 HAL 2.0 要求，每次动态传感器连接发生变化时，都要调用 <code>ISensorsCallback</code> 中的 <code>onDynamicSensorsConnected</code> 和 <code>onDynamicSensorsDisconnected</code>。这些回调作为 <code>ISensorsCallback</code> 指针的一部分提供，该指针通过 <code>initialize()</code> 函数提供。</p>
+
+<h3 id="operation_modes_2">操作模式</h3>
+
+<p>传感器 HAL 2.0 必须支持 <code>WAKE_UP</code> 传感器的 <code>DATA_INJECTION</code> 模式。</p>
+
+<h3 id="multi-hal_support">多 HAL 支持</h3>
+
+<p>Android 传感器框架本身不支持传感器 HAL 2.0 的多 HAL 功能。</p>
+
+</body></html>

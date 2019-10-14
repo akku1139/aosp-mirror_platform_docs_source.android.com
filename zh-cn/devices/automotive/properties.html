@@ -4,6 +4,7 @@
     <meta name="book_path" value="/_book.yaml"/>
   </head>
   <body>
+
   <!--
       Copyright 2017 The Android Open Source Project
 
@@ -20,14 +21,14 @@
       limitations under the License.
   -->
 
-<p>车载 HAL 接口会定义原始设备制造商 (OEM) 可以实现的属性，并会包含属性元数据（例如，属性是否为 int 以及允许使用哪些更改模式）。车载 HAL 接口是以对属性（特定功能的抽象表示）的访问（读取、写入、订阅）为基础。</p>
+<p>车载硬件抽象层 (HAL) 接口会定义原始设备制造商 (OEM) 可以实现的属性，并会包含属性元数据（例如，属性是否为 int 以及允许使用哪些更改模式）。VHAL 接口基于对属性（特定功能的抽象表示）的访问（读取、写入、订阅）。</p>
 
 <h2 id="interfaces">HAL 接口</h2>
-<p>车载 HAL 使用以下接口：</p>
+<p>VHAL 使用以下接口：</p>
 <ul>
 <li><code>vehicle_prop_config_t const *(*list_properties)(..., int*
 num_properties)</code>
-<br />列出车载 HAL 所支持的所有属性的配置。车辆网络服务只会使用受支持的属性。
+<br />列出 VHAL 所支持的所有属性的配置。车辆网络服务只会使用受支持的属性。
 </li>
 <li><code>(*get)(..., vehicle_prop_value_t *data)</code>
 <br />读取属性的当前值。对于区域属性，每个区域都可能具有不同的值。</li>
@@ -38,25 +39,25 @@ zones)</code>
 <ul>
 <li>开始监视属性值的变化。对于区域属性，订阅适用于请求的区域。Zones = 0 用于请求所有受支持的区域。
 </li>
-<li>车载 HAL 应该在属性值发生变化时（即 on-change 类型）或按一定间隔（即 continuous 类型）调用单独的回调。</li>
+<li>VHAL 应该在属性值发生变化时（即变化时触发类型）或按一定间隔（即连续类型）调用单独的回调。</li>
 </ul></li>
 <li><code>(*release_memory_from_get)(struct vehicle_hw_device* device,
 vehicle_prop_value_t *data)</code>
 <br />释放从 get 调用分配的内存。</li>
 </ul>
 
-<p>车载 HAL 使用以下回调接口：</p>
+<p>VHAL 使用以下回调接口：</p>
 <ul>
 <li><code>(*vehicle_event_callback_fn)(const vehicle_prop_value_t
 *event_data)</code>
 <br />通知车辆属性值的变化。应只针对已订阅属性执行。</li>
 <li><code>(*vehicle_error_callback_fn)(int32_t error_code, int32_t property,
 int32_t operation)</code>
-<br />返回全局车载 HAL 级错误或每个属性的错误。全局错误会导致 HAL 重新启动，这可能导致包括应用在内的其他组件重新启动。</li>
+<br />返回全局 VHAL 级错误或每个属性的错误。全局错误会导致 HAL 重新启动，这可能会导致包括应用在内的其他组件重新启动。</li>
 </ul>
 
 <h2 id="properties">车辆属性</h2>
-<p>属性可以是只读、只写（用于将信息传递到车载 HAL 一级），也可以是能够读取和写入（对大多数属性而言支持读写是可选的）。每个属性都由 int32 键唯一标识，且具有预定义的类型 (<code>value_type</code>)：</p>
+<p>属性可以是只读、只写（用于将信息传递到 VHAL 一级），也可以是读写（对大多数属性而言支持读写是可选的）。每个属性都由 int32 键唯一标识，且具有预定义的类型 (<code>value_type</code>)：</p>
 
 <ul>
 <li><code>BYTES</code></li>
@@ -72,7 +73,7 @@ int32_t operation)</code>
 <p>区域属性可能具有多个值，具体取决于属性所支持的区域数量。</p>
 
 <h2 id="area_type">区域类型</h2>
-<p>车载 HAL 定义了多种区域类型：</p>
+<p>VHAL 定义了多种区域类型：</p>
 <ul>
 <li><code>GLOBAL</code>
 <br />此属性是单一实例，不具备多个区域。</li>
@@ -146,7 +147,7 @@ int32_t operation)</code>
 <p>在初始化期间，由于尚未收到匹配的车辆网络消息，属性的值可能不可用。在这种情况下，<code>get</code> 调用应该返回 <code>-EAGAIN</code>。某些属性（如 HVAC）具有独立的电源开/关属性。这种属性的 <code>get</code> 的调用（关闭电源时）应返回 <code>UNAVAILABLE</code> 状态，而不是返回错误。</p>
 
 <p>示例：获取 HVAC 温度</p>
-<img src="../images/vehicle_hvac_get.png" alt="车载 HAL 获取 HVAC 的示例"/>
+<img src="../images/vehicle_hvac_get.png" alt="VHAL get HVAC 示例"/>
 <p class="img-caption"><strong>图 1</strong>. 获取 HVAC 温度（CS = CarService、VNS = VehicleNetworkService、VHAL = 车载 HAL）</p>
 
 <h3 id="set">Set 调用</h3>
@@ -155,11 +156,11 @@ int32_t operation)</code>
 <p>在 <code>set</code> 生效之前，<code>get</code> 不一定会返回所设置的值。</p>
 
 <p>示例：设置 HVAC 温度</p>
-<img src="../images/vehicle_hvac_set.png" alt="车载 HAL 设置 HVAC 的示例"/>
-<p class="img-caption"><strong>图 2</strong>. 设置 HVAC 温度（CD = CarService、VNS = VehicleNetworkService、VHAL = 车载 HAL）</p>
+<img src="../images/vehicle_hvac_set.png" alt="VHAL set HVAC 示例"/>
+<p class="img-caption"><strong>图 2</strong>.设置 HVAC 温度（CS = CarService、VNS = VehicleNetworkService、VHAL = 车载 HAL）</p>
 
 <h2 id="prop_custom">处理自定义属性</h2>
-<p>为了满足合作伙伴的特定需求，车载 HAL 允许使用针对系统应用的自定义属性。在使用自定义属性时，请遵循以下指南：</p>
+<p>为了满足合作伙伴的特定需求，VHAL 允许使用仅限用于系统应用的自定义属性。在使用自定义属性时，请遵循以下指南：</p>
 <ul>
 <li>应使用以下字段生成属性 ID：
   <ul>
@@ -177,7 +178,7 @@ int32_t operation)</code>
 
 <h2 id="prop_hvac">处理 HVAC 属性</h2>
 <p>
-  您可以使用车载 HAL 控制 HVAC，具体方法是设置与 HVAC 相关的属性。大多数 HVAC 属性都是区域属性，但也有一些是非区域（全局）属性。定义的示例属性包括：</p>
+  您可以使用 VHAL 控制 HVAC，具体方法是设置与 HVAC 相关的属性。大多数 HVAC 属性都是区域属性，但也有一些是非区域（全局）属性。定义的示例属性包括：</p>
 
 <ul>
   <li><code>VEHICLE_PROPERTY_HVAC_TEMPERATURE_SET</code>
@@ -227,7 +228,7 @@ int32_t operation)</code>
 <h2 id="prop_sensor">处理传感器属性</h2>
 
 <p>
-  车载 HAL 传感器属性表示真实的传感器数据或策略信息（如驾驶状态）。任何应用都可以不受限制地访问某些传感器信息（如驾驶状态和日间/夜间模式），因为这些数据是构建安全车载应用所必需的。其他传感器信息（如车辆速度）较为敏感，需要获取用户可管理的特定权限才能查看。
+  VHAL 传感器属性表示真实的传感器数据或策略信息（如驾驶状态）。任何应用都可以不受限制地访问某些传感器信息（如驾驶状态和日间/夜间模式），因为这些数据是构建安全车载应用所必需的。其他传感器信息（如车辆速度）较为敏感，需要获取用户可管理的特定权限才能查看。
 </p>
 
 <p>
@@ -250,22 +251,21 @@ int32_t operation)</code>
   <br />油位是否较低（布尔值）。</li>
 </ul>
 
-<h2 id="vms">车载地图服务 (VMS)</h2>
+<h2 id="vms">车载地图服务</h2>
 
 <p>
-  车载地图服务 (VMS) 提供了一种可通过发布/订阅接口在客户端之间交换地图数据的机制，旨在支持常见的车辆功能，例如高级驾驶辅助系统 (<a href="https://en.wikipedia.org/wiki/Advanced_driver-assistance_systems" class="external">ADAS</a>)。
-  客户端可能包括通过 Vehicle HAL 或 Android 特权应用中的 VMS 属性进行交互的车载系统。在 VMS 上共享的数据仅限用于地图数据，供车载系统和支持的应用使用。
+  车载地图服务 (VMS) 提供了一种可通过发布/订阅接口在客户端之间交换地图数据的机制，旨在支持常见的车辆功能，例如高级驾驶辅助系统 (<a href="https://en.wikipedia.org/wiki/Advanced_driver-assistance_systems" class="external">ADAS</a>)。客户端可能包括通过 VHAL 或 Android 特权应用中的 VMS 属性进行交互的车载系统。在 VMS 上共享的数据仅限用于地图数据，供车载系统和支持的应用使用。
 </p>
 
 <p>VMS 仅适用于 Android Automotive 实现；AOSP 不包含发布或订阅 VMS 的默认客户端。
 </p>
 
 <p>
-  对于 Vehicle HAL 中的 VMS 属性，<a href="https://android.googlesource.com/platform/hardware/interfaces/+/master/automotive/vehicle/2.0/types.hal#3216" class="external">VmsMessageType</a> 枚举中的<a href="https://android.googlesource.com/platform/hardware/interfaces/+/master/automotive/vehicle/2.0/types.hal" class="external">车载 HAL 2.0</a> 中对消息类型和数据结构进行了说明，其中列出了受支持的 VMS 消息的类型。此枚举用作车辆属性整数数组中的第一个整数，并用于确定消息其余部分的解码方式。
+  对于 VHAL 中的 VMS 属性，<a href="https://android.googlesource.com/platform/hardware/interfaces/+/master/automotive/vehicle/2.0/types.hal#3216" class="external">VmsMessageType</a> 枚举中的 <a href="https://android.googlesource.com/platform/hardware/interfaces/+/master/automotive/vehicle/2.0/types.hal" class="external">VHAL 2.0</a> 中对消息类型和数据结构进行了说明，其中列出了受支持的 VMS 消息的类型。此枚举用作车辆属性整数数组中的第一个整数，并用于确定消息其余部分的解码方式。
 </p>
 
 <aside class="note">
-  <strong>注意</strong>：有关 Automotive 兼容性要求的详细信息，请参阅 <a href="/compatibility/android-cdd#2_5_automotive_requirements">Automotive 要求</a>。
+  <strong>注意</strong>：有关 Automotive 兼容性要求的详细信息，请参阅<a href="/compatibility/android-cdd#2_5_automotive_requirements">针对 Automotive 的要求</a>。
 </aside>
 
 </body></html>

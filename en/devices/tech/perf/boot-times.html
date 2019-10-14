@@ -446,16 +446,19 @@ Use scheduler tuning for early boot. Example from a Google Pixel:
 
 <pre
 class="prettyprint">on init
-    # update cpusets now that processors are up
-    write /dev/cpuset/top-app/cpus 0-3
-    write /dev/cpuset/foreground/cpus 0-3
-    write /dev/cpuset/foreground/boost/cpus 0-3
-    write /dev/cpuset/background/cpus 0-3
-    write /dev/cpuset/system-background/cpus 0-3
-    # set default schedTune value for foreground/top-app (only affects EAS)
-    write /dev/stune/foreground/schedtune.prefer_idle 1
-    write /dev/stune/top-app/schedtune.boost 10
-    write /dev/stune/top-app/schedtune.prefer_idle 1</pre>
+    # boottime stune
+    write /dev/stune/schedtune.prefer_idle 1
+    write /dev/stune/schedtune.boost 100
+    on property:sys.boot_completed=1
+    # reset stune
+    write /dev/stune/schedtune.prefer_idle 0
+    write /dev/stune/schedtune.boost 0
+
+    # or just disable EAS during boot
+    on init
+    write /sys/kernel/debug/sched_features NO_ENERGY_AWARE
+    on property:sys.boot_completed=1
+    write /sys/kernel/debug/sched_features ENERGY_AWARE</pre>
 
 <p>
 Some services may need a priority boost during boot. Example:
@@ -656,7 +659,9 @@ This enables tracing (which is disabled by default).
 <li>In the <code>device.mk</code> file, add the following line:
 
 <pre
-class="prettyprint">PRODUCT_PROPERTY_OVERRIDES +=    debug.atrace.tags.enableflags=802922</pre>
+class="prettyprint">
+PRODUCT_PROPERTY_OVERRIDES +=    debug.atrace.tags.enableflags=802922
+PRODUCT_PROPERTY_OVERRIDES +=    persist.traced.enable=0</pre>
 </li>
 
 <li>In the device <code>BoardConfig.mk</code> file, add the following:
@@ -666,7 +671,7 @@ class="prettyprint">BOARD_KERNEL_CMDLINE := ... trace_buf_size=64M trace_event=s
 </li>
 
 <p>
-For detailed I/O analysis, also add block and ext4.
+For detailed I/O analysis, also add block and ext4 and f2fs.
 </p>
 
 <li>In the device-specific <code>init.rc</code> file, make the following
@@ -676,6 +681,7 @@ For detailed I/O analysis, also add block and ext4.
 complete)</li>
  <li><code>write /d/tracing/tracing_on 0</code></li>
  <li><code>write /d/tracing/events/ext4/enable 0</code></li>
+ <li><code>write /d/tracing/events/f2fs/enable 0</code></li>
  <li><code>write /d/tracing/events/block/enable 0</code></li>
  </ul>
 </li>
@@ -686,8 +692,10 @@ After boot up, fetch trace:
 </p>
 
 
-<pre class="devsite-terminal">adb root && adb shell "cat /d/tracing/trace" &lt; boot_trace
-./external/chromium-trace/catapult/tracing/bin/trace2html boot_trace --output boot_trace.html
+<pre class="devsite-click-to-copy">
+<code class="devsite-terminal">adb root && adb shell atrace --async_stop -z -c -o /data/local/tmp/boot_trace</code>
+<code class="devsite-terminal">adb pull /data/local/tmp/boot_trace</code>
+<code class="devsite-terminal">$ANDROID_BUILD_TOP/external/chromium-trace/systrace.py --from-file=boot_trace</code>
 </pre>
 
 <p class="note">

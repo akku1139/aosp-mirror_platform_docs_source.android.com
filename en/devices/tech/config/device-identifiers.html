@@ -1,0 +1,133 @@
+<html devsite>
+  <head>
+    <title>Device Identifiers</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+{% include "_versions.html" %}
+  <body>
+  <!--
+      Copyright 2019 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>Android {{ androidQVersionNumber }} changes the permissions for
+device identifiers so that all device identifiers are now protected by
+the <code>READ_PRIVILEGED_PHONE_STATE</code> permission. Prior to
+Android {{ androidQVersionNumber }}, persistent device identifiers
+(IMEI/MEID, IMSI, SIM, and build serial) were protected behind the
+<code>READ_PHONE_STATE</code> runtime permission.
+The <code>READ_PRIVILEGED_PHONE_STATE</code> permission is only
+granted to apps signed with the platform key and privileged system apps.</p>
+
+<p>More information for the new permission requirements can be found in the
+Javadoc pages for <a
+href="https://android.googlesource.com/platform/frameworks/base/+/master/telephony/java/android/telephony/TelephonyManager.java"
+class="external">TelephonyManager.java</a> and <a
+href="https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/os/Build.java"
+class="external">Build.java</a>.</p>
+
+<p>This change affects the following APIs:</p>
+
+<ul>
+  <li>TelephonyManager#getDeviceId</li>
+  <li>TelephonyManager#getImei</li>
+  <li>TelephonyManager#getMeid</li>
+  <li>TelephonyManager#getSimSerialNumber</li>
+  <li>TelephonyManager#getSubscriberId</li>
+  <li>Build#getSerial</li>
+</ul>
+
+<p>Carrier apps in Google Play that don't use <a
+href="/devices/tech/config/uicc">carrier
+privileges</a> no longer have access to device identifiers. Carriers
+with apps that are preloaded on devices as privileged apps need to
+use the <code>READ_PRIVILEGED_PHONE_STATE</code> permission to access
+device identifiers.</p>
+
+<h2 id="device-identifiers-implementation">Implementation</h2>
+<p>Update your privileged permission whitelist to grant the
+<code>READ_PRIVILEGED_PHONE_STATE</code> permission to those privileged
+apps that require access to device identifiers.</p>
+
+<p>To learn more about whitelisting, refer to <a
+href="/devices/tech/config/perms-whitelist">Privileged
+Permission Whitelisting</a>.</p>
+
+<p>To invoke the affected APIs, an app must meet one of the following
+requirements:</p>
+<ul>
+  <li>If the app is a preloaded privileged application, it needs the
+    <code>READ_PRIVILEGED_PHONE_STATE</code> permission declared in
+    AndroidManifest.xml. The app also needs to whitelist
+    this privileged permission. </li>
+  <li>Apps delivered through Google Play need carrier privileges.
+    Learn more about granting carrier privileges on the <a
+    href="/devices/tech/config/uicc">UICC Carrier
+    Privileges</a> page.</li>
+  <li>A device or profile owner app that has been granted the
+      <code>READ_PHONE_STATE</code> permission.</li>
+</ul>
+<p>An app that doesn't meet any of these requirements has the following
+behavior:</p>
+<ul>
+  <li>If the app is targeting pre-Q and doesn't have the
+    <code>READ_PHONE_STATE</code> permission granted, <code>SecurityException</code>
+    is triggered. this is the current pre-Q behavior as this permission
+    is required to invoke these APIs.</li>
+  <li>If the app is targeting pre-Q and does have the
+    <code>READ_PHONE_STATE</code> permission granted, it receives a
+    null value for all of the TelephonyManager APIs and <code>Build.UNKNOWN</code>
+    for the <code>Build#getSerial</code> method.</li>
+  <li>If the app is targeting Android {{ androidQVersionNumber }} or higher and doesn't meet any one of the new
+    requirements then it receives a SecurityException.</li>
+</ul>
+
+<h2 id="device-identifiers-validation">Validation and testing</h2>
+<p>The <a href="/compatibility/cts">Compatibility
+Test Suite (CTS)</a> includes tests to verify the expected device identifier
+access behavior for apps with carrier privileges, device and
+profile owners, and those apps that are expected to not have access to device
+identifiers.</p>
+
+
+<p>The following CTS tests are specific to this feature.</p>
+
+<pre class="devsite-click-to-copy">
+<code class="devsite-terminal">cts-tradefed run cts -m CtsCarrierApiTestCases -t
+    android.carrierapi.cts.CarrierApiTest</code>
+
+<code class="devsite-terminal">cts-tradefed run cts -m CtsTelephonyTestCases -t
+    android.telephony.cts.TelephonyManagerTest</code>
+
+<code class="devsite-terminal">cts-tradefed run cts -m CtsTelephony3TestCases</code>
+
+<code class="devsite-terminal">cts-tradefed run cts -m CtsPermissionTestCases -t
+    android.permission.cts.TelephonyManagerPermissionTest</code>
+
+<code class="devsite-terminal">cts-tradefed run cts -m CtsDevicePolicyManagerTestCases -t
+    com.android.cts.devicepolicy.DeviceOwnerTest#testDeviceOwnerCanGetDeviceIdentifiers</code>
+
+<code class="devsite-terminal">cts-tradefed run cts -m CtsDevicePolicyManagerTestCases -t
+    com.android.cts.devicepolicy.ManagedProfileTest#testProfileOwnerCanGetDeviceIdentifiers</code>
+
+<code class="devsite-terminal">cts-tradefed run cts -m CtsDevicePolicyManagerTestCases -t
+    com.android.cts.devicepolicy.ManagedProfileTest#testProfileOwnerCannotGetDeviceIdentifiersWithoutPermission</code>
+
+<code class="devsite-terminal">cts-tradefed run cts -m CtsDevicePolicyManagerTestCases -t
+    com.android.cts.devicepolicy.DeviceOwnerTest#testDeviceOwnerCannotGetDeviceIdentifiersWithoutPermission</code>
+</pre>
+
+  </body>
+</html>

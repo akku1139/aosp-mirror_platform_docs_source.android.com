@@ -70,11 +70,3 @@ To do so:
     `android.hardware.health@2.0-service.device_name` instead. For more
     information, see [Implementing Health](/devices/tech/health/implementation).
 
-1.  Add the following lines to `BoardConfig.mk` to remove the backup instance
-    from framework manifest. This ensures the framework manifest correctly
-    reflects the HALs on the device and allows the relevant VTS tests to pass.
-
-    ```make
-    DEVICE_FRAMEWORK_MANIFEST_FILE += \
-        system/libhidl/vintfdata/manifest_healthd_exclude.xml
-    ```

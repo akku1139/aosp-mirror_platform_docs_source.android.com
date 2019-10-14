@@ -1,0 +1,42 @@
+<html devsite><head>
+    <title>锁定屏幕</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+
+  <!--
+      Copyright 2019 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>在 AOSP 中，具有解锁手动启示 Keyboard 的锁定屏幕的默认实现仅出现在主显示屏上。在 Android 9（及更低版本）中，辅助屏幕在单个外部显示屏上支持单个锁定窗口。<em></em>在 Android 10 中，锁定屏幕扩展到所有公共辅助显示屏。锁定屏幕仍然很简单，但不支持从辅助屏幕解锁。</p>
+
+<p><img src="/devices/tech/display/images/multi_display_08.png"/></p>
+
+<p><strong>图 1.</strong> 辅助显示屏上的锁定屏幕</p>
+
+<p>如果满足基本安全要求，设备制造商可以为辅助显示屏实现其自己的锁定屏幕。当设备锁定时，信息应在所有显示屏上安全地隐藏起来。对于设备锁定时应显示或隐藏哪些内容，没有相关的内置政策或控制。因此，实现受限访问的唯一安全方式是，将所有内容隐藏到锁定屏幕和锁定窗口之后。仅有的例外情况是使用 <code><a href="https://developer.android.com/reference/android/R.attr.html#showWhenLocked" class="external">R.attr.showWhenLocked</a></code> 或 <code><a href="https://developer.android.com/reference/android/app/Activity.html#setShowWhenLocked(boolean)" class="external">Activity.setShowWhenLocked()</a></code> 方法明确选择在锁定屏幕之上显示的应用。否则，信息很有可能从公共和个人显示屏泄露。</p>
+
+<p>虽然显示屏可以处于不同的状态 (<code>ON</code>/<code>OFF</code>)，但是锁定状态对所有显示屏而言是全局性的。与任何设备实现一样，应该让用户清楚地知道设备何时会锁定（或解锁）。例如，按下电源按钮通常会锁定移动设备。此外，电源按钮还应锁定所有内部和外部屏幕。</p>
+
+<p>由于锁定窗口归 SystemUI 所有，因此不会放置在个人显示屏上。个人显示屏的所有者负责在设备锁定时隐藏窗口并保护内容。默认系统实现通过更改公开范围仅隐藏个人显示屏上的活动。<em></em></p>
+
+<h2 id="implementation">实现</h2>
+
+<p>辅助显示屏上的锁定窗口在 <code>KeyguardDisplayManager</code> 中以 <a href="https://developer.android.com/reference/android/app/Presentation" class="external">Presentation</a> 窗口的形式实现。Android 10 将 <code>KeyguardDisplayManager#mPresentations</code> 更改为一个数组，其中包含所有辅助屏幕的所有锁定窗口。<code>KeyguardDisplayManager</code> 还包含一个显示屏更改监听器，可响应对可用显示屏的更改并保护所有屏幕。请务必在任何给定时间立即锁定所有连接的显示屏，这样，即使攻击者对设备进行物理访问，也无法提取用户数据。</p>
+
+<p>锁定窗口会显示在所有公共辅助显示屏上（请参阅 <code>KeyguardDisplayManager#isKeyguardShowable()</code>）。个人显示屏的所有者负责在设备锁定时保护内容。</p>
+
+</body></html>

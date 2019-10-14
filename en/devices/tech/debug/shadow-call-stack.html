@@ -1,0 +1,80 @@
+<html devsite>
+  <head>
+    <title>ShadowCallStack</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+{% include "_versions.html" %}
+  <body>
+  <!--
+      Copyright 2019 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<aside class="note"><b>Note:</b> ShadowCallStack is only implemented for
+aarch64.</aside>
+
+<p>ShadowCallStack (SCS) is an <a
+href="https://clang.llvm.org/docs/ShadowCallStack.html"
+class="external">LLVM instrumentation</a> mode that protects against
+return address overwrites (like stack buffer overflows) by saving a function's
+return address to a separately allocated <strong>ShadowCallStack</strong> in
+the function prolog of nonleaf functions and loading the return address from
+the ShadowCallStack in the function epilog. The return address is also stored
+on the regular stack for compatibility with unwinders, but is otherwise unused.
+This ensures that attacks that modify the return address on the regular stack
+have no effect on program control flow.</p>
+
+<p>On aarch64, the instrumentation makes use of the <code>x18</code>
+register to reference the ShadowCallStack, meaning that references
+to the ShadowCallStack don't have to be stored in memory.
+This makes it possible to implement a runtime that avoids exposing
+the address of the ShadowCallStack to attackers that can read
+arbitrary memory.</p>
+
+<h2 id="implementation">Implementation</h2>
+<p>Android supports ShadowCallStack for both kernel and userspace.</p>
+
+<h3 id="enable-kernel">Enabling SCS for the kernel</h3>
+<p>To enable ShadowCallStack for the kernel, add the following line to the
+kernel config file:</p>
+
+<pre class="devsite-click-to-copy">CONFIG_SHADOW_CALL_STACK=y</pre>
+
+<h3 id="enable-userspace">Enabling SCS in userspace</h3>
+<p>To enable ShadowCallStack in userspace components, add the
+  following lines to a component's blueprint file:</p>
+
+<pre class="devsite-click-to-copy">
+sanitize: {
+  scs: true
+}
+</pre>
+
+<p>SCS assumes that the <code>x18</code> register is reserved to store the address of the
+ShadowCallStack, and isn't used for any other purposes. While all system
+libraries are compiled to reserve the <code>x18</code> register, this is potentially
+problematic if SCS is enabled for userspace components that interoperate with
+in-process legacy code (for example, libraries that could be loaded by third-party
+applications), which may clobber the <code>x18</code> register. As such, we only recommend
+enabling SCS in self-contained components that won't be loaded into legacy
+binaries.</p>
+
+<h2 id="validation">Validation</h2>
+<p>There are no CTS test specifically for SCS. Instead, make sure that CTS tests
+pass with and without SCS enabled to verify that SCS isn't impacting the
+device.</p>
+
+  </body>
+</html>

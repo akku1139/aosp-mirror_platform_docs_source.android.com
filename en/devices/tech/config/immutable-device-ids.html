@@ -1,0 +1,142 @@
+<html devsite>
+  <head>
+    <title>Immutable Device IDs</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  {% include "_versions.html" %}
+  <body>
+  <!--
+      Copyright 2019 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>In Android 6 and higher, Wi-Fi service providers and packet analyzers have
+been restricted from retrieving a device’s factory MAC address through the
+Wi-Fi stack from network requests. Starting in Android {{ androidQVersionNumber
+}}, additional restrictions are in place that limit access to device
+identifiers (IDs) to apps with the <a href=
+"/devices/tech/config/perms-whitelist">privileged</a>
+<a href=
+"https://developer.android.com/reference/android/R.attr.html#protectionLevel" class="external">permission
+level</a>. This protects device IDs such as</p>
+
+<ul>
+<li>telephony IMEI, MEID, ESN, and IMSI numbers.</li>
+  <li>build, SIM, or USB serial numbers.</li></ul>
+
+<h3 id="who-access">Who can access device IDs</h3>
+
+<p>Device IDs are restricted on all Android {{ androidQVersionNumber }}
+devices, even if apps target Android 9 or lower. Device IDs can be accessed by
+</p>
+
+<ul>
+  <li>The default SMS app.</li>
+ <li>Apps with both <code><a href=
+"/devices/tech/config/perms-whitelist#customizing-whitelists">
+READ_PRIVILEGED_PHONE_STATE</a></code> permission in the <code><a href=
+"https://developer.android.com/reference/android/Manifest.permission" class="external">Manifest.permission</a></code>
+class, and whitelisting in the <code>privapp-permission.xml</code> file.
+  These must also be loaded in the <code>priv-app</code> directory.</li>
+<li>Apps with carrier privileges as defined in <a href=
+"/devices/tech/config/uicc">UICC Carrier
+Privileges</a>.</li>
+<li>A device owner or profile owner with <code><a href=
+"https://developer.android.com/reference/android/Manifest.permission.html#READ_PHONE_STATE" class="external">
+READ_PHONE_STATE</a></code> permission granted in the <code><a href=
+"https://developer.android.com/reference/android/Manifest.permission" class="external">Manifest.permission</a></code>
+class. (Whitelisting isn’t required.)</li>
+    </ul>
+
+<h4 id="privileged-packages">Privileged packages access</h4>
+
+<p>A package must be privileged to access device IDs. It must have
+<code><a href=
+"/devices/tech/config/perms-whitelist#customizing-whitelists">
+READ_PRIVILEGED_PHONE_STATE</a></code> permission in the
+<code>Manifest.permission</code> class, and be whitelisted in the
+<code>privapp-permission.xml</code> file. For information on the whitelist
+process, see <a href=
+"/devices/tech/config/perms-whitelist">Privileged
+Permission Whitelisting</a>.</p>
+
+<p>For information on getting a unique ID for a <em>nonprivileged</em> package,
+refer to <a href=
+"https://developer.android.com/training/articles/user-data-ids#common-use-cases" class="external">
+Common use cases and the appropriate identifier to use</a>.</p>
+
+<h4 id="restricted-randomized-mac">Restricted device IDs and randomized MAC addresses</h4>
+
+<p>To further restrict device IDs, all devices on Android {{
+androidQVersionNumber }} transmit randomized MAC addresses by default for both
+probe and associated requests, and must have a different randomized MAC address
+for each SSID. Don’t use the device factory MAC address in client mode, soft
+access point (AP), or Wi-Fi Direct use cases. It must remain hidden from
+publicly accessible APIs that aren’t privileged apps. Privileged apps that
+require the factory MAC address to be returned are required to have
+<code>LOCAL_MAC_ADDRESS</code> permission.</p>
+
+<p>Users have the option to keep the <em>default randomized</em> MAC address that's assigned to each SSID.
+The option is viewable under <strong>Privacy</strong> in
+<strong>Settings</strong> &gt; <strong>Network details</strong>. To learn about
+obtaining a randomized MAC address see <a href=
+"https://developer.android.com/preview/privacy/data-identifiers#randomized-mac-addresses" class="external">
+Randomized MAC addresses</a>.</p>
+
+<figure id="device-ID-settings"><img src="images/immutable-device-ids-protected-in-q.png" width="600" alt=
+"Screen shows if device ID uses a randomized MAC address for privacy" title="MAC address randomization status shows under MAC address.">
+<figcaption><strong>Figure 1.</strong>MAC address shows as randomized under <strong>Privacy</strong> in <strong>Network details</strong></figcaption>
+</figure>
+
+<h4 id="device-id-apis">Apps that invoke device ID APIs</h4>
+
+<p>Apps that invoke device ID APIs must meet the Android {{
+androidQVersionNumber }} requirements. Otherwise, when they try to access
+device IDs the following is returned:</p>
+
+<ul>
+  <li>Apps targeting Android {{ androidQVersionNumber }}</li>
+
+  <ul>
+ <li>A <code><a href=
+"https://developer.android.com/reference/java/lang/SecurityException" class="external">SecurityException</a></code>
+   is thrown from the device ID APIs.</li></ul>
+  <li>Apps targeting Android 9 or earlier</li>
+  <ul>
+<li>If they have the <code><a href=
+"https://developer.android.com/reference/android/Manifest.permission.html#READ_PHONE_STATE" class="external">
+READ_PHONE_STATE</a></code> permission, either a <code>null</code> response or
+placeholder data is returned.</li>
+ <li>If they don’t, the device ID APIs throw a <code><a href=
+"https://developer.android.com/reference/java/lang/SecurityException" class="external">SecurityException</a></code>
+that contains the name of the method called, and an indication that the calling
+app doesn’t meet the requirements to access the requested ID.</li></ul>
+</ul>
+
+<p>For more on immutable device IDs see <a href=
+"https://developer.android.com/preview/privacy/data-identifiers#device-ids" class="external">Nonresettable
+device identifiers</a> and <a href=
+"https://developer.android.com/training/articles/user-data-ids" class="external">best practices
+for unique identifiers</a>.</p>
+
+<h3 id="testing">Testing</h3>
+
+<p>Apps <em>must</em> be prevented from accessing the device serial number and,
+where applicable, IMEI / MEID, SIM serial number, and subscriber ID. Apps with
+permission to access these IDs must also meet one of the criteria listed under
+<a href="#who-access">Who can access device IDs</a>.</p>
+
+</body>
+</html>

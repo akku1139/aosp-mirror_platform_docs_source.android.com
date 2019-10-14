@@ -4,6 +4,7 @@
     <meta name="book_path" value="/_book.yaml"/>
   </head>
   <body>
+
   <!--
       Copyright 2017 The Android Open Source Project
 
@@ -30,17 +31,14 @@
 
 <h2 id="abort">中止</h2>
 
-<p>
-中止操作很有趣，因为这是刻意而为。执行中止操作可通过多种不同的方法（包括调用 <code><a href="http://man7.org/linux/man-pages/man3/abort.3.html" class="external">abort(3)</a></code>、使 <code><a href="http://man7.org/linux/man-pages/man3/assert.3.html" class="external">assert(3)</a></code> 失败、使用 Android 特有的严重记录类型之一）来实现，但所有这些方法都涉及到调用 <code>abort</code>。<code>abort</code> 调用会向调用线程发出 SIGABRT 信号，因此为了识别这种情况，您需要在 <code>debuggerd</code> 输出中查找以下两项内容：<code>libc.so</code> 中显示“abort”的帧，以及 SIGABRT 信号。
+<p>中止操作很有趣，因为这是刻意而为。执行中止操作可通过多种不同的方法（包括调用 <code><a href="http://man7.org/linux/man-pages/man3/abort.3.html" class="external">abort(3)</a></code>、使 <code><a href="http://man7.org/linux/man-pages/man3/assert.3.html" class="external">assert(3)</a></code> 失败、使用 Android 特有的严重记录类型之一）来实现，但所有这些方法都涉及到调用 <code>abort</code>。<code>abort</code> 调用会向发起调用的线程发出 SIGABRT 信号，因此为了识别这种情况，您需要在 <code>debuggerd</code> 输出中查找以下两项内容：<code>libc.so</code> 中显示“abort”的帧，以及 SIGABRT 信号。
 </p>
 
 <p>
 您可能会看到明确的“中止消息”行。不过，您还应该查看 <code>logcat</code> 输出，了解此线程在刻意终止自身之前所记录的内容，因为与 <code>assert(3)</code> 或高级别的严重记录设备不同的是，<code>abort(3)</code> 不接受任何消息。
 </p>
 
-<p>
-当前版本的 Android 内嵌了 <code><a href="http://man7.org/linux/man-pages/man2/tgkill.2.html" class="external">tgkill(2)</a></code> 系统调用，因此它们的堆栈是最容易读取的，因为对 abort(3) 进行的调用位于最顶端：
-</p>
+<p>当前版本的 Android 内嵌了 <code><a href="http://man7.org/linux/man-pages/man2/tgkill.2.html" class="external">tgkill(2)</a></code> 系统调用，因此它们的堆栈最容易读取，同时对 abort(3) 的调用位于最顶端：</p>
 
 <pre class="devsite-click-to-copy">
 pid: 4637, tid: 4637, name: crasher  &gt;&gt;&gt; crasher &lt;&lt;&lt;
@@ -94,8 +92,7 @@ backtrace:
 这是典型的原生代码崩溃问题，虽然它只是下一类崩溃问题的特殊情况，但值得单独说明，因为这类崩溃问题通常无需细细思量。
 </p>
 
-<p>
-在以下示例中，尽管崩溃函数在 <code>libc.so</code> 中，但由于字符串函数仅在指定给它们的指针处进行操作，因此您可以推断出在调用 <code><a href="http://man7.org/linux/man-pages/man3/strlen.3.html" class="external">strlen(3)</a></code> 时指定的是 Null 指针；对于这类崩溃问题，应直接找调用代码的作者加以解决。在这种情况下，帧 #01 是不良调用程序。
+<p>在以下示例中，尽管崩溃函数在 <code>libc.so</code> 内，但由于字符串函数仅在指定给它们的指针处进行操作，因此您可以推断出在调用 <code><a href="http://man7.org/linux/man-pages/man3/strlen.3.html" class="external">strlen(3)</a></code> 时指定的是 Null 指针；对于这类崩溃问题，应直接找发起调用的代码的作者加以解决。在这种情况下，帧 #01 是不良调用程序。
 </p>
 
 <pre class="devsite-click-to-copy">
@@ -123,12 +120,10 @@ backtrace:
 <h2 id="lowaddress">低地址 Null 指针解引用</h2>
 
 <p>
-在许多情况下，故障地址将不会是 0，而是其他一些小数字。两位或三位地址尤其常见，而六位地址几乎肯定不是 Null 指针解引用（它需要 1 MiB 的偏移量）。通常，当您的代码将 Null 指针解引用为看似有效的结构时，就会出现这种情况。常见的函数是 <code><a href="http://man7.org/linux/man-pages/man3/fprintf.3.html" class="external">fprintf(3)</a></code>（或任何使用 FILE* 的其他函数）和 <code><a href="http://man7.org/linux/man-pages/man3/readdir.3.html" class="external">readdir(3)</a></code>，因为代码通常无法检查到底是 <code><a href="http://man7.org/linux/man-pages/man3/fopen.3.html" class="external">fopen(3)</a></code> 调用先成功还是 <code><a href="http://man7.org/linux/man-pages/man3/opendir.3.html" class="external">opendir(3)</a></code> 调用先成功。
+在许多情况下，故障地址将不会是 0，而是其他一些小数字。两位或三位地址尤其常见，而六位地址几乎肯定不是 Null 指针解引用（它需要 1 MiB 的偏移量）。通常，当您的代码将 Null 指针解引用为看似有效的结构时，就会出现这种情况。常用的函数是 <code><a href="http://man7.org/linux/man-pages/man3/fprintf.3.html" class="external">fprintf(3)</a></code>（或任何其他使用 FILE* 的函数）和 <code><a href="http://man7.org/linux/man-pages/man3/readdir.3.html" class="external">readdir(3)</a></code>，因为代码通常无法检查到底是 <code><a href="http://man7.org/linux/man-pages/man3/fopen.3.html" class="external">fopen(3)</a></code> 调用先成功，还是 <code><a href="http://man7.org/linux/man-pages/man3/opendir.3.html" class="external">opendir(3)</a></code> 调用先成功。
 </p>
 
-<p>
-以下是 <code>readdir</code> 的示例：
-</p>
+<p>以下是 <code>readdir</code> 的示例：</p>
 
 <pre class="devsite-click-to-copy">
 pid: 25405, tid: 25405, name: crasher  &gt;&gt;&gt; crasher &lt;&lt;&lt;
@@ -148,8 +143,7 @@ backtrace:
     #06 pc 00001110  /system/xbin/crasher (_start+96)
 </pre>
 
-<p>
-在此示例中，崩溃问题的直接原因是 <code><a href="http://man7.org/linux/man-pages/man3/pthread_mutex_lock.3p.html" class="external">pthread_mutex_lock(3)</a></code> 曾尝试访问地址 0xc（帧 0）。但是 <code>pthread_mutex_lock</code> 执行的第一项操作是解引用指定给它的 <code>pthread_mutex_t*</code> 的 <code>state</code> 元素。如果您查看源代码，则会发现该元素在结构中的偏移量为零，这表示指定给 <code>pthread_mutex_lock</code> 的指针 0xc 无效。从帧 1 可以看出，<code>readdir</code> 会将该指针指定给它，这会从指定的 <code>DIR*</code> 中提取 <code>mutex_</code> 字段。通过查看该结构，您会发现 <code>struct DIR</code> 中 <code>mutex_</code> 的偏移量为 <code>sizeof(int) + sizeof(size_t) + sizeof(dirent*)</code>，在 32 位设备上表示为 4 + 4 + 4 = 12 = 0xc，这样便可以找到错误所在：调用程序向 <code>readdir</code> 传递了一个 Null 指针。此时，您可以将该堆栈粘贴到堆栈工具中，以找出这个问题在 logcat 中的发生位置。<em></em>
+<p>在此示例中，导致崩溃问题的直接原因是 <code><a href="http://man7.org/linux/man-pages/man3/pthread_mutex_lock.3p.html" class="external">pthread_mutex_lock(3)</a></code> 曾尝试访问地址 0xc（第 0 帧）。但是 <code>pthread_mutex_lock</code> 执行的第一项操作是解引用指定给它的 <code>pthread_mutex_t*</code> 的 <code>state</code> 元素。如果您查看源代码，则会发现该元素在结构中的偏移量为零，这表示指定给 <code>pthread_mutex_lock</code> 的指针 0xc 无效。从帧 1 可以看出，<code>readdir</code> 会将该指针指定给它，这会从指定的 <code>DIR*</code> 中提取 <code>mutex_</code> 字段。通过查看该结构，您会发现 <code>struct DIR</code> 中 <code>mutex_</code> 的偏移量为 <code>sizeof(int) + sizeof(size_t) + sizeof(dirent*)</code>，在 32 位设备上表示为 4 + 4 + 4 = 12 = 0xc，这样便可以找到错误所在：调用程序向 <code>readdir</code> 传递了一个 Null 指针。此时，您可以将该堆栈粘贴到堆栈工具中，以找出这个问题在 logcat 中的发生位置。<em></em>
 </p>
 
 <pre class="prettyprint">
@@ -231,7 +225,7 @@ backtrace:
 </pre>
 
 <p>
-您可以通过回溯中是否出现 <code>__stack_chk_fail</code> 以及特定的中止消息，将此中止与其他类型的中止区分开来。
+您可以通过回溯中出现的 <code>__stack_chk_fail</code>（如果有的话）以及特定的中止消息，将此中止与其他类型的中止区分开来。
 </p>
 
 <p>
@@ -268,6 +262,80 @@ backtrace:
 <p>
 您可以使用 <code>crasher
 seccomp</code> 重现此类崩溃问题的实例。
+</p>
+
+<h2 id="xom">只执行内存违规</h2>
+
+<p>对于 Android 10 及更高版本中的 arm64，二进制文件和库的可执行部分会映射到只执行（不可读取）内存，作为防范代码重用攻击的一种安全强化技术。通过在可执行内存中搜索已知函数，或通过在事先不了解内存布局的情况下构造小工具链，可以使用读取基元绕过地址空间布局随机化 (ASLR)。通过将可执行代码标记为不可读，读取基元将无法访问可执行内存，从而使各种攻击技术无法图谋不轨。这不仅可以提高 ASLR 的有效性，而且可以提高控制流完整性 (CFI)，因为不会再向使用读取基元的攻击者透露有效目的地。
+</p>
+<p>
+将代码设为不可读会导致故意或意外读入已标记为只执行的内存段抛出 <code>SIGSEGV</code>，并且代码为 <code>SEGV_ACCERR</code>。这可能是因为错误、漏洞、混合了代码的数据（例如文字池）或故意进行的内存自省导致的。
+</p>
+<p>
+编译器会假设代码和数据不是混合在一起的，但是手写程序集会导致出现问题。在许多情况下，只需将常量移动到 <code>.data</code> 部分，即可解决这些问题。如果可执行代码段绝对有必要进行代码内省，则应首先调用 <a href="http://man7.org/linux/man-pages/man2/mprotect.2.html" class="external"><code>mprotect(2)</code></a> 以将该代码标记为可读，然后在操作完成后重新将该代码标记为不可读。
+</p>
+<pre class="devsite-terminal devsite-click-to-copy">
+pid: 2938, tid: 2940, name: crasher64  &gt;&gt;&gt; crasher64 &lt;&lt;&lt;
+signal 11 (SIGSEGV), code 2 (SEGV_ACCERR), fault addr 0x5f2ced24a8
+<em style="color:Orange">Cause: execute-only (no-read) memory access error; likely due to data in .text.</em>
+    x0  0000000000000000  x1  0000005f2cecf21f  x2  0000000000000078  x3  0000000000000053
+    x4  0000000000000074  x5  8000000000000000  x6  ff71646772607162  x7  00000020dcf0d16c
+    x8  0000005f2ced24a8  x9  000000781251c55e  x10 0000000000000000  x11 0000000000000000
+    x12 0000000000000014  x13 ffffffffffffffff  x14 0000000000000002  x15 ffffffffffffffff
+    x16 0000005f2ced52f0  x17 00000078125c0ed8  x18 0000007810e8e000  x19 00000078119fbd50
+    x20 00000078125d6020  x21 00000078119fbd50  x22 00000b7a00000b7a  x23 00000078119fbdd8
+    x24 00000078119fbd50  x25 00000078119fbd50  x26 00000078119fc018  x27 00000078128ea020
+    x28 00000078119fc020  x29 00000078119fbcb0
+    sp  00000078119fba40  lr  0000005f2ced1b94  pc  0000005f2ced1ba4
+
+backtrace:
+      #00 pc 0000000000003ba4  /system/bin/crasher64 (do_action+2348)
+      #01 pc 0000000000003234  /system/bin/crasher64 (thread_callback+44)
+      #02 pc 00000000000e2044  /apex/com.android.runtime/lib64/bionic/libc.so (__pthread_start(void*)+36)
+      #03 pc 0000000000083de0  /apex/com.android.runtime/lib64/bionic/libc.so (__start_thread+64)
+</pre>
+
+<p>
+您可以通过原因行将只执行内存违规与其他崩溃区分开来。
+</p>
+<p>
+您可以使用 <code>crasher xom</code> 重现此类崩溃的实例。
+</p>
+
+<h2 id="fdsan">fdsan 检测到的错误</h2>
+
+<p>Android 的 fdsan 文件描述符排错程序有助于捕获包含 use-after-close 和 double-close 等文件描述符的常见错误。要详细了解如何调试（和避免）这类错误，请参阅 <a href="https://android.googlesource.com/platform/bionic/+/master/docs/fdsan.md" class="external">fdsan 文档</a>。
+</p>
+
+<pre class="devsite-click-to-copy">
+pid: 32315, tid: 32315, name: crasher64  &gt;&gt;&gt; crasher64 &lt;&lt;&lt;
+signal 35 (<debuggerd signal>), code -1 (SI_QUEUE), fault addr --------
+<em style="color:Orange">Abort message: 'attempted to close file descriptor 3, expected to be unowned, actually owned by FILE* 0x7d8e413018'</em>
+    x0  0000000000000000  x1  0000000000007e3b  x2  0000000000000023  x3  0000007fe7300bb0
+    x4  3033313465386437  x5  3033313465386437  x6  3033313465386437  x7  3831303331346538
+    x8  00000000000000f0  x9  0000000000000000  x10 0000000000000059  x11 0000000000000034
+    x12 0000007d8ebc3a49  x13 0000007fe730077a  x14 0000007fe730077a  x15 0000000000000000
+    x16 0000007d8ec9a7b8  x17 0000007d8ec779f0  x18 0000007d8f29c000  x19 0000000000007e3b
+    x20 0000000000007e3b  x21 0000007d8f023020  x22 0000007d8f3b58dc  x23 0000000000000001
+    x24 0000007fe73009a0  x25 0000007fe73008e0  x26 0000007fe7300ca0  x27 0000000000000000
+    x28 0000000000000000  x29 0000007fe7300c90
+    sp  0000007fe7300860  lr  0000007d8ec2f22c  pc  0000007d8ec2f250
+
+backtrace:
+      #00 pc 0000000000088250  /bionic/lib64/libc.so (fdsan_error(char const*, ...)+384)
+      #01 pc 0000000000088060  /bionic/lib64/libc.so (android_fdsan_close_with_tag+632)
+      #02 pc 00000000000887e8  /bionic/lib64/libc.so (close+16)
+      #03 pc 000000000000379c  /system/bin/crasher64 (do_action+1316)
+      #04 pc 00000000000049c8  /system/bin/crasher64 (main+96)
+      #05 pc 000000000008021c  /bionic/lib64/libc.so (_start_main)
+</debuggerd></pre>
+
+<p>
+您可以通过回溯中出现的 <code>fdsan_error</code>（如果有的话）以及特定的中止消息，将此中止与其他类型的中止区分开来。
+</p>
+
+<p>
+您可以使用 <code>crasher fdsan_file</code> 或 <code>crasher fdsan_dir</code> 来重现这类崩溃问题的实例。
 </p>
 
 <h2 id="crashdump">调查崩溃转储</h2>
@@ -400,8 +468,7 @@ Tombstone written to: /data/tombstones/tombstone_06
 </p>
 
 <p>
-Tombstone 包含与崩溃转储相同的信息，还包含一些其他信息。例如，它包含所有线程（不仅仅是崩溃线程）的回溯、浮点寄存器、原始堆栈转储，以及寄存器中地址附近的内存转储。<em></em>最有用的是，它还包含完整的内存映射（类似于 <code>/proc/<var>pid</var>/maps</code>）。以下是 32 位 ARM 进程崩溃的示例（带注释）：
-</p>
+Tombstone 包含与崩溃转储相同的信息，还包含一些其他信息。例如，它包含所有线程（不仅仅是崩溃线程）的回溯、浮点寄存器、原始堆栈转储，以及寄存器中地址附近的内存转储。<em></em>最有用的是，它还包含完整的内存映射（类似于 <code>/proc/<var>pid</var>/maps</code>）。以下是 32 位 ARM 进程崩溃的示例（带注释）：</p>
 
 <pre class="devsite-click-to-copy">
 memory map: (fault address prefixed with ---&gt;)
@@ -493,16 +560,14 @@ f6fc9000-f6fc9fff r--         0      1000  [anon:atexit handlers]
 f6fca000-f6fcafff ---         0      1000  [anon:thread signal stack guard page]
 </pre>
 
-<p>
-从 Android 5.0 开始，C 库会对其大部分匿名的映射区域进行命名，因此无名区域将会有所减少。
+<p>从 Android 5.0 开始，C 库会对其大部分匿名的映射区域进行命名，因此无名区域将会有所减少。
 </p>
 
 <pre class="devsite-click-to-copy">
 f6fcb000-f6fccfff rw- 0 2000 [stack:5081]
 </pre>
 
-<p>
-名为 <code>[stack:<var>tid</var>]</code> 的区域是指定线程的堆栈。
+<p>名为 <code>[stack:<var>tid</var>]</code> 的区域是指定线程的堆栈。
 </p>
 
 <pre class="devsite-click-to-copy">
@@ -516,8 +581,7 @@ ffcd7000-ffcf7fff rw-         0     21000
 ffff0000-ffff0fff r-x         0      1000  [vectors]
 </pre>
 
-<p>
-您看到的是 <code>[vector]</code> 还是 <code>[vdso]</code> 取决于架构。ARM 使用 <code>[vector]</code>，而所有其他架构均使用 <a href="http://man7.org/linux/man-pages/man7/vdso.7.html" class="external"><code>[vdso]</code></a>。
+<p>您看到的是 <code>[vector]</code> 还是 <code>[vdso]</code> 取决于架构。ARM 使用 <code>[vector]</code>，而所有其他架构均使用 <a href="http://man7.org/linux/man-pages/man7/vdso.7.html" class="external"><code>[vdso]</code></a>。
 </p>
 
 </body></html>

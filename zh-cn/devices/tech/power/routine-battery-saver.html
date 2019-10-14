@@ -1,0 +1,99 @@
+<html devsite><head>
+
+  <meta name="book_path" value="/_book.yaml"/>
+
+  <meta name="project_path" value="/_project.yaml"/>
+</head>
+<body>
+
+<!--
+  Copyright 2019 The Android Open Source Project
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+<h1 id="routine_battery_saver" class="page-title">常规省电模式</h1>
+
+<p>Android 10 引入了一个称为<strong>基于常规</strong>的省电模式调度选项。借助此选项，原始设备制造商 (OEM) 选择的应用可以向系统提供信号，以实现更智能的省电模式调度。此选项需要配置，在实现上是可选的。</p>
+
+<h2 id="device_configuration">设备配置</h2>
+
+<h3 id="provider_specification">提供程序规范</h3>
+
+<p>要告知设置界面设备配置正确，请使用配置叠加层将值 <code>config_batterySaverScheduleProvider</code> 替换为应用的软件包名称。</p>
+
+<p>例如，如果您希望应用软件包 <code>com.google.android.apps.turbo</code> 控制<strong>基于常规</strong>设置，则可以设置此配置值：</p>
+<pre class="prettyprint"><code>&lt;string name="config_batterySaverScheduleProvider" translatable="false"&gt;
+com.google.android.apps.turbo&lt;/string&gt;
+</code></pre>
+<p>此时，手机应显示<strong>基于常规</strong>选项。要进行验证，请编译映像，将其刷入手机，然后转到<strong>设置 &gt; 电池 &gt; 省电模式 &gt; 省电模式调度</strong>。此时应显示<strong>基于常规</strong>选项。</p>
+
+<h3 id="default_off_threshold">默认关闭阈值</h3>
+
+<p>新的 <code>config_dynamicPowerSavingsDefaultDisableThreshold</code> 字段用于指定系统关闭省电模式的电池电量，前提是该模式已由<strong>基于常规</strong>调度程序开启。系统默认设置为 80%，但您可以更改它。</p>
+<aside class="special"><strong>重要提示</strong><span>：请将此值设置为低于 100。此停用阈值可用作提供程序应用因出错而始终尝试触发省电模式时的后备方案。</span></aside>
+<h2 id="app_configuration">应用配置</h2>
+
+<h3 id="permissions">权限</h3>
+
+<p>应用从应用中开启省电模式所需的 API 受权限 <code>android.permission.POWER_SAVER</code> 的保护。这是一项签名/特许权限，因此请在 <code>privapp-whitelist</code> 中向您希望能够触发省电模式的应用授予此权限。</p>
+
+<p>向应用授予 <code>privapp</code> 权限的示例：</p>
+<pre class="prettyprint"><code>&lt;privapp-permissions package="com.google.android.apps.turbo"&gt;
+   &lt;permission name="android.permission.POWER_SAVER"/&gt;
+&lt;/privapp-permissions&gt;
+</code></pre>
+<p>如果您未将此权限预先授予系统映像上的应用版本，则该应用无法获取权限或正确调用 API。系统不提供常规权限错误之外的任何反馈，因此请验证您是否可以调用 API 并观察其效果。</p>
+
+<h3 id="installation">安装</h3>
+
+<p>要使<strong>基于常规</strong>正常工作，您必须使用必需的权限将应用预安装到系统映像上。仅向一个应用授予 <code>POWER_SAVER</code> 权限，并允许它控制<strong>基于常规</strong> API。当多个应用尝试使用权限和 API 时，该功能的行为不受支持且未指定。</p>
+
+<h2 id="triggering_battery_saver">触发省电模式</h2>
+
+<h3 id="apis">API</h3>
+
+<p>假设到目前为止设置成功，配置中指定的 OEM 应用应该能够成功调用 PowerManager 中的关联方法，从而触发省电模式：</p>
+<pre class="prettyprint"><code>public boolean setDynamicPowerSaveHint(boolean powerSaveHint, int disableThreshold)
+</code></pre>
+<p>如果启用了<strong>基于常规</strong>省电模式调度选项，且应用对 <code>powerSaveHint</code> 使用 <code>true</code> 值并调用此方法，则省电模式开启。指定 <code>disableThreshold</code>，这样一来，如果应用无法与系统通信，系统仍然知道在达到哪个电量百分比时可以安全地关闭省电模式。</p>
+
+<p>与基于百分比的自动省电模式一样，此 API 也受用户替换和省电模式休眠的影响。如需了解详情，请参阅 <a href="https://www.google.com/url?q=https://android.googlesource.com/platform/frameworks/base/%2B/refs/heads/master/core/java/android/os/PowerManager.java&amp;sa=D&amp;ust=1561505210635000&amp;usg=AFQjCNHmYZbszVZarWJcvy9c0C0lrc_cSA" class="external">API 文档</a>。</p>
+
+<p>要验证 API 是否已成功调用，请查询全局设置，以验证后备设置是否<a href="https://www.google.com/url?q=https://android.googlesource.com/platform/frameworks/base/%2B/refs/heads/master/core/java/android/provider/Settings.java&amp;sa=D&amp;ust=1561505210630000&amp;usg=AFQjCNGZwaaAYHjWE6NR1OH1blX8xi6HHw" class="external">根据 API 调用</a>更改了值。</p>
+
+<p>例如，如果用户选择了<strong>常规省电模式</strong>且应用正在调用 <code>setDynamicPowerSaveHint(true, 10)</code>，则全局设置应包含以下值：</p>
+<pre class="prettyprint"><code>automatic_power_save_mode: 1
+dynamic_power_savings_disable_threshold: 10
+dynamic_power_savings_enabled: 1
+</code></pre>
+<p>如果您随后调用 <code>setDynamicPowerSaveHint(false, 25)</code>，则值应为：</p>
+<pre class="prettyprint"><code>automatic_power_save_mode: 1
+dynamic_power_savings_disable_threshold: 25
+dynamic_power_savings_enabled: 0
+</code></pre>
+<p>您可以使用下面的 <code>adb</code> 命令检查这些值：</p>
+<pre class="prettyprint"><code>adb shell settings get global &lt;setting-name&gt;
+</code></pre>
+<h3 id="verification">验证</h3>
+
+<p>没有自动验证此功能的方法，因为我们没法知道原始设备制造商 (OEM) 将使用什么行为来决定何时触发常规省电模式。因此，原始设备制造商 (OEM) 负责测试其集成，以确保行为符合预期，尤其是验证设备是否可以完成以下任务：</p>
+
+<ul>
+<li>用户在省电模式调度界面中依次选择<strong>根据电量百分比</strong>和 15%。只有当电量降到 15% 时，省电模式才会自动开启。</li>
+<li>用户在省电模式调度界面中选择<strong>基于常规</strong>。当应用使用 <code>true</code> 并调用 API 时，省电模式开启。此外，如果设备充电至指定的电量阈值并断开电源，省电模式将自动关闭。</li>
+<li>用户在省电模式调度界面中选择<strong>无</strong>。省电模式永远不会自动开启。</li>
+<li>如果应用开启省电模式，然后用户手动进行替换，将省电模式设置为重新关闭（使用“快速设置”、“设置”等），则该模式应保持关闭状态，直到用户再次手动重新开启或将设备插入电源。</li>
+</ul>
+
+</body></html>

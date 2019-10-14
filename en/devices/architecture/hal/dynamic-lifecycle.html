@@ -63,13 +63,17 @@ service vendor.some-service-name /vendor/bin/hw/some-binary-service
   <code>ctl.start</code>): <code>ctl.interface_start</code>,
   <code>ctl.interface_stop</code>, and <code>ctl.interface_restart</code>.
   These messages can be used to signal <code>init</code> to bring up and down
-  specific hardware interfaces. When a service is requested and it is not
-  registered, <code>hwservicemanager</code> will request the service to be
-  started.</p>
+  specific hardware interfaces. When a service is requested and isn't
+  registered, <code>hwservicemanager</code> requests that the service be
+  started. However, dynamic HALs don't require using any of these.</p>
 
 
   <h2 id="determining-HAL-exit">Determining HAL exit</h2>
 
+  <p>In Android {{ androidPVersionNumber }}, HAL exit has to be manually
+  determined. For Android {{ androidQVersionNumber }} and higher, it can also
+  be determined with
+  <a href="#automatic-lifecycles">automatic lifecycles</a>.</p>
 
   <p>Dynamic shutdown requires multiple policies for deciding when to start a
   HAL and when to shutdown a HAL. If a HAL decides to exit for any reason, it
@@ -88,5 +92,33 @@ service vendor.some-service-name /vendor/bin/hw/some-binary-service
     <li>HALs can shut down when their task is completed (documented in the HAL
     file).</li>
   </ul>
+
+  <h2 id="automatic-lifecycles">Automatic lifecycles</h2>
+
+  <p>Android {{ androidQVersionNumber }} adds more support to the kernel and
+  <code>hwservicemanager</code>, which allows HALs to shut down automatically
+  whenever they have no clients. To use this feature, do all of the steps in
+  <a href="#changes-HAL-definitions">Changes to HAL definitions</a> as well
+  as:
+  </p>
+
+  <ul>
+    <li>Register the service in C++ with <code>LazyServiceRegistrar</code>
+    instead of the member function, <code>registerAsService</code>, for
+    example:
+    <pre class="prettyprint">// only one instance of LazyServiceRegistrar per process
+LazyServiceRegistrar registrar();
+registrar.registerAsService(myHidlService /* , "default" */);</pre>
+    </li>
+
+    <li>Verify that the HAL client keeps a reference to the top-level HAL (the
+    interface registered with <code>hwservicemanager</code>) only when it's
+    in use. To avoid delays if this reference is dropped on a hwbinder thread
+    that continues to execute, the client should also call
+    <code>IPCThreadState::self()->flushCommands()</code> after dropping the
+    reference to ensure that the binder driver is notified of the associated
+    reference count changes.</li>
+  </ul>
+
 </body>
 </html>

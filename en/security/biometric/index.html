@@ -4,6 +4,7 @@
     <meta name="project_path" value="/_project.yaml" />
     <meta name="book_path" value="/_book.yaml" />
   </head>
+  {% include "_versions.html" %}
   <body>
   <!--
       Copyright 2018 The Android Open Source Project
@@ -20,113 +21,182 @@
       See the License for the specific language governing permissions and
       limitations under the License.
   -->
-<p>
-Android 9 and higher includes a <a
-href="https://developer.android.com/reference/android/hardware/biometrics/BiometricPrompt"
-class="external">BiometricPrompt API</a> that app developers can use to
-integrate biometric authentication into their applications in a device- and
-modality-agnostic fashion. Only strong biometrics can integrate with
-<code>BiometricPrompt</code>. For more details, see <a
-href="/security/biometric/measure#strong-weak-unlocks">Measuring Biometric
-Unlock Security</a>.
-</p>
+
+<p>Biometric factors allow for secure authentication on the Android platform.
+The Android framework includes face and fingerprint biometric authentication.
+Android can be customized to support other forms of biometric authentication
+(such as Iris). All biometric implementations must meet security specifications
+and have a <strong>strong</strong> rating in order to participate in the
+<a href="https://developer.android.com/reference/android/hardware/biometrics/BiometricPrompt.html"
+   class="external"><code>BiometricPrompt</code> class</a>. Biometrics are measured with the
+<a
+href="https://source.android.com/security/biometric/measure#metrics">Imposter
+Accept Rate (IAR)</a> and <a
+href="https://source.android.com/security/biometric/measure#metrics">Spoof
+Accept Rate (SAR)</a>.</p>
+
+<p>For more details on biometric security specifications, see <a
+href="https://source.android.com/security/biometric/measure#strong-weak-unlocks">Measuring
+Biometric Unlock Security</a>.</p>
 
 <h2 id="source">Source</h2>
-<p>
-Android 9 only includes fingerprint integration for <a
+
+<h3 id="android10">Android {{ androidQVersionNumber }}</h3>
+
+<ul>
+<li>Introduces the <a
+href="https://developer.android.com/reference/android/hardware/biometrics/BiometricManager"><code>BiometricManager</code>
+class</a> that developers can use to query the availability of biometric
+authentication.</li>
+<li>Includes fingerprint and face authentication integration for <a
 href="https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/hardware/biometrics"
-class="external">BiometricPrompt</a>. However, integrated support for other
-biometric modalities are forthcoming.
-</p>
-<p>
-In Android 9 and higher, the <a
-href="https://developer.android.com/reference/android/hardware/fingerprint/FingerprintManager"
-class="external">FingerprintManager</a> API is deprecated. If your bundled and
-system apps use this API, update them to use <code>BiometricPrompt</code>
-instead.
-</p>
+class="external"><code>BiometricPrompt</code></a></li>
+</ul>
+
+<h3 id="android9">Android {{ androidPVersionNumber }}</h3>
+
+<ul>
+<li>Includes fingerprint integration only for <a
+href="https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/hardware/biometrics"><code>BiometricPrompt</code></a>.</li>
+<li>Deprecates the FingerprintManager class. If your bundled and system apps use
+this class, update them to use <code>BiometricPrompt</code> and
+<code>BiometricManager</code> instead.</li>
+<li>Updated the <code>FingerprintManager</code> CTS verifier tests to test
+<code>BiometricPrompt</code> using <a
+href="https://android.googlesource.com/platform/cts/+/master/apps/CtsVerifier/src/com/android/cts/verifier/security/BiometricPromptBoundKeysTest.java"><code>BiometricPromptBoundKeysTest</code></a>.</li>
+</ul>
 
 <h2 id="implementation">Implementation</h2>
-<p>
-To ensure that users and developers have a seamless biometric experience,
+
+<p>To ensure that users and developers have a seamless biometric experience,
 integrate your biometric stack with <code>BiometricPrompt</code>. Devices that
-enable <code>BiometricPrompt</code> API for any modality, including face,
+enable <code>BiometricPrompt</code> for any modality, including face,
 fingerprint, and iris, must adhere to these <a
-href="/security/biometric/measure#strong-weak-unlocks">strength
-requirements</a>. If they do not meet the strength requirements, then they
-cannot implement this API.
-</p>
-<p>
-To integrate your biometric stack with <code>BiometricPrompt</code>:
-</p>
-<ol>
-  <li>Add an instance of your <code><var>Biometric</var>Manager</code> class in <code><a
-  href="https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/hardware/biometrics/BiometricPrompt.java"
-  class="external">/frameworks/base/core/java/android/hardware/biometrics/BiometricPrompt.java</a></code></li>
-  <li>Make sure your instance hooks the <code><a
-  href="https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/hardware/biometrics/BiometricPrompt.java#467"
-  class="external">authenticate()</a></code>
-  method that <code>BiometricPrompt</code> exposes.</li>
-  <li>Update the framework to honor
-    <a href="https://developer.android.com/reference/android/app/admin/DevicePolicyManager#KEYGUARD_DISABLE_FACE"
-       class="external"><code>KEYGUARD_DISABLE_*</code></a> flags for the added
-     biometrics.</li>
-</ol>
+href="https://source.android.com/security/biometric/measure#strong-weak-unlocks">strength
+requirements</a>. If they don't meet the strength requirements, then they
+can't implement this class.<br>
+To integrate your biometric stack with <code>BiometricPrompt</code> and
+<code>BiometricManager</code>:</p>
+
+<ul>
+<li>Ensure that your &lt;Modality&gt;Service is properly hooked up to
+<code>BiometricService</code> and hooks the <a
+href="https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/hardware/biometrics/BiometricPrompt.java#467"><code>authenticate()</code></a>
+method. Common modalities (fingerprint, face) extend from a common <a
+href="https://android.googlesource.com/platform/frameworks/base/+/refs/heads/master/services/core/java/com/android/server/biometrics/BiometricServiceBase.java"
+class="external">superclass</a>.
+If you need to integrate an unsupported modality, follow the <a
+href="https://android.googlesource.com/platform/frameworks/base/+/refs/heads/master/services/core/java/com/android/server/biometrics/fingerprint/FingerprintService.java"
+class="external">fingerprint</a>/<a
+href="https://android.googlesource.com/platform/frameworks/base/+/refs/heads/master/services/core/java/com/android/server/biometrics/face/FaceService.java"
+class="external">face</a>
+example and the <a href="/compatibility/android-cdd#7_3_10_biometric_sensors">CDD guidelines</a>
+  for biometrics.</li>
+<li>Ensure that your new modality is properly supported in <a
+href="https://android.googlesource.com/platform/frameworks/base/+/refs/heads/master/packages/SystemUI/src/com/android/systemui/biometrics"
+class="external">SystemUI</a>.
+There are default <code>BiometricPrompt</code> user interfaces for fingerprint and face</li>
+<li>Update the framework to honor <a
+href="https://developer.android.com/reference/android/app/admin/DevicePolicyManager#KEYGUARD_DISABLE_FACE"><code>KEYGUARD_DISABLE_*</code></a>
+flags for the added biometrics.</li>
+<li>Ensure that your device passes the CTS and CtsVerifier tests for every modality
+that you've integrated into <code>BiometricPrompt</code>/<code>BiometricManager</code>. For example, if
+you have both fingerprint and face, the tests must pass individually for each of
+them.</li>
+</ul>
+
+<aside class="note"><b>Note:</b> Use the <code>androidx.biometric</code>
+  support library <a
+  href="https://android.googlesource.com/platform/frameworks/support/+/androidx-master-dev/samples/BiometricDemos/"
+  class="external">demo app</a> to test your implementation.
+  This library is updated regularly with new use cases.</aside>
+
 <figure>
   <img src="/security/images/biometricprompt-architecture.png"
        alt="BiometricPrompt architecture">
   <figcaption>
-    <strong>Figure 1</strong>. <code>BiometricPrompt</code>
-    architecture.</figcaption>
+    <strong>Figure 1.</strong> BiometricPrompt
+    architecture</figcaption>
 </figure>
 
 <h2 id="hal-implementation">HAL implementation guidelines</h2>
-<p>
-Follow these biometric HAL guidelines to ensure that biometric data is
-<strong>not leaked</strong> and is <strong>removed</strong> when a user
-is removed from a device:
-</p>
-<ol>
- <li>Make sure raw biometric data or derivatives (such as templates) are never
-  accessible from outside the sensor driver or secure isolated environment
-  (such as the TEE or Secure Element).</li>
- <li>If the hardware supports it, limit hardware access to the secure isolated
-  environment and protect it with an SELinux policy. Make the communication
-  channel (e.g. SPI, I2C, etc.) accessible only to the secure isolated
-  environment with an explicit SELinux policy on all device files.</li>
- <li>To prevent accidental data breach an immunity to attacks, fingerprint
-   acquisition, enrollment, and recognition must occur inside the secure
-   isolated environment.</li>
- <li>Store only the encrypted form of biometric data or derivatives on the file
-   system, even if the file system itself is encrypted.</li>
- <li>To protect against replay attacks, sign biometric templates with a private,
-   device-specific key. For Advanced Encryption Standard (AES), at a minimum
-   sign a template with the absolute file-system path, group, and biometric ID
-   such that template files are inoperable on another device or for anyone other
-   than the user that enrolled them on the same device. For example, prevent
-   copying biometric data from a different user on the same device or from
-   another device.</li>
- <li>Use the file system path provided by the
-   <code>set_active_group()</code>function or provide another way to erase all
-   user template data when the user is removed. It is strongly recommended that
-   biometric template files be stored as encrypted in the path provided. If this
-   is infeasible due to the storage requirements of the secure isolated
-   environment, add hooks to ensure removal of the data when the user is removed
-   or the device is wiped.</li>
-</ol>
+
+<p>Follow these biometric HAL guidelines to ensure that biometric data is
+<strong>not leaked</strong> and is <strong>removed</strong> when a user is
+removed from a device:</p>
+
+<ul>
+<li>Make sure that raw biometric data or derivatives (such as templates) are
+never accessible from outside the sensor driver or secure isolated environment
+(such as the TEE or Secure Element).</li>
+<li>If the hardware supports it, limit hardware access to the secure isolated
+environment and protect it with an SELinux policy. Make the communication
+channel (for example, SPI, I2C) accessible only to the secure isolated environment
+with an explicit SELinux policy on all device files.</li>
+<li>Biometric acquisition, enrollment, and recognition must occur inside the
+secure isolated environment to prevent data breaches and other attacks. This
+  requirement only applies to <strong>strong</strong> biometrics.</li>
+<li>Store only the encrypted form of biometric data or derivatives on the file
+system, even if the file system itself is encrypted.</li>
+<li>To protect against replay attacks, sign biometric templates with a private,
+device-specific key. For Advanced Encryption Standard (AES), at a minimum sign a
+template with the absolute file-system path, group, and biometric ID such that
+template files are inoperable on another device or for anyone other than the
+user that enrolled them on the same device.
+For example, prevent copying biometric data from a different user on the same
+device or from another device.</li>
+<li>Use the file-system path provided by the
+<code>set_active_group()</code>function or provide another way to erase all user
+template data when the user is removed. It's strongly recommended that
+biometric template files be stored as encrypted in the path provided. If this is
+infeasible due to the storage requirements of the secure isolated environment,
+add hooks to ensure removal of the data when the user is removed or the device
+is wiped.</li>
+</ul>
 
 <h2 id="customization">Customization</h2>
-<p>
-If your device supports multiple biometrics, you can specify a default. However,
-you must allow users to change their preferred biometric in Settings.
-</p>
+
+<p>If your device supports multiple biometrics, the user should be able to
+specify a default in settings. Your <code>BiometricPrompt</code> implementation should prefer
+the <strong>strong</strong> biometric as the default unless the user explicitly
+overrides it, then a warning message needs to be displayed explaining the
+risks associated with the biometric (for example, <em>A photo of you may
+unlock your device</em>)</p>
 
 <h2 id="validation">Validation</h2>
-<p>
-Android 9 updated the <code>FingerprintManager</code> CTS verifier tests to
-test <code>BiometricPrompt</code> via <code><a
-href="https://android.googlesource.com/platform/cts/+/master/apps/CtsVerifier/src/com/android/cts/verifier/security/BiometricPromptBoundKeysTest.java">BiometricPromptBoundKeysTest</a></code>.
-For other biometrics, there are no formal CTS or CTS verifier tests yet.</p>
+
+<p>Your biometric implementation must pass the following tests:</p>
+
+<ul>
+  <li>CTS <a
+    href="https://android.googlesource.com/platform/cts/+/refs/heads/master/tests/tests/hardware/src/android/hardware/biometrics/cts/BiometricManagerTest.java"
+    class="external">BiometricManager</a></li>
+  <li>CTS <a
+    href="https://android.googlesource.com/platform/cts/+/refs/heads/master/tests/tests/hardware/src/android/hardware/biometrics/cts/BiometricPromptTest.java"
+    class="external">BiometricPrompt</a> (sanity, in-depth testing relies on verifier)</li>
+  <li>CtsVerifier <a
+    href="https://android.googlesource.com/platform/cts/+/refs/heads/master/apps/CtsVerifier/src/com/android/cts/verifier/security/BiometricPromptBoundKeysTest.java"
+    class="external">BiometricPromptBoundKeysTest</a>:
+    Must pass individually with each modality that the device supports</li>
+  <li>CtsVerifier <a
+    href="https://android.googlesource.com/platform/cts/+/refs/heads/master/apps/CtsVerifier/src/com/android/cts/verifier/biometrics/BiometricTest.java"
+    class="external">BiometricTest</a>:
+    Must pass individually with each modality that the device supports.</li>
+</ul>
+
+<p>In addition, if your device supports a biometric that has an AOSP HIDL (<a
+href="https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/master/biometrics/fingerprint/2.1/IBiometricsFingerprint.hal"
+class="external">fingerprint@2.1</a>,
+<a
+href="https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/master/biometrics/face/1.0/IBiometricsFace.hal"
+class="external">face1.0</a>),
+it must pass its relevant VTS test (<a
+href="https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/master/biometrics/fingerprint/2.1/vts/functional/VtsHalBiometricsFingerprintV2_1TargetTest.cpp"
+class="external">fingerprint</a>,
+<a
+href="https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/master/biometrics/face/1.0/vts/functional/VtsHalBiometricsFaceV1_0TargetTest.cpp"
+class="external">face</a>)</p>
+
 </body>
 </html>
 

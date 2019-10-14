@@ -1,0 +1,92 @@
+<html devsite>
+  <head>
+    <title>DNS Resolver</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+    {% include "_versions.html" %}
+  <body>
+  <!--
+      Copyright 2019 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>
+  The DNS Resolver module provides user protection for DNS interception
+  and configuration update attacks and improved network performance for DNS
+  resolutions. The module contains the code that implements the DNS stub
+  resolver, which translates names such as <strong>www.google.com</strong> to IP
+  addresses such as <strong>2001:db8::1</strong>. The DNS stub resolver backs
+  Java API elements such as
+  <a href="https://developer.android.com/reference/java/net/InetAddress#getAllByName(java.lang.String)"
+  class="external">InetAddress#getAllByName</a> and
+  <a href="https://developer.android.com/reference/android/net/Network#getAllByName(java.lang.String)"
+  class="external">Network#getAllByName</a>, as well as
+  <a href="https://developer.android.com/ndk/reference/group/networking"
+  class="external">native networking functions</a>, and implements sending and
+  receiving DNS queries and caching the results.
+</p>
+
+<h2 id="dns-q">Changes in Android
+{{ androidQVersionNumber }}</h2>
+
+<p>
+  On devices running Android 9 and lower, the DNS resolver code is spread across
+  Bionic and <code>netd</code>. DNS lookups are centralized in the
+  <code>netd</code> daemon to allow for system-wide caching, while apps
+  call functions (such as <code>getaddrinfo</code>) in Bionic. The query is sent
+  over a UNIX socket to <code>/dev/socket/dnsproxyd</code> to the
+  <code>netd</code> daemon, which parses the request and calls
+  <code>getaddrinfo</code> again to issue DNS lookups, then caches the results
+  so that other apps can use them. The DNS resolver implementation was mostly
+  contained in <code>bionic/libc/dns/</code> and partly in
+  <code>system/netd/server/dns</code>.
+</p>
+
+<p>
+  Android {{ androidQVersionNumber }} moves the DNS resolver code to
+  <code>system/netd/resolv,</code> converts it to C++, then modernizes and
+  refactors the code. The code in Bionic continues to exist for app
+  compatibility reasons, but is no longer called by the system. These source
+  paths are affected by the refactoring:
+</p>
+
+<ul>
+  <li><code>bionic/libc/dns</code></li>
+  <li><code>system/netd/client</code></li>
+  <li><code>system/netd/server/dns</code></li>
+  <li><code>system/netd/server/DnsProxyListener.*</code></li>
+  <li><code>system/netd/resolv</code></li>
+</ul>
+
+<h2 id="dns-format">Format and dependencies</h2>
+
+<p>
+  The DNS Resolver module is delivered as an
+  <a href="/devices/tech/ota/apex">APEX</a> file and is dynamically linked by
+  <code>netd</code>; however, <code>netd</code> is <strong>not</strong> a
+  dependency as the module serves the local socket
+  <code>/dev/socket/dnsproxyd</code> directly. The Binder endpoint for the
+  resolver configuration was moved from <code>netd</code> to the resolver,
+  meaning that the system service can call directly into the resolver module
+  without going through <code>netd</code>.
+</p>
+
+<p>
+  The DNS Resolver module depends on <code>libc</code> (Bionic) and
+  statically links its dependencies; no other libraries are required.
+</p>
+
+</body>
+</html>

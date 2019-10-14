@@ -4,6 +4,7 @@
     <meta name="book_path" value="/_book.yaml"/>
   </head>
   <body>
+
   <!--
       Copyright 2018 The Android Open Source Project
 
@@ -35,6 +36,7 @@
   <li>对于版本控制，导出的平台公共政策将编写为属性。<em></em></li>
   <li>为了便于编写政策，导出的类型将在政策编译流程中转换为版本化属性。<em></em>公共类型也可以直接用于供应商上下文文件提供的标签决策。</li>
 </ul>
+
 <p>
 <strong>Android 可维护平台政策中导出的具体类型与每个平台版本的相应版本化属性之间的映射</strong>。这可确保在使用类型标记对象时，不会破坏平台公共政策在之前版本中所保证的行为。系统通过使<a href="https://android.googlesource.com/platform/system/sepolicy/+/master/prebuilts/api" class="external">每个平台版本</a>的映射文件保持最新来维护此映射，该映射文件会为公共政策中导出的每种类型保留属性成员资格信息。
 </p>
@@ -43,10 +45,12 @@
 <p>
 在 Android 8.0 及更高版本中自定义政策时，必须为每个对象明确定义所有权，以使平台和供应商政策保持分离。例如，如果供应商标记 <code>/dev/foo</code> 而后平台在后续 OTA 中标记 <code>/dev/foo</code>，则会出现未定义的行为。对于 SELinux，这表现为标签冲突。设备节点只能有一个标签，解析为最后应用的标签。因此：
 </p>
+
 <ul>
   <li><em></em>如果进程需要访问未成功应用的标签，则会失去相应资源的访问权限。</li>
   <li>由于创建了错误的设备节点，因此已获得文件访问权限的进程可能会被中断。<em></em></li>
 </ul>
+
 <p>
 系统属性也有可能存在命名冲突，进而导致系统上出现未定义行为（以及 SELinux 标签出现此行为）。具有 SELinux 标签的任何对象（包括属性、服务、进程、文件和套接字）都可能会出现平台和供应商标签冲突的情况。要避免此类问题，请明确定义这些对象的所有权。
 </p>
@@ -54,6 +58,7 @@
 除了标签冲突外，SELinux 类型/属性名称也可能出现冲突。
 类型/属性名称冲突往往会导致政策编译器错误。
 </p>
+
 <h3 id="type-attribute-namespacing">类型/属性命名空间</h3>
 <p>
 SELinux 不允许相同类型/属性的多个声明。具有重复声明的政策将无法编译。为避免类型和属性名称冲突，所有供应商声明都应是以 <code>np_</code> 开头的命名空间。
@@ -61,7 +66,7 @@ SELinux 不允许相同类型/属性的多个声明。具有重复声明的政�
 
 <pre class="prettyprint">type foo, domain; → type np_foo, domain;</pre>
 
-<h3 id="system-property-and-process-labeling-ownership">系统属性和进程标签所有权</h3>
+<h3 id="system-property-and-ownership">系统属性和进程标签所有权</h3>
 <p>
 要避免标签冲突，最有效的解决方法是使用属性命名空间。要在重命名或添加导出的平台属性时轻松识别平台属性并避免名称冲突，请确保所有供应商属性都有各自的前缀：
 </p>
@@ -92,6 +97,7 @@ SELinux 不允许相同类型/属性的多个声明。具有重复声明的政�
 <p>
 对于非系统分区的 init rc 文件中的服务，init rc 文件中的所有供应商服务都应该包含 <code>vendor.</code>。类似的规则适用于供应商属性的 SELinux 标签（<code>vendor_</code> 表示供应商属性）。
 </p>
+
 <h3 id="file-ownership">文件所有权</h3>
 <p>
 避免文件冲突是一项具有挑战性的工作，因为平台和供应商政策通常都为所有文件系统提供标签。与类型命名不同，文件的命名空间并不实用，因为其中很多都是由内核创建的。要避免此类冲突，请遵循本节中文件系统的命名指南。对于 Android 8.0，这些指南只是建议，并不要求在技术上强制执行。将来，这些建议将由<a href="/compatibility/vts/">供应商测试套件</a> (VTS) 强制执行。
@@ -104,6 +110,7 @@ SELinux 不允许相同类型/属性的多个声明。具有重复声明的政�
 <p>
 AOSP SELinux 政策已经为平台与之交互的 <code>vendor</code> 分区部分添加标签，因此能够为平台进程编写 SELinux 规则，以便访问 <code>vendor</code> 分区部分并/或与之通信。示例：
 </p>
+
 <table>
   <tbody><tr>
     <th><code>/vendor</code> 路径</th>
@@ -139,19 +146,20 @@ AOSP SELinux 政策已经为平台与之交互的 <code>vendor</code> 分区部�
    <td><code>system_server</code>、<code>zygote</code>、<code>idmap</code> 等</td>
   </tr>
 </tbody></table>
+
 <aside class="note">
-  <strong>*</strong>有关更多示例，请参阅
-<a href="https://android.googlesource.com/platform/system/sepolicy/+/master/private/file_contexts" class="external">
-  <code>system/sepolicy/private/file_contexts</code></a>.</aside>
+  <strong>*</strong>有关更多示例，请参阅 <a href="https://android.googlesource.com/platform/system/sepolicy/+/master/private/file_contexts" class="external"><code>system/sepolicy/private/file_contexts</code></a>。</aside>
 
 <p>
 因此，您在 <code>vendor</code> 分区中标记额外的文件时，必须遵循特定规则（通过 <code>neverallows</code> 强制执行）：
 </p>
+
 <ul>
-<li><code>vendor_file </code> 必须是 <code>vendor</code> 分区中所有文件的默认标签。平台政策要求使用此标签来访问直通式 HAL实现。</li>
-<li>通过供应商 SEPolicy 在 <code>vendor</code> 分区中添加的所有新 <code>exec_types</code> 均必须具有 <code>vendor_file_type</code> 属性。这一规则将通过 neverallows 强制执行。</li>
-<li>为了避免与将来的平台/框架更新发生冲突，请避免在 <code>exec_types</code> 分区中标记除 <code>vendor</code> 之外的文件。</li>
-<li>AOSP 标识的 Same-Process HAL 的所有库依赖项均必须标记为 <code>same_process_hal_file.</code>。</li></ul>
+  <li><code>vendor_file </code> 必须是 <code>vendor</code> 分区中所有文件的默认标签。平台政策要求使用此标签来访问直通式 HAL 实现。</li>
+  <li>通过供应商 SEPolicy 在 <code>vendor</code> 分区中添加的所有新 <code>exec_types</code> 均必须具有 <code>vendor_file_type</code> 属性。这一规则将通过 neverallows 强制执行。</li>
+  <li>为了避免与将来的平台/框架更新发生冲突，请避免在 <code>vendor</code> 分区中标记除 <code>exec_types</code> 之外的文件。</li>
+  <li>AOSP 标识的 Same-Process HAL 的所有库依赖项均必须标记为 <code>same_process_hal_file.</code></li>
+</ul>
 
 <h4 id="procfs">Procfs (/proc)</h4>
 <p>
@@ -160,6 +168,7 @@ AOSP SELinux 政策已经为平台与之交互的 <code>vendor</code> 分区部�
 <p>
 <strong>建议</strong>：只有平台政策可以标记 <code>/proc</code>。如果 <code>vendor</code> 进程需要访问 <code>/proc</code> 中当前使用默认标签 (<code>proc</code>) 标记的文件，则供应商政策不应明确标记它们，而应使用常规 <code>proc</code> 类型为供应商域添加规则。这样，平台更新可以适应通过 <code>procfs</code> 公开的未来内核接口，并根据需要进行明确标记。
 </p>
+
 <h4 id="debugfs">Debugfs (/sys/kernel/debug)</h4>
 <p>
 <code>Debugfs</code> 可以在 <code>file_contexts</code> 和 <code>genfscon</code> 中进行标记。在 Android 7.0 中，平台和供应商都会标记 <code>debugfs</code>。
@@ -174,6 +183,7 @@ AOSP SELinux 政策已经为平台与之交互的 <code>vendor</code> 分区部�
 <p>
 <strong>建议</strong>：只有平台可以标记 <code>tracefs</code>。
 </p>
+
 <h4 id="sysfs">Sysfs (/sys)</h4>
 <p>
 <code>/sys</code> 中的文件可以使用 <code>file_contexts</code> 和 <code>genfscon</code> 进行标记。在 Android 7.0 中，平台和供应商都使用 <code>file_contexts</code> 和 <code>genfscon</code> 来标记 <code>sysfs</code> 中的文件。
@@ -181,6 +191,7 @@ AOSP SELinux 政策已经为平台与之交互的 <code>vendor</code> 分区部�
 <p>
 <strong>建议</strong>：平台可以标记不针对特定设备的 <code>sysfs</code> 节点。否则，只有供应商可以标记文件。
 </p>
+
 <h4 id="tmpfs">tmpfs (/dev)</h4>
 <p>
 <code>/dev</code> 中的文件可以在 <code>file_contexts</code> 中进行标记。在 Android 7.0 中，平台和供应商标签文件都在这里。
@@ -188,6 +199,7 @@ AOSP SELinux 政策已经为平台与之交互的 <code>vendor</code> 分区部�
 <p>
 <strong>建议</strong>：供应商只能标记 <code>/dev/vendor</code> 中的文件（例如 <code>/dev/vendor/foo</code>、<code>/dev/vendor/socket/bar</code>）。
 </p>
+
 <h4 id="rootfs">Rootfs (/)</h4>
 <p>
 <code>/</code> 中的文件可以在 <code>file_contexts</code> 中进行标记。在 Android 7.0 中，平台和供应商标签文件都在这里。
@@ -195,6 +207,7 @@ AOSP SELinux 政策已经为平台与之交互的 <code>vendor</code> 分区部�
 <p>
 <strong>建议</strong>：只有系统可以标记 <code>/</code> 中的文件。
 </p>
+
 <h4 id="data-data">数据 (/data)</h4>
 <p>
 数据可以通过 <code>file_contexts</code> 和 <code>seapp_contexts</code> 组合进行标记。
@@ -235,10 +248,10 @@ Vendor: allow v_domain sysfs:class perm;</pre>
 <p>
 将公共政策定义为版本化属性可实现以下两个政策兼容性目标：
 </p>
+
 <ul>
- <li><strong>确保供应商代码在平台更新后继续有效</strong>。
-通过向与供应商代码所依赖的对象相对应的对象的具体类型添加属性，保留访问权限，可以做到这一点。</li>
- <li><strong>能够弃用政策</strong>。通过将政策集明确地划分到属性（在与这些属性对应的版本不再受支持时，可以立即移除这些属性）中，可以做到这一点。由于知道旧政策依然存在于供应商政策中，并且会在升级时被自动移除，因此可以继续在平台中进行开发。</li>
+  <li><strong>确保供应商代码在平台更新后继续有效</strong>。通过向与供应商代码所依赖的对象相对应的对象的具体类型添加属性，保留访问权限，可以做到这一点。</li>
+  <li><strong>能够弃用政策</strong>。通过将政策集明确地划分到属性（在与这些属性对应的版本不再受支持时，可以立即移除这些属性）中，可以做到这一点。由于知道旧政策依然存在于供应商政策中，并且会在升级时被自动移除，因此可以继续在平台中进行开发。</li>
 </ul>
 
 <h3 id="policy-writability">政策可写性</h3>
@@ -252,6 +265,7 @@ Vendor: allow v_domain sysfs:class perm;</pre>
 以 <code>allow source_foo target_bar:<em>class
 perm</em>;</code> 形式导出的平台公共政策包含在供应商政策中。在<a href="/security/selinux/build">编译</a>（包括相应的版本）期间，它将转换为将放入设备供应商部分的政策（以转换后的通用中间语言 (CIL) 显示）：
 </p>
+
 <pre class="prettyprint"> (allow source_foo_vN target_bar_vN (class (perm)))</pre>
 <p>
 由于供应商政策绝不会比平台更早，因此不必须顾虑以前的版本。但是，平台政策需要知道供应商政策追溯到什么时候，将属性添加到其所属类型中，并设置与版本化属性相对应的政策。
@@ -307,9 +321,10 @@ perm</em>;</code> 形式导出的平台公共政策包含在供应商政策中�
 <p>
 在添加新功能时或政策安全强化期间，平台会添加新类型，此时便会出现这种情况。
 </p>
+
 <ul>
-<li><strong>新功能</strong>。当该类型标记以前不存在的对象（例如新服务进程）时，供应商代码之前未与其直接交互，因此不存在相应的政策。与该类型对应的新属性在以前的版本中没有属性，因此映射文件中不需要包含定位到该版本的条目。</li>
-<li><strong>政策安全强化</strong>。当该类型表示政策安全强化时，新的类型属性必须链接回与前一个类型对应的属性链（与上一个示例将 <code>/sys/A</code> 从 <code>sysfs</code> 更改为 <code>sysfs_A</code> 类似）。供应商代码依赖于允许访问 <code>sysfs</code> 的规则，并且需要将该规则添加为新类型的属性。</li>
+  <li><strong>新功能</strong>。当该类型标记以前不存在的对象（例如新服务进程）时，供应商代码之前未与其直接交互，因此不存在相应的政策。与该类型对应的新属性在以前的版本中没有属性，因此映射文件中不需要包含定位到该版本的条目。</li>
+  <li><strong>政策安全强化</strong>。当该类型表示政策安全强化时，新的类型属性必须链接回与前一个类型对应的属性链（与上一个示例将 <code>/sys/A</code> 从 <code>sysfs</code> 更改为 <code>sysfs_A</code> 类似）。供应商代码依赖于允许访问 <code>sysfs</code> 的规则，并且需要将该规则添加为新类型的属性。</li>
 </ul>
 
 <p>
@@ -348,10 +363,12 @@ type sysfs; (type sysfs) (in CIL)</pre>
 <p>
 类型会在底层对象发生以下情形时遭到移除，此时便会出现这种（罕见）情况：
 </p>
+
 <ul>
-<li>仍然存在但获得不同的标签。</li>
-<li>被平台移除。</li>
+  <li>仍然存在但获得不同的标签。</li>
+  <li>被平台移除。</li>
 </ul>
+
 <p>
 在政策放松期间，系统会移除某个类型，并为使用该类型标记的对象提供其他已存在的标签。这表示属性映射的合并：供应商代码必须仍然能够通过底层对象曾经拥有的属性访问该底层对象，但系统的其余部分现在必须能够通过其新属性访问它。
 </p>
@@ -445,7 +462,8 @@ type sysfs; (type sysfs) (in CIL)</pre>
 <p>
 移除对象管理器（例如 <code>ZygoteConnection</code> 对象管理器）会出现这种情况，应该不会导致出现问题。对象管理器类和权限可以一直在政策中保持已定义状态，直到供应商版本不再使用它为止。通过在相应的映射文件中添加定义，可以做到这一点。
 </p>
-<h4 id="vendor-customization-for-new-relabeled-types">新类型/重新添加标签的类型的供应商自定义</h4>
+
+<h4 id="vendor-customization">新类型/重新添加标签的类型的供应商自定义</h4>
 <p>
 新供应商类型是制定供应商政策的核心，这是因为新供应商类型是说明新进程、二进制文件、设备、子系统和存储的数据所必需的。因此，必须允许创建供应商定义的类型。
 </p>
@@ -457,39 +475,43 @@ type sysfs; (type sysfs) (in CIL)</pre>
 <p>
 升级到 Android 9 的设备可以使用以下属性，但搭载 Android 9 的设备不必如此。
 </p>
+
 <h3 id="violator-attributes">违规者属性</h3>
 <p>
 Android 9 包含以下与域相关的属性：
 </p>
+
 <ul>
-<li><strong><code>data_between_core_and_vendor_violators</code></strong>。
-违反不得按 <code>vendor</code> 和 <code>coredomains</code> 之间的路径共享文件这一要求的所有域的属性。平台和供应商进程不应使用磁盘文件进行通信（不稳定的 ABI）。
-建议：
-<ul>
-  <li>供应商代码应使用 <code>/data/vendor</code>。</li>
-  <li>系统不应使用 <code>/data/vendor</code>。</li>
-  </ul></li>
-<li><strong><code>system_executes_vendor_violators</code></strong>。违反不执行供应商二进制文件这一要求的所有系统域（<code>init</code> 和 <code>shell domains</code> 除外）的属性。供应商二进制文件的执行具有不稳定的 API。平台不应直接执行供应商二进制文件。建议：
-<ul>
- <li>供应商二进制文件中的此类平台依赖项必须位于 HIDL HAL 之后。
-   <p> <strong><em>或</em></strong></p></li>
- <li>需要访问供应商二进制文件的 <code>coredomains</code> 应移至供应商分区，因此不再是 <code>coredomain</code>。</li>
-</ul>
-</li>
+  <li><strong><code>data_between_core_and_vendor_violators</code></strong>。违反不得按 <code>vendor</code> 和 <code>coredomains</code> 之间的路径共享文件这一要求的所有域的属性。平台和供应商进程不应使用磁盘文件进行通信（不稳定的 ABI）。建议：
+  <ul>
+    <li>供应商代码应使用 <code>/data/vendor</code>。</li>
+    <li>系统不应使用 <code>/data/vendor</code>。</li>
+  </ul>
+  </li>
+  <li><strong><code>system_executes_vendor_violators</code></strong>。违反不执行供应商二进制文件这一要求的所有系统域（<code>init</code> 和 <code>shell domains</code> 除外）的属性。供应商二进制文件的执行具有不稳定的 API。平台不应直接执行供应商二进制文件。建议：
+  <ul>
+    <li>供应商二进制文件中的此类平台依赖项必须位于 HIDL HAL 之后。
+      <p><strong><em>或</em></strong></p></li>
+      <li>需要访问供应商二进制文件的 <code>coredomains</code> 应移至供应商分区，因此不再是 <code>coredomain</code>。</li>
+  </ul>
+  </li>
 </ul>
 
 <h3 id="untrusted-attributes">不受信任的属性</h3>
 <p>
 托管任意代码的不受信任的应用不应具有 HwBinder 服务的访问权限，但被视为足够安全而可以通过此类应用访问的服务除外（请参阅下面的安全服务）。这主要有以下两个原因：
 </p>
+
 <ol>
-<li>HwBinder 服务器不会执行客户端身份验证，因为 HIDL 目前未公开调用方 UID 信息。即使 HIDL 确实公开了此类数据，许多 HwBinder 服务也会在低于应用的级别运行（例如 HAL），或者不能依赖应用身份进行授权。因此，为了安全起见，默认假设是每个 HwBinder 服务都将其所有客户端视为具有可执行该服务所提供操作的同等授权。</li>
-<li>HAL 服务器（HwBinder 服务的一个子集）包含安全问题选择率高于 <code>system/core</code> 组件的代码，并且可以访问堆栈的较低层级（一直到硬件），从而提升绕过 Android 安全模型的机率。</li></ol>
+  <li>HwBinder 服务器不会执行客户端身份验证，因为 HIDL 目前未公开调用方 UID 信息。即使 HIDL 确实公开了此类数据，许多 HwBinder 服务也会在低于应用的级别运行（例如 HAL），或者不能依赖应用身份进行授权。因此，为了安全起见，默认假设是每个 HwBinder 服务都将其所有客户端视为具有可执行该服务所提供操作的同等授权。</li>
+  <li>HAL 服务器（HwBinder 服务的一个子集）包含安全问题选择率高于 <code>system/core</code> 组件的代码，并且可以访问堆栈的较低层级（一直到硬件），从而提升绕过 Android 安全模型的机率。</li>
+</ol>
 
 <h4 id="safe-services">安全服务</h4>
 <p>
 安全服务包括：
 </p>
+
 <ul>
 <li><code>same_process_hwservice</code>。这些服务（根据定义）在客户端进程中运行，因此与运行该进程的客户端域具有相同的访问权限。</li>
 <li><code>coredomain_hwservice</code>。这些服务不会带来与第 2 种原因相关的风险。</li>
@@ -506,8 +528,9 @@ Android 9 包含以下与域相关的属性：
 <p>
 建议：
 </p>
+
 <ul>
-<li>不受信任的应用应与系统服务通信，系统服务再与供应商 HIDL HAL 通信。例如，应用可以与 <code><a href="https://android.googlesource.com/platform/system/sepolicy/+/master/public/app.te#209" class="external">binderservicedomain</a></code> 通信，然后 <code>mediaserver</code>（属于 <code>binderservicedomain</code>）再与 <code><a href="https://android.googlesource.com/platform/system/sepolicy/+/master/private/mediaserver.te#6" class="external">hal_graphics_allocator</a></code> 通信。
+<li>不受信任的应用应与系统服务进行通信，系统服务再与供应商 HIDL HAL 通信。例如，应用可以与 <code><a href="https://android.googlesource.com/platform/system/sepolicy/+/master/public/app.te#209" class="external">binderservicedomain</a></code> 通信，然后 <code>mediaserver</code>（属于 <code>binderservicedomain</code>）再与 <code><a href="https://android.googlesource.com/platform/system/sepolicy/+/master/private/mediaserver.te#6" class="external">hal_graphics_allocator</a></code> 通信。
 
 <p><strong><em>或</em></strong></p></li>
 <li>需要直接访问 <code>vendor</code> HAL 的应用应具有各自的供应商定义的 sepolicy 域。</li>
@@ -542,6 +565,7 @@ Android 9 包含一些<a href="https://android.googlesource.com/platform/system/
 <p>
 Android 可能会在升级时弃用最旧的版本。为了解何时弃用某个版本，Android 可能会根据供应商政策收集运行该 Android 版本且仍在接收主要平台更新的设备数量。如果该数字小于特定阈值，则会弃用该版本。
 </p>
+
 <h3 id="performance-impact-of-multiple-attributes">多个属性的性能影响</h3>
 <p>
 如 <a href="https://github.com/SELinuxProject/cil/issues/9" class="external">https://github.com/SELinuxProject/cil/issues/9</a> 中所述，分配给某种类型的大量属性会在政策缓存未命中时导致性能问题。
@@ -558,6 +582,7 @@ Android 可能会在升级时弃用最旧的版本。为了解何时弃用某个
 <p>
 Android 8.0 为 <code>file_contexts</code> 引入了以下更改：
 </p>
+
 <ul>
   <li>为避免启动期间在设备上产生额外的编译开销，<code>file_contexts</code> 不再以二进制文件形式存在，而是可读的正则表达式文本文件，例如 <code>{property,
   service}_contexts</code>（和 7.0 之前的版本一样）。</li>
@@ -583,6 +608,7 @@ Android 8.0 为 <code>file_contexts</code> 引入了以下更改：
 <p>
 在 Android 8.0 中，<code>property_contexts</code> 拆分到两个文件中：
 </p>
+
 <ul>
   <li><code>plat_property_contexts</code>
     <ul>
@@ -602,6 +628,7 @@ Android 8.0 为 <code>file_contexts</code> 引入了以下更改：
 <p>
 在 Android 8.0 中，<code>service_contexts</code> 拆分到以下两个文件中：
 </p>
+
 <ul>
   <li><code>plat_service_contexts</code>
     <ul>
@@ -640,6 +667,7 @@ Android 8.0 为 <code>file_contexts</code> 引入了以下更改：
 <p>
 在 Android 8.0 中，<code>seapp_contexts</code> 拆分到两个文件中：
 </p>
+
 <ul>
   <li><code>plat_seapp_contexts</code>
     <ul>
@@ -659,6 +687,7 @@ Android 8.0 为 <code>file_contexts</code> 引入了以下更改：
 <p>
 在 Android 8.0 中，<code>mac_permissions.xml</code> 拆分到两个文件中：
 </p>
+
 <ul>
   <li>平台 <code>mac_permissions.xml</code>
     <ul>

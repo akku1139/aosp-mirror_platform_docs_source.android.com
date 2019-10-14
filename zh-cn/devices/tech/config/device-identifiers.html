@@ -1,0 +1,89 @@
+<html devsite><head>
+    <title>设备标识符</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+
+  <!--
+      Copyright 2019 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>Android 10 更改了设备标识符的权限，以便所有设备标识符现在都受到 <code>READ_PRIVILEGED_PHONE_STATE</code> 权限的保护。在 Android 10 之前的版本中，永久性设备标识符（IMEI/MEID、IMSI、SIM 和版本序列号）受到 <code>READ_PHONE_STATE</code> 运行时权限的保护。系统仅会向使用平台密钥进行签名的应用以及特权系统应用授予 <code>READ_PRIVILEGED_PHONE_STATE</code> 权限。</p>
+
+<p>如需详细了解新权限要求，请访问 <a href="https://android.googlesource.com/platform/frameworks/base/+/master/telephony/java/android/telephony/TelephonyManager.java" class="external">TelephonyManager.java</a> 和 <a href="https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/os/Build.java" class="external">Build.java</a> 这两个 Javadoc 页面。</p>
+
+<p>此项更改会影响以下 API：</p>
+
+<ul>
+  <li>TelephonyManager#getDeviceId</li>
+  <li>TelephonyManager#getImei</li>
+  <li>TelephonyManager#getMeid</li>
+  <li>TelephonyManager#getSimSerialNumber</li>
+  <li>TelephonyManager#getSubscriberId</li>
+  <li>Build#getSerial</li>
+</ul>
+
+<p>在 Google Play 中，不使用<a href="/devices/tech/config/uicc">运营商权限</a>的运营商应用无法再访问设备标识符。如果运营商的应用作为特权应用预加载在设备上，则需要使用 <code>READ_PRIVILEGED_PHONE_STATE</code> 权限才能访问设备标识符。</p>
+
+<h2 id="device-identifiers-implementation">实现</h2>
+<p>请更新您的特许权限白名单，以向需要访问设备标识符的特权应用授予 <code>READ_PRIVILEGED_PHONE_STATE</code> 权限。</p>
+
+<p>要详细了解如何加入白名单，请参阅<a href="/devices/tech/config/perms-whitelist">特许权限白名单</a>。</p>
+
+<p>要调用受影响的 API，应用必须满足以下要求之一：</p>
+<ul>
+  <li>如果应用是预加载的特权应用，则需要获得在 AndroidManifest.xml 中声明的 <code>READ_PRIVILEGED_PHONE_STATE</code> 权限。此外，该应用还需要将此特许权限列入白名单。</li>
+  <li>通过 Google Play 提供的应用需要运营商权限。请访问 <a href="/devices/tech/config/uicc">UICC 运营商权限</a>页面，详细了解如何授予运营商权限。</li>
+  <li>应用是已获得 <code>READ_PHONE_STATE</code> 权限的设备所有者或资料所有者应用。</li>
+</ul>
+<p>不符合上述任何要求的应用具有以下行为：</p>
+<ul>
+  <li>如果应用以 Android Q 之前的版本为目标平台，且尚未获得 <code>READ_PHONE_STATE</code> 权限，则会触发 <code>SecurityException</code>。这是 Android Q 之前的版本目前会出现的行为，因为调用这些 API 需要此权限。</li>
+  <li>如果应用以 Android Q 之前的版本为目标平台，且已获得 <code>READ_PHONE_STATE</code> 权限，则会在调用所有 TelephonyManager API 之后收到 null 值，还会收到 <code>Build.UNKNOWN</code>（调用 <code>Build#getSerial</code> 方法之后）。</li>
+  <li>如果应用以 Android 10 或更高版本为目标平台，且不符合任何一项新要求，则会收到 SecurityException。</li>
+</ul>
+
+<h2 id="device-identifiers-validation">验证和测试</h2>
+<p><a href="/compatibility/cts">兼容性测试套件 (CTS)</a> 包含用于验证以下应用的预期设备标识符访问行为的测试：具有运营商权限的应用、设备所有者和资料所有者应用以及预计无权访问设备标识符的应用。</p>
+
+<p>以下 CTS 测试专为此功能设计。</p>
+
+<pre class="devsite-click-to-copy">
+<code class="devsite-terminal">cts-tradefed run cts -m CtsCarrierApiTestCases -t
+    android.carrierapi.cts.CarrierApiTest</code>
+
+<code class="devsite-terminal">cts-tradefed run cts -m CtsTelephonyTestCases -t
+    android.telephony.cts.TelephonyManagerTest</code>
+
+<code class="devsite-terminal">cts-tradefed run cts -m CtsTelephony3TestCases</code>
+
+<code class="devsite-terminal">cts-tradefed run cts -m CtsPermissionTestCases -t
+    android.permission.cts.TelephonyManagerPermissionTest</code>
+
+<code class="devsite-terminal">cts-tradefed run cts -m CtsDevicePolicyManagerTestCases -t
+    com.android.cts.devicepolicy.DeviceOwnerTest#testDeviceOwnerCanGetDeviceIdentifiers</code>
+
+<code class="devsite-terminal">cts-tradefed run cts -m CtsDevicePolicyManagerTestCases -t
+    com.android.cts.devicepolicy.ManagedProfileTest#testProfileOwnerCanGetDeviceIdentifiers</code>
+
+<code class="devsite-terminal">cts-tradefed run cts -m CtsDevicePolicyManagerTestCases -t
+    com.android.cts.devicepolicy.ManagedProfileTest#testProfileOwnerCannotGetDeviceIdentifiersWithoutPermission</code>
+
+<code class="devsite-terminal">cts-tradefed run cts -m CtsDevicePolicyManagerTestCases -t
+    com.android.cts.devicepolicy.DeviceOwnerTest#testDeviceOwnerCannotGetDeviceIdentifiersWithoutPermission</code>
+</pre>
+
+</body></html>

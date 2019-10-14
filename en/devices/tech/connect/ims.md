@@ -152,7 +152,7 @@ IMS PDN for emergency calling. Any implementation of `ImsService` that wishes to
 support the MMTEL features should extend the
 `android.telephony.ims.MmTelFeature` base class and return a custom
 `MmTelFeature` implementation in
-[`ImsService#createMmTelFeature`](https://android.googlesource.com/platform/frameworks/base/+/master/telephony/java/android/telephony/ims/ImsService.java#335){: .external}.
+[`ImsService#createMmTelFeature`](https://android.googlesource.com/platform/frameworks/base/+/5b1883b5f10ab13aee449d9524d7fb71c8ba0b6c/telephony/java/android/telephony/ims/ImsService.java#120){: .external}.
 
 #### FEATURE_EMERGENCY_MMTEL
 
@@ -197,7 +197,7 @@ appropriate. There are two types of ImsServices that the framework binds to:
 1.  Carrier "override" ImsService: These ImsServices are preloaded onto the
     device but are attached to one or more cellular carriers and will only be
     bound when a matching SIM card is inserted. This is configured using the
-    [`key_config_ims_package_override`](https://android.googlesource.com/platform/frameworks/base/+/master/telephony/java/android/telephony/CarrierConfigManager.java#309){: .external}
+    [`key_config_ims_package_override`](https://android.googlesource.com/platform/frameworks/base/+/024aaf23881c142ba92194a001ac038253ae708e/telephony/java/android/telephony/CarrierConfigManager.java#243){: .external}
     CarrierConfig key.
 1.  Device "default" ImsService: This is the default ImsService that is loaded
     onto the device by an OEM and should be designed to provide IMS services in
@@ -205,7 +205,7 @@ appropriate. There are two types of ImsServices that the framework binds to:
     situations where the device has no SIM card inserted or the SIM card
     inserted does not have a carrier ImsService installed with it. This is
     defined in the device overlay
-    [`config_ims_package`](https://android.googlesource.com/platform/frameworks/base/+/master/core/res/res/values/config.xml#2705){: .external}
+    [`config_ims_package`](https://android.googlesource.com/platform/frameworks/base/+/e37ebbffb01042b667633362459c3a069575ad46/core/res/res/values/config.xml#2283){: .external}
     key.
 
 Both of these ImsService implementations are required to be System applications,

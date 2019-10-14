@@ -1,0 +1,292 @@
+<html devsite>
+  <head>
+    <title>Loadable Kernel Modules</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  {% include "_versions.html" %}
+  <body>
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>
+  As part of the module kernel requirements introduced in Android 8.0, all
+  system-on-chip (SoC) kernels must support loadable kernel modules.
+
+<h2 id="kernel-config-option">Kernel configuration options</h2>
+
+<p>
+  To support loadable kernel modules,
+  <a href="https://android.googlesource.com/kernel/common/+/android-4.4-o/android/configs/android-base.cfg"
+  class="external">android-base.cfg</a> in all common kernels includes the
+  following kernel-config options (or their kernel-version equivalent):
+</p>
+
+<pre class="prettyprint">
+CONFIG_MODULES=y
+CONFIG_MODULE_UNLOAD=y
+CONFIG_MODVERSIONS=y
+</pre>
+
+<p>
+  All device kernels must enable these options. Kernel modules should also
+  support unloading and reloading whenever possible.
+</p>
+
+<aside class="note"><strong>Note:</strong>
+  <code>CONFIG_MODULE_SRCVERSION_ALL</code> is optional and isn't tested
+  against.
+</aside>
+
+<h2 id="module-signing">Module signing</h2>
+
+<p>
+  Original device manufacturers (ODMs) can optionally enable module signing in
+  their kernel configuration by enabling following kernel config options:
+</p>
+
+<pre class="prettyprint">
+CONFIG_MODULE_SIG=y
+CONFIG_MODULE_SIG_FORCE=y
+</pre>
+
+<p>
+  On devices required to support verified boot, Android requires kernel modules
+  to be in the partitions that have dm-verity enabled. Module signing isn't
+  mandatory and isn't tested against; however, if desired, an ODM can enable
+  module signing as long as they have the key signing and other infrastructure
+  required to ensure independent kernel and file system OTA updates in the
+  future.
+</p>
+
+<h2 id="file-locations">File locations</h2>
+
+<p>
+  While Android 7.x and lower don't mandate against kernel modules (and include
+  support for <code>insmod</code> and <code>rmmod</code>), Android 8.x and
+  higher recommend the use of kernel modules in the ecosystem. The following
+  table shows potential board-specific peripheral support required across three
+  Android boot modes.
+</p>
+
+<table>
+<tr>
+<th>Boot mode</th>
+<th>Storage</th>
+<th>Display</th>
+<th>Keypad</th>
+<th>Battery</th>
+<th>PMIC</th>
+<th>Touchscreen</th>
+<th>NFC, Wi-Fi,<br>Bluetooth</th>
+<th>Sensors</th>
+<th>Camera</th>
+</tr>
+<tr>
+<td>Recovery</td>
+<td><span class="compare-yes"></span></td>
+<td><span class="compare-yes"></span></td>
+<td><span class="compare-yes"></span></td>
+<td><span class="compare-yes"></span></td>
+<td><span class="compare-yes"></span></td>
+<td><span class="compare-no"></span></td>
+<td><span class="compare-no"></span></td>
+<td><span class="compare-no"></span></td>
+<td><span class="compare-no"></span></td>
+</tr>
+<tr>
+<td>Charger</td>
+<td><span class="compare-yes"></span></td>
+<td><span class="compare-yes"></span></td>
+<td><span class="compare-yes"></span></td>
+<td><span class="compare-yes"></span></td>
+<td><span class="compare-yes"></span></td>
+<td><span class="compare-no"></span></td>
+<td><span class="compare-no"></span></td>
+<td><span class="compare-no"></span></td>
+<td><span class="compare-no"></span></td>
+</tr>
+<tr>
+<td>Android</td>
+<td><span class="compare-yes"></span></td>
+<td><span class="compare-yes"></span></td>
+<td><span class="compare-yes"></span></td>
+<td><span class="compare-yes"></span></td>
+<td><span class="compare-yes"></span></td>
+<td><span class="compare-yes"></span></td>
+<td><span class="compare-yes"></span></td>
+<td><span class="compare-yes"></span></td>
+<td><span class="compare-yes"></span></td>
+</tr>
+</table>
+
+<p>
+  In addition to availability in Android boot modes, kernel modules may also be
+  categorized by who owns them (the SoC vendor or the ODM). If kernel modules
+  are being used, requirements for their placement in file system are as
+  follows:
+</p>
+
+<ul>
+  <li>All kernels should have built-in support for booting and mounting
+  partitions.</li>
+  <li>Kernel modules must be loaded from a read-only partition.</li>
+  <li>For devices required to have verified boot, kernel modules should be
+  loaded from verified partitions.</li>
+  <li>Kernel modules shouldn't be located in <code>/system</code>.</li>
+  <li>Kernel modules from the SoC vendor that are required for full Android or
+  Charger modes should be located in <code>/vendor/lib/modules</code>.</li>
+  <li>If an ODM partition exists, kernel modules from the ODM that are required
+  for full Android or Charger modes should be located in
+  <code>/odm/lib/modules</code>. Otherwise, these modules should be located in
+  <code>/vendor/lib/modules</code>.</li>
+  <li>Kernel modules from the SoC vendor and ODM that are required for Recovery
+  mode should be located in the recovery <code>ramfs</code> at
+  <code>/lib/modules</code>.</li>
+  <li>Kernel modules required for both Recovery mode and full Android or
+  Charger modes should exist both in the recovery <code>rootfs</code> and
+  either the <code>/vendor</code> or <code>/odm</code> partitions (as described
+  above).</li>
+  <li>Kernel modules used in Recovery mode shouldn't depend on modules located
+  only in <code>/vendor</code> or <code>/odm</code>, as those partitions aren't
+  mounted in Recovery mode.</li>
+  <li>SoC vendor kernel modules shouldn't depend on ODM kernel modules.</li>
+</ul>
+
+<p>
+  In Android 7.x and lower, <code>/vendor</code> and <code>/odm</code>
+  partitions are <strong>not</strong> mounted early. In Android 8.x and higher,
+  to make module loading from these partitions possible, provisions have been
+  made to mount partitions early for both
+  <a href="/devices/tech/ota/ab_updates">non-A/B and A/B devices</a>. This also
+  ensures that the partitions are mounted in both Android and Charger modes.
+</p>
+
+<h2 id="android-build-system-support">Android build system support</h2>
+
+<p>
+  In <code>BoardConfig.mk</code>, the Android build defines a
+  <code>BOARD_VENDOR_KERNEL_MODULES</code> variable that provides a full list
+  of the kernel modules intended for the vendor image. The modules listed in
+  this variable are copied into the vendor image at <code>/lib/modules/</code>,
+  and, after being mounted in Android, appear in
+  <code>/vendor/lib/modules</code> (in accordance with the above requirements).
+  Example configuration of the vendor kernel modules:
+</p>
+
+<pre class="prettyprint">
+vendor_lkm_dir := device/$(vendor)/lkm-4.x
+BOARD_VENDOR_KERNEL_MODULES := \
+  $(vendor_lkm_dir)/vendor_module_a.ko \
+  $(vendor_lkm_dir)/vendor_module_b.ko \
+  $(vendor_lkm_dir)/vendor_module_c.ko
+</pre>
+
+<p>
+  In this example, a vendor kernel module pre-built repository is mapped into
+  the Android build at the location listed above.
+</p>
+
+<p>
+  The recovery image may contain a subset of the vendor modules. The Android
+  build defines the variable <code>BOARD_RECOVERY_KERNEL_MODULES</code> for
+  these modules. Example:
+</p>
+
+<pre class="prettyprint">
+vendor_lkm_dir := device/$(vendor)/lkm-4.x
+BOARD_RECOVERY_KERNEL_MODULES := \
+  $(vendor_lkm_dir)/vendor_module_a.ko \
+  $(vendor_lkm_dir)/vendor_module_b.ko
+</pre>
+
+<p>
+  The Android build takes care of running <code>depmod</code> to generate the
+  required <code>modules.dep</code> files in <code>/vendor/lib/modules</code>
+  and <code>/lib/modules</code> (<code>recovery ramfs</code>).
+</p>
+
+<h2 id="module-loading-&-versioning">Module loading and versioning</h2>
+
+<p>
+  Load all kernel modules in one pass from <code>init.rc*</code> by invoking
+  <code>modprobe -a</code>. This avoids the overhead of repeatedly initializing
+  the C runtime environment for the <code>modprobe</code> binary. The
+  <code>early-init</code> event can be modified to invoke <code>modprobe</code>:
+</p>
+
+<pre class="prettyprint">
+on early-init
+    exec u:r:modprobe:s0 -- /vendor/bin/modprobe -a -d \
+        /vendor/lib/modules module_a module_b module_c ...
+</pre>
+
+<p>
+  Typically, a kernel module must be compiled with the kernel that the module is
+  to be used with (otherwise the kernel refuses to load the module).
+  <code>CONFIG_MODVERSIONS</code> provides a workaround by detecting breakages
+  in the application binary interface (ABI). This feature calculates a cyclic
+  redundancy check (CRC) value for the prototype of each exported symbol in the
+  kernel and stores the values as part of the kernel; for symbols used by a
+  kernel module, the values are also stored in the kernel module. When the
+  module is loaded, the values for the symbols used by the module are compared
+  with the ones in the kernel. If the values match, the module is loaded;
+  otherwise the load fails.
+</p>
+
+<aside class="note"><strong>Note:</strong>
+  For help comparing, tracking, and mitigating kernel ABI changes that affect
+  compatibility with kernel modules, refer to the scripts and utilities in
+  <a href="https://android.googlesource.com/kernel/build/+/refs/heads/master/abi/"
+  class="external">ABI Monitoring Utilities</a>.
+</aside>
+
+<p>
+  To enable the updating of the kernel image separately from the vendor image,
+  enable <code>CONFIG_MODVERSIONS</code>. Doing so allows small updates to the
+  kernel (such as bug fixes from LTS) to be made while maintaining compatibility
+  with existing kernel modules in the vendor image. However,
+  <code>CONFIG_MODVERSIONS</code> doesn't fix an ABI breakage by itself. If the
+  prototype of an exported symbol in the kernel changes, either due to
+  modification of the source or because the kernel configuration changed, this
+  breaks compatibility with kernel modules that use that symbol. In such cases,
+  the kernel module must be recompiled.
+</p>
+
+<p>
+  For example, the <code>task_struct</code> structure in the kernel (defined in
+  <code>include/linux/sched.h</code>) contains many fields conditionally
+  included depending on the kernel configuration. The <code>sched_info</code>
+  field is present only if <code>CONFIG_SCHED_INFO</code> is enabled (which
+  occurs when <code>CONFIG_SCHEDSTATS</code> or
+  <code>CONFIG_TASK_DELAY_ACCT</code> are enabled). If these configuration
+  options change state, the layout of the <code>task_struct</code> structure
+  changes and any exported interfaces from the kernel that use
+  <code>task_struct</code> are altered (for example,
+  <code>set_cpus_allowed_ptr</code> in <code>kernel/sched/core.c</code>).
+  Compatibility with previously compiled kernel modules that use these
+  interfaces breaks, requiring those modules to be rebuilt with the new kernel
+  configuration.
+</p>
+
+<p>
+  For more details on <code>CONFIG_MODVERSIONS</code>, refer to the
+  documentation in the kernel tree at
+  <code>Documentation/kbuild/modules.txt</code>.
+</p>
+
+</body>
+</html>

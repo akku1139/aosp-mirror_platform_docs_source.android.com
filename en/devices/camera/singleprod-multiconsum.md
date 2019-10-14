@@ -24,7 +24,7 @@ Book: /_book.yaml
 This feature introduces a set of methods that allows camera clients to add and
 remove output surfaces dynamically while the capture session is active and
 camera streaming is ongoing. A new output can map to a specific, user-selected
-[shared camera](https://developer.android.com/reference/android/hardware/camera2/params/OutputConfiguration#enableSurfaceSharing\(\)){: .external}
+[shared camera](https://developer.android.com/reference/android/hardware/camera2/params/OutputConfiguration#enableSurfaceSharing()){: .external}
 stream. After a surface is added, it can be removed at any time.
 
 The general idea is to share the buffers associated with a particular camera
@@ -49,8 +49,8 @@ The core implementation of this feature can be found in the
 module. Documentation on this feature can be found in the developer reference:
 
 +   [`updateOutputConfiguration()`](https://developer.android.com/reference/android/hardware/camera2/CameraCaptureSession.html#updateOutputConfiguration\(android.hardware.camera2.params.OutputConfiguration\)){: .external}  
-+   [`addSurface()`](https://developer.android.com/reference/android/hardware/camera2/params/OutputConfiguration#addSurface\(android.view.Surface\)){: .external}  
-+   [`removeSurface()`](https://developer.android.com/reference/android/hardware/camera2/params/OutputConfiguration#removeSurface\(android.view.Surface\)){: .external}  
++   [`addSurface()`](https://developer.android.com/reference/android/hardware/camera2/params/OutputConfiguration#addSurface(android.view.Surface)){: .external}  
++   [`removeSurface()`](https://developer.android.com/reference/android/hardware/camera2/params/OutputConfiguration#removeSurface(android.view.Surface)){: .external}  
 
 ## Implementation
 

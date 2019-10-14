@@ -1,0 +1,168 @@
+<html devsite><head>
+
+  <meta name="book_path" value="/_book.yaml"/>
+
+  <meta name="project_path" value="/_project.yaml"/>
+</head>
+<body>
+
+<!--
+  Copyright 2019 The Android Open Source Project
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+<h1 id="soong_build_system" class="page-title">Sistema de criação Soong</h1>
+
+<p>Antes do lançamento do Android 7.0, o Android usava o <a href="https://www.gnu.org/software/make/" class="external">GNU Make</a> (link em inglês) exclusivamente para descrever e executar regras de criação. O sistema de criação Make tem ampla compatibilidade e é muito utilizado, mas se tornou lento, propenso a erros, não escalonável e difícil de testar no Android. O <a href="https://android.googlesource.com/platform/build/soong/+/refs/heads/master/README.md" class="external">sistema de criação Soong</a> (link em inglês) oferece a flexibilidade necessária para as compilações do Android.</p>
+
+<h2 id="what_is_soong">O que é o Soong?</h2>
+
+<p>O <a href="https://android.googlesource.com/platform/build/soong/+/refs/heads/master/README.md" class="external">sistema de criação Soong</a> foi introduzido no Android 7.0 (Nougat) para substituir o Make. Esse processo ainda está em andamento.</p>
+
+<p>Consulte a descrição do <a href="https://android.googlesource.com/platform/build/+/master/README.md" class="external">Sistema de criação Make do Android</a> no Android Open Source Project (AOSP) para ver <a href="https://android.googlesource.com/platform/build/+/master/Usage.txt" class="external">instruções gerais</a> e <a href="https://android.googlesource.com/platform/build/+/master/Changes.md" class="external">fazer alterações no sistema para os gravadores do Android.mk</a> (todos os links em inglês) e saber mais sobre as modificações necessárias para se adaptar do Make ao Soong.</p>
+
+<p>Consulte <a href="/compatibility/tests/development/blueprints">Configuração de criação simples</a> para ver exemplos de arquivos de configuração Soong (Blueprint ou <code>.bp</code>), além dos <a href="https://ci.android.com/builds/latest/branches/aosp-build-tools/targets/linux/view/soong_build.html" class="external">arquivos de referência Soong</a> (link em inglês) para ver detalhes completos.</p>
+<aside class="caution"><strong>Cuidado:</strong><span> até que o Android seja totalmente convertido de Make para Soong, a configuração de produto Make precisa especificar o valor de <code>PRODUCT_SOONG_NAMESPACES</code>. Consulte a seção <a href="#namespace_modules">Módulos de namespace</a> para ver mais instruções.</span></aside>
+<h2 id="androidbp_file_format">Formato de arquivo Android.bp</h2>
+
+<p>Por padrão, os arquivos <code>Android.bp</code> são simples. Eles não contêm condicionais nem instruções de fluxo de controle. Toda a complexidade é processada pela lógica de criação gravada em Go. Quando possível, a sintaxe e a semântica dos arquivos <code>Android.bp</code> são semelhantes aos <a href="https://www.bazel.io/versions/master/docs/be/overview.html" class="external">arquivos Bazel BUILD</a> (link em inglês).</p>
+
+<h3 id="modules">Módulos</h3>
+
+<p>Um módulo em um arquivo <code>Android.bp</code> começa com um <a href="https://ci.android.com/builds/latest/branches/aosp-build-tools/targets/linux/view/soong_build.html" class="external">tipo de módulo</a> seguido por um conjunto de propriedades no formato <code>name: value,</code>:</p>
+<pre class="prettyprint"><code>cc_binary {
+    name: "gzip",
+    srcs: ["src/test/minigzip.c"],
+    shared_libs: ["libz"],
+    stl: "none",
+}
+</code></pre>
+<p>Cada módulo precisa ter uma propriedade <code>name</code>, e o valor precisa ser exclusivo em todos os arquivos <code>Android.bp</code>, com exceção dos valores em namespaces e módulos pré-criados.</p>
+
+<p>Para ver uma lista de tipos de módulo válidos e as propriedades deles, consulte a <a href="https://ci.android.com/builds/latest/branches/aosp-build-tools/targets/linux/view/soong_build.html" class="external">Referência dos módulos Soong</a> (link em inglês).</p>
+
+<h3 id="types">Tipos</h3>
+
+<p>Variáveis e propriedades são fortemente categorizadas, com variáveis baseadas dinamicamente na primeira atribuição e propriedades definidas estaticamente pelo tipo de módulo. Os tipos compatíveis são estes:</p>
+
+<ul>
+<li>Booleanos (<code>true</code> ou <code>false</code>)</li>
+<li>Inteiros (<code>int</code>)</li>
+<li>Strings (<code>"string"</code>)</li>
+<li>Listas de strings (<code>["string1", "string2"]</code>)</li>
+<li>Mapas (<code>{key1: "value1", key2: ["value2"]}</code>)</li>
+</ul>
+
+<p>Os mapas podem conter valores de qualquer tipo, incluindo mapas aninhados. Listas e mapas podem ter vírgulas à direita do último valor.</p>
+
+<h3 id="globs">Globs</h3>
+
+<p>As propriedades que levam uma lista de arquivos, como <code>srcs</code>, também podem ter padrões glob. Os padrões glob podem conter o caractere curinga normal <code>*</code> do UNIX, por exemplo, <code>*.java</code>. Os padrões glob também podem conter um único caractere curinga <code>**</code> como elemento de caminho, que corresponde a zero ou mais elementos de caminho. Por exemplo, <code>java/**/*.java</code> corresponde a estes dois caminhos: <code>java/Main.java</code> <code>java/com/android/Main.java</code></p>
+
+<h3 id="variables">Variáveis</h3>
+
+<p>Um arquivo <code>Android.bp</code> pode conter atribuições de variáveis de nível superior:</p>
+<pre class="prettyprint"><code>gzip_srcs = ["src/test/minigzip.c"],
+cc_binary {
+    name: "gzip",
+    srcs: gzip_srcs,
+    shared_libs: ["libz"],
+    stl: "none",
+}
+</code></pre>
+<p>As variáveis são definidas para o restante do arquivo em que são declaradas, assim como para quaisquer arquivos Blueprint filhos. As variáveis são imutáveis, com uma exceção: elas podem ser anexadas com uma designação +=, mas somente antes de serem referenciadas.</p>
+
+<h3 id="comments">Comentários</h3>
+
+<p>Os arquivos <code>Android.bp</code> podem conter comentários <code>/* */</code> multilinha no estilo C e de uma única linha <code>//</code> no estilo C++.</p>
+
+<h3 id="operators">Operadores</h3>
+
+<p>Strings, listas de strings e mapas podem ser anexados usando o operador +.
+Os números inteiros podem ser somados usando o operador +. Anexar um mapa gera a união de chaves nos dois mapas, anexando os valores de todas as chaves presentes neles.</p>
+
+<h3 id="conditionals">Condicionais</h3>
+
+<p>O Soong não é compatível com condicionais em arquivos <code>Android.bp</code>. Em vez disso, a complexidade nas regras de criação que exigiriam condicionais é processada no Go, onde os recursos de linguagem de alto nível podem ser usados, e as dependências implícitas introduzidas pelos condicionais podem ser rastreadas. A maioria das condicionais é convertida em uma propriedade de mapa, em que um dos valores no mapa é selecionado e anexado às propriedades de nível superior.</p>
+
+<p>Por exemplo, para compatibilidade com arquivos específicos da arquitetura:</p>
+<pre class="prettyprint"><code>cc_library {
+    ...
+    srcs: ["generic.cpp"],
+    arch: {
+        arm: {
+            srcs: ["arm.cpp"],
+        },
+        x86: {
+            srcs: ["x86.cpp"],
+        },
+    },
+}
+</code></pre>
+<h3 id="formatter">Formatador</h3>
+
+<p>O Soong inclui um formatador canônico para arquivos Blueprint, <a href="https://golang.org/cmd/gofmt/" class="external">semelhante ao gofmt</a> (link em inglês). Para reformatar recursivamente todos os arquivos <code>Android.bp</code> no diretório atual, execute:</p>
+<pre class="prettyprint"><code>bpfmt -w .
+</code></pre>
+<p>O formato canônico inclui recuos de quatro espaços, novas linhas após cada elemento de lista de vários elementos e uma vírgula final em listas e mapas.</p>
+
+<h2 id="special_modules">Módulos especiais</h2>
+
+<p>Alguns grupos de módulos especiais têm características únicas.</p>
+
+<h3 id="defaults_modules">Módulos de padrões</h3>
+
+<p>Um módulo de padrões pode ser usado para repetir as mesmas propriedades em vários módulos.
+Por exemplo:</p>
+<pre class="prettyprint"><code>cc_defaults {
+    name: "gzip_defaults",
+    shared_libs: ["libz"],
+    stl: "none",
+}
+
+cc_binary {
+    name: "gzip",
+    defaults: ["gzip_defaults"],
+    srcs: ["src/test/minigzip.c"],
+}
+</code></pre>
+<h3 id="prebuilt_modules">Módulos pré-criados</h3>
+
+<p>Alguns tipos de módulos pré-criados permitem que um módulo tenha o mesmo nome que as contrapartes dele baseadas em origem. Por exemplo, pode haver um <code>cc_prebuilt_binary</code> chamado "foo" quando já existir um <code>cc_binary</code> com o mesmo nome. Isso dá aos desenvolvedores a flexibilidade de escolher qual versão incluir no produto final. Se uma configuração de criação contiver as duas versões, o valor da sinalização <code>prefer</code> na definição do módulo pré-criado ditará qual versão tem prioridade.
+Observe que alguns módulos pré-criados têm nomes que não começam com <code>prebuilt</code>, como <code>android_app_import</code>.</p>
+
+<h3 id="namespace_modules">Módulos de namespace</h3>
+
+<p>Até que o Android seja totalmente convertido de Make para Soong, a configuração de produto Make precisa especificar um valor <code>PRODUCT_SOONG_NAMESPACES</code>. O valor precisa ser uma lista de namespaces separados por espaços, que o Soong exporta para o Make para ser compilada pelo comando <code>m</code>. Os detalhes de ativação de namespaces poderão mudar depois que a conversão do Android para Soong for concluída.</p>
+
+<p>O Soong permite que módulos em diferentes diretórios especifiquem o mesmo nome, contanto que cada módulo seja declarado dentro de um namespace diferente. Um namespace pode ser declarado desta forma:</p>
+<pre class="prettyprint"><code>soong_namespace {
+    imports: ["path/to/otherNamespace1", "path/to/otherNamespace2"],
+}
+</code></pre>
+<p>Um namespace não tem a propriedade de nome. O caminho é atribuído automaticamente como o nome dele.</p>
+
+<p>Cada módulo Soong recebe um namespace com base na própria localização na árvore.
+Considera-se que cada módulo Soong está no namespace definido pelo <code>soong_namespace</code> encontrado em um arquivo <code>Android.bp</code> no diretório atual ou no diretório ancestral mais próximo. Se nenhum módulo <code>soong_namespace</code> for localizado, será considerado que o módulo está no namespace raiz implícito.</p>
+
+<p>Veja um exemplo: o Soong tenta resolver a dependência D declarada pelo módulo M no namespace N que importa namespaces I1, I2, I3…</p>
+
+<ol>
+<li>Então, se D for um nome totalmente qualificado com a forma <code>//namespace:module</code>, somente o namespace especificado será procurado pelo nome do módulo especificado.</li>
+<li>Caso contrário, o Soong primeiro procurará um módulo chamado D declarado no namespace N.</li>
+<li>Se esse módulo não existir, o Soong procurará por um módulo chamado D nos namespaces I1, I2, I3…</li>
+<li>Por fim, o Soong procurará no namespace raiz.</li>
+</ol>
+
+</body></html>

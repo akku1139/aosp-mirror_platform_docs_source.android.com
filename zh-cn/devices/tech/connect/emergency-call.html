@@ -1,0 +1,112 @@
+<html devsite><head>
+
+  <meta name="book_path" value="/_book.yaml"/>
+
+  <meta name="project_path" value="/_project.yaml"/>
+</head>
+<body>
+
+<!--
+  Copyright 2019 The Android Open Source Project
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+<h1 id="emergency_numbers_and_emergency_calling" class="page-title">紧急电话号码和紧急呼叫</h1>
+
+<p>紧急呼叫对于设备而言至关重要，因为它们必须可供 Android 用户使用，同时满足全球各种运营商和监管要求。Android 框架可为用户提供快速安全的紧急呼叫体验。</p>
+
+<p>Android 10 通过使用 SIM、网络、调制解调器和数据库中的详细紧急电话号码列表，改进了对本地 Android 平台中紧急呼叫功能、维护和更新的支持。Android 10 还支持基于警察、消防或救护车等紧急服务类型的紧急呼叫。Android 10 通过在 TelephonyManager API 中共享来自多个订阅的紧急电话号码，改进了对多 SIM 设备的支持。</p>
+
+<p>在使用 Radio HAL 1.4 的 Android 10 中，通过在 HAL 接口中将紧急呼叫与正常呼叫分离以优化紧急呼叫路径，以及允许设备拨打在 Android 数据库中配置的相应紧急电话号码来改进紧急呼叫。</p>
+
+<h2 id="implementation">实现</h2>
+
+<p>要实现紧急呼叫和紧急电话号码功能，请实现以下 <a href="https://android.googlesource.com/platform/frameworks/base/+/refs/heads/master/telephony/java/android/telephony/TelephonyManager.java" class="external"><code>TelephonyManager</code></a> 和硬件接口 API。</p>
+
+<h3 id="telephonymanager_apis">TelephonyManager API</h3>
+
+<p>实现以下 API：</p>
+
+<ul>
+<li>实现 <a href="https://developer.android.com/reference/android/telephony/TelephonyManager.html#getEmergencyNumberList()" class="external"><code>getEmergencyNumberList</code></a>，根据紧急电话号码来源（包括区域设置、SIM 卡、默认设置、调制解调器、Android 数据库和网络）获取紧急呼叫的有效紧急电话号码。对于每个紧急电话号码，请指定相应的紧急服务类别，例如警察、救护车和消防。</li>
+<li>实现 <a href="https://developer.android.com/reference/android/telephony/TelephonyManager.html#isEmergencyNumber(java.lang.String)" class="external"><code>isEmergencyNumber</code></a> 以识别某个电话号码是否是紧急电话号码。</li>
+<li>实现 <a href="https://android.googlesource.com/platform/frameworks/base/+/refs/heads/master/telephony/java/android/telephony/TelephonyManager.java#10554" class="external"><code>isPotentialEmergencyNumber</code></a> 以在某个电话号码的起始数字与任何紧急电话号码相同时将其识别为紧急电话号码。</li>
+</ul>
+
+<p>紧急电话号码来源的值包括：</p>
+
+<ul>
+<li><code>EMERGENCY_NUMBER_SOURCE_NETWORK_SIGNALING</code>：电话号码来自网络信号</li>
+<li><code>EMERGENCY_NUMBER_SOURCE_SIM</code>：电话号码来自 SIM 卡</li>
+<li><code>EMERGENCY_NUMBER_SOURCE_DATABASE</code>：电话号码来自平台维护的数据库</li>
+<li><code>EMERGENCY_NUMBER_SOURCE_MODEM_CONFIG</code>：电话号码来自调制解调器配置</li>
+<li><code>EMERGENCY_NUMBER_SOURCE_DEFAULT</code>：默认情况下，可以拨打电话号码。必须始终可以拨打电话号码 112 和 911。没有 SIM 卡时，必须可拨打 000、08、110、999、118 和 119。如需了解详情，请参阅 <a href="https://www.etsi.org/deliver/etsi_ts/122100_122199/122101/09.01.00_60/ts_122101v090100p.pdf" class="external">3GPP TS 22.101</a> 中的第 10 部分：紧急呼叫。<em></em></li>
+</ul>
+
+<p>紧急服务类别的值包括：</p>
+
+<ul>
+<li><code>UNSPECIFIED</code>：一般紧急呼叫，所有类别</li>
+<li><code>POLICE</code>：警察</li>
+<li><code>AMBULANCE</code>：救护车</li>
+<li><code>FIRE_BRIGADE</code>：消防队</li>
+<li><code>MARINE_GUARD</code>：海军陆战队</li>
+<li><code>MOUNTAIN_RESCUE</code>：山地救援</li>
+<li><code>MIEC</code>：手动启动的 eCall (MIeC)</li>
+<li><code>AIEC</code>：自动启动的 eCall (AIeC)</li>
+</ul>
+
+<p>如需了解详情，请参阅 <a href="https://www.etsi.org/deliver/etsi_ts/122100_122199/122101/09.01.00_60/ts_122101v090100p.pdf" class="external">3GPP TS 22.101</a> 中的第 10 部分：紧急呼叫。<em></em></p>
+
+<h3 id="hardware_interface_apis">硬件接口 API</h3>
+
+<p>在 <code>IRadio.hal</code> 中实现 <a href="https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/master/radio/1.4/IRadio.hal#159" class="external"><code>emergencyDial</code></a>。在 <code>IRadioResponse.hal</code> 中实现 <a href="https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/master/radio/1.4/IRadioResponse.hal#55" class="external"><code>emergencyDialResponse</code></a> 以发送响应，其中包含响应类型、序列号和错误信息。</p>
+
+<p>要报告紧急电话号码的最新列表，请在 <code>IRadioIndication.hal</code> 中实现 <a href="https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/master/radio/1.4/IRadioIndication.hal#52" class="external"><code>currentEmergencyNumberList</code></a>。在 <code>types.hal</code> 中实现 <a href="https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/master/radio/1.4/types.hal#99" class="external"><code>EmergencyNumber</code></a>，其中包含有关紧急电话号码的信息，包括电话号码归属地、移动设备国家/地区代码 (MCC)、移动网络代码 (MNC)、<a href="https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/master/radio/1.4/types.hal#145" class="external">紧急服务类别</a>、紧急统一资源名称 (URN) 和<a href="https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/master/radio/1.4/types.hal#170" class="external">紧急电话号码来源</a>。</p>
+
+<p>要指示如何处理紧急呼叫，请使用 <a href="https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/master/radio/1.4/types.hal#194" class="external"><code>EmergencyCallRouting</code></a>。根据需要，可以使用紧急呼叫转接或正常呼叫转接请求紧急呼叫。如果此值为 <code>UNKNOWN</code>，则根据具体实现决定转接方式。</p>
+
+<h2 id="validation">验证</h2>
+
+<p>要验证您的实现，请运行以下 CTS 和 VTS 测试。</p>
+
+<h3 id="cts_tests">CTS 测试</h3>
+
+<ul>
+<li><a href="https://android.googlesource.com/platform/cts/+/refs/heads/master/tests/tests/telephony/current/src/android/telephony/cts/TelephonyManagerTest.java#1235" class="external"><code>testGetEmergencyNumberList</code></a> </li>
+<li><a href="https://android.googlesource.com/platform/cts/+/refs/heads/master/tests/tests/telephony/current/src/android/telephony/cts/TelephonyManagerTest.java#1277" class="external"><code>testIsEmergencyNumber</code></a> </li>
+<li><a href="https://android.googlesource.com/platform/cts/+/refs/heads/master/tests/tests/telephony/current/src/android/telephony/cts/TelephonyManagerTest.java#1304" class="external"><code>testIsPotentialEmergencyNumber</code></a> </li>
+</ul>
+
+<h3 id="vts_tests">VTS 测试</h3>
+
+<ul>
+<li><a href="https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/master/radio/1.4/vts/functional/radio_hidl_hal_api.cpp#24" class="external"><code>emergencyDial</code></a> </li>
+<li><a href="https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/master/radio/1.4/vts/functional/radio_hidl_hal_api.cpp#49" class="external"><code>emergencyDial_withServices</code></a> </li>
+<li><a href="https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/master/radio/1.4/vts/functional/radio_hidl_hal_api.cpp#75" class="external"><code>emergencyDial_withEmergencyRouting</code></a> </li>
+</ul>
+
+<h2 id="references">参考</h2>
+
+<p>如需详细了解相关技术规范和标准，请参阅：</p>
+
+<ul>
+<li><a href="https://www.etsi.org/deliver/etsi_ts/122100_122199/122101/09.01.00_60/ts_122101v090100p.pdf" class="external">3GPP TS 22.101</a>，第 10 部分：紧急呼叫<em></em></li>
+<li><a href="https://www.etsi.org/deliver/etsi_ts/124000_124099/124008/07.15.00_60/ts_124008v071500p.pdf" class="external">3GPP TS 24.008</a>，第 9.2.13.4 部分：紧急电话号码列表<em></em></li>
+<li><a href="https://www.etsi.org/deliver/etsi_ts/123100_123199/123167/15.04.00_60/ts_123167v150400p.pdf" class="external">3GPP TS 23.167</a>，第 6 部分：功能描述<em></em></li>
+<li><a href="https://www.etsi.org/deliver/etsi_ts/124500_124599/124503/08.22.00_60/ts_124503v082200p.pdf" class="external">3GPP TS 24.503</a>，第 5.1.6.8.1 部分：一般说明<em></em></li>
+<li><a href="https://tools.ietf.org/html/rfc5031" class="external">RFC 5031</a>：紧急服务和其他知名服务的统一资源名称 (URN)<em></em></li>
+</ul>
+
+</body></html>

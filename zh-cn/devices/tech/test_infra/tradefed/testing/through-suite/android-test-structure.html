@@ -1,0 +1,63 @@
+<html devsite><head>
+
+  <meta name="book_path" value="/_book.yaml"/>
+
+  <meta name="project_path" value="/_project.yaml"/>
+</head>
+<body>
+<!--
+  Copyright 2019 The Android Open Source Project
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+<h1 id="androidtestxml_structure" class="page-title">AndroidTest.xml 结构</h1>
+
+<p>模块配置的整体结构遵循与常规 Tradefed XML 配置类似的模式，但由于它们作为套件的一部分运行而具有一些限制。</p>
+
+<h2 id="list_of_allowed_tags">允许的标记列表</h2>
+
+<p><code>AndroidTest.xml</code>（或者广义上说，模块配置）只能包含以下 XML 标记：<code>target_preparer</code>、<code>multi_target_preparer</code> 和 <code>test</code>。</p>
+
+<p>虽然该列表看起来有局限性，但您可以通过该列表精确地定义测试模块设置需求以及要运行的测试。</p>
+
+<p>注意：如果您需要复习一下不同的标记，请参阅 <a href="/devices/tech/test_infra/tradefed/architecture/xml-config">Tradefed XML 配置</a>。</p>
+
+<p>如果尝试从模块配置内部运行，则 <code>build_provider</code> 或 <code>result_reporter</code> 等对象将引发 <code>ConfigurationException</code>。这是为了避免期望这些对象实际上从模块内执行某项任务。</p>
+
+<h2 id="example_module_configuration">模块配置示例</h2>
+<pre class="prettyprint lang-xml"><code>&lt;configuration description="Config for CTS Gesture test cases"&gt;
+    &lt;option name="test-suite-tag" value="cts" /&gt;
+    &lt;target_preparer class="com.android.tradefed.targetprep.suite.SuiteApkInstaller"&gt;
+        &lt;option name="cleanup-apks" value="true" /&gt;
+        &lt;option name="test-file-name" value="CtsGestureTestCases.apk" /&gt;
+    &lt;/target_preparer&gt;
+    &lt;test class="com.android.tradefed.testtype.AndroidJUnitTest" &gt;
+        &lt;option name="package" value="android.gesture.cts" /&gt;
+        &lt;option name="runtime-hint" value="10m50s" /&gt;
+    &lt;/test&gt;
+&lt;/configuration&gt;
+</code></pre>
+<p>此配置描述的测试要求安装 <code>CtsGestureTestCases.apk</code>，并且将针对 <code>android.gesture.cts</code> 软件包运行插桩测试。</p>
+
+<h2 id="what_about_build_infos_or_downloads">版本信息或下载内容怎么样？</h2>
+
+<p>允许的标记的定义可能会给人错误的印象，让人误认为模块不会获取任何版本信息。<strong>但事实并非如此</strong>。</p>
+
+<p>版本信息由套件级设置提供，并且将由套件的<strong>所有</strong>模块共享。这允许为套件提供单个顶级设置，以便运行套件中的所有模块。</p>
+
+<p>例如，不是每个<a href="/compatibility/cts">兼容性测试套件 (CTS)</a> 模块分别查询设备信息、类型等，而是由 CTS 套件级设置 (<code>cts.xml</code>) 查询一次这些信息，如果每个模块发出请求，它们都会收到这些信息。</p>
+
+<p>要使模块中的对象接收版本信息，它们需要执行与常规 Tradefed 配置中相同的操作：实现 <code>IBuildReceiver</code> 接口以接收 <code>IBuildInfo</code>。如需了解详情，请参阅<a href="/devices/tech/test_infra/tradefed/testing/through-tf/new-test-runner#testing_with_a_device">使用设备进行测试</a>。</p>
+
+</body></html>

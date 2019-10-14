@@ -1,0 +1,211 @@
+<html devsite><head>
+    <title>屏幕支持</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+
+  <!--
+      Copyright 2019 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>对这些特定于屏幕的区域所进行的更新如下所示：</p>
+
+<ul>
+  <li><a href="display#resize">调整 Activity 和屏幕的大小</a></li>
+  <li><a href="display#aspect">屏幕尺寸和宽高比</a></li>
+  <li><a href="display#policies">屏幕政策</a></li>
+  <li><a href="display#windows">屏幕窗口设置</a></li>
+  <li><a href="display#static">静态屏幕标识符</a></li>
+  <li><a href="display#focus">每屏幕焦点</a></li>
+</ul>
+
+<h2 id="resize">调整 Activity 和屏幕的大小</h2>
+
+<p>要指明某个应用可能不支持多窗口模式或调整大小，Activity 使用 <code>resizeableActivity=false</code> 属性。在调整 Activity 大小时，应用遇到的常见问题包括：</p>
+
+<ul>
+<li>Activity 可以具有与应用或其他非视觉组件不同的配置。一个很常见的错误是从应用环境中读取屏幕指标。系统不会根据用于显示 Activity 的可见区域指标来调整返回的值。</li>
+<li>Activity 可能不会处理调整大小和崩溃问题、显示失真界面，或者由于在未保存实例状态的情况下重新启动而丢失状态。</li>
+<li>应用可能会尝试使用绝对输入坐标（而不是相对于窗口位置的坐标），这可能会破坏多窗口模式下的输入内容。</li>
+</ul>
+
+<p>在 Android 7（及更高版本）中，您可以将应用设置为 <code>resizeableActivity=false</code> 以使其始终在全屏模式下运行。在这种情况下，Android 平台会阻止不可调整大小的 Activity 进入分屏模式。如果用户尝试在分屏模式下从启动器调用不可调整大小的 Activity，则 Android 平台会退出分屏模式，并在全屏模式启动不可调整大小的 Activity。</p>
+
+<p>在清单中明确将该属性设为 <code>false</code> 的应用不得在多窗口模式下启动，除非应用了兼容模式：</p>
+
+<ul>
+<li>相同的配置将应用于该进程，其中包含所有 Activity 组件和非 Activity 组件。</li>
+<li>已应用的配置符合应用兼容屏幕的 CDD 要求。</li>
+</ul>
+
+<p>Android 10 平台仍然会阻止不可调整大小的 Activity 进入分屏模式，但如果 Activity 声明了固定的屏幕方向或宽高比，则可以暂时调整大小。如果没有声明，Activity 会调整自身大小以占满整个屏幕，正如在 Android 9 及更低版本中一样。</p>
+
+<p>默认实现会应用以下政策：</p>
+
+<p><em>如果通过使用 <code>android:resizeableActivity</code> 属性声明某个 Activity 与多窗口模式不兼容，且该 Activity 满足下面描述的条件之一，那么当已应用的屏幕配置必须要更改时，Activity 和进程将与原始配置一起保存，并且系统会向用户提供一种方式来重新启动应用进程以使用更新后的屏幕配置。</em></p>
+
+<ul>
+<li><em>通过应用 <code>android:screenOrientation</code> 固定屏幕方向</em></li>
+<li><em>通过定位 API 级别或明确声明宽高比，应用具有默认的最大或最小宽高比</em></li>
+</ul>
+
+<p>此图显示了已声明宽高比的不可调整大小的 Activity。折叠设备时，窗口会按比例缩小以适合相应区域，同时使用适当的信箱模式保持宽高比。此外，每次更改 Activity 的显示区域时，系统都会向用户提供重启 Activity 的选项。</p>
+
+<p>展开设备时，Activity 的配置、大小和宽高比不会发生变化，但系统会显示重启 Activity 的选项。</p>
+
+<p>如果未设置 <code>resizeableActivity</code>（或将其设置为 <code>true</code>），则应用完全支持调整大小。</p>
+
+<h3 id="implementation-resize">实现</h3>
+
+<p>具有固定屏幕方向或宽高比的不可调整大小的 Activity 在代码中称为大小兼容模式 (SCM)。该条件是在 <code>ActivityRecord#shouldUseSizeCompatMode()</code> 中定义的。启动 SCM Activity 时，屏幕相关配置（例如大小或密度）在请求的覆盖配置中是固定的，因此该 Activity 不再依赖于当前的屏幕配置。</p>
+
+<p>如果 SCM Activity 无法占满整个屏幕，则会与顶部对齐且水平居中。Activity 边界通过 <code>AppWindowToken#calculateCompatBoundsTransformation()</code> 计算得出。</p>
+
+<p>如果 SCM Activity 使用与其容器不同的屏幕配置（例如，调整了屏幕大小或将 Activity 移至其他屏幕），则 <code>ActivityRecord#inSizeCompatMode()</code> 为 true，并且 <code>SizeCompatModeActivityController</code>（位于系统界面中）会收到回调以显示进程重启按钮。</p>
+
+<h2 id="aspect">屏幕尺寸和宽高比</h2>
+
+<p>Android 10 支持新的宽高比，既包括高宽高比的长屏幕和薄屏幕，也包括 1:1 的屏幕。应用可以定义自身能够处理的屏幕的 <code><a href="https://developer.android.com/guide/topics/manifest/activity-element#maxaspectratio" class="external">ApplicationInfo#maxAspectRatio</a></code> 和 <code>ApplicationInfo#minAspectRatio</code>。</p>
+
+<p><img src="/devices/tech/display/images/multi_display_04.png"/></p>
+
+<p><strong>图 1.</strong> Android 10 支持的应用宽高比示例</p>
+
+<p>设备实现可以具有尺寸和分辨率小于 Android 9 所需及更低的辅助屏幕（宽度或高度最小值为 2.5 英寸，<code>smallestScreenWidth</code> 最小值为 320 DP），但只有选择支持这些小型屏幕的 Activity 才可以执行。</p>
+
+<p>应用可以通过声明小于或等于目标屏幕尺寸的最小支持尺寸来选择支持。使用 AndroidManifest 中的 <code>android:minHeight</code> 和 <code>android:minWidth</code> Activity 布局属性来执行此操作。</p>
+
+<h2 id="policies">屏幕政策</h2>
+
+<p>Android 10 将某些屏幕政策从 <code>PhoneWindowManager</code> 的默认 <code>WindowManagerPolicy</code> 实现中分离出来并移至每屏幕类，例如：</p>
+
+<ul>
+<li>屏幕状态和旋转</li>
+<li>某些键和动作事件跟踪</li>
+<li>系统界面和装饰窗口</li>
+</ul>
+
+<p>在 Android 9（及更低版本）中，<code>PhoneWindowManager</code> 类处理了屏幕政策、状态和设置、旋转、装饰窗口框架跟踪等。Android 10 将大部分内容移至 <code>DisplayPolicy</code> 类，旋转跟踪除外（移至 <code>DisplayRotation</code>）。</p>
+
+<h2 id="windows">屏幕窗口设置</h2>
+
+<p>在 Android 10 中，可配置的每屏幕窗口设置已经过扩展，目前包含以下内容：</p>
+
+<ul>
+<li>默认屏幕窗口模式</li>
+<li>过扫描值</li>
+<li>用户旋转和旋转模式</li>
+<li>强制的尺寸、密度和缩放模式</li>
+<li>内容移除模式（移除屏幕时）</li>
+<li>支持系统装饰和 IME</li>
+</ul>
+
+<p><code>DisplayWindowSettings</code> 类包含这些选项的设置。每次设置发生更改时，它们都将被保存到 <code>display_settings.xml</code> 的 <code>/data</code> 分区中的磁盘内。如需了解详情，请参阅 <code>DisplayWindowSettings.AtomicFileStorage</code> 和 <code>DisplayWindowSettings#writeSettings()</code>。设备制造商可以在 <code>display_settings.xml</code> 中为其设备配置提供默认值。不过，由于文件存储在 <code>/data</code> 中，如果被擦除操作清空，则可能需要额外的逻辑来恢复文件。</p>
+
+<p>默认情况下，Android 10 在保存这些设置时使用 <code>DisplayInfo#uniqueId</code> 作为屏幕的标识符。应该为所有屏幕填充 <code>uniqueId</code>。此外，它对于物理和网络屏幕都很稳定。您也可以使用物理屏幕的端口作为标识符，该标识符可以在 <code>DisplayWindowSettings#mIdentifier</code> 中设置。每次写入时，系统都会写入所有设置，因此可以放心更新用于存储中屏幕条目的密钥。如需了解详情，请参阅下面的“静态屏幕标识符”。</p>
+
+<p>由于历史原因，设置将保存在 <code>/data</code> 目录中。最初，该目录用于保存用户设定的设置，例如屏幕旋转。</p>
+
+<h2 id="static">静态屏幕标识符</h2>
+
+<p>Android 9（及更低版本）没有为框架中的屏幕提供稳定的标识符。向系统添加某个屏幕后，系统会通过递增静态计数器为该屏幕生成 <code>Display#mDisplayId</code> 或 <code>DisplayInfo#displayId</code>。如果系统添加屏幕后又移除了同一屏幕，则会生成不同的 ID。</p>
+
+<p>如果设备在启动时有多个可用屏幕，则系统会根据时间为这些屏幕分配不同的标识符。虽然 Android 9（及更低版本）包含 <code>DisplayInfo#uniqueId</code>，但它没有足够的信息来区分各个屏幕，因为物理屏幕被标识为 <code>local:0</code> 或 <code>local:1</code> 以表示内置和外部屏幕。</p>
+
+<p>Android 10 更改了 <code>DisplayInfo#uniqueId</code>，以添加稳定的标识符并区分本地、网络和虚拟屏幕。</p>
+
+<table>
+<thead>
+<tr>
+<th>屏幕类型</th>
+<th><strong>格式</strong></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>本地</td>
+<td><pre class="prettyprint">
+
+local:&lt;stable-id&gt;</pre></td>
+</tr>
+<tr>
+<td>网络</td>
+<td><pre class="prettyprint">
+
+network:&lt;mac-address&gt;</pre></td>
+</tr>
+<tr>
+<td>虚拟</td>
+<td><pre class="prettyprint">
+
+virtual:&lt;package-name-and-name&gt;</pre></td>
+</tr>
+</tbody>
+</table>
+
+<aside class="note"><b>注意：</b>对于物理本地屏幕，<code>stable-id</code> 是一种长型标识符，它以低位字节编码端口信息，以高位字节编码延伸显示能力识别 (EDID)（例如制造商 ID 和序列号）。</aside>
+
+<p>除了对 <code>uniqueId</code> 的更新之外，<code>DisplayInfo.address</code> 还包含 <code>DisplayAddress</code>，这是一种在重新启动过程中保持稳定的屏幕标识符。在 Android 10 中，<code>DisplayAddress</code> 支持物理和网络屏幕。<code>DisplayAddress.Physical</code> 包含一个稳定的屏幕 ID（与 <code>uniqueId</code> 中的相同），可以使用 <code>DisplayAddress#fromPhysicalDisplayId()</code> 进行创建。</p>
+
+<p>Android 10 还提供了一种获取端口信息的便捷方法 (<code>Physical#getPort()</code>)。您可以在框架中使用此方法来静态标识屏幕。例如，该方法在 <code>DisplayWindowSettings</code> 中使用。<code>DisplayAddress.Network</code> 包含 MAC 地址，可以使用 <code>DisplayAddress#fromMacAddress()</code> 进行创建。</p>
+
+<p>借助这些新增功能，设备制造商可以在静态多屏幕设置中标识各种屏幕，并使用静态屏幕标识符（例如物理屏幕的端口）配置不同的系统设置和功能。这些方法处于隐藏状态，仅限在 <code>system_server</code> 中使用。</p>
+
+<aside class="caution"><b>注意：</b>此功能依赖于 Hardware Composer API。设备制造商必须实现 <code>IComposerClient</code> 2.3 HIDL 接口 (<code>android.hardware.graphics.composer@2.3::IComposerClient</code>) 的 <code>getDisplayIdentificationData</code> 方法，或者针对较旧的 <code>libhardware</code> 实现情况实现相应的 <code>hardware/hwcomposer2.h</code> 函数。</aside>
+
+<p>根据 HWC 屏幕 ID（可能是不透明的且并非始终稳定），此方法会返回（特定于平台的）8 位端口号，该端口号可标识用于屏幕输出的物理连接器，以及屏幕的 EDID blob。SurfaceFlinger 从 EDID 中提取制造商或模型信息，以生成提供给框架的稳定 64 位屏幕 ID。如果此方法不受支持或出现错误，SurfaceFlinger 将回退到旧版 MD 模式，其中 <code>DisplayInfo#address</code> 为 null 且 <code>DisplayInfo#uniqueId</code> 经过硬编码，如上所述。</p>
+
+<p>要验证此功能是否受支持，请运行以下命令：</p>
+
+<pre class="prettyprint">
+$ dumpsys SurfaceFlinger --display-id
+# Example output.
+Display 21691504607621632 (HWC display 0): port=0 pnpId=SHP displayName="LQ123P1JX32"
+Display 9834494747159041 (HWC display 2): port=1 pnpId=HWP displayName="HP Z24i"
+Display 1886279400700944 (HWC display 1): port=2 pnpId=AUS displayName="ASUS MB16AP"
+</pre>
+
+<h2 id="focus">每屏幕焦点</h2>
+
+<p>为了同时支持多个以单个屏幕为目标的输入源，可以将 Android 10 配置为支持多个聚焦窗口，每个屏幕最多支持一个。当多个用户同时与同一设备交互并使用不同的输入方法或设备（例如 Android Automotive）时，此功能仅适用于特殊类型的设备。</p>
+
+<p>强烈建议不要为常规设备启用此功能，包括跨屏设备或用于类似桌面设备体验的设备。<em></em>这主要是出于安全方面的考虑，因为这样做可能会导致用户不确定哪个窗口具有输入焦点。</p>
+
+<p>想象一下，用户在文本输入字段中输入安全信息，也许是登录某个银行应用或者输入包含敏感信息的文本。恶意应用可以创建一个虚拟的屏幕外屏幕用于执行 Activity，也可以使用文本输入字段执行 Activity。合法 Activity 和恶意 Activity 均具有焦点，并且都显示一个有效的输入指示符（闪烁光标）。</p>
+
+<p>不过，键盘（硬件或软件）的输入只能进入最顶层的 Activity（最近启动的应用）。通过创建隐藏的虚拟屏幕，即使在主设备屏幕上使用软件键盘，恶意应用也可以获取用户输入。</p>
+
+<p>使用 <code>com.android.internal.R.bool.config_perDisplayFocusEnabled</code> 设置每屏幕焦点。</p>
+
+<h3 id="compatibility">兼容性</h3>
+
+<p><strong>问题</strong>：在 Android 9 及更低版本中，系统中一次最多只有一个窗口具有焦点。</p>
+
+<p><strong>解决方案</strong>：在极少数情况下，来自同一进程的两个窗口都处于聚焦状态，则系统仅向在 Z 轴顺序中较高的窗口提供焦点。对于以 Android 10 为目标平台的应用，目前已取消这一限制，此时预计这些应用可以支持同时聚焦多个窗口。</p>
+
+<h3 id="implementation-per">实现</h3>
+
+<p><code>WindowManagerService#mPerDisplayFocusEnabled</code> 用于控制此功能的可用性。在 <code>ActivityManager</code> 中，系统现在使用的是 <code>ActivityDisplay#getFocusedStack()</code>，而不是利用变量进行全局跟踪。<code>ActivityDisplay#getFocusedStack()</code> 根据 Z 轴顺序确定焦点，而不是通过缓存值来确定。这样一来，只有一个来源 WindowManager 需要跟踪 Activity 的 Z 轴顺序。</p>
+
+<p>如果必须要确定系统中最顶层的聚焦堆栈，<code>ActivityStackSupervisor#getTopDisplayFocusedStack()</code> 会采用类似的方法处理这些情况。系统将从上到下遍历这些堆栈，搜索第一个符合条件的堆栈。</p>
+
+<p><code>InputDispatcher</code> 现在可以有多个聚焦窗口（每个屏幕一个）。如果某个输入事件特定于屏幕，则该事件会被分派到相应屏幕中的聚焦窗口。否则，它会被分派到聚焦屏幕（即用户最近与之交互的屏幕）中的聚焦窗口。</p>
+
+<p>请参阅 <code>InputDispatcher::mFocusedWindowHandlesByDisplay</code> 和 <code>InputDispatcher::setFocusedDisplay()</code>。聚焦应用也会通过 <code>NativeInputManager::setFocusedApplication()</code> 在 InputManagerService 中分别更新。</p>
+
+<p>在 <code>WindowManager</code> 中，系统还会单独跟踪聚焦窗口。请参阅 <code>DisplayContent#mCurrentFocus</code> 和 <code>DisplayContent#mFocusedApp</code> 及其各自的用途。相关的焦点跟踪和更新方法已从 <code>WindowManagerService</code> 移至 <code>DisplayContent</code>。</p>
+
+</body></html>

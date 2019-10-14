@@ -1,0 +1,246 @@
+<html devsite><head>
+    <title>没有动态分区的非 A/B 设备的 OTA</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+
+  <!--
+      Copyright 2019 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+    <p>Android 10 支持动态分区，这是一种可以在 OTA 更新期间创建和销毁分区以及调整分区大小的用户空间分区系统。本文档介绍了 OTA 客户端如何在非 A/B 设备更新期间调整动态分区的大小。
+    </p>
+
+    <p>对于非 A/B 设备，使用更新包内的 <code>updater</code> 应用动态分区的 OTA 更新。
+    </p>
+
+    <h2 id="updating-launch-devices">更新启动设备</h2>
+
+      <p>本部分适用于支持动态分区的非 A/B 设备；这些设备从 Android 10 升级到更高版本。
+      </p>
+
+      <h3 id="generating-update-packages">生成更新包</h3>
+
+        <p>OTA 更新包由位于 <code>build/make/tools/releasetools</code> 下的 <code>ota_from_target_files</code> 脚本生成。默认情况下，该脚本会生成一个更新 <code>system</code> 和 <code>vendor</code> 分区的软件包。如果存在其他动态分区（例如 <code>product</code>、<code>product_services</code> 或 <code>odm</code>），则必须在<a href="/devices/tech/ota/nonab/device_code#ota-package-generation">设备专属代码</a>中生成其更新。
+        </p>
+
+        <p>要生成更新，请在扩展 Python 模块中实现 <code>FullOTA_GetBlockDifferences()</code> 和 <code>IncrementalOTA_GetBlockDifferences()</code>。这两个函数会返回 <code>BlockDifference</code> 对象列表，每个对象描述将应用于分区的更新补丁程序。不应对这两个函数返回的分区进行手动修改或在其他地方验证，例如在 <code>*_InstallBegin()</code> 或 <code>*_InstallEnd()</code>。
+        </p>
+
+        <p>更新生成示例：</p>
+
+<pre class="prettyprint">
+# device/yoyodyne/tardis/releasetools.py
+
+import os
+from common import BlockDifference, EmptyImage, GetUserImage
+
+# The joined list of user image partitions of source and target builds.
+# - Items should be added to the list if new dynamic partitions are added.
+# - Items should not be removed from the list even if dynamic partitions are
+#   deleted. When generating an incremental OTA package, this script needs to
+#   know that an image is present in source build but not in target build.
+USERIMAGE_PARTITIONS = [
+    "product",
+    "odm",
+]
+
+def GetUserImages(input_tmp, input_zip):
+  return {partition: GetUserImage(partition, input_tmp, input_zip)
+          for partition in USERIMAGE_PARTITIONS
+          if os.path.exists(os.path.join(input_tmp,
+                                         "IMAGES", partition + ".img"))}
+
+def FullOTA_GetBlockDifferences(info):
+  images = GetUserImages(info.input_tmp, info.input_zip)
+  return [BlockDifference(partition, image)
+          for partition, image in images.items()]
+
+def IncrementalOTA_GetBlockDifferences(info):
+  source_images = GetUserImages(info.source_tmp, info.source_zip)
+  target_images = GetUserImages(info.target_tmp, info.target_zip)
+
+  # Use EmptyImage() as a placeholder for partitions that will be deleted.
+  for partition in source_images:
+    target_images.setdefault(partition, EmptyImage())
+
+  # Use source_images.get() because new partitions are not in source_images.
+  return [BlockDifference(partition, target_image, source_images.get(partition))
+          for partition, target_image in target_images.items()]
+</pre>
+
+      <h3 id="update-flow">更新流程</h3>
+
+        <p>在后台，以下函数会添加到 edify 脚本中：</p>
+
+        <ul>
+          <li><code>unmap_partition(name)</code>
+            <ul>
+              <li>如果已映射，则取消映射分区，否则不执行任何操作。</li>
+              <li>在成功时返回字符串 <code>t</code>，或者在失败时返回空字符串。</li>
+            </ul>
+          </li>
+          <li><code>map_partition(name)</code>
+            <ul>
+              <li>如果尚未映射，则映射分区。</li>
+              <li>在成功时返回映射块设备的绝对路径，或者在失败时返回空字符串。
+              </li>
+            </ul>
+          </li>
+          <li><code>update_dynamic_partitions(op_list)</code>
+            <ul>
+              <li>在动态分区元数据上应用指定的运算列表，必要时取消映射分区。
+              </li>
+              <li>在成功时返回 <code>t</code>，或者在失败时返回空字符串。
+              </li>
+            </ul>
+          </li>
+        </ul>
+
+        <p><code>update_dynamic_partitions</code> 的 <code>op_list</code> 参数指向更新包中的文件。文件中的每一行都指定一个运算。如果任何运算失败，<code>update_dynamic_partitions</code> 会立即返回一个空字符串。这些运算是：</p>
+
+        <ul>
+          <li><code>resize <var>partition-name</var> <var>size</var></code>
+            <ul>
+              <li>取消映射分区，然后将其调整为适当大小。<var></var></li>
+            </ul>
+          </li>
+          <li><code>remove <var>partition_name</var></code>
+            <ul>
+              <li>取消映射分区，然后将其删除。</li>
+            </ul>
+          </li>
+          <li><code>add <var>partition-name</var> <var>group-name</var></code>
+            <ul>
+              <li>将新分区添加到指定的组。</li>
+              <li>如果该组不存在或该分区已存在，则中止。
+              </li>
+            </ul>
+          </li>
+          <li><code>move <var>partition-name</var> <var>group-name</var></code>
+            <ul>
+              <li>将分区移动到指定的组。</li>
+              <li>如果该组不存在或该分区不存在，则中止。
+              </li>
+            </ul>
+          </li>
+          <li>
+            <code>add_group <var>group-name</var> <var>maximum-size</var></code>
+            <ul>
+              <li>添加具有指定名称和大小上限的组。</li>
+              <li>如果该组已存在，则中止。</li>
+              <li><var></var>maximum_size 为 0 表示对组中的分区没有大小限制。需要进行额外测试以确保组中的分区不超过设备上的可用空间。
+              </li>
+            </ul>
+          </li>
+          <li>
+            <code>resize_group <var>group-name</var> <var>maximum-size</var></code>
+            <ul>
+              <li>将组的大小调整为指定的大小上限。</li>
+              <li>如果该组不存在，则中止。</li>
+              <li><var></var>maximum_size 为 0 表示对组中的分区没有大小限制。需要进行额外测试以确保组中的分区不超过设备上的可用空间。
+              </li>
+            </ul>
+          </li>
+          <li><code>remove_group <var>group-name</var></code>
+            <ul>
+              <li>删除组。</li>
+              <li>如果该组中有分区，则中止。</li>
+            </ul>
+          </li>
+          <li><code>remove_all_groups</code>
+            <ul>
+              <li>取消映射设备映射器中的所有分区。</li>
+              <li>删除所有分区和组。</li>
+            </ul>
+          </li>
+        </ul>
+
+        <h4 id="incremental-ota">增量 OTA</h4>
+
+          <p>增量 OTA 更新使用以下逻辑：</p>
+
+          <ol>
+            <li>收缩分区/删除分区/将分区移出组（以便有足够的空间来收缩组）</li>
+            <li>收缩组（以便我们有足够的空间来成长组）</li>
+            <li>成长组（以便我们有足够的空间来成长/添加分区）</li>
+            <li>成长分区/添加分区/将分区移动到新组</li>
+          </ol>
+
+          <p>详细而言，使用以下逻辑生成 <code>update-script</code>：</p>
+
+<pre class="prettyprint">
+for each shrinking partition:
+    block_image_update(map_partition(name), …)
+
+update_dynamic_partitions(op_list)
+
+for each growing / adding partition:
+    block_image_update(map_partition(name), …)
+</pre>
+
+          <p>使用以下逻辑生成 <code>update_dynamic_partitions</code> 的 <code>op_list</code> 文件：</p>
+
+<pre class="prettyprint">
+for each deleting partition:
+    remove
+for each partition that changes groups:
+    move to "default"
+for each shrinking partition:
+    resize
+for each shrinking / removing group:
+    resize_group / remove_group
+for each growing / adding group:
+    resize_group / add_group
+for each adding partition:
+    add
+for each growing / adding partition:
+    resize
+for each partition that changes groups:
+    move to target group
+</pre>
+
+        <h4 id="full-ota">完整 OTA</h4>
+
+          <p>完整 OTA 更新使用以下逻辑：</p>
+
+          <ol>
+            <li>删除所有现有组和分区</li>
+            <li>添加组</li>
+            <li>添加分区</li>
+          </ol>
+
+          <p>详细而言，使用以下逻辑生成 <code>update-script</code>：</p>
+
+<pre class="prettyprint">
+update_dynamic_partitions(op_list)
+
+for each adding partition:
+    block_image_update(map_partition(name), …)
+</pre>
+
+          <p>使用以下逻辑生成 <code>update_dynamic_partitions</code> 的 <code>op_list</code> 文件：</p>
+
+<pre class="prettyprint">
+remove_all_groups
+for each adding group:
+    add_group
+for each adding partition:
+    add
+for each adding partition:
+    resize
+</pre>
+
+</body></html>

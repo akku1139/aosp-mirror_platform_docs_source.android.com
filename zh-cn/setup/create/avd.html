@@ -1,0 +1,139 @@
+<html devsite><head>
+
+  <meta name="book_path" value="/_book.yaml"/>
+
+  <meta name="project_path" value="/_project.yaml"/>
+</head>
+<body>
+
+<!--
+  Copyright 2019 The Android Open Source Project
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+<h1 id="building_custom_android_virtual_devices" class="page-title">编译自定义 Android 虚拟设备</h1>
+
+<p>您可以使用 Android 模拟器创建运行自己的自定义 Android 系统映像的 Android 设备模拟。您还可以共享您的自定义 Android 系统映像，以便他人可以运行相应模拟。此外，您可以向 Android 模拟器模拟添加多显示屏支持。</p>
+
+<h2 id="android_emulator_architecture">Android 模拟器架构</h2>
+
+<p>借助 Android 模拟器，您可以在 Windows、macOS 或 Linux 计算机上运行 Android 设备模拟。Android 模拟器在名为 Android 虚拟设备 (AVD) 的虚拟机中运行 Android 操作系统。AVD 包含完整的 <a href="/devices/architecture">Android 软件堆栈</a>，就如同在物理设备上运行。图 1 是 Android 模拟器的高级架构图。如需详细了解 Android 模拟器，请参阅<a href="https://developer.android.com/studio/run/emulator" class="external">在 Android 模拟器上运行应用</a>。</p>
+
+<p><img src="/setup/images/emulator-design.png" alt="Android 模拟器架构"/></p>
+
+<p><strong>图 1.</strong> Android 模拟器架构</p>
+
+<h2 id="building_avd_images">编译 AVD 映像</h2>
+
+<p>每个 AVD 都包含一个 Android 系统映像，该映像会在此 AVD 中运行。AVD 管理器包含一些系统映像。您可以从源代码编译自定义的 AVD 系统映像，并创建设备模拟以运行这些映像。</p>
+<aside class="note"><strong>注意</strong>：<span>您需要先<a href="/setup/build/initializing">搭建编译环境</a>，然后才能编译 AVD 系统映像。</span></aside>
+<p>要编译并运行 AVD 系统映像，请按以下步骤操作：</p>
+
+<ol>
+<li><p>下载 Android 源代码：</p>
+
+<pre class="prettyprint">
+<code class="devsite-terminal">mkdir aosp-master; cd aosp-master</code>
+<code class="devsite-terminal">repo init -u</code>
+<code class="devsite-terminal">repo sync -j24</code>
+</pre>
+
+<p>如果要编译其他 Android 版本，则可以在 <a href="https://android.googlesource.com/platform/manifest/+refs">Android 公开代码库</a>中查找相应的分支名称。它们会映射到 <a href="/setup/start/build-numbers#source-code-tags-and-builds">Android 代号、标记和版本号</a>。</p></li>
+<li><p>编译 AVD 系统映像。这与<a href="/setup/build/building">编译 Android</a> 设备系统映像的流程相同。例如，要编译 x86 32 位 AVD，请运行以下命令：</p>
+
+<pre class="prettyprint">
+<code class="devsite-terminal">mkdir aosp-master; cd aosp-master</code>
+<code class="devsite-terminal">source ./build/envsetup.sh</code>
+<code class="devsite-terminal">lunch sdk_phone_x86</code>
+<code class="devsite-terminal">make -j32</code>
+</pre>
+
+<p>如果您想编译 x86 64 位 AVD，则需针对 64 位目标运行 <code>lunch</code>：</p>
+
+<pre class="prettyprint">
+<code class="devsite-terminal">lunch sdk_phone_x86_64</code>
+</pre></li>
+<li><p>在 Android 模拟器中运行 AVD 系统映像：</p>
+
+<pre class="prettyprint">
+<code class="devsite-terminal">emulator</code>
+</pre></li>
+</ol>
+
+<p>如需详细了解如何运行 Android 模拟器，请参阅<a href="https://developer.android.com/studio/run/emulator-commandline#startup-options">命令行启动选项</a>。图 2 显示了运行 AVD 的 Android 模拟器示例。</p>
+
+<p><img src="/setup/images/emulator-run-ui.png" alt="运行 AVD 的 Android 模拟器"/></p>
+
+<p><strong>图 2.</strong> 运行 AVD 的 Android 模拟器</p>
+
+<h2 id="sharing_avd_system_images_for_others_to_use_with_android_studio">共享 AVD 系统映像以供他人配合使用 Android Studio</h2>
+
+<p>您可以按以下步骤与他人共享您的 AVD 系统映像。他们可以将您的 AVD 系统映像与 <a href="https://developer.android.com/studio">Android Studio</a> 配合使用来开发和测试应用。</p>
+
+<ol>
+<li><p>制作其他 <code>sdk</code> 和 <code>sdk_repo</code> 软件包：</p>
+<pre class="prettyprint"><code>$ make -j32 sdk sdk_repo
+</code></pre>
+<p>此操作会在 <code>aosp-master/out/host/linux-x86/sdk/sdk_phone_x86</code> 下创建两个文件：</p>
+
+<ul>
+<li><code>sdk-repo-linux-system-images-eng.[username].zip</code></li>
+<li><code>repo-sys-img.xml</code></li>
+</ul></li>
+<li><p>将文件 <code>sdk-repo-linux-system-images-eng.[username].zip</code> 托管在用户可以访问的位置，并获取其网址以作为 <strong>AVD 系统映像网址</strong>使用。</p></li>
+<li><p>对 <code>repo-sys-img.xml</code> 进行相应修改：</p>
+
+<ul>
+<li>将 <code>&lt;sdk:url&gt;</code> 更新为您的 <strong>AVD 系统映像网址</strong>。</li>
+<li>参阅 <a href="https://android.googlesource.com/platform/prebuilts/devtools/+/refs/heads/master/repository/sdk-sys-img-03.xsd">sdk-sys-img-03.xsd</a> 以了解对此文件的其他更新。</li>
+</ul></li>
+<li><p>将 <code>repo-sys-img.xml</code> 托管在用户可以访问的位置，并获取其网址以作为<strong>自定义更新网站网址</strong>使用。</p></li>
+</ol>
+
+<p>要使用自定义 AVD 映像，请在 SDK 管理器中执行以下操作：</p>
+
+<ol>
+<li><p><a href="https://developer.android.com/studio/intro/update#adding-sites">将<strong>自定义更新网站网址</strong>添加为 SDK 更新网站</a>。</p>
+
+<p>此操作会将您的自定义 AVD 系统映像添加到“系统映像”页面中。</p></li>
+<li><p>通过下载并选择自定义 AVD 系统映像来<a href="https://developer.android.com/studio/run/managing-avds#createavd">创建 AVD</a>。</p></li>
+</ol>
+
+<h2 id="adding_multi-display_support">添加多显示屏支持</h2>
+
+<p>Android 10 <a href="/devices/tech/display/multi_display">增强了多显示屏 (MD) 功能</a>以更好地支持更多用例，例如自动模式和桌面模式。Android 模拟器还支持多显示屏模拟。因此，您可以创建特定的多显示屏环境，而无需设置实际硬件。</p>
+
+<p>您可以通过进行以下更改或从<a href="https://android-review.googlesource.com/q/topic:%22AVD+Multi-display%22+(status:open%20OR%20status:merged)">这些 CL</a> 中选择 cherry 来向 AVD 添加多显示屏支持。</p>
+
+<ul>
+<li><p>向文件 <code>build/target/product/sdk_phone_x86.mk</code> 添加以下几行代码可向编译添加多显示屏提供程序：</p>
+<pre class="prettyprint"><code>PRODUCT_ARTIFACT_PATH_REQUIREMENT_WHITELIST := \
+    system/lib/libemulator_multidisplay_jni.so \
+    system/lib64/libemulator_multidisplay_jni.so \
+    system/priv-app/MultiDisplayProvider/MultiDisplayProvider.apk \
+PRODUCT_PACKAGES += MultiDisplayProvider
+</code></pre></li>
+<li><p>向文件 <code>device/generic/goldfish/data/etc/advancedFeatures.ini</code> 添加以下一行代码可启用多显示屏功能标记：</p>
+<pre class="prettyprint"><code>MultiDisplay = on
+</code></pre></li>
+</ul>
+
+<p>您可以从以下来源查找最新的模拟器功能和版本信息：</p>
+
+<ul>
+<li><a href="https://developer.android.com/studio/run/emulator">Android 模拟器用户指南</a></li>
+<li><a href="https://developer.android.com/studio/releases/emulator">Android 模拟器版本说明</a></li>
+</ul>
+
+</body></html>

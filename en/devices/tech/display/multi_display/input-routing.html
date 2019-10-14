@@ -1,0 +1,125 @@
+<html devsite>
+  <head>
+    <title>Input Routing</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+{% include "_versions.html" %}
+
+  <!--
+      Copyright 2019 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>In Android 9 and lower, there was no way to interact with multiple displays
+via touch, because there was no association mechanism between displays and input
+devices. For example, a touchscreen display could provide an HDMI video output
+(that would register as a display on Android) and a USB output for touchscreen
+(that would register as an input device). If multiple devices were connected in
+this manner, there would be no way to determine which input device belongs to
+which display. The same issue applies to foldable devices with multiple built-in
+displays.</p>
+
+<p>Android {{ androidQVersionNumber }} added a mechanism to specify which input
+devices belong to which displays. The association is done by port numbers where
+<em>port</em> refers to the physical port to which a display is connected.</p>
+
+<p>For example, if an Android device has two HDMI ports labeled <code>hdmi1</code>
+and <code>hdmi2</code>, then the display port values could be <code>1</code> and
+<code>2</code>. The port values remain the same even when a different display is
+connected (such as a different display model or manufacturer) to the same physical
+HDMI port. This enables device manufacturers to provide instructions to assemble
+and upgrade displays.</p>
+
+<p>The association is configured in <code>/vendor/etc/input-port-associations.xml</code>.
+For example:</p>
+
+<pre class="prettyprint">
+<code>&lt;ports&gt;</code>
+    &lt;port display="0" input="usb-xhci-hcd.0.auto-1.1/input0" /&gt;
+    &lt;port display="1" input="usb-xhci-hcd.0.auto-1.2/input0" /&gt;
+&lt;/ports&gt;
+</pre>
+
+<p>In the example above, <code>display="0"</code> specifies the port to which the
+display is connected. <code>input="usb-xhci-hcd.0.auto-1.1/input0"</code>
+specifies the port to which the input device is connected. To determine the ports
+associated with specific devices, use the following terminal command, and then
+review the<code>location</code> property of those devices in the Event Hub State.</p>
+
+<pre class="external">adb shell dumpsys input</pre>
+
+<p>If many devices are connected, tap a specific device to examine the
+<code>RecentQueue</code> array in the Input Dispatcher State. You can then identify
+those devices that generated the most recent event. You can then find the
+corresponding device in the Event Hub State.</p>
+
+<p>To determine the display ports assigned to the connected displays, use
+<code>adb shell dumpsys display</code> and then look for the <code>address</code>
+property of <code>DisplayDeviceInfo</code> for each display under Display Devices.
+Alternatively, use <code>adb shell dumpsys SurfaceFlinger --display-id</code> to dump
+identification information for all connected displays. See also
+  <a href="/devices/tech/display/multi_display/displays#static">Static display identifiers</a>.</p>
+
+<p>If you specify an association for a specific input device and the corresponding
+display isn't present in the system, the input device is disabled until the respective
+display appears. The association is performed only for touch devices.</p>
+
+<h2 id="dynamic">Routing for dynamic multi-displays</h2>
+
+<p>Android {{ androidQVersionNumber }} enables you to set up static multi-display
+devices. Dynamic associations are not yet enabled. However, some use cases can be
+addressed by providing routing information for displays and input panels that aren't
+always present or using virtual input devices and then providing additional routing
+information to those virtual devices. If a device implementation supports a:</p>
+
+<ul>
+
+<li>Desktop-like experience with a docking station, then a routing config could be
+provided to target input from input accessory connected to the dock (identified
+uniquely by port) to the external display (identified by port).</li>
+
+<li>Primary screen acting as an input source (such as a touchpad) when connected
+to the external display, then a routing config could be provided to target input
+from virtual touch panel (identified by unique virtual ID) to the external display
+(identified by port).</li>
+</ul>
+
+<h3 id="implementation-routing">Implementation</h3>
+
+<ul>
+<li>For physical devices, the port to which the input device is connected and the
+port to which the display is connected, are used to match the displays with touchscreens.</li>
+
+<li>The mappings are stored in <code>InputReaderConfiguration</code>.</li>
+
+<li><code>TouchInputMapper.mViewport</code> is set to the viewport that matches
+the port specified for <code>InputDevice.location</code>.</li>
+
+<li>If an input device port is specified in the mapping file, and there
+currently isn't a viewport that has a matching display port, then the input
+device on that port is disabled.</li>
+
+<li>If a port isn't specified for a particular input device, then viewport is
+set according to the existing rules.</li>
+
+<li>No kernel changes are required in the input drivers.</li>
+
+<li>The input device ports are determined using the EVIOCGPHYS ioctl.</li>
+</ul>
+
+
+  </body>
+</html>

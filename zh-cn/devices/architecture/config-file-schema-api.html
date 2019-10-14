@@ -1,0 +1,171 @@
+<html devsite><head>
+
+  <meta name="book_path" value="/_book.yaml"/>
+
+  <meta name="project_path" value="/_project.yaml"/>
+</head>
+<body>
+
+<!--
+  Copyright 2019 The Android Open Source Project
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+<h1 id="implementing_config_file_schema_api" class="page-title">实现 Config File Schema API</h1>
+
+<p>Android 平台包含大量用于存储配置数据（例如，音频配置）的 XML 文件。很多 XML 文件都位于 <code>vendor</code> 分区中，但读取它们的操作在 <code>system</code> 分区进行。在这种情况下，XML 文件的架构充当这两个分区之间的接口，因此您必须明确指定架构，并且必须以向后兼容的方式改进该架构。</p>
+
+<p>在 Android 10 之前的版本中，Android 平台没有提供需要指定和使用 XML 架构的机制，也没有提供防止架构中发生不兼容更改的机制。Android 10 提供了这种机制，称为 Config File Schema API。该机制由一个名为 <code>xsdc</code> 的工具和一个名为 <code>xsd_config</code> 的编译规则组成。</p>
+
+<p><code>xsdc</code> 工具是一种 XML 架构文档 (XSD) 编译器。它用于解析描述 XML 文件架构的 XSD 文件，并生成 Java 和 C++ 代码。生成的代码会将符合 XSD 架构的 XML 文件解析到对象树，其中的每个对象均会为一个 XML 标记建模。XML 属性会建模为对象的字段。</p>
+
+<p><code>xsd_config</code> 编译规则会将 <code>xsdc</code> 工具集成到编译系统中。对于给定的 XSD 输入文件，该编辑规则会生成 Java 和 C++ 库。您可以将这些库与在其中读取和使用符合 XSD 的 XML 文件的模块相关联。您可以将该编译规则用于跨 <code>system</code> 和 <code>vendor</code> 分区使用的 XML 文件。</p>
+
+<h2 id="building_config_file_schema_api">构建 Config File Schema API</h2>
+
+<p>本部分介绍了如何构建 Config File Schema API。</p>
+
+<h3 id="config-build-rule">在 Android.bp 中配置 xsd_config 编译规则</h3>
+
+<p><code>xsd_config</code> 编译规则使用 <code>xsdc</code> 工具生成解析器代码。<code>xsd_config</code> 编译规则的 <code>package_name</code> 属性决定了生成的 Java 代码的数据包名称。</p>
+
+<p><code>Android.bp</code> 中的 <code>xsd_config</code> 编译规则示例：</p>
+<pre class="prettyprint"><code>xsd_config {
+    name: "hal_manifest",
+    srcs: ["hal_manifest.xsd"],
+    package_name: "hal.manifest",
+}
+</code></pre>
+<p>目录结构示例：</p>
+<pre class="prettyprint"><code>├── Android.bp
+├── api
+│   ├── current.txt
+│   ├── last_current.txt
+│   ├── last_removed.txt
+│   └── removed.txt
+└── hal_manifest.xsd
+</code></pre>
+<p>编译系统使用生成的 Java 代码生成 API 列表，并根据该列表检查 API。此项 API 检查已添加到 DroidCore 并在 <code>m -j</code> 处执行。</p>
+
+<h3 id="creating_api_lists_files">创建 API 列表文件</h3>
+
+<p>要执行 API 检查，需要使用源代码创建 API 列表文件。</p>
+
+<p>API 列表文件包括以下内容：</p>
+
+<ul>
+<li><code>current.txt</code> 和 <code>removed.txt</code>：通过在编译时与生成的 API 文件进行比较来检查 API 是否发生更改。</li>
+<li><code>last_current.txt</code> 和 <code>last_removed.txt</code>：通过与 API 文件进行比较来检查 API 是否向后兼容。</li>
+</ul>
+
+<p>要创建 API 列表文件，请执行以下操作：</p>
+
+<ol>
+<li>创建空列表文件。</li>
+<li>运行命令 <code>make update-api</code>。</li>
+</ol>
+
+<h2 id="using_generated_parser_code">使用生成的解析器代码</h2>
+
+<p>要使用生成的 Java 代码，请在 Java <code>srcs</code> 属性中添加 <code>:</code> 作为 <code>xsd_config</code> 模块名称的前缀。生成的 Java 代码的数据包与 <code>package_name</code> 属性相同。</p>
+<pre class="prettyprint"><code>java_library {
+    name: "vintf_test_java",
+    srcs: [
+        "srcs/**/*.java"
+        ":hal_manifest"
+    ],
+}
+</code></pre>
+<p>要使用生成的 C++ 代码，请将 <code>xsd_config</code> 模块名称添加到 <code>generated_sources</code> 和 <code>generated_headers</code> 属性中。生成的 C++ 代码的命名空间与 <code>package_name</code> 属性相同。例如，如果 <code>xsd_config</code> 模块名称为 <code>hal.manifest</code>，则命名空间为 <code>hal::manifest</code>。</p>
+<pre class="prettyprint"><code>cc_library{
+    name: "vintf_test_cpp",
+    srcs: ["main.cpp"],
+    generated_sources: ["hal_manifest"],
+    generated_headers: ["hal_manifest"],
+}
+</code></pre>
+<h2 id="using_the_parser">使用解析器</h2>
+
+<p>要使用 Java 解析器代码，请使用 <code>read</code> 或 <code>read{<var>class-name</var>}</code> 方法返回根元素的类。此时会进行解析。</p>
+<pre class="prettyprint"><code>import hal.manifest;
+
+…
+
+class HalInfo {
+    public String name;
+    public String format;
+    public String optional;
+    …
+}
+
+void readHalManifestFromXml(File file) {
+    …
+    try (InputStream str = new BufferedInputStream(new FileInputStream(file))) {
+        Manifest manifest = read(str);
+        for (Hal hal : manifest.getHal()) {
+            HalInfor halinfo;
+            HalInfo.name = hal.getName();
+            HalInfo.format = hal.getFormat();
+            HalInfor.optional = hal.getOptional();
+            …
+        }
+    }
+    …
+}
+</code></pre>
+<p>要使用 C++ 解析器代码，请先添加头文件。将数据包名称中的句点 (.) 转换为下划线 (_)，该名称即是头文件的名称。然后，使用 <code>read</code> 或 <code>read{<var>class-name</var>}</code> 方法返回根元素的类。此时会进行解析。返回值是 <code>std::optional&lt;&gt;</code>。</p>
+<pre class="prettyprint"><code>include "hal_manifest.h"
+
+…
+using namespace hal::manifest
+
+struct HalInfor {
+    public std::string name;
+    public std::string format;
+    public std::string optional;
+    …
+};
+
+void readHalManifestFromXml(std::string file_name) {
+    …
+    Manifest manifest = *read(file_name.c_str());
+    for (Hal hal : manifest.getHal()) {
+        struct HalInfor halinfo;
+        HalInfo.name = hal.getName();
+        HalInfo.format = hal.getFormat();
+        HalInfor.optional = hal.getOptional();
+        …
+    }
+    …
+}
+</code></pre>
+<p>提供的所有可以使用解析器的 API 均位于 <code>api/current.txt</code> 中。为保持统一，所有元素和属性名称均会转换为驼峰式大小写形式（例如，<code>ElementName</code>），并用作相应的变量、方法和类名称。您可以使用 <code>read{<var>class-name</var>}</code> 函数获取已解析的根元素的类。如果只有一个根元素，则函数名称为 <code>read</code>。您可以使用 <code>get{<var>variable-name</var>}</code> 函数获取已解析的子元素或属性的值。</p>
+
+<h2 id="generating_parser_code">生成解析器代码</h2>
+
+<p>在大多数情况下，您不需要直接运行 <code>xsdc</code>。您可以改为使用 <code>xsd_config</code> 编译规则，如<a href="#config-build-rule">在 Android.bp 中配置 xsd_config 编译规则</a>中所述。本部分介绍 <code>xsdc</code> 命令行界面只是为了本文档的完整性。它对于调试可能很有用。</p>
+
+<p>您必须为 <code>xsdc</code> 工具提供 XSD 文件的路径和一个数据包。该数据包是指 Java 代码中的数据包名称和 C++ 代码中的命名空间。<code>-j</code> 和 <code>-c</code> 选项分别用于确定生成的代码是否是 Java 代码和 C 代码。<code>-o</code> 选项表示输出目录的路径。</p>
+<pre class="prettyprint"><code>usage: xsdc path/to/xsd_file.xsd [-c] [-j] [-o &lt;arg&gt;] [-p]
+ -c,--cpp           Generate C++ code.
+ -j,--java          Generate Java code.
+ -o,--outDir &lt;arg&gt;  Out Directory
+ -p,--package       Package name of the generated java file. file name of
+                    generated C++ file and header
+</code></pre>
+<p>命令示例：</p>
+<pre class="prettyprint"><code>$ xsdc audio_policy_configuration.xsd -p audio.policy -j
+</code></pre>
+
+</body></html>

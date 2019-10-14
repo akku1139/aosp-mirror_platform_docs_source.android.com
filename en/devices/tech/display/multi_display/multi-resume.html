@@ -1,0 +1,180 @@
+<html devsite>
+  <head>
+    <title>Multi-Resume</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+{% include "_versions.html" %}
+
+  <!--
+      Copyright 2019 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>In Android 9 (and lower), apps were entered into the <code>PAUSED</code> state when:</p>
+
+<ul>
+<li>A new, translucent activity launched on top of the app, while the app was still visible (and,
+therefore, wasn't stopped).</li>
+<li>The activity lost focus, but was unobscured and could be interacted with by the user. For
+example, in multi-window mode, a number of activities can be visible and receive touch input
+simultaneously.</li>
+</ul>
+
+<p>These situations differ in the amount of <em>pausing</em> an app must do but can't be
+distinguished at the app level.</p>
+
+<p>In Android {{ androidQVersionNumber }}, all top-focusable activities in visible stacks reside in
+the <code>RESUMED</code> state. This improves compatibility with
+<a href="/devices/tech/display/multi-window">Multi-Window</a> and MD modes for apps that use
+<code>onPause()</code> instead of <code>onStop()</code> to stop refreshing the UI and interacting
+with the user. This means:</p>
+
+<ul>
+<li>Both activities in split-screen are resumed.</li>
+<li>All top-visible activities in free-form windowing mode are resumed.</li>
+<li>Activities on multiple screens can be resumed at the same time.</li>
+</ul>
+
+<p><img src="/devices/tech/display/images/multi_display_01a.png"></p>
+
+<p><strong>Figure 1.</strong> Multi-resume on a foldable device</p>
+
+<p><img src="/devices/tech/display/images/multi_display_01b.png"></p>
+
+<p><strong>Figure 2.</strong> Multi-resume on in desktop mode</p>
+
+<p>Activities can reside in the <code>PAUSED</code> state when they cannot be focused upon or are
+partially occluded, such as:</p>
+
+<ul>
+<li>In a minimized split-screen (with launcher on side), the top activity isn't resumed because it's
+not focusable.</li>
+<li>In a picture-in-picture mode, the activity isn't resumed because it's not focusable.</li>
+<li>When activities are covered by other transparent activities in the same stack.</li>
+</ul>
+
+<p>This approach indicates to apps that an activity can receive input from a
+user only in the <code>RESUMED</code> state. Before Android {{ androidQVersionNumber }},
+activities could also receive input in the <code>PAUSED</code> state (for example, try touching
+both activities in split-screen simultaneously on a device running Android 9).</p>
+
+<p>To preserve the <em>resumed</em> signal from previous Android releases (and
+to communicate when apps should obtain access to exclusive-access or singleton
+resources), Android {{ androidQVersionNumber }} includes a new callback:</p>
+
+<pre class="prettyprint">Activity#onTopResumedActivityChanged(boolean onTop)</pre>
+
+<p>When invoked, this callback is called between <code>Activity#onResume()</code>
+and <code>Activity#onPause()</code>. This callback is optional and can be skipped,
+so an activity can go from a <code>RESUMED</code> to a <code>PAUSED</code> state
+without becoming the topmost in the system. For example, in multi-window mode.
+Because this callback is optional, it's not part of the <a
+href="https://developer.android.com/guide/components/activities/activity-lifecycle" class="external">Activity
+Lifecycle</a> and should be rarely used.</p>
+
+<p>The previous top-resumed activity receives and finishes execution of
+<code>onTopResumedActivity(false)</code> before the next top-resumed activity
+receives <code>onTopResumedActivity(true)</code> unless the previous activity
+takes too much time to handle the method call and hits the 500 ms timeout.</p>
+
+<h2 id="compatibility">Compatibility</h2>
+
+<p>To maintain compatibility when implementing multi-resume, consider these
+solutions.</p>
+
+<h3 id="multiple">Multiple resumed activities in one app process</h3>
+
+<ul>
+<li>Issue. In Android 9 and lower, only one activity in the system is
+resumed at a time. All transitions between activities involve pausing an
+activity before resuming another. Some apps and frameworks (such as Flutter, or
+Android's LocalActivityManager) use this fact, and store state about the resumed
+activity in singletons.</li>
+<li>Solution. In Android 9 and lower, if two activities from the same process
+are both resumed, the system only resumes the activity that's higher in Z-order.
+Apps targeting Android {{ androidQVersionNumber }} can support multiple activities
+being resumed at the same time.</li>
+</ul>
+
+<h3 id="camera">Simultaneous camera access</h3>
+
+<ul>
+<li><strong>Issues</strong>. These issues are also present in Android 9 and
+lower. For example, a fullscreen and resumed activity can lose camera focus to a
+paused activity on top in picture-in-picture mode but become more exposed with
+wider adoption of multi-window and multi-display modes.<ul>
+<li>Due to changes made to the <code>RESUME</code> state, apps may be
+disconnected from the camera <em>even while resumed</em>. To address this, apps
+must handle a camera disconnect without crashing. When disconnected, apps get a
+disconnected callback and all calls into the API start throwing
+<code>CameraAccessException</code>.</li>
+<li><code>resizeableActivity=false</code> isn't a guarantee of exclusive camera
+access, because other apps using the camera can be opened on other displays.</li>
+</ul>
+<li><strong>Solutions.</strong> Developers should include logic for when an app
+is disconnected from the camera. If an app is disconnected from the camera, it
+should watch camera availability callbacks to try to reconnect and continue
+camera use. In addition to the existing
+<code>CameraManager#AvailabilityCallback#onCameraAvailable()</code> callback,
+Android {{ androidQVersionNumber }} added
+<code>CameraManager#AvailabilityCallback#onCameraAccessPrioritiesChanged()</code>,
+which covers the case when focus (and camera priority) switches between several
+resumed activities. App developers should use both of these callbacks to
+determine a good time to try to get access to the camera.</li>
+</ul>
+
+<h3 id="multi-resume">Multi-resume</h3>
+
+<p>In Android {{ androidQVersionNumber }}, the activity lifecycle state is determined by visibility and
+Z-order. To ensure that the correct state after visibility updates on an
+activity and evaluate which lifecycle state is applicable, invoke the
+<code>ActivityRecord#makeActiveIfNeeded()</code> method from different
+locations. In Android {{ androidQVersionNumber }}, active means either <code>RESUMED</code> or
+<code>PAUSED</code> and works only in these two instances. </p>
+
+<p>In Android {{ androidQVersionNumber }}, resuming an activity is separately tracked in each stack
+instead of in the single location in the system. This is because several
+activity transitions can be performed simultaneously in multi-window modes. For
+details, see <code>ActivityStack#mInResumeTopActivity</code>.</p>
+
+<h3 id="top-resume">Top-resumed activity callback</h3>
+
+<p>After actions that can result in a top activity change (such as activity
+launch, resuming, or Z-order change),
+<code>ActivityStackSupervisor#updateTopResumedActivityIfNeeded()</code>code> is invoked. This
+method checks if the topmost resumed activity changed and performs the update if
+needed. If the previous top-resumed activity hasn't release the top-resumed
+state, then a top-resumed-state-loss message is sent to it and a timeout is
+scheduled on the server side
+(<code>ActivityStackSupervisor#scheduleTopResumedStateLossTimeout()</code>code>).
+A report of the top-resumed state is sent to the next activity after the previous
+one released the state, or when a timeout was hit (see usages of:</p>
+
+<pre class="prettyprint">ActivityStackSupervisor#scheduleTopResumedActivityStateIfNeeded()</pre>
+
+<p>A new <code>TopResumedActivityChangeItem</code> transaction item was added
+to report top-resumed state changes to clients and leverages the
+<code>ActivityLifecycler</code> architecture from Android 9.</p>
+
+<p>The top-resumed state is stored on the client side, and each time the
+activity transitions to <code>RESUMED</code> or <code>PAUSED</code> it also
+checks whether the <code>onTopResumedActivityChanged()</code> callback should be
+invoked. This enables certain decoupling in the communication of lifecycle states
+and the top-resumed state between the server and client sides.</p>
+
+
+  </body>
+</html>

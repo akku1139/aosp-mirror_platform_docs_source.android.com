@@ -29,8 +29,8 @@ using the Wi-Fi Aware protocol without internet or cellular network access. This
 feature, built upon the [Wi-Fi Alliance](https://www.wi-fi.org/){: .external}
 (WFA)
 [Wi-Fi Aware specification](https://www.wi-fi.org/discover-wi-fi/wi-fi-aware){: .external}
-(version 2.0), allows easy sharing of high-throughput data among trusted devices
-and apps that are otherwise off-network.
+(versions 2.0 and 3.0), allows easy sharing of high-throughput data among
+trusted devices and apps that are otherwise off-network.
 
 ## Examples and source
 
@@ -42,7 +42,8 @@ streamline implementations by specifying types and method calls collected into
 interfaces and packages.
 
 Follow the Wi-Fi HIDL to employ the Wi-Fi Aware feature:
-hardware/interfaces/wifi/1.2. The Wi-Fi Aware HAL surface is very large; the
+hardware/interfaces/wifi/1.2 or higher. The Wi-Fi Aware HAL surface is very
+large; the
 [hardware/interfaces/wifi/1.2/README-NAN.md](https://android.googlesource.com/platform/hardware/interfaces/+/master/wifi/1.2/README-NAN.md){: .external}
 file describes the subset that is currently in use by the framework.
 
@@ -62,7 +63,7 @@ Device manufacturers need to provide both framework and HAL/firmware support:
 To implement this feature, device manufacturers implement the Wi-Fi HIDL and
 enable two feature flags:
 
-+   In `BoardConfig.mk` or BoardConfig-common.mk located in
++   In `BoardConfig.mk` or `BoardConfig-common.mk` located in
     `device/<oem>/<device>`, add the following flag:
 
     ```
@@ -80,13 +81,18 @@ enable two feature flags:
 
 Wi-Fi Aware includes ranging to peer devices using the IEEE 802.11mc protocol,
 also known as Round Trip Time (RTT). This sub-feature of Wi-Fi Aware is
-conditional on the device supporting the Wi-Fi RTT feature, i.e. it requires the
-device to support both Wi-Fi Aware and Wi-Fi RTT. For more details, see
-[Wi-Fi RTT](/devices/tech/connect/wifi/rtt).
+conditional on the device supporting the Wi-Fi RTT feature, that is, it requires
+the device to support both Wi-Fi Aware and Wi-Fi RTT. For more details, see
+[Wi-Fi RTT](/devices/tech/connect/wifi-rtt).
 
 Otherwise, everything required for this feature is included in AOSP.
 
-## MAC Randomization
+The `WIFI_HIDL_FEATURE_AWARE` flag is ignored if the
+`WIFI_HAL_INTERFACE_COMBINATIONS`
+flag is specified. For more information, see
+[Wi-Fi multi-interface concurrency](/devices/tech/connect/wifi-hal#wi-fi_multi-interface_concurrency).
+
+## MAC randomization
 
 Android requires the MAC address of the Wi-Fi Aware discovery (NMI) and data
 interfaces (NDPs) to be randomized and not be identical to the true MAC address
@@ -99,7 +105,9 @@ of the device. The MAC addresses must be:
     is configured by the framework by default to be 30 minutes.
 
     Note: Per the Wi-Fi Aware spec, randomization may be suspended while an NDP
-    is configured.
+    is configured. Suspension does not imply that the factory MAC address is
+    used (it must never be used for Wi-Fi Aware), but that the MAC address
+    is re-randomized less frequently than otherwise required.
 
 ## Validation
 
@@ -132,7 +140,7 @@ The `acts/sl4a` test suite, described in
 `tools/test/connectivity/acts/tests/google/wifi/aware/README.md`, provides
 functional, performance, and stress tests.
 
-### Compatibility Test Suite (CTS)
+### Compatibility Test Suite (CTS) tests
 
 Use CTS tests to validate the Wi-Fi Aware feature. CTS detects when the feature
 is enabled and automatically includes the associated tests.

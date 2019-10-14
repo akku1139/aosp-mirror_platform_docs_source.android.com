@@ -1,0 +1,317 @@
+<html devsite>
+  <head>
+    <title>Synchronization Framework</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+    {% include "_versions.html" %}
+  <!--
+      Copyright 2019 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>The synchronization framework explicitly describes dependencies between
+different asynchronous operations in the Android graphics system. The framework
+provides an API that enables components to indicate when buffers are released. The framework also
+allows synchronization primitives to be passed between drivers from the kernel
+to userspace and between userspace processes themselves.</p>
+
+<p>For example, an application may queue up work to be performed in the GPU.
+The GPU starts drawing that image. Although the image hasn’t been drawn
+into memory yet, the buffer pointer is passed to the window
+compositor along with a fence that indicates when the GPU work will
+finish. The window compositor starts processing ahead of time and
+passes the work to the display controller. In a similar manner, the CPU work
+is done ahead of time. Once the GPU finishes, the display controller
+immediately displays the image.</p>
+
+<p>The synchronization framework also lets implementers leverage
+synchronization resources in their own hardware components. Finally, the
+framework provides visibility into the graphics pipeline to help with
+debugging.</p>
+
+
+<h2 id="explicit_synchronization">Explicit synchronization</h2>
+
+<p>Explicit synchronization enables producers and consumers of graphics buffers
+to signal when they're finshied using a buffer. Explicit synchronization is
+implemented in kernel-space.</p>
+
+<p>The benefits of explicit synchronization include:</p>
+
+<ul>
+  <li>Less behavior variation between devices</li>
+  <li>Better debugging support</li>
+  <li>Improved testing metrics</li>
+</ul>
+
+<p>The sync framework has three object types:</p>
+
+<ul>
+  <li><code>sync_timeline</code></li>
+  <li><code>sync_pt</code></li>
+  <li><code>sync_fence</code></li>
+</ul>
+
+<h3 id="sync_timeline">sync_timeline</h3>
+
+<p><code>sync_timeline</code> is a monotonically increasing timeline that
+vendors should implement for each driver instance, such as a GL context,
+display controller, or 2D blitter. <code>sync_timeline</code> counts
+jobs submitted to the kernel for a particular piece of hardware.
+<code>sync_timeline</code> provides guarantees about the order of operations
+and enables hardware-specific implementations.</p>
+
+<p>One implementation of <code>sync_timeline</code> is offered as a CPU-only
+reference called <code>sw_sync</code> (software sync). If a vendor doesn't have
+a hardware-backed sync object resource, <code>sw_sync</code>
+should be used to save resources and avoid complexity.</p>
+
+<p>Follow these guidelines when implementing <code>sync_timeline</code>:</p>
+
+<ul>
+<li>Provide useful names for all drivers, timelines, and fences to simplify
+  debugging.</li>
+<li>Implement the <code>timeline_value_str</code> and <code>pt_value_str</code>
+  operators in timelines to make debugging output more readable.</li>
+<li>Implement the fill <code>driver_data</code> to give userspace libraries,
+  such as the GL library, access to private timeline data, if desired.
+  <code>data_driver</code> lets vendors pass information about the immutable
+  <code>sync_fence</code> and <code>sync_pts</code> to build command lines
+  based on them.</li>
+<li>Don't allow userspace to explicitly create or signal a fence. Explicitly
+  creating signals/fences results in a denial-of-service attack that
+  halts pipeline functionality.</li>
+<li>Don't access <code>sync_timeline</code>, <code>sync_pt</code>, or
+  <code>sync_fence</code> elements explicitly. The API provides all required
+  functions.</li>
+</ul>
+
+<h3 id="sync_pt">sync_pt</h3>
+
+<p><code>sync_pt</code> is a single value or point on a
+<code>sync_timeline</code>. A point
+has three states: active, signaled, and error. Points start in the active state
+and transition to the signaled or error states. For example, when an image
+consumer no longer needs a buffer, a <code>sync_pt</code> is signaled
+so an image producer knows that it's okay to write into the buffer again.</p>
+
+<h3 id="sync_fence">sync_fence</h3>
+
+<p><code>sync_fence</code> is a collection of <code>sync_pt</code> values
+that often
+have different <code>sync_timeline</code> parents (such as for the display
+controller and GPU). <code>sync_fence</code>, <code>sync_pt</code>, and
+<code>sync_timeline</code> are the main primitives that drivers and userspace
+use to communicate their dependencies. When a fence becomes signaled, all
+commands issued before the fence are guaranteed to be complete because the
+kernel driver or hardware block executes commands in order.</p>
+
+<p>The sync framework allows multiple consumers or producers to signal when they're
+using a buffer, communicating the dependency information with one function
+parameter. Fences are backed by a file descriptor and are passed from
+kernel space to userspace. For example, a fence can contain two
+<code>sync_pt</code> values that signify when two separate image consumers are done
+reading a buffer. When the fence is signaled, the image producers know that both
+consumers are done consuming.</p>
+
+<p>Fences, like <code>sync_pt</code> values, start active and change state based on
+the state of their points. If all <code>sync_pt</code> values become signaled, the
+<code>sync_fence</code> becomes signaled. If one <code>sync_pt</code> falls
+into an error state, the entire <code>sync_fence</code> has an error state.</p>
+
+<p>Membership in a <code>sync_fence</code> is immutable after the fence is
+created. To get more than one point in a fence, a merge is
+conducted where points from two distinct fences are added to a third fence.
+If one of those points was signaled in the originating fence and the other wasn't,
+the third fence also won't be in a signaled state.</p>
+
+<p>To implement explicit synchronization, provide the following:</p>
+
+<ul>
+<li>A kernel-space subsystem that implements the sync framework
+for a particular hardware driver. Drivers that need to be fence-aware are
+generally anything that accesses or communicates with the Hardware Composer.
+Key files include:
+<ul>
+<li>Core implementation:
+<ul>
+ <li><code>kernel/common/include/linux/sync.h</code></li>
+ <li><code>kernel/common/drivers/base/sync.c</code></li>
+</ul></li>
+<li><code>sw_sync</code>:
+<ul>
+ <li><code>kernel/common/include/linux/sw_sync.h</code></li>
+ <li><code>kernel/common/drivers/base/sw_sync.c</code></li>
+</ul></li>
+<li>Documentation at <code>kernel/common/Documentation/sync.txt</code></li>
+<li>Library to communicate with the kernel space in
+ <code>platform/system/core/libsync</code></li>
+</ul></li>
+<li>The vendor must provide the appropriate synchronization
+fences as parameters to the <code>validateDisplay()</code> and
+<code>presentDisplay()</code> functions in the HAL.</li>
+<li>Two fence-related GL extensions (<code>EGL_ANDROID_native_fence_sync</code>
+and <code>EGL_ANDROID_wait_sync</code>) and fence support in graphics
+driver.</li>
+</ul>
+
+<h3 id="case-study">Case study: Implementing a display driver</h3>
+
+<p>To use the API supporting the synchronization function,
+develop a display driver that has a display buffer function. Before the
+synchronization framework existed, this function would receive <code>dma-buf</code>
+objects, put those buffers on the display, and block while the buffer was visible. For
+example:</p>
+
+<pre class="prettyprint">
+/*
+ * assumes buffer is ready to be displayed.  returns when buffer is no longer on
+ * screen.
+ */
+void display_buffer(struct dma_buf *buffer);
+</pre>
+
+<p>With the synchronization framework, the <code>display_buffer</code> function
+is more complex. While putting a buffer on display, the buffer is associated
+with a fence that indicates when the buffer will be ready. You can queue up
+and initiate the work after the fence clears.</p>
+
+<p>Queuing and initiating work after the fence clears doesn't block anything.
+You immediately return your own fence, which guarantees when the buffer
+will be off of the display. As you queue up buffers, the kernel lists
+dependencies with the synchronization framework:</p>
+
+<pre class="prettyprint">
+/*
+ * displays buffer when fence is signaled.  returns immediately with a fence
+ * that signals when buffer is no longer displayed.
+ */
+struct sync_fence* display_buffer(struct dma_buf *buffer, struct sync_fence
+*fence);
+</pre>
+
+
+<h2 id="sync_integration">Sync integration</h2>
+
+<p>This section explains how to integrate the kernel-space sync framework with
+userspace parts of the Android framework and the drivers that must communicate
+with one another. Kernel-space objects are represented as file descriptors in
+userspace.</p>
+
+<h3 id="integration_conventions">Integration conventions</h3>
+
+<p>Follow the Android HAL interface conventions:</p>
+
+<ul>
+<li>If the API provides a file descriptor that refers to a <code>sync_pt</code>,
+  the vendor's driver or the HAL using the API must close the file descriptor.</li>
+<li>If the vendor driver or the HAL passes a file descriptor that contains
+ a <code>sync_pt</code> to an API function, the vendor driver or the HAL must not
+  close the file descriptor.</li>
+<li>To continue using the fence file descriptor, the vendor driver or the
+  HAL must duplicate the descriptor.</li>
+</ul>
+
+<p>A fence object is renamed every time it passes through BufferQueue.
+Kernel fence support allows fences to have strings for names, so the sync
+framework uses the window name and buffer index that's being queued to name
+the fence, such as <code>SurfaceView:0</code>. This
+is helpful in debugging to identify the source of a deadlock as the names appear
+in the output of <code>/d/sync</code> and bug reports.</p>
+
+<h3 id="anativewindow_integration">ANativeWindow integration</h3>
+
+<p>ANativeWindow is fence aware. <code>dequeueBuffer</code>,
+<code>queueBuffer</code>, and <code>cancelBuffer</code> have fence parameters.
+</p>
+
+<h3 id="opengl_es_integration">OpenGL ES integration</h3>
+
+<p>OpenGL ES sync integration relies on two EGL extensions:</p>
+
+<ul>
+<li><code>EGL_ANDROID_native_fence_sync</code> provides a way to
+  wrap or create native Android fence file descriptors in
+  <code>EGLSyncKHR</code> objects.</li>
+<li><code>EGL_ANDROID_wait_sync</code> allows GPU-side stalls
+rather than CPU-side, making the GPU wait for <code>EGLSyncKHR</code>. The
+<code>EGL_ANDROID_wait_sync</code> extension is the same as the
+<a
+href="https://www.khronos.org/registry/EGL/extensions/KHR/EGL_KHR_wait_sync.txt"
+class="external"><code>EGL_KHR_wait_sync</code></a> extension.</li>
+</ul>
+
+<p>To use these extensions independently, implement the
+<code>EGL_ANDROID_native_fence_sync</code> extension along with the associated
+kernel support. Next, enable the <code>EGL_ANDROID_wait_sync</code>
+extension in your driver. The <code>EGL_ANDROID_native_fence_sync</code>
+extension consists of a distinct native fence <code>EGLSyncKHR</code> object
+type. As a result, extensions that apply to existing <code>EGLSyncKHR</code>
+object types don’t necessarily apply to <code>EGL_ANDROID_native_fence</code>
+objects, avoiding unwanted interactions.</p>
+
+<p>The <code>EGL_ANDROID_native_fence_sync</code> extension employs a corresponding native
+fence file descriptor attribute that can be set only at creation time and
+can't be directly queried onward from an existing sync object. This attribute
+can be set to one of two modes:</p>
+
+<ul>
+<li><strong>A valid fence file descriptor</strong> wraps an existing native
+Android fence file descriptor in an <code>EGLSyncKHR</code> object.</li>
+<li><strong>-1</strong> creates a native Android fence file descriptor from an
+  <code>EGLSyncKHR</code> object.</li>
+</ul>
+
+<p>Use the <code>DupNativeFenceFD()</code> function call to extract the
+<code>EGLSyncKHR</code> object from the native Android fence file descriptor.
+This has the same result as querying the set attribute, but adheres to
+the convention that the recipient closes the fence (hence the duplicate
+operation). Finally, destroying the <code>EGLSyncKHR</code> object closes
+the internal fence attribute.</p>
+
+<h3 id="hardware_composer_integration">Hardware Composer integration</h3>
+
+<p>The Hardware Composer handles three types of sync fences:</p>
+
+<ul>
+  <li><strong>Acquire fences</strong> are passed along with input buffers to
+    the <code>setLayerBuffer</code> and <code>setClientTarget</code> calls.
+    These represent a pending write into the buffer and must signal before the
+    SurfaceFlinger or the HWC attempts to read from the associated buffer to
+    perform composition.</li>
+<li><strong>Release fences</strong> are retrieved after the call to
+  <code>presentDisplay</code> using the <code>getReleaseFences</code> call.
+  These represent a pending read from the previous buffer on the same layer. A
+  release fence signals when the HWC is no longer using the previous buffer
+  because the current buffer has replaced the previous buffer on the display.
+  Release fences are passed back to the app along with the previous buffers that
+  will be replaced during the current composition. The app must wait until a
+  release fence signals before writing new contents into the buffer that
+  was returned to them.</li>
+<li><strong>Present fences</strong> are returned, one per frame, as part of
+  the call to <code>presentDisplay</code>. Present fences represent when the
+  composition of this frame has completed, or alternately, when the
+  composition result of the prior frame is no longer needed. For physical
+  displays, <code>presentDisplay</code> returns present fences when the
+  current frame appears on the screen. After present fences are returned,
+  it's safe to write to the SurfaceFlinger target buffer again, if
+  applicable. For virtual displays, present fences are returned when it's
+  safe to read from the output buffer.</li>
+</ul>
+
+
+</body>
+</html>

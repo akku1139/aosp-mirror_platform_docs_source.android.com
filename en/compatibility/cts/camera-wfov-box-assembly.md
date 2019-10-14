@@ -16,86 +16,100 @@ Book: /_book.yaml
     limitations under the License.
 -->
 
-# Wide Field of View (WFoV) Box
+# Wide Field-of-View (WFoV) Box
 
-Android {{ androidPVersionNumber }} introduces ITS-in-a-box revision 2, an
-automated test system for both wide field of view (WFoV) and regular field of
-view (RFoV) camera systems in the Camera Image Test Suite (ITS). Revision 1 was
-designed to test mobile device cameras with an FoV less than 90 degrees
-(RFoV). Revision
-2 is designed to also test cameras that have an FoV greater 90 degrees (WFoV),
-enabling you to use one ITS-in-a-box system to test different cameras with
-varying FoVs.
+Android includes ITS-in-a-box revision 2, an automated test system for both wide
+field-of-view (WFoV) and regular field-of-view (RFoV) camera systems in the
+[Camera Image Test Suite (ITS)](/compatibility/cts/camera-hal#its_tests).
+Revision 1 was designed to test mobile device cameras with an FoV less than 90
+degrees (RFoV).
 
-The ITS-in-a-box system consists of a plastic box laser cut from computer-aided
-design (CAD) drawings, an internal lighting system, a chart tablet, and a device
-under test (DUT). You can purchase an ITS-in-a-box or build your own.
+The wide field-of-view box (revision 2) is designed to also test cameras that
+have an FoV greater than 90 degrees (WFoV), enabling you to use one ITS-in-a-box
+system to test different cameras with varying FoVs.
 
-Note: For details on building ITS-in-a-box revision 1 (designed for RFoV cameras
-only), see
-[ITS-in-a-Box Assembly](/compatibility/cts/camera-its-box-assembly).
+The [ITS-in-a-box](/compatibility/cts/camera-its-box)
+system consists of a plastic box laser cut from computer-aided design (CAD)
+drawings, an internal lighting system, a chart tablet, and a device under test
+(DUT). You can purchase an ITS-in-a-box or build your own.
 
-## Purchasing a WFoV ITS-in-a-box
+Note: For details on building ITS-in-a-box revision 1 (designed for RFoV
+cameras only), see
+[Regular Field-of-View Box](/compatibility/cts/camera-its-box-assembly).
+
+## Purchasing a WFoV ITS-in-a-box {:#purchasing_a_wfov_its-in-a-box}
 
 We recommend purchasing a WFoV ITS-in-a-box from one of the following qualified
 vendors.
 
-* *Acu Spec, Inc.*  
-  990 Richard Ave, Ste 103, Santa Clara, CA 95050  
-  fred@acuspecinc.com  
-* *MYWAY, Inc*  
-  4F., No. 163, Fu Ying Rd., New Taipei City, Taiwan  
-  sales@myway.tw
+-   *Acu Spec, Inc.*  
+    990 Richard Ave, Ste 103, Santa Clara, CA 95050  
+    fred@acuspecinc.com
+-   *MYWAY, Inc.*  
+    No.228-4, Sec 4, Jen-Ai Road, Da'an District. Taiwan  
+    sales@myway.tw
 
-## Building a WFoV ITS-in-a-box
+## Building a WFoV ITS-in-a-box {:#building_a_wfov_its-in-a-box}
 
+Instead of purchasing a WFoV ITS-in-a-box (revision 2), you may build your own.
 This section includes step-by-step instructions for assembling a WFoV
 ITS-in-a-box (revision 2) that can test cameras with a wide field of view
 (greater than 90 degrees).
 
-### Overview
+### Mechanical drawings {:#mechanical_drawings}
 
-The WFoV ITS-in-a-box consists of a device under test (DUT), a chart tablet, an
-internal lighting system, and a plastic box that is laser cut from CAD drawings
-(shown in Figure 1).
+To get started, download the latest
+[mechanical drawings for the WFoV ITS-in-a-box](/compatibility/cts/wfov_its_box_assembly_2_7.zip).
 
 ![CAD drawing of WFOV ITS-in-a-box](/compatibility/cts/images/wfov-cad-wfov-box.png){: width="800"}
 
 **Figure 1.** Mechanical drawing of WFoV ITS-in-a-box
 
-### Required tools
+Purchase the hardware from the bill of materials (BOM). Cut the plastic and
+vinyl pieces.
 
-To get started, download the latest
-[technical drawings for the WFoV ITS-in-a-box](/compatibility/cts/wfov_its_box_assembly_2_7.zip),
-cut the plastic and vinyl pieces, purchase the hardware from the bill of
-materials (BOM), and gather these tools:
+### Required tools {:#required_tools}
+
+Have the following tools available:
 
 +   Phillips head screwdriver
-+   Pliers
++   Needle nose pliers
 +   Wire cutters
 +   Scissors
 +   Water spray bottle
-+   X-acto knife
++   X-ACTO knife
 
-Note: For more information on past versions, see [Revision history](#revision_history).
+Note: For more information on past versions,
+see [Revision history](#revision_history).
 
-### Step 1: Apply colored vinyl
+### Step 1: Apply colored vinyl {:#step_1_apply_colored_vinyl}
 
 To apply colored vinyl:
 
-1.  Apply colored vinyl on the smooth side of the acrylonitrile butadiene
-    styrene (ABS) and cut out the necessary openings as shown in Figure 1. Make
+1.  Apply the colored vinyl on the smooth side of the acrylonitrile butadiene
+    styrene (ABS) and cut out the necessary openings as shown in Figure 2. Make
     sure to apply the white vinyl with the large rectangular opening on the
     tablet side and the black vinyl with the circular opening on the mobile
-    device side of the box. For more information, see
+    device side of the box.
+
+    Apply the gray vinyl on the side panels as shown in Figure 2 and glue the
+    feet on the four corners of the bottom panel as shown in Figure 3.
+
+    For more information, see
     [wikiHow](https://www.wikihow.com/Install-a-Vinyl-Graphic){: .external}.
 
-    ![ABS pieces with vinyl applied on the smooth side](/compatibility/cts/images/wfov-abs-pieces.png){: width="500"}
+    ![ABS pieces with vinyl applied on the smooth side](/compatibility/cts/images/wfov-2.png){: width="500"}
 
     **Figure 2.** ABS pieces with vinyl applied on the smooth side (interior of
     the box)
 
-### Step 2: Assemble and install the light rail
+1.  Apply the feet on the four corners of the bottom panel as shown in Figure 3.
+
+    ![Bottom panel feet](/compatibility/cts/images/wfov-3.png){: width="350"}
+
+    **Figure 3.** Feet on the four corners of the bottom panel
+
+### Step 2: Assemble and install the light rail {:#step_2_assemble_and_install_the_light_rail}
 
 To assemble and install the light frame structure with LED light strips:
 
@@ -103,63 +117,72 @@ To assemble and install the light frame structure with LED light strips:
 
     ![Light frame structure with LED light strips](/compatibility/cts/images/wfov-cad-light-frame.png){: width="800"}
 
-    **Figure 3.** Light frame structure with LED light strips
+    **Figure 4.** Light frame structure with LED light strips
 
-1.  Gather the plastic light baffles, light mounts, LED light strip, and zip
+1.  Gather the plastic light baffles, light mounts, LED light strips, and zip
     ties.
 
-    ![Light baffles, light mounts, LED light strips, and zip ties](/compatibility/cts/images/wfov-parts.png){: width="350"}
+    ![Light baffles, light mounts, LED light strips, and zip ties](/compatibility/cts/images/wfov-5.png){: width="350"}
 
-    **Figure 4.** Light baffles, light mounts, LED light strips, and zip ties
+    **Figure 5.** Light baffles and light mounts
 
-1.  Snap the plastic light baffles to the light mounts as shown in figure 5.
+1.  Snap the plastic light baffles to the light mounts as shown in Figure 6.
     This should be a tight fit.
 
-    ![Plastic light baffles fitted in light mounts](/compatibility/cts/images/wfov-light-mounts.png){: width="350"}
+    ![Plastic light baffles fitted in light mounts](/compatibility/cts/images/wfov-6.png){: width="350"}
 
-    **Figure 5.** Plastic light baffles fitted in light mounts
+    **Figure 6.** Plastic light baffles fitted in light mounts
 
-1.  Snap the light mounts to the side panels as shown in figure 6. When
-    complete, the light will shine towards the front corners of the box
+1.  Snap the light mounts to the side panels as shown in Figure 7. When
+    complete, the light shines toward the front corners of the box
     interior.
 
-    ![Light baffles and mounts snapped onto the side panels](/compatibility/cts/images/wfov-side-panels-baffles.png){: width="350"}
+    ![Light baffles and mounts snapped onto the side panels](/compatibility/cts/images/wfov-7.png){: width="350"}
 
-    **Figure 6.** Light baffles and mounts snapped onto the side panels
+    **Figure 7.** Light baffles and mounts snapped onto the side panels
 
 1.  Assemble the side panels. (Optional: Sand the edges of the baffles for
     a better fit.)
 
-    ![Side panels assembled and screwed in](/compatibility/cts/images/wfov-assembled-side-panels.png){: width="350"}
+    ![Side panels assembled and screwed in](/compatibility/cts/images/wfov-8.png){: width="350"}
 
-    **Figure 7.** Side panels assembled and screwed together
+    **Figure 8.** Side panels assembled and screwed together
 
-1.  Wrap the LED strip on the side facing the panel, between the holes used for
-    fastening. (Optional: Use the tape on the back of the LED light strip for
-    easier wrapping.)
+1.  Secure the light baffles by squeezing the pin into the small hole on
+    the rectangular tab that extends through the slot in the side panels as
+    shown in Figure 9.
 
-    ![LED light strip wrapped around the baffles ](/compatibility/cts/images/wfov-light-strip.png){: width="350"}
+    ![Inserted PIN in LED mount tab](/compatibility/cts/images/wfov-9.png){: width="350"}
 
-    **Figure 8.** LED light strip wrapped around the baffles
+    **Figure 9.** Close up of inserted pin in LED mount tab on the outside of
+    the box
 
-1.  Wrap the light strips around the baffles twice, use zip ties to tie down the
-    strip, and snap the ends together.
+1.  Wrap the light strips around the baffles twice on the side facing
+    down. Use zip ties to tie down the strip, and snap the ends together.
+    (Optional: Use the tape on the back of the LED light strip in addition to
+    the zip ties for easier wrapping.)
 
-    ![Zip ties holding the LED light strips in place](/compatibility/cts/images/wfov-zip-ties.png){: width="350"}
+    ![LED light strip wrapped around baffles](/compatibility/cts/images/wfov-10.png){: width="350"}
 
-    **Figure 9.** Zip ties holding the LED light strips in place
+    **Figure 10.** LED light strip wrapped around the baffles with zip ties
 
-    ![LED lights wrapped around the baffles](/compatibility/cts/images/wfov-lights-exiting.png){: width="350"}
+    ![Zip ties holding LED light strips](/compatibility/cts/images/wfov-11.png){: width="350"}
 
-    **Figure 10.** LED lights wrapped around the baffles twice and exiting
-    through side exit
+    **Figure 11.** Zip ties holding the LED light strips in place
 
-    ![Zip ties showing on the side facing up](/compatibility/cts/images/wfov-zip-ties-facing-up.png){: width="350"}
+1.  Cut the ends of the zip ties as shown in Figure 12 and 13.
 
-    **Figure 11.** Zip ties showing on the side facing up. LED strips are on the
-    other side.
+    ![Led lights around baffles exiting](/compatibility/cts/images/wfov-12.png){: width="350"}
 
-### Step 3: Assemble tablet and phone mounts
+    **Figure 12.** LED lights wrapped around the baffles twice and exiting
+    through the side exit
+
+    ![Zip ties facing up](/compatibility/cts/images/wfov-13.png){: width="350"}
+
+    **Figure 13.** Zip ties showing on the side facing up (LED strips are on the
+    other side)
+
+### Step 3: Assemble tablet and phone mounts {:#step_3_assemble_tablet_and_phone_mounts}
 
 To assemble the tablet and phone mounts:
 
@@ -167,119 +190,219 @@ To assemble the tablet and phone mounts:
 
     ![Mechanical drawing of tablet mount](/compatibility/cts/images/wfov-cad-mounts.png){: width="800"}
 
-    **Figure 12.** Mechanical drawing of tablet mount
+    **Figure 14.** Mechanical drawing of tablet mount
 
-1.  Gather the parts as shown in figure 13.
+1.  Gather the parts as shown in Figure 15.
 
     ![Tablet and phone mount parts](/compatibility/cts/images/wfov-mount-parts.png){: width="350"}
 
-    **Figure 13.** Tablet and phone mounts with screws, plungers, vinyl caps,
+    **Figure 15.** Tablet and phone mounts with screws, plungers, vinyl caps,
     and nuts
 
-1.  Cut the push-on vinyl cap by ⅓ of its length and push it onto the end of the
-    plunger. This ensures the plunger mechanism can be retracted and locked.
+1.  Cut the rubber tips short enough to not interfere with plunger
+    operation (roughly in half), and push them onto the
+    ends of the plungers. The shorter vinyl cap length ensures that the plunger
+    mechanism can be retracted and locked.
 
-    ![Plunger with adjusted push-on cap](/compatibility/cts/images/wfov-plunger.png){: width="350"}
+    ![Plungers with adjusted push-on cap](/compatibility/cts/images/rfov-9.png){: width="350"}
 
-    **Figure 14.** Plunger with adjusted push-on cap
+    **Figure 16.** Plungers with adjusted push-on caps
 
 1.  Screw the plungers onto the mounts.
 
-    ![Tablet and phone mounts with plungers attached](/compatibility/cts/images/wfov-mounts-with-plungers.png){: width="350"}
+    ![Tablet and phone mounts with plungers attached](/compatibility/cts/images/wfov-17.png){: width="350"}
 
-    **Figure 15.** Tablet and phone mounts with plungers attached
+    **Figure 17.** Tablet and phone mounts with plungers attached
 
-### Step 4: Final assembly
+### Step 4: Final assembly {:#step_4_final_assembly}
 
 To assemble the WFoV ITS box:
 
-1.  Gather the front aperture plates and screw the smaller plate with the square
-    on top of the larger plate as shown in figure 16.
+1.  Gather the front aperture plates and use 4-40 screws to screw the smaller
+    plate with the square on top of the larger plate as shown in Figure 18.
 
-    ![Assembled aperture plates](/compatibility/cts/images/wfov-aperture-plates.png){: width="500"}
+    ![Fron aperture plate and phone mount plate](/compatibility/cts/images/wfov-18.png){: width="500"}
 
-    **Figure 16.** Front aperture plates screwed together with 4-40 screws
+    **Figure 18.** Front aperture plate and phone mount plate
 
-1.  Tape the front and back panels to the rest of the box.
+    ![Assembled front aperture plate](/compatibility/cts/images/wfov-19.png){: width="350"}
 
-    ![WFoV box with sides screwed together](/compatibility/cts/images/wfov-box.png){: width="350"}
+    **Figure 19.** Front aperture plate and phone mount plate screwed together
+    with 4-40 screws
 
-    **Figure 17.** WFoV box with sides screwed together and the front and back
+1.  Tape the front and back panels to the box.
+
+    ![WFoV box with sides screwed together](/compatibility/cts/images/wfov-20.png){: width="350"}
+
+    **Figure 20.** WFoV box with sides screwed together and the front and back
     panels taped
 
-1.  Check that the power adapter is 12V, 5A. Anything below 12V will not work;
-    anything below 5A may affect the brightness level of the lights.
+1.  Use a power drill to create pilot holes based on the existing holes.
+    Make sure that the pilot holes are big enough for 4-40 screws so that the
+    ABS plastic doesn't crack when inserting the screws.
 
-    ![12V, 5A power adapter](/compatibility/cts/images/wfov-power-adapter.png){: width="350"}
+    ![Pilot holes](/compatibility/cts/images/rfov-23.png){: width="350"}
 
-    **Figure 18.** 12V, 5A power adapter
+    **Figure 21.** Drilling pilot holes for 4-40 screws
 
-1.  Using a digital lux tester, test the lux of the LED lights to make sure they
-    are at the appropriate level. The YF-1065 by
+1.  Screw all the panels together using 4-40 self-tapping screws.
+
+    ![4-40 screws for assembly](/compatibility/cts/images/rfov-24.png){: width="350"}
+
+    **Figure 22.** 4-40 screws for assembly
+
+1.  Gather the handle parts shown in Figure 23.
+
+    ![Handle parts](/compatibility/cts/images/wfov-23.png){: width="350"}
+
+    **Figure 23.** Handle parts
+
+1.  Assemble the handles as shown in Figure 24.
+
+    ![Assembled handle](/compatibility/cts/images/wfov-24.png){: width="350"}
+
+    **Figure 24.** Assembled handle
+
+1.  Check that the power adapter is 12V, 5A and has a UL listed
+    certificate. Anything below 12V doesn't work. Anything below 5A may affect
+    the brightness level of the lights.
+
+    ![12V, 5A power adapter](/compatibility/cts/images/wfov-25.png){: width="350"}
+
+    **Figure 25.** 12V, 5A power adapter with a UL listed certificate
+
+1.  Using a digital lux meter, test the lux of the LED lights to make sure
+    that they're at the appropriate level.
+
+    Place the light meter on the tablet side and turn it to 2000&nbsp;lux to
+    measure the light. The lux should be around 100&ndash;130. Anything
+    significantly lower is too dim for the tests and can lead to test failures.
+
+    The YF-1065 lux meter by
     [Contempo Views](https://www.contempoviews.com/){: .external}
     is used in this example.
 
-    ![YF-1065 by Contempo Views](/compatibility/cts/images/wfov-yf1065.png){: width="350"}
+    ![YF-1065 by Contempo Views](/compatibility/cts/images/rfov-33.png){: width="350"}
 
-    **Figure 19.** YF-1065 by Contempo Views
-
-1.  Place the light meter on the tablet side and turn it to 2000 lux to measure
-    the light. The lux should be around 100 to 130. Anything significantly lower
-    will be too dim for the tests and can lead to test failures.
+    **Figure 26.** YF-1065 by Contempo Views
 
     ![Lux meter](/compatibility/cts/images/wfov-lux-meter.png){: width="350"}
 
-    **Figure 20.** Lux meter measuring light from the side with tablet mount
+    **Figure 27.** Lux meter measuring light from the side with the tablet mount
 
 1.  Follow the appropriate step depending on the lux value measured:
 
     * If the light is at the correct level, screw the front and back plates into
-    place.  
-    * If the light is not at the correct level, check the LED and power supply
-    part number.
+    place.
+    * If the light is at the incorrect level, check that the LED and power
+    supply part number are correct.
 
 1.  Mount the phone mount on the aperture plate and the tablet mount on the
     opposite side with screws and nuts.
 
-    ![Phone mount and tablet mount](/compatibility/cts/images/wfov-attached-mounts.png){: width="500"}
+    ![Tablet mount](/compatibility/cts/images/wfov-28.png){: width="250"}
 
-    **Figure 21.** Phone mount (left) and tablet mount (right)
+    **Figure 28.** Close up of tablet mount
 
-    ![Assembled WFoV box](/compatibility/cts/images/wfov-assembled-box.png){: width="500"}
+    ![Assembled WFoV box](/compatibility/cts/images/wfov-29.png){: width="500"}
 
-    **Figure 22.** Assembled WFoV box: rear view (left) and front view (right)
+    **Figure 29.** Assembled WFoV box: rear view (left) and front view (right)
 
-### Revision history
+1.  Insert the 10x10&nbsp;cm gator board aperture to fit the
+    DUT's camera aperture.
+
+    ![Gator board aperture](/compatibility/cts/images/wfov-30.png){: width="350"}
+
+    **Figure 30.** ITS-in-a-box with the gator board aperture installed
+
+1.  Install the phone by aligning the camera with the aperture opening.
+    Check the alignment through the tablet opening.
+
+    ![Box with one phone installed](/compatibility/cts/images/wfov-31.png){: width="350"}
+
+    **Figure 31.** ITS-in-a-box with one phone installed
+
+1.  Cut apertures for the cameras. You can cut a single aperture (for
+    testing a single phone) or two apertures (for testing two phones).
+    Apertures for the Pixel and Pixel XL front and rear cameras are shown in
+    Figure 32. The front camera has a circular aperture because there's no
+    flash or laser, while the rear camera has a rectangular aperture that
+    allows the flash and laser to operate without being blocked.
+
+    ![Apertures for front and rear cameras](/compatibility/cts/images/rfov-31.png){: width="500"}
+
+    **Figure 32.** Sample apertures for front and rear cameras
+
+    ![image](/compatibility/cts/images/wfov-33.png){: width="350"}
+
+    **Figure 33.** ITS-in-a-box with two phones installed
+
+### Things to look out for {:#caution}
+
+The following are examples of common manufacturing errors that can render tests
+flakey.
+
+-   Back panel with tablet holes poked through. This causes the
+    `find_circle` test to fail because of the extra circles created by the
+    screw holes.
+
+    ![Back panel with holes](/compatibility/cts/images/rfov-35.png){: width="350"}
+
+    **Figure 34.** Back panel with holes poked through
+
+-   Missing dowels. This causes the light baffles to slip out during
+    shipping.
+
+    ![Missing dowel](/compatibility/cts/images/rfov-36.png){: width="350"}
+
+    **Figure 35.** Missing dowel on light baffle
+
+-   Non-UL-listed power supply. Using a UL listed power supply meets the labeled
+    specifications. This is important for operating the lighting safely.
+
+    ![UL-listed power supply](/compatibility/cts/images/rfov-37.png){: width="350"}
+
+    **Figure 36.** Example of a UL listed power supply
+
+-   Slipping screws on the tablet or phone mount that can't support the weight
+    of a tablet or phone. This is usually caused by damaged threads and
+    indicates that the hole needs to be rethreaded.
+
+    ![Hole with damaged threads](/compatibility/cts/images/wfov-28.png){: width="250"}
+
+    **Figure 37.** Hole with damaged threads
+
+### Revision history {:#revision_history}
 
 The following describes the changes made to the WFoV ITS-in-a-box.
 
-#### Revision 2.7
+#### Revision 2.7 {:#revision_27}
 
 - Switched light in the BOM (#16) to UL listed LED tape for better manufacturing
   consistency.
 - Switched power supply in the BOM (#17) to the same source as #16.
-- Revised the tablet mount to be 35mm wider to match the tablet opening (page 4
-  on mechanical drawing)
+- Revised the tablet mount to be 35&nbsp;mm wider to match the tablet opening
+  (page 4 on mechanical drawing).
 - Revised the front clamp hole spacing (distance) to align with the clamp slot
-  length (page 5 on mechanical drawing)
-- Reduced the front aperture circle diameter by 20mm to match the [RFoV
+  length (page 5 on mechanical drawing).
+- Reduced the front aperture circle diameter by 20&nbsp;mm to match the [RFoV
   ITS-in-a-box (revision 1)](/compatibility/cts/camera-its-box-assembly) (page
-  5 on mechanical drawing)
+  5 on mechanical drawing).
 
-#### Revision 2.6 (released internally)
+#### Revision 2.6 (released internally) {:#revision_26_released_internally}
 
-- Made a correction to the mechanical drawing
+- Made a correction to the mechanical drawing.
 
-#### Revision 2.5
+#### Revision 2.5 {:#revision_25}
 
-- Simplified tablet holder to be similar to the phone mount
-- Used a sandblast finish instead of an anodized finish to reduce costs
-- Corrected specifications for LED lights on the BOM
+- Simplified the tablet holder to be similar to the phone mount.
+- Used a sandblast finish instead of an anodized finish to reduce costs.
+- Corrected specifications for LED lights on the BOM.
 
-#### Revision 2.4
+#### Revision 2.4 {:#revision_24}
 
-- Switched from acrylic to ABS material to reduce shipping damage
+- Switched from acrylic to ABS material to reduce shipping damage.
 - Removed 3D printing elements and replaced them with laser-cut ABS to reduce
-  costs
+  costs.
 - Changed the box handles to use ABS instead of being a separate item to
-  purchase on the BOM
+  purchase on the BOM.

@@ -21,68 +21,69 @@
       limitations under the License.
   -->
 
-
-
-<h2 id="intro">Introduction</h2>
-
-<p>Android now supports devices with 512MB of RAM. This documentation is intended
-to help OEMs optimize and configure Android 4.4 for low-memory devices. Several
+<p>Android supports devices with 512&nbsp;MB of RAM. This documentation is intended
+to help OEMs optimize and configure Android kernel 4.4 for low-memory devices. Several
 of these optimizations are generic enough that they can be applied to previous
 releases as well.</p>
 
-<h2 id="optimizations">Android 4.4 platform optimizations</h2>
+<h2 id="optimizations">Android kernel 4.4 platform optimizations</h2>
 
 <h3 id="opt-mgmt">Improved memory management</h3>
 <ul>
-<li>Validated memory-saving kernel configurations: Swap to ZRAM.</li>
+<li>Validated memory-saving kernel configurations: Swap to zram.</li>
 <li>Kill cached processes if about to be uncached and too large.</li>
-<li>Don't allow large services to put themselves back into A Services (so they
+<li>Don't allow large services to put themselves back into the A Services classification (so they
 can't cause the launcher to be killed).</li>
 <li>Kill processes (even ordinarily unkillable ones such as the current IME)
 that get too large in idle maintenance.</li>
 <li>Serialize the launch of background services.</li>
-<li>Tuned memory use of low-RAM devices: tighter out-of-memory (OOM) adjustment
-levels, smaller graphics caches, etc.</li>
+<li>Tune memory use of low-RAM devices: tighter out-of-memory (OOM) adjustment
+levels, smaller graphics caches.</li>
 </ul>
 
 <h3 id="opt-mem">Reduced system memory</h3>
 <ul>
-<li>Trimmed system_server and SystemUI processes (saved several MBs).</li>
-<li>Preload dex caches in Dalvik (saved several MBs).</li>
-<li>Validated JIT-off option (saves up to 1.5MB per process).</li>
-<li>Reduced per-process font cache overhead.</li>
-<li>Introduced ArrayMap/ArraySet and used extensively in framework as a
-lighter-footprint replacement for HashMap/HashSet.</li>
+  <li>Trimmed <code>system_server</code> and System UI processes (saved several megabytes).</li>
+  <li>Preload dex caches in Dalvik (saved several megabytes).</li>
+  <li>Validated JIT-off option (saves up to 1.5&nbsp;MB per process).</li>
+  <li>Reduced per-process font cache overhead.</li>
+  <li>Introduced <code><a href="https://developer.android.com/reference/android/util/ArrayMap"
+  class="external">ArrayMap</a></code>/<code><a
+  href="https://developer.android.com/reference/android/util/ArraySet"
+  class="external">ArraySet</a></code> and used extensively in framework as a lighter-footprint
+  replacement for <code><a href="https://developer.android.com/reference/java/util/HashMap.html"
+  class="external">HashMap</a></code>/<code><a
+  href="https://developer.android.com/reference/java/util/HashSet"
+  class="external">HashSet</a></code>.</li>
 </ul>
 
 <h3 id="opt-proc">Procstats</h3>
 <p>
-Added a new Developer Option to show memory state and application memory usage
-ranked by how often they run and amount of memory consumed.
+Added a developer option to show memory state and app memory usage
+ranked by how often they run and the amount of memory consumed.
 </p>
 
 <h3 id="opt-api">API</h3>
 <p>
-Added a new ActivityManager.isLowRamDevice() to allow applications to detect
-when running on low memory devices and choose to disable large-RAM features.
+Added <code>ActivityManager.isLowRamDevice()</code> to allow apps to detect
+when running on low-memory devices and choose to disable large-RAM features.
 </p>
 
 <h3 id="opt-track">Memory tracking</h3>
 <p>
-New memtrack HAL to track graphics memory allocations, additional information
-in <code>dumpsys</code> meminfo, clarified summaries in meminfo (for example reported free
+Added memtrack HAL to track graphics memory allocations, additional information
+in <code>dumpsys</code> meminfo, clarified summaries in meminfo (for example, reported free
 RAM includes RAM of cached processes, so that OEMs don't try to optimize the
 wrong thing).
 </p>
 
 <h2 id="build-time">Build-time configuration</h2>
-<h3 id="flag">Enable Low Ram Device flag</h3>
-<p>We are introducing a new API called
-<code>ActivityManager.isLowRamDevice()</code> for applications to  determine if
-they should turn off specific memory-intensive
-  features that work poorly on low-memory devices.</p>
-<p>For 512MB devices, this API is expected to return <code>true</code>. It can be enabled by
-  the following system property in the device makefile.</p>
+<h3 id="flag">Low RAM Device flag</h3>
+<p>The
+<code>ActivityManager.isLowRamDevice()</code> flag determines if apps should turn off
+specific memory-intensive features that work poorly on low-memory devices.</p>
+<p>For 512&nbsp;MB devices, this flag is expected to return <code>true</code>. It can be enabled by
+the following system property in the device makefile.</p>
 <pre class="devsite-click-to-copy">
 PRODUCT_PROPERTY_OVERRIDES += ro.config.low_ram=true
 </pre>
@@ -90,8 +91,8 @@ PRODUCT_PROPERTY_OVERRIDES += ro.config.low_ram=true
 <h3 id="launcher">Launcher Configs</h3>
 
 
-  <p>Ensure the default wallpaper setup on launcher is <strong>not</strong>
-using live-wallpaper. Low-memory devices should not pre-install any live wallpapers. </p>
+  <p>The default wallpaper setup on launcher <strong>shouldn't</strong>
+use live wallpaper. Low-memory devices shouldn't pre-install any live wallpapers. </p>
 
 
 <h2 id="kernel">Kernel configuration</h2>
@@ -102,25 +103,25 @@ using live-wallpaper. Low-memory devices should not pre-install any live wallpap
   of memory (either directly or due to faulting in a new page) and the kernel
   has used all available free memory. This requires the kernel to block the
   allocation while it frees up a page. This in turn often requires disk I/O to
-  flush out a dirty file-backed page or waiting for <code>lowmemorykiller</code> to kill a
+  flush out a dirty file-backed page or wait for <code>lowmemorykiller</code> to kill a
   process. This can result in extra I/O in any thread, including a UI thread.</p>
 
   <p>To avoid direct reclaim, the kernel has watermarks that trigger <code>kswapd</code> or
-  background reclaim.  This is a thread that tries to free up pages so the next
-  time a real thread allocates it can succeed quickly.</p>
+  background reclaim. This is a thread that tries to free up pages so the next
+  time a real thread allocates, it can succeed quickly.</p>
 
-  <p>The default threshold to trigger background reclaim is fairly low, around 2MB
-  on a 2GB device and 636KB on a 512MB device. And the kernel reclaims only a
-  few MB of memory in background reclaim. This means any process that quickly
+  <p>The default threshold to trigger background reclaim is fairly low, around 2&nbsp;MB
+  on a 2&nbsp;GB device and 636&nbsp;KB on a 512&nbsp;MB device. The kernel reclaims only a
+  few megabytes of memory in background reclaim. This means any process that quickly
   allocates more than a few megabytes is going to quickly hit direct reclaim.</p>
 
-<p>Support for a new kernel tunable is added in the android-3.4 kernel branch as
+<p>Support for a kernel tunable is added in the Android-3.4 kernel branch as
   patch 92189d47f66c67e5fd92eafaa287e153197a454f ("add extra free kbytes
-  tunable").  Cherry-picking this patch to a device's kernel will allow
-  ActivityManager to tell the kernel to try to keep 3 full-screen 32 bpp buffers
+  tunable"). Cherry-picking this patch to a device's kernel allows
+  <code>ActivityManager</code> to tell the kernel to try to keep three full-screen 32&nbsp;bpp buffers
   of memory free.</p>
 
-<p>These thresholds can be configured via the framework config.xml</p>
+<p>These thresholds can be configured with the <code>config.xml</code> framework.</p>
 
 <pre class="devsite-click-to-copy">
 &lt;!-- Device configuration setting the /proc/sys/vm/extra_free_kbytes tunable
@@ -148,15 +149,15 @@ ActivityManager based on screen size. --&gt;
 
 <h3 id="lowmem">Tuning LowMemoryKiller</h3>
 
-<p>ActivityManager configures the thresholds of the LowMemoryKiller to match its
+    <p><code>ActivityManager</code> configures the thresholds of the LowMemoryKiller to match its
 expectation of the working set of file-backed pages (cached pages) required to
-run the processes in each priority level bucket.  If a device has high
+run the processes in each priority level bucket. If a device has high
 requirements for the working set, for example if the vendor UI requires more
 memory or if more services have been added, the thresholds can be increased. </p>
 
-<p>The thresholds can be reduced if too much memory is being reserved for file
-backed pages, so that background processes are being killed long before disk
-thrashing would occur due to the cache getting too small.</p>
+<p>The thresholds can be reduced if too much memory is being reserved for file-backed pages, so that
+background processes are being killed long before disk thrashing would occur due to the cache
+getting too small.</p>
 
 <pre class="devsite-click-to-copy">
 &lt;!-- Device configuration setting the minfree tunable in the lowmemorykiller
@@ -182,20 +183,18 @@ proportionally to the smaller buckets. 0 keeps the default. --&gt;
 &lt;integer name=&quot;config_lowMemoryKillerMinFreeKbytesAdjust&quot;&gt;0&lt;/integer&gt;
 </pre>
 
-<h3 id="zram">Swap to zRAM</h3>
+<h3 id="zram">Swap to zram</h3>
 
-<p>zRAM swap can increase the amount of memory available in the system by
+<p>zram swap can increase the amount of memory available in the system by
 compressing memory pages and putting them in a dynamically allocated swap area
-of memory.</p>
-
-<p>Again, since this is trading off CPU time for a small increase in memory, you
-should be careful about measuring the performance impact zRAM swap has on your
+of memory. Since this is trading off CPU time for a small increase in memory, you
+should be careful about measuring the performance impact zram swap has on your
 system.</p>
 
-<p>Android handles swap to zRAM at several levels:</p>
+<p>Android handles swap to zram at several levels:</p>
 
 <ul>
-  <li>First, the following kernel options must be enabled to use zRAM swap
+  <li>First, the following kernel options must be enabled to use zram swap
     effectively:
     <ul>
       <li><code>CONFIG_SWAP</code></li>
@@ -209,21 +208,22 @@ system.</p>
 /dev/block/zram0 none swap defaults zramsize=&lt;size in bytes&gt;,swapprio=&lt;swap partition priority&gt;
 </pre>
   <ul>
-   <li><code>zramsize</code> is mandatory and indicates how much uncompressed memory you want the zram area to hold. Compression ratios in the 30-50% range are usually observed.</li>
-   <li><code>swapprio</code> is optional and not needed if you don't have more than one swap
+   <li><code>zramsize</code> is mandatory and indicates how much uncompressed memory you want the
+    zram area to hold. Compression ratios in the 30-50% range are usually observed.</li>
+   <li><code>swapprio</code> is only needed if you don't have more than one swap
      area.</li>
   </ul>
-  <p>You should also be sure to label the associated block device as a swap_block_device
-  in the device-specific <a href="/security/selinux/implement.html">
-  sepolicy/file_contexts</a> so that it is treated properly by SELinux.</p>
+    <p>Label the associated block device as a <code>swap_block_device</code>
+      in the device-specific <code><a href="/security/selinux/implement">sepolicy/file_contexts</a></code> so
+  that it's treated properly by SELinux.</p>
 <pre class="devsite-click-to-copy">
 /dev/block/zram0 u:object_r:swap_block_device:s0
 </pre>
   </li>
-  <li>By default, the Linux kernel swaps in 8 pages of memory at a time. When
-    using ZRAM, the incremental cost of reading 1 page at a time is negligible
-    and may help in case the device is under extreme memory pressure. To read
-    only 1 page at a time, add the following to your <code>init.rc</code>:
+  <li>By default, the Linux kernel swaps in eight pages of memory at a time. When
+    using zram, the incremental cost of reading one page at a time is negligible
+    and may help if the device is under extreme memory pressure. To read
+    only one page at a time, add the following to your <code>init.rc</code>:
 <pre class="devsite-click-to-copy">
 write /proc/sys/vm/page-cluster 0
 </pre>
@@ -234,57 +234,63 @@ swapon_all /fstab.X
 </pre>
   </li>
   <li>The memory cgroups are automatically configured at boot time if the
-    feature is enabled in kernel.</li>
-  <li>If memory cgroups are available, the ActivityManager will mark lower
-    priority threads as being more swappable than other threads. If memory is
-    needed, the Android kernel will start migrating memory pages to zRAM swap,
-    giving a higher priority to those memory pages that have been marked by
-    ActivityManager. </li>
+    feature is enabled in the kernel.</li>
+  <li>If memory cgroups are available, <code>ActivityManager</code> marks
+    lower-priority threads as being more swappable than other threads. If memory is
+    needed, the Android kernel starts migrating memory pages to zram swap,
+    giving a higher priority to the memory pages that have been marked by
+    <code>ActivityManager</code>. </li>
 </ul>
 
-<h3 id="carveouts">Carveouts, Ion and Contiguous Memory Allocation (CMA)</h3>
+<h3 id="carveouts">Carveouts, Ion, and contiguous memory allocation (CMA)</h3>
 
-<p>It is especially important on low memory devices to be mindful about
-carveouts, especially those that will not always be fully utilized -- for
-example a carveout for secure video playback. There are several solutions to
-minimizing the impact of your carveout regions that depend on the exact
-requirements of your hardware.</p>
+<p>On low-memory devices, it's important to be mindful about
+carveouts, especially those that aren't fully used, such as a carveout for
+secure video playback. There are several solutions to minimize the impact
+of your carveout regions that depend on the exact requirements of your
+hardware.</p>
 
-<p>If hardware permits discontiguous memory allocations, the ion system heap
+<p>If hardware permits discontiguous memory allocations, the Ion system heap
 allows memory allocations from system memory,
-eliminating the need for a carveout. It also attempts to make large
-allocations to eliminate TLB pressure on peripherals. If memory regions must
-be contiguous or confined to a specific address range, the contiguous memory
-allocator (CMA) can be used.</p>
+eliminating the need for a carveout. Ion also attempts to make large
+allocations to eliminate translation lookaside buffer (TLB) pressure on
+peripherals. If memory regions must be contiguous or confined to a specific
+address range, the CMA can be used.</p>
 
-<p>This creates a carveout that the system can also use of for movable pages.
-When the region is needed, movable pages will be migrated out of it, allowing
-the system to use a large carveout for other purposes when it is free. CMA can
-be used directly or more simply via ion by using the ion cma heap.</p>
+<p>This creates a carveout that the system can also use for movable pages.
+When the region is needed, movable pages are migrated out of it, allowing
+the system to use a large carveout for other purposes when it's free. You can
+use CMA directly with the Ion CMA heap.</p>
 
-<h2 id="app-opts">Application optimization tips</h2>
+<h2 id="app-opts">App optimization tips</h2>
 <ul>
    <li>Review <a
-href="http://developer.android.com/training/articles/memory.html">Managing your
-App's Memory</a> and these past blog posts on the same topic:
+href="https://developer.android.com/topic/performance/memory"
+class="external">Manage your app's memory</a> and these blog posts:
   <ul>
     <li><a
-href="http://android-developers.blogspot.com/2009/01/avoiding-memory-leaks.html">http://android-developers.blogspot.com/2009/01/avoiding-memory-leaks.html</a></li>
+href="http://android-developers.blogspot.com/2009/01/avoiding-memory-leaks.html"
+class="external">Avoiding memory leaks</a></li>
     <li><a
-href="http://android-developers.blogspot.com/2011/03/memory-analysis-for-android.html">http://android-developers.blogspot.com/2011/03/memory-analysis-for-android.html</a></li>
+href="http://android-developers.blogspot.com/2011/03/memory-analysis-for-android.html"
+class="external">Memory Analysis for Android Applications</a></li>
     <li><a
-href="http://android-developers.blogspot.com/2009/02/track-memory-allocations.html">http://android-developers.blogspot.com/2009/02/track-memory-allocations.html</a></li>
+href="http://android-developers.blogspot.com/2009/02/track-memory-allocations.html"
+class="external">Track memory allocations</a></li>
     <li> <a
-href="http://tools.android.com/recent/lintperformancechecks">http://tools.android.com/recent/lintperformancechecks</a></li>
+href="http://tools.android.com/recent/lintperformancechecks" class="external">Lint
+    Performance Checks</a></li>
     </ul>
 </li>
-  <li>Check/remove any unused assets from preinstalled apps -
-development/tools/findunused (should help make the app smaller).</li>
-<li>Use PNG format for assets, especially when they have transparent areas</li>
-<li>If writing native code, use calloc() rather than malloc/memset</li>
-<li>Don't enable code that is writing Parcel data to disk and reading it later.</li>
-<li>Don't subscribe to every package installed, instead use ssp filtering. Add
-filtering like below:
+  <li>Remove any unused assets from preinstalled apps using
+    <code>development/tools/findunused</code> (this should help make the app
+    smaller).</li>
+<li>Use the PNG format for assets, especially when they have transparent areas.</li>
+  <li>If writing native code, use <code>calloc()</code> rather than
+    <code>malloc</code>/<code>memset</code>.</li>
+<li>Don't enable code that writes Parcel data to disk and reads it later.</li>
+<li>Use SSP filtering instead of subscribing to every package installed. Add
+filtering like this:
 <pre class="devsite-click-to-copy">
 &lt;data android:scheme=&quot;package&quot; android:ssp=&quot;com.android.pkg1&quot; /&gt;
 &lt;data android:scheme=&quot;package&quot; android:ssp=&quot;com.myapp.act1&quot; /&gt;
@@ -294,61 +300,73 @@ filtering like below:
 
 <h3 id="process-states">Understand the various process states in Android</h3>
 
-  <ul>
-  <li><p>SERVICE - SERVICE_RESTARTING<br/>
-  Applications that are making themselves run in the background for their own
-  reason.  Most common problem apps have when they run in the background too
-  much.  %duration * pss is probably a good "badness" metric, although this set
-  is so focused that just doing %duration is probably better to focus on the
-  fact that we just don't want them running at all.</p></li>
-  <li><p>IMPORTANT_FOREGROUND - RECEIVER<br/>
-  Applications running in the background (not directly interacting with the
-  user) for any reason.  These all add memory load to the system.  In this case
-  the (%duration * pss) badness value is probably the best ordering of such
-  processes, because many of these will be always running for good reason, and
-  their pss size then is very important as part of their memory load.</p></li>
-  <li><p>PERSISTENT<br/>
-  Persistent system processes.  Track pss to watch for these processes getting
-  too large.</p></li>
-  <li><p>TOP<br/>
-  Process the user is currently interacting with.  Again, pss is the important
-  metric here, showing how much memory load the app is creating while in use.</p></li>
-  <li><p>HOME - CACHED_EMPTY<br/>
-  All of these processes at the bottom are ones that the system is keeping
-  around in case they are needed again; but they can be freely killed at any
-  time and re-created if needed.  These are the basis for how we compute the
-  memory state -- normal, moderate, low, critical is based on how many of these
-  processes the system can keep around.  Again the key thing for these processes
-  is the pss; these processes should try to get their memory footprint down as
-  much as possible when they are in this state, to allow for the maximum total
-  number of processes to be kept around.  Generally a well behaved app will have
-  a pss footprint that is significantly smaller when in this state than when
-  TOP.</p></li>
-  <li>
-    <p>TOP vs. CACHED_ACTIVITY-CACHED_ACTIVITY_CLIENT<em><br/>
-  </em>The difference in pss between when a process is TOP vs. when it is in either
-  of these specific cached states is the best data for seeing how well it is
-  releasing memory when going into the background.  Excluding CACHED_EMPTY state
-  makes this data better, since it removes situations when the process has
-  started for some reasons besides doing UI and so will not have to deal with
-  all of the UI overhead it gets when interacting with the user.</p></li>
-  </ul>
+  <table>
+    <tr>
+      <th>State</th>
+      <th>Meaning</th>
+      <th>Details</th>
+    </tr>
+    <tr>
+      <td><code>SERVICE</code><br><code>SERVICE_RESTARTING</code></td>
+      <td>Apps that run in the background for app-related reasons.</td>
+      <td><code>SERVICE</code><code>SERVICE_RESTARTING</code> are the most common problems apps have when they
+        run in the background too much. Use <em>%duration * pss</em> or <em>%duration</em>
+        as a "badness" metric. Ideally, these apps shouldn't be running at all.</td>
+    </tr>
+    <tr>
+      <td><code>IMPORTANT_FOREGROUND</code><br><code>RECEIVER</code></td>
+      <td>Apps running in the background
+      (not directly interacting with the user).</td>
+      <td>These add memory load to the system. Use the (<em>%duration * pss</em>) "badness" value to
+        order these processes. However, many of these apps run for good reasons. The size of
+        <em>pss</em> is an important part of their memory load.</td>
+    </tr>
+    <tr>
+      <td><code>PERSISTENT</code></td>
+      <td>Persistent system process.</td>
+      <td>Track <em>pss</em> to watch for these processes getting too large.</td>
+    </tr>
+    <tr>
+      <td><code>TOP</code></td>
+      <td>The process the user is currently interacting with.</td>
+      <td><em>pss</em> is the important metric here, showing how much memory load the app
+      creates while in use.</td>
+    </tr>
+    <tr>
+      <td><code>HOME</code><br><code>CACHED_EMPTY</code></td>
+      <td>The processes the system is keeping around in case they are needed again.</td>
+      <td>These processes can be freely killed at any time and recreated if needed. The memory state
+        (normal, moderate, low, critical) is computed based on how many of these processes the
+        system is running. The key metric for these processes is the <em>pss</em>. In this state,
+        these processes should decrease their memory footprint as much as possible to allow for the
+        maximum total number of processes to be kept around. In this state, a well behaved app
+        generally has a significantly smaller <em>pss</em> footprint than it does in the
+        <code>TOP</code> state.</td>
+    </tr>
+    <tr>
+      <td><code>CACHED_ACTIVITY</code><br><code>CACHED_ACTIVITY_CLIENT</code></td>
+      <td>When compared with <code>TOP</code>, these show how well an app releases memory into the
+        background.</td>
+      <td>Excluding <code>CACHED_EMPTY</code> state makes this data better, because it removes
+      situations when the process has started for some reasons besides interacting with the user.
+      This eliminates dealing with the UI overhead <code>CACHED_EMPTY</code> gets when user-related
+      activities.</td>
+    </tr>
+    </table>
 
 <h2 id="analysis">Analysis</h2>
 
 <h3 id="app-startup">Analyzing app startup time</h3>
 
-<p>Use <code>$ adb shell am start</code> with the <code>-P</code> or
-<code>--start-profiler</code> option to run the profiler when your app starts.
-This will start the profiler almost immediately after your process is forked
-from zygote, before any of your code is loaded into it.</p>
+<p>To analyze your app's startup time, run <code>$ adb shell am start -P</code>
+ or <code>--start-profiler</code> and start your app. The profiler starts after the
+ process is forked from the zygote and before any code is loaded into the fork.</p>
 
-<h3 id="bug-reports">Analyze using bugreports </h3>
+<h3 id="bug-reports">Analyzing using bug reports</h3>
 
-<p>Now contains various information that can be used for debugging. The
-services include <code>batterystats</code>, <code>netstats</code>,
-<code>procstats</code>, and <code>usagestats</code>. You can find them with
-lines like this:</p>
+<p>Bug reports contain several services, including <code>batterystats</code>,
+<code>netstats</code>, <code>procstats</code>, and <code>usagestats</code>, which
+can be used for debugging. Reports can include lines like this:</p>
 
 <pre class="devsite-click-to-copy">
 ------ CHECKIN BATTERYSTATS (dumpsys batterystats --checkin) ------
@@ -356,17 +374,17 @@ lines like this:</p>
 7,0,h,-2553041,97,1946288161,3,2,0,340,4183
 </pre>
 
-<h3 id="persistent">Check for any persistent processes</h3>
+<h3 id="persistent">Checking for any persistent processes</h3>
 
-<p>Reboot the device and check the processes.<br/>
-Run for a few hours and check the processes again. There should not be any
-long running processes.</p>
+<p>To check for any persistent processes, reboot the device and check the
+processes. Then, run the device for a few hours and check the processes again.
+There shouldn't be any long-running processes between the two checks.</p>
 
-<h3 id="longevity">Run longevity tests</h3>
+<h3 id="longevity">Running longevity tests</h3>
 
-<p>Run for longer durations and track the memory of the process. Does it
-increase? Does it stay constant? Create Canonical use cases and run longevity
-tests on these scenarios.</p>
+<p>To run longevity tests, run the device for longer durations and track the memory of the
+ processes to determine if it increases or stays constant. Then create canonical use cases
+ and run longevity tests on these scenarios.</p>
 
   </body>
 </html>

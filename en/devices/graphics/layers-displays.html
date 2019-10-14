@@ -1,0 +1,153 @@
+<html devsite>
+  <head>
+    <title>Layers and Displays</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2019 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+{% include "_versions.html" %}
+
+<p>Layers and displays are two primitives that represent composition work
+and interactions with the display hardware.</p>
+
+<h2 id="layers">Layers</h2>
+
+<p>A <em>Layer</em> is the most important unit of composition. A layer is a
+combination of a <a href="/devices/graphics/arch-sh">surface</a> and an instance of
+<a href="https://developer.android.com/reference/android/view/SurfaceControl"
+class="external"><code>SurfaceControl</code></a>. Each layer has a set of properties that
+define how it interacts with other layers. Layer properties are described in the table below.</p>
+
+<table>
+  <tr>
+    <th>Property</th>
+    <th>Description</th>
+  </tr>
+  <tr>
+    <td>Positional</td>
+    <td>Defines where the layer appears on its display. Includes information
+      such as the positions of a layer's edges and its <em>Z order</em>
+      relative to other layers (whether it should be in front of or behind
+      other layers).</td>
+  </tr>
+  <tr>
+    <td>Content</td>
+    <td>Defines how content displayed on the layer should be presented within
+      the bounds defined by the positional properties. Includes information such
+      as crop (to expand a portion of the content to fill the bounds of the layer)
+      and transform (to show rotated or flipped content).</td>
+  </tr>
+  <tr>
+    <td>Composition</td>
+    <td>Defines how the layer should be composited with other layers. Includes
+      information such as blending mode and a layer-wide alpha value for <a
+      href="https://en.wikipedia.org/wiki/Alpha_compositing#Alpha_blending">alpha
+      compositing</a>.</td>
+  </tr>
+  <tr>
+    <td>Optimization</td>
+    <td>Provides information not strictly necessary to correctly composite
+      the layer, but that can be used by the Hardware Composer (HWC) device
+      to optimize how it performs composition. Includes information such as the
+      visible region of the layer and which portion of the layer has been
+      updated since the previous frame.</td>
+  </tr>
+</table>
+
+<h2 id="display">Displays</h2>
+
+<p>A <em>display</em> is another important unit of composition. A system can
+have multiple displays and
+displays can be added or removed during normal system operations. Displays are
+added/removed at the request of the HWC or at the request of the framework.
+The HWC device requests displays be added or removed when an external
+display is connected or disconnected from the device, which is called
+<em>hotplugging</em>. Clients request <em>virtual displays</em>, whose contents
+are rendered into an off-screen buffer instead of to a physical display.</p>
+
+<h3 id="virtual-displays">Virtual displays</h3>
+
+<p><a href="/devices/graphics/arch-sf-hwc#surfaceflinger">SurfaceFlinger</a>
+supports an internal display (built into the phone or tablet), external displays
+(such as a television connected through HDMI), and one or more virtual displays
+that make composited output available within the system. Virtual displays can
+be used to record the screen or send the screen over a network. Frames generated
+for a virtual display are written to a BufferQueue.</p>
+
+<p>Virtual displays may share the same set of layers as the main display
+(the layer stack) or have their own set. There's no VSYNC for a virtual display,
+so the VSYNC for the internal display triggers composition for all
+displays.</p>
+
+<p>On HWC implementations that support them, virtual
+displays can be composited with OpenGL ES (GLES), HWC, or both GLES and HWC.
+On nonsupporting implementations, virtual displays are always composited using
+GLES.</p>
+
+<h2 id="screenrecord">Case study: screenrecord</h2>
+
+<p>The <a
+href="https://android.googlesource.com/platform/frameworks/av/+/master/cmds/screenrecord/"
+class="external"> <code>screenrecord</code> command</a> allows the user to
+record everything that appears on the screen as an <code>.mp4</code> file on
+disk. To implement this, the system receives composited frames from
+SurfaceFlinger, writes them to the video encoder, and then writes the encoded
+video data to a file. The video codecs are managed by a separate process
+(<code>mediaserver</code>), so large graphics buffers have to move around the
+system. To make it more challenging, the goal is to record 60&nbsp;fps video at
+full resolution. The key to making this work efficiently is BufferQueue.</p>
+
+<p>The <code>MediaCodec</code> class allows an app to provide data as raw bytes in buffers,
+or through a surface. When <code>screenrecord</code> requests access to a video
+encoder, the <code>mediaserver</code> process creates a BufferQueue, connects
+itself to the consumer side, then passes the producer side back to
+<code>screenrecord</code> as a surface.</p>
+
+<p>The <code>screenrecord</code> utility then asks SurfaceFlinger to create a
+virtual display that mirrors the main display (that is, it has all of the same
+layers), and directs it to send output to the surface that came from the
+<code>mediaserver</code> process. In this case, SurfaceFlinger is the producer
+of buffers rather than the consumer.</p>
+
+<p>After the configuration is complete, <code>screenrecord</code> triggers when
+the encoded data appears. As apps draw, their buffers travel to SurfaceFlinger,
+which composites them into a single buffer that's sent directly to the video
+encoder in the <code>mediaserver</code> process. The full frames are never
+seen by the <code>screenrecord</code> process. Internally, the
+<code>mediaserver</code> process has its own way of moving buffers around that
+also passes data by handle, minimizing overhead.</p>
+
+<h2 id="simulate-secondary">Case study: simulate secondary displays</h2>
+
+<p>The WindowManager can ask SurfaceFlinger to create a visible layer for which
+SurfaceFlinger acts as the BufferQueue consumer. It's also possible to ask
+SurfaceFlinger to create a virtual display, for which SurfaceFlinger acts as
+the BufferQueue producer.</p>
+
+<p>If you connect a virtual display to a visible layer, a closed loop is created
+where the composited screen appears in a window. That window is now part of the
+composited output, so on the next refresh the composited image inside the window
+shows the window contents as well. To see this in action, enable
+<a href="https://developer.android.com/studio/debug/dev-options"
+class="external">Developer options</a> in <strong>Settings</strong>, select
+<strong>Simulate secondary displays</strong>, and enable a window. To see
+secondary displays in action, use <code>screenrecord</code> to capture the act
+of enabling the display then play it back frame by frame.</p>
+
+  </body>
+</html>

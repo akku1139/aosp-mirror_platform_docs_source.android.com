@@ -1,0 +1,147 @@
+<html devsite>
+  <head>
+    <title>BoundsSanitizer</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  {% include "_versions.html" %}
+  <body>
+
+  <!--
+      Copyright 2019 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          //www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>BoundsSanitizer (BoundSan) adds instrumentation to binaries to insert bounds
+checks around array accesses. These checks are added if the compiler cannot
+prove at compile time that the access will be safe and if the size of the array
+will be known at runtime, so that it can be checked against.
+Android {{ androidQVersionNumber }} deploys BoundSan in
+Bluetooth and codecs. BoundSan is provided by the compiler and is enabled by
+default in various components throughout the platform.</p>
+
+<h2 id="implementation">Implementation</h2>
+
+<p>BoundSan uses <a
+href="/devices/tech/debug/sanitizers#undefinedbehaviorsanitizer">UBSan's</a>
+bounds sanitizer. This mitigation is enabled on a per-module level. It helps
+keep critical components of Android secure and shouldn't be disabled.</p>
+
+<p>We strongly encourage you to enable BoundSan for additional components.
+Ideal candidates are privileged native code or complex native code that parses
+untrusted user input. The performance overhead associated with enabling BoundSan
+is dependent on the number of array accesses that can't be proven safe. Expect a
+small overhead percentage on average and test if performance is a concern.</p>
+
+<h3 id="blueprint-files">Enabling BoundSan in blueprint files</h3>
+
+<p>BoundSan can be enabled in blueprint files by adding <code>"bounds"</code>
+to the <code>misc_undefined</code> sanitize property for binary and library
+modules:</p>
+
+<pre class="prettyprint">
+sanitize: {
+   misc_undefined: ["bounds"],
+   diag: {
+      misc_undefined: ["bounds"],
+   },
+   blacklist: "modulename_blacklist.txt",</pre>
+
+<h4 id="diag">diag</h4>
+
+<p>The <code>diag</code> property enables diagnostics mode for the sanitizers.
+Use diagnostics mode only during testing. Diagnostics mode doesn't abort on
+overflows, which negates the security advantage of the mitigation and carries a
+higher performance overhead, so it's not recommended for production builds.</p>
+
+<h4 id="blacklist">blacklist</h4>
+
+<p>The <code>blacklist</code> property allows the specification of a blacklist
+file that developers can use to prevent functions and source files from being
+sanitized. Use this property only if performance is a concern and the targeted
+files/functions contribute substantially. Manually audit these files/functions
+to ensure that array accesses are safe. See <a
+href="#troubleshooting">Troubleshooting</a> for additional
+details.</p>
+
+<h3 id="makefiles">Enabling BoundSan in makefiles</h3>
+
+<p>BoundSan can be enabled in makefiles by adding <code>"bounds"</code>
+to the <code>LOCAL_SANITIZE</code> variable for binary and library modules:</p>
+
+<pre class="prettyprint">
+LOCAL_SANITIZE := bounds
+# Optional features
+LOCAL_SANITIZE_DIAG := bounds
+LOCAL_SANITIZE_BLACKLIST := modulename_blacklist.txt</pre>
+
+<p><code>LOCAL_SANITIZE</code> accepts a list of sanitizers separated by a
+comma.</p>
+
+<p><code>LOCAL_SANITIZE_DIAG</code> turns on diagnostics mode. Use diagnostics
+mode only during testing. Diagnostics mode doesn't abort on overflows, which
+negates the security advantage of the mitigation and carries a higher
+performance overhead, so it's not recommended for production builds.</p>
+
+<p><code>LOCAL_SANITIZE_BLACKLIST</code> allows specification of a blacklist
+file that allows developers to prevent functions and source files from being
+sanitized. Use this property only if performance is a concern and the targeted
+files/functions contribute substantially. Manually audit these files/functions
+to ensure that array accesses are safe. See <a
+href="#troubleshooting">Troubleshooting</a> for additional
+details.</p>
+
+<h3 id="disabling-boundsan">Disabling BoundSan</h3>
+
+<p>You can disable BoundSan in functions and source files with blacklists or
+function attributes. It's best to keep BoundSan enabled, so only disable it if
+the function or file is creating a large amount of performance overhead and the
+source has been manually reviewed.</p>
+
+<p>For more Information on disabling BoundSan with <a
+href="https://clang.llvm.org/docs/UndefinedBehaviorSanitizer.html#disabling-instrumentation-with-attribute-no-sanitize-undefined">function
+attributes</a> and <a
+href="https://clang.llvm.org/docs/SanitizerSpecialCaseList.html">blacklist file
+formatting</a>, refer to the Clang LLVM <a
+href="https://clang.llvm.org/docs/">documentation</a>. Scope the
+blacklisting to the particular sanitizer by using section names specifying the
+target sanitizer to avoid impacting other sanitizers.</p>
+
+<h2 id="validation">Validation</h2>
+<p>There are no CTS test specifically for BoundSan. Instead, make sure that CTS
+tests pass with or without BoundSan enabled to verify that it isn't impacting
+the device.</p>
+
+<h2 id="troubleshooting">Troubleshooting</h2>
+<p>Thoroughly test components after enabling BoundSan to ensure that any previously
+undetected out-of-bounds accesses are addressed.</p>
+
+<p>BoundSan errors can be easily identified as they include the following
+tombstone abort message:</p>
+
+<pre class="prettyprint">
+pid: ###, tid: ###, name: Binder:###  &gt;&gt;&gt; /system/bin/foobar &lt;&lt;&lt;
+signal 6 (SIGABRT), code -6 (SI_TKILL), fault addr --------
+Abort message: 'ubsan: out-of-bounds'</pre>
+
+<p>When running in diagnostics mode, the source file, line number, and index
+value are printed to <code>logcat</code>. By default, this mode doesn't
+throw an abort message. Review <code>logcat</code> to check for any
+errors.</p>
+
+<pre class="prettyprint">
+external/foo/bar.c:293:13: runtime error: index -1 out of bounds for type 'int [24]'</pre>
+
+  </body>
+</html>

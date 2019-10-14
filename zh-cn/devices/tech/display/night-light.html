@@ -4,6 +4,7 @@
     <meta name="book_path" value="/_book.yaml"/>
   </head>
   <body>
+
   <!--
       Copyright 2017 The Android Open Source Project
 
@@ -20,20 +21,16 @@
       limitations under the License.
   -->
 
-<p>
-研究表明，屏幕的蓝光会对睡眠质量造成不良影响。Android 7.1.1 具备一种称为“夜间模式”的功能，可减少设备显示屏发出的蓝光量，以便达到更接近用户当前时间和地点的自然光效果。Android 8.0 提供一项功能，可让用户更好地控制夜间模式效果的强度。
+<p>研究表明，屏幕的蓝光会对睡眠质量造成不良影响。Android 7.1.1 推出一种称为“夜间模式”的功能，可减少设备屏幕发出的蓝光量，以便达到更接近用户当前时间和地点的自然光效果。Android 8.0 推出一项附加功能，可让用户更好地控制夜间模式效果的强度。Android 10 推出 <code>COLOR_DISPLAY_SERVICE</code> 系统服务，具备系统 API Surface，使系统、“设置”和系统界面能够更好地控制所有颜色转换（包括夜间模式）。
 </p>
-<p>
-夜间模式需要实现 <a href="/devices/graphics/implement-hwc.html">Hardware Composer HAL 2.0</a> (HWC 2)，它可根据传递到 <code>setColorTransform</code> 的矩阵进行着色，而不会影响耗电量、性能和应用兼容性。
+<p>夜间模式需要实现 <a href="/devices/graphics/implement-hwc">Hardware Composer HAL 2.0</a> (HWC 2)，它可根据传递到 <code>setColorTransform</code> 的矩阵进行着色，而不会影响耗电量、性能和应用兼容性。
 </p>
 <h2 id="implementation">实现</h2>
-<p>
-设备制造商可以使用以下文件中定义的下列标记来启用该功能的默认实现：<code><a href="https://android.googlesource.com/platform/frameworks/base/+/master/core/res/res/values/config.xml">
-/android/frameworks/base/core/res/res/values/config.xml</a></code>
+<p>设备制造商可以使用在以下文件中定义的下列标记启用该功能的默认实现：<code><a href="https://android.googlesource.com/platform/frameworks/base/+/master/core/res/res/values/config.xml" class="external">frameworks/base/core/res/res/values/config.xml</a></code>
 
 </p><pre class="devsite-click-to-copy">
-&lt;!-- Control whether Night display is available. This should only be enabled
-      on devices with HWC 2 color transform  support. --&gt;
+ &lt;!-- Control whether Night display is available. This should only be enabled
+      on devices with HWC 2 color transform support. --&gt;
  &lt;bool name="config_nightDisplayAvailable"&gt;false&lt;/bool&gt;
  &lt;!-- Default mode to control how Night display is automatically activated.
       One of the following values (see NightDisplayController.java):
@@ -57,49 +54,42 @@
  &lt;!-- Maximum color temperature, in Kelvin, supported by Night display. --&gt;
  &lt;integer name="config_nightDisplayColorTemperatureMax"&gt;4082&lt;/integer&gt;
 </pre>
-<p>
-这段代码包含用于框架、系统服务、SystemUI 和设置的代码：
+<p>这段代码包含用于框架、系统服务、系统界面和“设置”的代码。核心功能由 <code>ColorDisplayManager</code>（由 <code>ColorDisplayService</code> 支持）控制。
+</p>
+
+<p>设备制造商应根据设备显示面板的特性（包括白点、色域和所需颜色）自定义颜色梯度。您可以使用配置叠加更改颜色梯度，而不更改基本实现。此配置表示为红色、绿色和蓝色中每一种颜色的二次方程，其形式为 v<sub>res</sub> = v<sub>a</sub>t<sup>2</sup> + v<sub>b</sub>t + v<sub>y-int</sub>，其中 t 是以开尔文为单位的温度输入，根据 <code>config_nightDisplayColorTemperatureMin</code> 和 <code>config_nightDisplayColorTemperatureMax</code> 之间的范围（如上一部分所述）指定，v<sub>a</sub>、v<sub>b</sub> 和 v<sub>y-int</sub> 分别是指定主曲线的 a 系数、b 系数和 y 轴截距，如下所示。
 </p>
 <pre class="devsite-click-to-copy">
-platform/frameworks/base/core
-├ java/android/provider/Settings.java
-├ java/com/android/internal/app/NightDisplayController.java
-└ res/res/values/config.xml
+    &lt;string-array name="config_nightDisplayColorTemperatureCoefficientsNative"&gt;
+        &lt;!-- R a-coefficient --&gt; &lt;item&gt;0.0&lt;/item&gt;
+        &lt;!-- R b-coefficient --&gt; &lt;item&gt;0.0&lt;/item&gt;
+        &lt;!-- R y-intercept --&gt; &lt;item&gt;1.0&lt;/item&gt;
+        &lt;!-- G a-coefficient --&gt; &lt;item&gt;-0.00000000962353339&lt;/item&gt;
+        &lt;!-- G b-coefficient --&gt; &lt;item&gt;0.000153045476&lt;/item&gt;
+        &lt;!-- G y-intercept --&gt; &lt;item&gt;0.390782778&lt;/item&gt;
+        &lt;!-- B a-coefficient --&gt; &lt;item&gt;-0.0000000189359041&lt;/item&gt;
+        &lt;!-- B b-coefficient --&gt; &lt;item&gt;0.000302412211&lt;/item&gt;
+        &lt;!-- B y-intercept --&gt; &lt;item&gt;-0.198650895&lt;/item&gt;
+    &lt;/string-array&gt;
 
-platform/frameworks/base/proto/src/metrics_constants.proto
-
-platform/frameworks/base/services
-├ core/java/com/android/server/display/DisplayManagerService.java
-├ core/java/com/android/server/display/DisplayTransformManager.java
-├ core/java/com/android/server/display/NightDisplayService.java
-└ java/com/android/server/SystemServer.java
-
-platform/frameworks/base/packages/SystemUI
-├ res/drawable/ic_qs_night_display_off.xml
-├ res/drawable/ic_qs_night_display_on.xml
-├ res/values/strings.xml
-└ src/com/android/systemui/qs/tiles/NightDisplayTile.java
-
-platform/packages/apps/Settings
-├ AndroidManifest.xml
-├ res/drawable/ic_settings_night_display.xml
-├ res/values/strings.xml
-├ res/xml/display_settings.xml
-├ res/xml/night_display_settings.xml
-├ src/com/android/settings/Settings.java
-├ src/com/android/settings/dashboard/conditional/NightDisplayCondition.java
-├ src/com/android/settings/display/NightDisplayPreference.java
-├ src/com/android/settings/display/NightDisplayPreferenceController.java
-└ src/com/android/settings/display/NightDisplaySettings.java
+    &lt;string-array name="config_nightDisplayColorTemperatureCoefficients"&gt;
+        &lt;!-- R a-coefficient --&gt; &lt;item&gt;0.0&lt;/item&gt;
+        &lt;!-- R b-coefficient --&gt; &lt;item&gt;0.0&lt;/item&gt;
+        &lt;!-- R y-intercept --&gt; &lt;item&gt;1.0&lt;/item&gt;
+        &lt;!-- G a-coefficient --&gt; &lt;item&gt;-0.00000000962353339&lt;/item&gt;
+        &lt;!-- G b-coefficient --&gt; &lt;item&gt;0.000153045476&lt;/item&gt;
+        &lt;!-- G y-intercept --&gt; &lt;item&gt;0.390782778&lt;/item&gt;
+        &lt;!-- B a-coefficient --&gt; &lt;item&gt;-0.0000000189359041&lt;/item&gt;
+        &lt;!-- B b-coefficient --&gt; &lt;item&gt;0.000302412211&lt;/item&gt;
+        &lt;!-- B y-intercept --&gt; &lt;item&gt;-0.198650895&lt;/item&gt;
+    &lt;/string-array&gt;
 </pre>
 
 <h2 id="ui-features">界面功能</h2>
-<p>
-由于夜间模式是面向用户的功能，因此用户需要能够掌控这项功能。Android 开源项目 (AOSP) 的 <a href="https://android.googlesource.com/platform/packages/apps/Settings/">packages/apps/Settings</a> 项目中提供了全面的设置实现方法，以供设备制造商在实现其设置时参考。实现人员必须处理 <code><a href="https://developer.android.com/reference/android/provider/Settings.html#ACTION_NIGHT_DISPLAY_SETTINGS">Settings.ACTION_NIGHT_DISPLAY_SETTINGS</a></code> intent 才能显示此设置。
+<p>由于夜间模式是面向用户的功能，因此用户需要能够掌控这项功能。Android 开源项目 (AOSP) 的 <a href="https://android.googlesource.com/platform/packages/apps/Settings/">packages/apps/Settings</a> 项目中提供了全面的设置实现方法，以供设备制造商在实现其“设置”时参考。实现人员必须处理 <code><a href="https://developer.android.com/reference/android/provider/Settings.html#ACTION_NIGHT_DISPLAY_SETTINGS">Settings.ACTION_NIGHT_DISPLAY_SETTINGS</a></code> intent 才能显示此设置。
 </p>
 <h3 id="settings">设置</h3>
-<p>
-用户可以在“设置”&gt;“显示”&gt;“夜间模式”中设置夜间模式。<em></em>在设置页面中，用户可以了解夜间模式，设置其时间安排以及开启或关闭夜间模式。
+<p>用户可以在“设置”&gt;“显示”&gt;“夜间模式”中设置夜间模式。<em></em>在相应页面中，用户可以了解夜间模式，设置其时间安排以及开启或关闭夜间模式。
 </p>
 <ul>
   <li><strong>自动开启</strong>
@@ -118,8 +108,7 @@ platform/packages/apps/Settings
 当夜间模式处于开启状态时，用户可以在“设置”顶部看到。
 </p>
 <h3 id="quick-settings-tile">“快捷设置”图块</h3>
-<p>
-用户可以通过“快捷设置”图块执行相应操作，也可以通过“设置”&gt;“显示”&gt;“夜间模式”中的<strong>开启/关闭</strong>切换开关执行相应操作，两者效果是一样的。<em></em>
+<p>用户可以通过“快捷设置”图块执行相应操作，也可以通过“设置”&gt;“显示”&gt;“夜间模式”中的<strong>开启/关闭</strong>切换开关执行相应操作，两者效果是一样的。<em></em>
 </p>
 
 </body></html>

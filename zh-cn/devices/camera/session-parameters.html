@@ -5,6 +5,7 @@
   <meta name="project_path" value="/_project.yaml"/>
 </head>
 <body>
+
 <!--
   Copyright 2018 The Android Open Source Project
 
@@ -23,19 +24,21 @@
 
 <h1 id="session_parameters" class="page-title">会话参数</h1>
 
-<p>在捕获会话初始化阶段，会话参数功能使相机客户端可以主动配置一部分成本高昂的请求参数（即会话参数），从而减少延迟。借助此功能，您的 HAL 实现会在流配置阶段（而不是第一个捕获请求期间）接收客户端参数，并且可以根据它们的值更高效地准备和构建内部流水线。</p>
+<p>在捕获会话初始化阶段，会话参数功能使摄像头客户端可以主动配置一部分耗时较长的请求参数（即会话参数），从而减少延迟。借助此功能，您的 HAL 实现会在信息流配置阶段（而不是第一个捕获请求期间）接收客户端参数，并且可以根据它们的值更高效地准备和构建内部流水线。</p>
+
+<p>在 Android 10 中，您可以使用可选的会话重新配置查询功能来更好地控制内部会话参数重新配置逻辑，从而提高性能。如需了解详情，请参阅<a href="#session_reconfiguration_query">会话重新配置查询</a>。</p>
 
 <h2 id="examples_and_source">示例和来源</h2>
 
-<p>参考会话参数实现已经是 <a href="https://android.googlesource.com/platform/hardware/qcom/camera/+/master/msm8998/QCamera2/HAL3/QCamera3HWI.cpp" class="external">CameraHal</a> 的一部分。此 HAL 使用旧版 Hal API。实现 Camera HIDL API 的<a href="/devices/architecture/hal-types">绑定式</a> CameraHal 必须使用相应的 HIDL <a href="https://android.googlesource.com/platform/hardware/interfaces/+/master/camera/device/3.4/types.hal#111" class="external">sessionParams</a> 条目在流配置期间访问所有新的传入会话参数。</p>
+<p>参考会话参数实现已经是 <a href="https://android.googlesource.com/platform/hardware/qcom/camera/+/master/msm8998/QCamera2/HAL3/QCamera3HWI.cpp" class="external">CameraHal</a> 的一部分。此 HAL 使用旧版 Hal API。实现 Camera HIDL API 的<a href="/devices/architecture/hal-types">绑定式</a> CameraHal 必须使用相应的 HIDL <a href="https://android.googlesource.com/platform/hardware/interfaces/+/master/camera/device/3.4/types.hal#111" class="external">sessionParams</a> 条目在信息流配置期间访问所有新的传入会话参数。</p>
 
-<p>相机客户端可以通过调用 <a href="https://developer.android.com/reference/android/hardware/camera2/CameraCharacteristics#getAvailableSessionKeys()%7B:%20.external%7D"><code>getAvailableSessionKeys()</code></a> 来查询所有受支持的会话参数的键，并最终通过 <a href="https://developer.android.com/reference/android/hardware/camera2/params/SessionConfiguration#setSessionParameters(android.hardware.camera2.CaptureRequest)%7B:%20.external%7D"><code>setSessionParameters()</code></a> 设置它们的初始值。</p>
+<p>摄像头客户端可以通过调用 <a href="https://developer.android.com/reference/android/hardware/camera2/CameraCharacteristics#getAvailableSessionKeys()" class="external"><code>getAvailableSessionKeys()</code></a> 来查询所有受支持的会话参数的密钥，并最终通过 <a href="https://developer.android.com/reference/android/hardware/camera2/params/SessionConfiguration#setSessionParameters(android.hardware.camera2.CaptureRequest)" class="external"><code>setSessionParameters()</code></a> 设置它们的初始值。</p>
 
 <h2 id="implementation">实现</h2>
 
-<p>您的 CameraHal 实现必须在相应的静态相机元数据中填充 <a href="https://android.googlesource.com/platform/hardware/interfaces/+/master/camera/metadata/3.3/types.hal#99" class="external"><code>ANDROID_REQUEST_AVAILABLE_SESSION_KEYS</code></a>，并提供一部分 <a href="https://android.googlesource.com/platform/hardware/interfaces/+/master/camera/metadata/3.2/types.hal#1016" class="external"><code>ANDROID_REQUEST_AVAILABLE_REQUEST_KEYS</code></a>（其中包含难以按帧应用的键的列表，如果在捕获会话生命周期内修改这些键，则可能会导致意外延迟）。</p>
+<p>您的 CameraHal 实现必须在相应的静态摄像头元数据中填充 <a href="https://android.googlesource.com/platform/hardware/interfaces/+/master/camera/metadata/3.3/types.hal#98" class="external"><code>ANDROID_REQUEST_AVAILABLE_SESSION_KEYS</code></a>，并提供 <a href="https://android.googlesource.com/platform/hardware/interfaces/+/master/camera/metadata/3.2/types.hal#1016" class="external"><code>ANDROID_REQUEST_AVAILABLE_REQUEST_KEYS</code></a> 的一个子集（其中包含难以按帧应用的密钥的列表，如果在捕获会话生命周期内修改这些密钥，则可能会导致意外延迟）。</p>
 
-<p>典型示例包括：需要耗费时间重新配置硬件或更改内部相机流水线的参数。控制会话参数仍然可以在捕获请求中发挥作用，不过，客户端应意识到并预料到其应用会出现延迟。</p>
+<p>典型示例包括：需要耗费时间重新配置硬件或更改内部摄像头流水线的参数。控制会话参数仍然可以在捕获请求中发挥作用，不过，客户端应意识到并预料到其应用会出现延迟。</p>
 
 <p>框架会监控所有传入请求，如果它检测到会话参数值发生变化，则会在内部重新配置相机。然后，已传递到 CameraHal 的新流配置中会包含更新后的会话参数值（用于更高效地配置相机流水线）。</p>
 
@@ -48,14 +51,72 @@
 <p>CTS 提供以下用于测试会话参数的新用例：</p>
 
 <ul>
-<li><a href="https://android.googlesource.com/platform/cts/+/master/tests/camera/src/android/hardware/camera2/cts/CameraDeviceTest.java#795" class="external"><code>CameraDeviceTest#testSessionConfiguration</code></a>  </li>
-<li><a href="https://android.googlesource.com/platform/cts/+/master/tests/camera/src/android/hardware/camera2/cts/CameraDeviceTest.java#1038" class="external"><code>CameraDeviceTest#testCreateSessionWithParameters</code></a>  </li>
-<li><a href="https://android.googlesource.com/platform/cts/+/master/tests/camera/src/android/hardware/camera2/cts/CameraDeviceTest.java#870" class="external"><code>CameraDeviceTest#testSessionParametersStateLeak</code></a>  </li>
-<li><a href="https://android.googlesource.com/platform/cts/+/master/tests/camera/libctscamera2jni/native-camera-jni.cpp#2140" class="external"><code>NativeCameraDeviceTest#testCameraDevicePreviewWithSessionParameters</code></a>  </li>
+<li><a href="https://android.googlesource.com/platform/cts/+/a3676a2dfa0630204be80a3c1f1cbbe6db2c3925/tests/camera/src/android/hardware/camera2/cts/CameraDeviceTest.java#793" class="external"><code>CameraDeviceTest#testSessionConfiguration</code></a> </li>
+<li><a href="https://android.googlesource.com/platform/cts/+/a3676a2dfa0630204be80a3c1f1cbbe6db2c3925/tests/camera/src/android/hardware/camera2/cts/CameraDeviceTest.java#868" class="external"><code>CameraDeviceTest#testCreateSessionWithParameters</code></a>  </li>
+<li><a href="https://android.googlesource.com/platform/cts/+/42f4eb187e216363208b96b726ec4287ce512231/tests/camera/src/android/hardware/camera2/cts/CameraDeviceTest.java#870" class="external"><code>CameraDeviceTest#testSessionParametersStateLeak</code></a> </li>
+<li><a href="https://android.googlesource.com/platform/cts/+/a3676a2dfa0630204be80a3c1f1cbbe6db2c3925/tests/camera/libctscamera2jni/native-camera-jni.cpp#2140" class="external"><code>NativeCameraDeviceTest#testCameraDevicePreviewWithSessionParameters</code></a>  </li>
 </ul>
 
-<p>通常，一旦某个参数成为会话键列表的一部分，其当前值就会添加到在流配置期间在 HAL 层传递的会话参数中。</p>
+<p>通常，在某个参数成为会话密钥列表的一部分之后，其当前值就会添加到在信息流配置期间在 HAL 层传递的会话参数中。</p>
 
 <p>选择会话参数时请务必谨慎。不应频繁更改流配置之间的会话参数值（如果有的话）。如果参数频繁更改（例如出于捕获目的），其适用性会非常低；如果将此类参数添加到会话参数列表中，则可能会因内部重新配置过多而导致 CTS 问题。</p>
+
+<h2 id="session_reconfiguration_query">会话重新配置查询</h2>
+
+<p>Android 10 引入了可选的会话重新配置查询功能来提高性能，因为会话参数值修改导致的内部信息流重新配置会降低性能。为了解决此问题，HIDL <code>ICameraDeviceSession</code> 3.5 及更高版本支持 <code>isReconfigurationRequired</code> 方法，该方法提供对内部会话参数重新配置逻辑的精细控制。使用此方法，可在需要时精确地进行信息流重新配置。</p>
+
+<p><code>isReconfigurationRequired</code> 的参数提供有关每个待修改会话参数的必需信息，允许针对各种设备进行自定义。</p>
+
+<p>此功能仅在摄像头服务和相机 HAL 中实现。没有面向公众的 API。如果实现此功能，则摄像头客户端在使用会话参数时的性能应该有明显的提升。</p>
+
+<h3 id="implementation_2">实现</h3>
+
+<p>要支持会话重新配置查询，您必须实现 <code>isReconfigurationRequired</code> 方法来检查新会话参数值是否需要完整的信息流重新配置。</p>
+
+<p>如果客户端更改任何通告的会话参数的值，则摄像头传输框架会调用 <code>isReconfigurationRequired</code> 方法。根据具体值，HAL 决定是否需要完整的信息流重新配置。如果 HAL 返回 <code>false</code>，则摄像头传输框架会跳过内部重新配置。如果 HAL 返回 <code>true</code>，则框架会重新配置信息流并相应地传递新的会话参数值。</p>
+
+<p>在使用新参数的请求提交给 HAL 之前，框架可以调用 <code>isReconfigurationRequired</code> 方法，并且可以在该请求提交之前将其取消。因此，HAL 不得使用此方法调用以任何方式更改其行为。</p>
+
+<p>HAL 实现必须满足以下要求：</p>
+
+<ul>
+<li>在配置活动会话后，框架必须能够随时调用 <code>isReconfigurationRequired</code> 方法。</li>
+<li>必须不能对待处理的摄像头请求的性能产生影响。特别是，在正常的摄像头流式传输期间，不得有任何故障或延迟。</li>
+</ul>
+
+<p>设备和 HAL 实现必须满足以下性能方面的要求：</p>
+
+<ul>
+<li>不得更改硬件和软件摄像头设置。</li>
+<li>不得对摄像头性能造成用户可见的影响。</li>
+</ul>
+
+<p><code>isReconfigurationRequired</code> 方法采用以下参数：</p>
+
+<ul>
+<li><code>oldSessionParams</code>：上一个会话的会话参数。通常是现有的会话参数。</li>
+<li><code>newSessionParams</code>：客户端设置的新会话参数。</li>
+</ul>
+
+<p>预期的返回状态代码包括：</p>
+
+<ul>
+<li><code>OK</code>：成功重新配置所需的查询。</li>
+<li><code>METHOD_NOT_SUPPORTED</code>：摄像头设备不支持重新配置查询。</li>
+<li><code>INTERNAL_ERROR</code>：由于内部错误，重新配置查询无法完成。</li>
+</ul>
+
+<p>返回值包括：</p>
+
+<ul>
+<li><code>true</code>：需要进行信息流重新配置。</li>
+<li><code>false</code>：不需要进行信息流重新配置。</li>
+</ul>
+
+<p>要忽略会话重新配置查询，HAL 应返回 <code>METHOD_NOT_SUPPORTED</code> 或 <code>false</code>。这会导致默认的摄像头服务行为，其中在每个会话参数更改时触发信息流重新配置。</p>
+
+<h3 id="validation_2">验证</h3>
+
+<p>可以使用 <a href="https://android.googlesource.com/platform/hardware/interfaces/+/e18057b42f1698f33f34d14e86a53934bd337bb8/camera/provider/2.4/vts/functional/VtsHalCameraProviderV2_4TargetTest.cpp#2653" class="external"><code>CameraHidlTest#configureStreamsWithSessionParameters</code></a> 中的 VTS 测试用例验证会话重新配置查询功能。</p>
 
 </body></html>

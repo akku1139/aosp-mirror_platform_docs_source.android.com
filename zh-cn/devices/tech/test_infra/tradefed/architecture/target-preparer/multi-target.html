@@ -1,0 +1,74 @@
+<html devsite><head>
+
+  <meta name="book_path" value="/_book.yaml"/>
+
+  <meta name="project_path" value="/_project.yaml"/>
+</head>
+<body>
+<!--
+  Copyright 2019 The Android Open Source Project
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+<h1 id="multi-target_preparer" class="page-title">多目标准备器</h1>
+
+<p>与<a href="/devices/tech/test_infra/tradefed/architecture/target-preparer">目标准备器</a>类似，多目标准备器允许同时设置多个设备。例如，当通过蓝牙连接两个设备进行测试时，将使用此功能。</p>
+
+<h2 id="base_interface">基接口</h2>
+
+<p>基接口是 <a href="https://android.googlesource.com/platform/tools/tradefederation/+/refs/heads/master/src/com/android/tradefed/targetprep/multi/IMultiTargetPreparer.java">IMultiTargetPreparer</a>，用于实现将要执行的 <code>setUp</code> 方法。建议您实现我们的基本抽象类 <a href="https://android.googlesource.com/platform/tools/tradefederation/+/refs/heads/master/src/com/android/tradefed/targetprep/multi/BaseMultiTargetPreparer.java">BaseMultiTargetPreparer</a>，它提供了内置的停用功能来轻松停用准备器。</p>
+
+<p>多目标准备器还直接为任何清理操作提供 <code>tearDown</code> 方法。</p>
+
+<h2 id="recommendation">建议</h2>
+
+<p>我们建议每个准备器限定于一项主要功能。这样，就可以更容易地重复使用准备器。</p>
+
+<p>您还应该在添加新的准备器之前检查可用准备器的列表，以避免重复工作。准备器位于：</p>
+
+<p><a href="https://android.googlesource.com/platform/tools/tradefederation/+/refs/heads/master/src/com/android/tradefed/targetprep/multi">tools/tradefederation/core/src/com/android/tradefed/targetprep/multi/</a></p>
+
+<p>多目标准备器可以设置的设备数量没有限制。所有设备都会出现在要实现的接口的 <code>IInvocationContext</code> 中。</p>
+
+<h2 id="xml_configuration">XML 配置</h2>
+
+<p>对象标记将为 <code>multi_target_preparer</code>，例如：</p>
+<pre class="prettyprint lang-xml"><code>&lt;multi_target_preparer class="com.android.tradefed.targetprep.multi.HelloWorldMultiTargetPreparer"&gt;
+&lt;/multi_target_preparer&gt;
+</code></pre>
+<h2 id="operation_order">操作顺序</h2>
+
+<ol>
+<li><code>multi_target_preparer</code> 在 <code>target_preparer</code> <strong>之后</strong>执行 <code>setUp</code></li>
+<li><code>multi_target_preparer</code> 在目标清理器<strong>之前</strong>执行 <code>tearDown</code></li>
+</ol>
+
+<p>这样并不总是允许执行所有设置步骤，因此可以在 XML 中将多目标准备器定义为 <code>multi_pre_target_preparer</code>，并在 <code>target_preparers</code> 之前执行它。</p>
+<pre class="prettyprint lang-xml"><code>&lt;multi_pre_target_preparer class="com.android.tradefed.targetprep.multi.HelloWorldMultiTargetPreparer"&gt;
+&lt;/multi_pre_target_preparer&gt;
+</code></pre>
+<p>整体操作顺序如下：</p>
+
+<ol>
+<li>multi_pre_target_preparer(s) setUp</li>
+<li>target_preparer(s) setUp</li>
+<li>multi_target_preparer(s) setUp</li>
+<li>multi_target_preparer(s) tearDown</li>
+<li>target_preparer(s) tearDown</li>
+<li>multi_pre_target_preparer(s) tearDown</li>
+</ol>
+
+<p>您可以将任何多目标准备器声明为 <code>multi_target_preparer</code> 或 <code>multi_pre_target_preparer</code>，具体取决于所需的设置顺序。</p>
+
+</body></html>

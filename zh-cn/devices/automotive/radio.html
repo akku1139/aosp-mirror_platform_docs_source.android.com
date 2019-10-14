@@ -1,0 +1,630 @@
+<html devsite><head>
+    <title>用媒体实现电台功能</title>
+    <meta name="project_path" value="/_project.yaml"/>
+    <meta name="book_path" value="/_book.yaml"/>
+  </head>
+  <body>
+
+  <!--
+      Copyright 2019 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>电台 (Radio) 控制实现基于 MediaSession 和 MediaBrowse，两者搭配使用可让媒体服务和 Google 助理控制电台。有关这些接口的详细信息，请参阅<a href="https://developer.android.com/training/auto/audio/" class="external">为汽车开发 Android 媒体应用</a>。</p>
+
+<p>请参阅 <code>packages/apps/Car/libs</code> 中提供的 <code>car-broadcastradio-support</code> 库中的媒体浏览树实现。该库还提供了 <code>ProgramSelector</code> 的扩展，用于与 URI 之间来回进行转换。要实现电台功能，请使用该库构建一个浏览树。</p>
+
+<h2 id="media_source">媒体来源切换器</h2>
+
+<p>为了在电台和媒体服务中的其他应用之间顺畅切换，<code>car-media-common</code> 库包含了要集成到电台应用中的类。请在电台应用的 XML 文件中包含 <code>MediaAppSelectorWidget</code> 微件（在参考媒体和电台应用中使用的图标或下拉列表）：</p>
+
+<pre class="prettyprint">
+&lt;com.android.car.media.common.MediaAppSelectorWidget
+    android:id="@+id/app_switch_container"
+    android:layout_width="@dimen/app_switch_widget_width"
+    android:layout_height="wrap_content"
+    android:background="@drawable/app_item_background"
+    android:gravity="center" /&gt;
+</pre>
+
+<p>该微件会启动 <code>AppSelectionFragment</code>，以显示可供选择的媒体来源的列表。如果您需要的用户界面与所提供的不同，请创建自定义微件以在要显示切换器时启动 <code>AppSelectionFragment</code>：</p>
+
+<pre class="prettyprint">
+AppSelectionFragment newFragment = AppSelectionFragment.create(widget,
+            packageName, fullScreen);
+    newFragment.show(mActivity.getSupportFragmentManager(), null);
+</pre>
+
+<p>在作为参考的电台应用实现中，提供了一个实现示例，它位于 <code>packages/apps/Car/Radio</code> 中。</p>
+
+<h2 id="control_specs">详细控制规格</h2>
+
+<p>MediaSession 接口（通过 <code>MediaSession.Callback</code>）为当前正在播放的电台应用提供控制机制：</p>
+
+<table>
+<tbody><tr>
+  <th>机制</th>
+  <th>说明</th>
+</tr>
+<tr>
+  <td width="20%"><code>onPlay</code><br /><code>onStop</code></td>
+  <td>时移暂停（如果支持）。</td>
+</tr>
+<tr>
+  <td width="20%"><code>onPlayFromMediaId</code><br /><code>onPlayFromUri</code></td>
+  <td>调到特定电台。</td>
+</tr>
+<tr>
+  <td width="20%"><code>onSkipToNext</code><br /><code>onSkipToPrevious</code></td>
+  <td>调到下一个（或上一个）电台。</td>
+</tr>
+<tr>
+  <td width="20%"><code>onSetRating</code></td>
+  <td>添加和移除收藏的电台。</td>
+</tr>
+</tbody></table>
+
+<p>MediaBrowser 公开的 MediaItem（您可以随时调到这些电台）会划分到三种类型的顶层目录：</p>
+
+<ul>
+  <li><b>节目（电台）。</b> 可以收听且在范围内的电台节目。</li>
+
+  <li><b>收藏。</b> 已添加到“收藏”列表中的电台节目。有些可能超出范围，无法收听。</li>
+
+  <li><b>频段频道。</b> 当前区域中所有可实际接收到的频道（例如，87.9、88.1、88.3、88.5、88.7、88.9、89.1 等）。每个频段都有一个单独的顶层目录。</li>
+</ul>
+
+<p><img src="/devices/automotive/images/radio_media_01.png" alt="广播电台 MediaBrowserService 树结构"/></p>
+
+<p><strong>图 1</strong>. 广播电台 MediaBrowserService 树结构</p>
+
+<p>这些列表中的每个元素都有一个 <code>mediaId</code>，可以与 <code>MediaSession</code> 配合使用来调台。</p>
+
+<p>由于 <code>MediaBrowserService</code> 的实现非常重要，因此强烈建议 OEM 电台应用将实现细节交由所提供的 <code>car-broadcastradio-support</code> 库来负责。OEM 仍可以选择自行实现这些规范。</p>
+
+<h3 id="media_session">MediaSession</h3>
+
+<p>由于实时广播是无法暂停的，因此播放、暂停和停止操作并不太适用于电台。相对地，停止操作可以视为将实时广播*静音*，而播放操作可视为将实时广播*取消静音*。</p>
+
+<p>为了在实时广播中模拟暂停效果，一些电台应用会先缓存内容，然后通过 <code>onPause</code> 命令回放缓存的内容。如果您不这样做，请勿宣称支持 <code>ACTION_PAUSE</code>。</p>
+
+<p>根据 <code>mediaId</code> 和 URI 开始播放的操作旨在用于调到从 MediaBrowser 接口中提取的电台。<code>mediaId</code> 是电台应用提供的任意字符串，用于唯一（一个 ID 仅指向一项内容）且稳定地（一项内容的 ID 在整个会话中保持不变）标识给定的电台。在这种情况下，URI 将采用一个明确定义的架构（一种能够作为 URI 来处理的 ProgramSelector 形式）。尽管 URI 不需要保持稳定，但仍保留了唯一性属性（如果电台频率发生变动，该属性可能会改变）。</p>
+
+<p>不使用 <code>onPlayFromSearch</code>。客户端（Google 助理或配套应用）应自行负责从 MediaBrowser 树中选择搜索结果。将这部分工作转由电台应用执行会增加复杂性，需要就字符串查询的格式达成正式协定，并且会导致在不同硬件平台上出现不可预测的用户体验。</p>
+
+<aside class="note">
+  <strong>注意</strong>：就电台名称搜索而言，在 MediaBrowser 接口向客户端提供的信息之外，电台应用无法提供任何有用的额外信息。
+</aside>
+
+<p>跳到下一个或上一个电台时，具体会跳到哪个电台取决于当前的使用情景：</p>
+
+<ul>
+  <li>如果应用当前调到的是“收藏”列表中的某个电台，电台应用可以移到“收藏”列表中的下一个电台。</li>
+  <li>收听的是节目列表中的电台时，可能会调到下一个可供播放的电台（根据电台排序）。</li>
+  <li>收听的是随机电台时，可能会调到下一个实体电台（可能收不到有效的广播信号）。</li>
+</ul>
+
+<aside class="note">
+  <strong>注意</strong>：电台应用必须能够妥善处理这些情景。
+</aside>
+
+<h4 id="errors">处理错误</h4>
+
+<p>TransportControls 操作（播放、停止和下一个）不提供有关成功或失败的任何反馈。要指示错误，MediaSession 的状态必须为 <code>STATE_ERROR</code> 并带有错误消息。</p>
+
+<p>电台应用必须执行这些操作或设置错误状态。<em></em>如果不立即执行播放命令，则请将播放状态更改为 <code>STATE_CONNECTING</code>（如果是直接调谐）或者更改为 <code>STATE_SKIPPING_TO_PREVIOUS</code> 或 <code>STATE_SKIPPING_TO_NEXT</code>（执行命令时）。</p>
+
+<p>要验证会话是已顺利将当前节目改为所需节目，还是已被置于错误状态，客户端应该监视 PlaybackState。虽然处于 <code>STATE_CONNECTING</code> 状态的时长应该不会超过 30 秒，但直接调谐到特定的 AM/FM 频率应该比这更快。</p>
+
+<h4>添加和移除收藏的节目</h4>
+
+<p>MediaSession 支持评分功能，可用于控制收藏的节目。
+使用 <code>RATING_HEART</code> 类型的评分调用 <code>onSetRating</code> 时，会在“收藏”列表中添加或移除当前调到的电台。</p>
+
+<p>该模型假设“收藏”列表是无序且无界的，这与传统的预设 (preset) 相反，后者中每个收藏的节目都会分配到一个数字槽（通常为 1 到 6）。<em></em>因此，基于预设的系统与 <code>onSetRating</code> 不兼容。</p>
+
+<p>MediaSession API 的局限在于它只能添加和移除当前所调到的电台。这就像如果不先选择某项内容，就无法从列表中删除该内容。这是 MediaBrowser 客户端（例如 Google 助理或配套应用）的一项限制。电台应用不受限制。</p>
+
+<strong>重要提示</strong>：如果应用不支持收藏功能，则您可忽略以下内容。
+
+<h3 id="media_browser">MediaBrowser</h3>
+
+<p>为了指明在给定的区域中哪些频率或实体频道名称（如果给定的电台技术支持调到任意频道）有效，我们列出了每个频段的所有有效频道（频率）。美国地区提供：</p>
+
+<table>
+<tbody><tr>
+  <th>频段</th>
+  <th>频道</th>
+</tr>
+<tr>
+<td width="30%">FM</td>
+<td>87.8 至 108.0 MHz 范围内的 101 个频道，间隔为 0.2 MHz。</td>
+</tr>
+<tr>
+<td width="30%">AM</td>
+<td>530 至 1700 kHz 范围内的 117 个频道，间隔为 10 kHz。</td>
+</tr>
+</tbody></table>
+
+<aside class="note">
+  <strong>注意</strong>：HD 电台使用相同的信道空间，因此不单独列出。
+</aside>
+
+<p>当前可供播放的电台节目列表属于一个简单列表，它不支持按数字音频广播 (DAB) 集合进行分组等显示方案。</p>
+
+<p>“收藏”列表中的条目有时可能不在信号范围内。电台应用不一定能事先检测到哪些条目当前可正常收听。这种情况下，电台应用可能不会将条目标记为可播放。</p>
+
+<p>要识别顶层文件夹，请使用与蓝牙所用相同的机制。</p>
+
+<p><code>MediaDescription</code> 对象的 Extra 捆绑包将包含一个调谐器专属字段，其等效于蓝牙的 <code>EXTRA_BT_FOLDER_TYPE</code>。如果是广播电台，则需要在公共 API 中定义以下新字段。</p>
+
+<p><code>EXTRA_BCRADIO_FOLDER_TYPE</code> = <code>android.media.extra.EXTRA_BCRADIO_FOLDER_TYPE</code>，以下值之一：</p>
+
+<table>
+<tbody><tr>
+  <th>字段</th>
+  <th>值</th>
+</tr>
+<tr>
+<td width="20%"><code>BCRADIO_FOLDER_TYPE_PROGRAMS</code></td>
+<td>1. 当前可供播放的节目。</td>
+</tr>
+<tr>
+<td width="20%"><code>BCRADIO_FOLDER_TYPE_FAVORITES</code></td>
+<td>2. 收藏的节目。</td>
+</tr>
+<tr>
+<td width="20%"><code>BCRADIO_FOLDER_TYPE_BAND</code></td>
+<td>3. 给定频段的所有实际频道。</td>
+</tr>
+</tbody></table>
+
+<p>无需设置电台专属自定义元数据字段，因为所有相关数据都可以容纳在现有 <code>MediaBrowser.MediaItem</code> 方案中：</p>
+
+<ul>
+  <li><strong>节目名称（RDS PS，DAB 服务名称）。</strong> <code>MediaDescription.getTitle</code></li>
+
+  <li><strong>FM 频率。</strong> URI（请参阅 ProgramSelector 部分）或 <code>MediaDescription.getTitle</code>。如果 <code>BROADCASTRADIO_FOLDER_TYPE_BAND</code> 文件夹包含条目。</li>
+
+  <li><strong>电台专属标识符（RDS PI，DAB SId）。</strong>
+    <code>MediaDescription.getMediaUri</code> 已解析到 ProgramSelector。</li>
+</ul>
+
+<p>通常，您无需为当前节目或“收藏”列表中的条目提取 FM 频率（因为客户端应根据媒体 ID 进行操作）。但是，如果存在这种需要（可能用于显示目的），则该条目会出现在 可以解析到 ProgramSelector 的 URI 中。</p>
+
+<p>不建议在当前会话中使用 URI 进行项目选择。有关详情，请参阅 ProgramSelector。</p>
+
+<p>为避免发生性能和 Binder 相关的问题，MediaBrowser 服务必须支持分页。对 <code>subscribe()</code> 使用 <code>EXTRA_PAGE</code> 和 <code>EXTRA_PAGE_SIZE</code> 参数。</p>
+
+<aside class="note">
+  <strong>注意</strong>：默认情况下，<code>onLoadChildren()</code> 变体（没有选项处理）会实现分页。
+</aside>
+
+<p>所有列表类型（原始频道、找到的节目以及收藏的节目）中的相关条目可能具有不同的媒体 ID，这由电台应用决定。支持库会有所不同。在大多数情况下，原始频道和找到的节目的 URI（采用 <code>ProgramSelector</code> 形式）有所不同，没有 RDS 的 FM 除外。在大多数情况下，找到的节目和收藏的节目也是如此（AF 更新时除外）。</p>
+
+<aside class="note">
+<strong>重要提示</strong>：频率列表中的条目以 <code>AMFM_FREQUENCY</code> 作为其主要标识符，而节目列表中的条目很可能以 <code>RDS_PI</code>（或其他数字电台标识符类型）作为主要标识符。
+</aside>
+
+<p>对来自不同列表类型的条目使用不同的媒体 ID 可以对它们执行不同的操作：执行 onSkipToNext 操作时遍历“收藏”列表还是“所有节目”列表，具体取决于最近选择的 MediaItem 所在的文件夹（请参阅 MediaSession 部分）。这也意味着 Google 助理会根据找到匹配条目的位置（在“收藏”列表或“所有可供播放的节目”列表中）无意切换这些上下文。如何处理这类情况则由应用决定。</p>
+
+<h4 id="tune">特殊调谐操作</h4>
+
+<p>节目列表允许调谐到特定电台，但不允许发出诸如“调谐到 FM”之类的一般请求，这可能会导致调谐到 FM 频段上最近收听的电台。</p>
+
+<p>为了支持此类操作，一些顶层目录设置了 <code>FLAG_PLAYABLE</code> 标记，并针对文件夹设置了强制性 <code>FLAG_BROWSABLE</code>。</p>
+
+<table>
+<tbody><tr>
+  <th>操作</th>
+  <th>调谐目标</th>
+  <th>如何发出</th>
+</tr>
+<tr>
+<td>播放电台</td>
+<td>任意</td>
+<td><code>startService(ACTION_PLAY_BROADCASTRADIO)</code> 或者<br />
+<code>playFromMediaId(MediaBrowser.getRoot())</code></td>
+</tr>
+<tr>
+<td>播放收藏的节目</td>
+<td>任意收藏的节目</td>
+<td>从 <code>favorites</code> 文件夹中的 <code>mediaId</code> 播放</td>
+</tr>
+<tr>
+<td>播放 FM</td>
+<td>任意 FM 频道</td>
+<td>从 FM 频段的 <code>mediaId</code> 播放</td>
+</tr>
+</tbody></table>
+
+<p>具体调谐到哪个确切节目，则由应用决定。通常是给定列表中最近调到的频道。</p>
+
+<p>有关 <code>ACTION_PLAY_BROADCASTRADIO</code> 更多详细信息，请参阅“常规播放 intent”部分。</p>
+
+<h4 id="discovery">发现和服务连接</h4>
+
+<p><code>PackageManager</code> 可以直接找到提供广播电台树的 <code>MediaBrowserService</code>。只需使用 <code>ACTION_PLAY_BROADCASTRADIO</code> intent（参见“常规播放 intent”部分）和 <code>MATCH_SYSTEM_ONLY</code> 标记调用 <code>resolveService</code>。要查找提供电台的所有服务（可能有多项，例如单独的 AM/FM 和卫星），请使用 <code>queryIntentServices</code>。已解析的服务也将处理 <code>android.media.browse.MediaBrowserService</code> 绑定 intent，因为它是通过 GTS 验证的。</p>
+
+<p>要连接到所选的 MediaBrowserService，请为给定服务组件创建 MediaBrowser 实例并进行连接。在建立连接后，可以通过 <code>getSessionToken</code> 获取对 MediaSession 的句柄。</p>
+
+<p>电台应用可以在其服务的 onGetRoot 实现中限制允许连接的客户端软件包。该应用应允许系统应用直接连接，而不必将其加入白名单。</p>
+
+<p>如果特定于来源的应用（例如，电台应用）安装在不支持此类来源的设备上，则仍建议由其自身处理 <code>ACTION_PLAY_BROADCASTRADIO</code> intent，同时各自的 MediaBrowser 树将不包含特定于电台的标记（如果系统映像出现在不同的硬件设备上则同样如此）。</p>
+
+<p>客户端可以检查给定来源在设备上是否可用，具体操作如下：</p>
+
+<ol>
+  <li>要发现电台服务，请针对 <code>ACTION_PLAY_BROADCASTRADIO)</code> 调用 <code>resolveService</code>。</li>
+
+  <li>为电台服务创建并连接到 MediaBrowser。</li>
+
+  <li>确认带有 <code>EXTRA_BCRADIO_FOLDER_TYPE</code> extra 的任何 MediaItem。</li>
+</ol>
+
+<aside class="note">
+  <strong>注意</strong>：在大多数情况下，客户端必须检查可用的 MediaBrowser 树，以识别可在给定设备上使用的所有来源。
+</aside>
+
+<h4 id="band">频段名称</h4>
+
+<p><em></em>频段列表由一组顶层目录表示，文件夹类型标记设置为 <code>BCRADIO_FOLDER_TYPE_BAND</code>。各个 MediaItem 的标题是表示频段名称的本地化字符串。在大多数情况下，这些字符串是其对应英文的翻译。但客户端应这样假设。</p>
+
+<p>为了提供一种稳定的机制来查找特定频段，为频段文件夹添加了一个 extra 标记。<code>EXTRA_BCRADIO_BAND_NAME_EN</code> 是频段的非本地化名称，它采用一个预定义值：<em></em></p>
+
+<li><code>TAM</code></li>
+<li><code>FM</code></li>
+<li><code>DAB</code></li>
+<li><code>SXM</code></li>
+
+<p>如果频段不在此列表中，则不应设置频段名称标记。但是，如果频段在列表中，则必须设置标记。HD 电台不会枚举单独的频段，因为 HD 电台使用与 AM/FM 相同的底层媒介。</p>
+
+<h2 id="play_intent">常规播放 intent</h2>
+
+<p>每个专用于播放特定来源（例如电台或 CD）的应用都必须处理常规播放 intent 以便开始播放内容（可能来自非活动状态。例如，在启动后。）如何选择要播放的内容由应用决定，但通常是播放最近播放过的电台应用或 CD 曲目。</p>
+
+<p>为每个音频源定义一个单独的 intent：</p>
+
+<table>
+<tbody><tr>
+  <th>Intent</th>
+  <th>说明</th>
+</tr>
+<tr>
+  <td><code>android.car.intent.action.PLAY_BROADCASTRADIO</code></td>
+  <td></td>
+  </tr>
+  <tr>
+  <td><code>android.car.intent.action.PLAY_AUDIOCD</code></td>
+  <td>CD-DA 或 CD-Text。</td>
+  </tr>
+  <tr>
+  <td><code>android.car.intent.action.PLAY_DATADISC</code></td>
+  <td>数据光盘，如 CD 和 DVD，但不是 CD-DA。<br />这可能是混合模式 CD。</td>
+  </tr><tr>
+  </tr>
+  <tr>
+  <td><code>android.car.intent.action.PLAY_AUX</code></td>
+  <td>不指定 AUX 端口。</td>
+  </tr>
+  <tr>
+  <td><code>android.car.intent.action.PLAY_BLUETOOTH</code></td>
+  <td></td>
+  </tr>
+  <tr>
+  <td><code>android.car.intent.action.PLAY_USB</code></td>
+  <td>不指定 USB 设备。</td>
+  </tr>
+  <tr>
+  <td><code>android.car.intent.action.PLAY_LOCAL</code></td>
+  <td>本地媒体存储设备，例如内置闪存驱动器。</td>
+</tr>
+  </tbody></table>
+
+<p>之所以选择 intent 与 Play 命令一起使用，是因为 intent 解析能实现两个目的：</p>
+
+<h3 id="play_command">Play 命令服务发现</h3>
+
+<p>另一个好处是，intent 可以在不打开 MediaBrowser 会话的情况下执行简单操作。这就是说，服务发现是 intent 实现的更有价值的目的。服务发现的过程因此而变得直接而明确。如需了解详情，请参阅“发现和服务连接”。</p>
+
+<p>为了简化客户端实现，发出 Play 命令的替代方案（也必须由电台应用实现）是发出带有根节点 <code>rootId</code>（用作 <code>mediaId</code>）的 <code>playFromMediaId1</code>。虽然根节点并不是可用来播放的，但其 <code>rootId</code> 是可以被指定为可用作 <code>mediaId</code> 的任意字符串。<i></i></p>
+
+<aside class="note">
+  <strong>注意</strong>：客户端无需了解这种细微差别。
+</aside>
+
+<h2 id="program_selector">ProgramSelector</h2>
+
+<p>虽然使用 <code>mediaId</code> 足以从 MediaBrowserService 中选择频道，但它仅限于会话，并且在各提供程序之间不一致。在某些情况下，客户端可能需要一个绝对指针（如绝对频率）来在会话和设备之间保持不变。</p>
+
+<p>在当下 DAB 时代，单靠频率不足以调谐到特定电台。为了提供可用于调谐到模拟或数字频道的实体，设计了 <code>ProgramSelector</code>。（设计文档、HAL 源代码、Java 源代码）。该实体由以下两部分组成：</p>
+
+<ul>
+  <li><strong>主要标识符。</strong> 给定电台的唯一且稳定的标识符，它不会改变，但可能不足以调谐到该电台。例如，RDS PI 代码，在美国可以转换为呼号。</li>
+
+  <li><strong>辅助标识符。</strong> 用于调谐到电台的任何其他标识符。例如频率，可能包括采用其他电台技术的标识符。DAB 电台可能会回退到模拟广播。</li>
+</ul>
+
+<p>要使 ProgramSelector 适合这个基于 MediaBrowser/MediaSession 的解决方案，请定义 URI 架构以对其进行序列化。架构定义如下：</p>
+
+<pre class="prettyprint">
+broadcastradio://program/&lt;primary ID type&gt;/&lt;primary ID&gt;?
+&lt;secondary ID type&gt;=&lt;secondary ID&gt;&lt;secondary ID type&gt;=&lt;secondary ID&gt;
+</pre>
+
+<p>辅助标识符（位于 <code>?</code> 字符后面）是可选的，可以移除以提供稳定的标识符来用作 mediaId。例如：</p>
+
+<ul>
+<li><code>broadcastradio://program/RDS_PI/1234?<br />AMFM_FREQUENCY=88500&amp;AMFM_FREQUENCY=103300</code></li>
+
+<li><code>broadcastradio://program/AMFM_FREQUENCY/102100</code></li>
+
+<li><code>broadcastradio://program/DAB_SID_EXT/14895264?RDS_PI=1234</code></li>
+</ul>
+
+<p>节目的权威部分（也就是 <code>host</code>）为将来扩展该架构提供了一些空间。</p>
+
+<p><code>IdentifierType</code> 的 HAL 2.x 定义中名称后面精确指定了标识符 <code>type</code> 字符串，并且
+<code>value</code> 格式是十进制或十六进制（带有 0x 前缀）数字。</p>
+
+<p>所有供应商专用标识符都用 <code>VENDOR_</code> 前缀表示。例如，<code>VENDOR_0</code> 表示 <code>VENDOR_START</code>，<code>VENDOR_1</code> 表示 <code>VENDOR_START</code> + 1。</p>
+
+<aside class="note">
+<strong>重要提示</strong>：此类 URI 特定于生成它们的电台硬件，不能在其他 OEM 制造的设备之间传输。必须将这些 URI 分配给顶层电台文件夹下的每个 MediaItem，并且 MediaSession 必须支持 <code>playFromMediaId</code> 和 <code>playFromUri</code>。但是，URI 主要用于电台元数据提取（例如 FM 频率）和持久存储。不保证 URI 可用于所有媒体项目。例如，当框架尚不支持主要 ID 类型时。另一方面，MediaID 始终保证有效。建议客户不要使用 URI 从当前 MediaBrowser 会话中选择项目。相反，请使用 <code>playFromMediaId</code>。但是，它对于服务应用来说不是可选的，并且保留缺少的 URI 有完全合理的用途。
+</aside>
+
+<p>最初设计是使用一个冒号 (:) 来代替 <code>://</code> 序列，放在架构部分后面。但是，<code>android.net.Uri</code> 不支持绝对分层 URI 引用。</p>
+
+<h2 id="other_sources">其他来源类型：</h2>
+
+<p>其他音频源的管理方式类似于电台。例如，辅助输入和音频 CD 播放器。</p>
+
+<p>单个应用可以提供多种类型的来源。在这种情况下，强烈建议为每种来源创建单独的 MediaBrowserService。即使在具有多个提供的来源或 MediaBrowserService 的设置中，也强烈建议您在一个应用中使用一个 MediaSession。</p>
+
+<h3 id="audiocd">音频 CD</h3>
+
+<p>播放此类磁盘中内容的应用公开具有一个可浏览条目（或多个，如果系统有 CD 换碟机）的 MediaBrowser，该 MediaBrowser又包含给定 CD 的所有曲目。如果系统未读取每张 CD 上的曲目（例如，一次性将所有磁盘插入磁盘盒并且系统未读取这些磁盘中的内容时），那么整个磁盘的 MediaItem 只是可播放的，而不是既可浏览又可播放。如果没有磁盘占用给定的数字槽，则相关内容既不可播放，也不可浏览，尽管每个数字槽必须始终存在于树中也是如此。</p>
+
+<p><img src="/devices/automotive/images/radio_media_02.png" alt="音频 CD MediaBrowser 树结构"/></p>
+
+<p><strong>图 2.</strong> 音频 CD MediaBrowser 树结构</p>
+
+<p>这些条目将以类似于广播电台文件夹的方式进行标记 - 它们将包含 MediaDescription API 中定义的其他 extra 字段：</p>
+
+<table>
+<tbody><tr>
+  <th>字段</th>
+  <th>值</th>
+</tr>
+<tr>
+  <td width="30%"><code>EXTRA_CD_TRACK</code></td>
+  <td>对于音频 CD 上的每个 MediaItem，基于 1 的曲目编号。</td>
+</tr>
+<tr>
+  <td width="30%"><code>EXTRA_CD_DISK</code></td>
+  <td>基于 1 的磁盘编号。</td>
+</tr>
+</tbody></table>
+
+<p>对于支持 CD-Text 的系统和兼容磁盘，顶层 MediaItem 包含磁盘的标题。类似地，曲目的 MediaItem 包含曲目的标题。</p>
+
+<h3 id="auxinput">辅助输入</h3>
+
+<p>提供辅助输入功能的应用公开具有单个条目（或多个，如果有多个端口）的 MediaBrowser 树以表示 AUX 输入端口。在收到 <code>playFromMediaId</code> 请求后，相应的 MediaSession 将获取其 <code>mediaId</code> 并切换到该来源。</p>
+
+<p><img src="/devices/automotive/images/radio_media_03.png" alt="AUX MediaBrowser 树结构"/></p>
+
+<p><strong>图 3.</strong> AUX MediaBrowser 树结构</p>
+
+<p>每个 AUX MediaItem 条目都有一个 extra 字段 <code>EXTRA_AUX_PORT_NAME</code>，其已设置为端口的非本地化名称，但不包含“AUX”字样。例如，“AUX 1”会设置为“1”，“AUX front”会设置为“front”，而“AUX”会设置为空字符串。在非英语语言区域，名称标记保留英文字符串不变。<code>EXTRA_BCRADIO_BAND_NAME_EN</code> 则不可能是这种情况，其值由 OEM 定义且不局限于预定义列表。</p>
+
+<p>如果硬件可以检查设备是否已连接到 AUX 端口，则硬件应仅在连接输入时将 MediaItem 标记为 <code>PLAYABLE</code>。如果此端口没有连接任何输入，硬件仍必须执行枚举操作（但不是通过 <code>PLAYABLE</code>）。如果硬件没有此类功能，则 MediaItem 必须始终为 <code>PLAYABLE</code>。</p>
+
+<h3 id="extra">extra 字段</h3>
+
+<p>可以定义以下 extra 键：</p>
+
+<table>
+<tbody><tr>
+  <th>字段</th>
+  <th>值</th>
+</tr>
+<tr>
+  <td width="30%"><code>EXTRA_CD_TRACK</code></td>
+  <td><code>android.media.extra.CD_TRACK</code></td>
+</tr>
+<tr>
+  <td width="30%"><code>EXTRA_CD_DISK</code></td>
+  <td><code>android.media.extra.CD_DISK</code></td>
+</tr>
+<tr>
+  <td width="30%"><code>EXTRA_AUX_PORT_NAME</code></td>
+  <td><code>android.media.extra.AUX_PORT_NAME</code></td>
+</tr>
+</tbody></table>
+
+<p>客户端必须在顶层的 MediaItem 中查找已为 <code>EXTRA_CD_DISK</code> 和 <code>EXTRA_AUX_PORT_NAME</code> 设置值的元素。</p>
+
+<h2 id="examples">详细示例</h2>
+
+<p>以下示例说明了此设计中包含的来源类型的 MediaBrowser 树结构。</p>
+
+<p>广播电台 <code>MediaBrowserService</code> 处理 <code>ACTION_PLAY_BROADCASTRADIO</code>。</p>
+
+<table>
+<tbody><tr>
+  <th>电台（可浏览）<em></em></th>
+  <th>URI</th>
+</tr>
+<tr>
+  <td colspan="2"><code>EXTRA_BCRADIO_FOLDER_TYPE=BCRADIO_FOLDER_TYPE_PROGRAMS</code></td>
+  <td></td>
+</tr>
+<tr>
+  <td width="30%">BBC One（可播放）<em></em></td>
+  <td><code>broadcastradio://program/RDS_PI/1234?AMFM_FREQUENCY=90500</code></td>
+</tr>
+<tr>
+  <td width="30%">ABC 88.1（可播放）<em></em></td>
+  <td><code>broadcastradio://program/RDS_PI/5678?AMFM_FREQUENCY=88100</code></td>
+</tr>
+<tr>
+  <td width="30%">ABC 88.1 HD1（可播放）<em></em></td>
+  <td><code>broadcastradio://program/HD_STATION_ID_EXT/158241DEADBEEF?AMFM_FREQUENCY=88100&amp;RDS_PI=5678</code></td>
+</tr>
+<tr>
+  <td width="30%">ABC 88.1 HD2（可播放）<em></em></td>
+  <td><code>broadcastradio://program/HD_STATION_ID_EXT/158242DEADBEFE</code></td>
+</tr>
+<tr>
+  <td width="30%">90.5 FM（可播放）<em></em><br />没有 RDS 的 FM</td>
+  <td><code>broadcastradio://program/AMFM_FREQUENCY/90500</code></td>
+</tr>
+<tr>
+  <td width="30%">620 AM（可播放）<em></em></td>
+  <td><code>broadcastradio://program/AMFM_FREQUENCY/620</code></td>
+</tr>
+<tr>
+  <td width="30%">BBC One（可播放）<em></em></td>
+  <td><code>broadcastradio://program/DAB_SID_EXT/1E24102?RDS_PI=1234</code></td>
+</tr>
+</tbody></table>
+
+<table>
+<tbody><tr>
+  <th>收藏夹（可浏览、可播放）<em></em><em></em></th>
+  <th>URI</th>
+</tr>
+<tr>
+  <td colspan="2"><code>EXTRA_BCRADIO_FOLDER_TYPE=BCRADIO_FOLDER_TYPE_FAVORITES</code></td>
+  <td></td>
+</tr>
+<tr>
+  <td width="30%">BBC One（可播放）<em></em></td>
+  <td><code>broadcastradio://program/RDS_PI/1234?AMFM_FREQUENCY=101300</code></td>
+</tr>
+<tr>
+  <td width="30%">BBC Two（不可播放）<em></em></td>
+  <td><code>broadcastradio://program/RDS_PI/1300?AMFM_FREQUENCY=102100</code></td>
+</tr>
+<tr>
+  <td width="30%">AM（可浏览、可播放）<em></em><em></em></td>
+  <td><code>EXTRA_BCRADIO_FOLDER_TYPE=BCRADIO_FOLDER_TYPE_BAND</code></td>
+</tr>
+</tbody></table>
+
+<table>
+<tbody><tr>
+  <th>AM（可浏览、可播放）<em></em><em></em></th>
+  <th>URI</th>
+</tr>
+<tr>
+  <td colspan="2"><code>EXTRA_BCRADIO_FOLDER_TYPE=BCRADIO_FOLDER_TYPE_BAND</code><br /><code>EXTRA_BCRADIO_BAND_NAME_EN="AM"</code></td>
+  <td></td>
+</tr>
+<tr>
+  <td width="30%">530 AM（可播放）<em></em></td>
+  <td><code>broadcastradio://program/AMFM_FREQUENCY/530</code></td>
+</tr>
+<tr>
+  <td width="30%">540 AM（可播放）<em></em></td>
+  <td><code>broadcastradio://program/AMFM_FREQUENCY/540</code></td>
+</tr>
+<tr>
+  <td width="30%">550 AM（可播放）<em></em></td>
+  <td><code>broadcastradio://program/AMFM_FREQUENCY/550</code></td>
+</tr>
+</tbody></table>
+
+<table>
+<tbody><tr>
+  <th>FM（可浏览、可播放）<em></em><em></em></th>
+  <th>URI</th>
+</tr>
+<tr>
+  <td colspan="2"><code>EXTRA_BCRADIO_FOLDER_TYPE=BCRADIO_FOLDER_TYPE_BAND</code> <br /> <code>EXTRA_BCRADIO_BAND_NAME_EN="FM"</code></td>
+  <td></td>
+</tr>
+<tr>
+  <td width="30%">87.7 FM（可播放）<em></em></td>
+  <td><code>broadcastradio://program/AMFM_FREQUENCY/87700</code></td>
+</tr>
+<tr>
+  <td width="30%">87.9 FM（可播放）<em></em></td>
+  <td><code>broadcastradio://program/AMFM_FREQUENCY/87900</code></td>
+</tr>
+<tr>
+  <td width="30%">88.1 FM（可播放）<em></em></td>
+  <td><code>broadcastradio://program/AMFM_FREQUENCY/88100</code></td>
+</tr>
+<tr>
+  <td width="30%">DAB（可播放）<em></em></td>
+  <td><code>EXTRA_BCRADIO_FOLDER_TYPE=BCRADIO_FOLDER_TYPE_BAND</code><br />
+  <code>EXTRA_BCRADIO_BAND_NAME_EN="DAB"</code></td>
+</tr>
+</tbody></table>
+
+<table>
+<tbody><tr>
+  <th>音频 CD MediaBrowserService</th>
+  <th>URI</th>
+</tr>
+<tr>
+  <td width="30%">处理 <code>ACTION_PLAY_AUDIOCD</code></td>
+  <td></td>
+</tr>
+<tr>
+  <td width="30%">磁盘 1（可播放）<em></em></td>
+  <td><code>EXTRA_CD_DISK=1</code></td>
+</tr>
+<tr>
+  <td width="30%">磁盘 2（可浏览、可播放）<em></em><em></em></td>
+  <td><code>EXTRA_CD_DISK=2</code><br />
+    <li><em></em>曲目 1（可播放）<code>EXTRA_CD_TRACK=1</code></li>
+    <li><em></em>曲目 2（可播放）<code>EXTRA_CD_TRACK=2</code></li>
+  </td>
+</tr>
+<tr>
+  <td width="30%">我的音乐 CD（可浏览、可播放）<em></em><em></em></td>
+  <td><code>EXTRA_CD_DISK=3</code><br />
+    <li><em></em>All By Myself（可播放）<code>EXTRA_CD_TRACK=1</code></li>
+    <li><em></em>Reise, Reise（可播放）<code>EXTRA_CD_TRACK=2</code></li>
+  </td>
+</tr>
+<tr>
+  <td width="30%">空数字槽 4（不可播放）<em></em></td>
+  <td><code>EXTRA_CD_DISK=4</code></td>
+</tr>
+</tbody></table>
+
+<table>
+<tbody><tr>
+  <th>AUX MediaBrowserService</th>
+  <th>URI</th>
+</tr>
+<tr>
+  <td width="30%">处理 <code>ACTION_PLAY_AUX</code></td>
+  <td></td>
+</tr>
+<tr>
+  <td width="30%">AUX front（可播放）<em></em></td>
+  <td><code>EXTRA_AUX_PORT_NAME="front"</code></td>
+</tr>
+<tr>
+  <td width="30%">AUX rear（可播放）<em></em></td>
+  <td><code>EXTRA_AUX_PORT_NAME="rear"</code></td>
+</tr>
+</tbody></table>
+
+</body></html>

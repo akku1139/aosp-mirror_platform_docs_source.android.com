@@ -1,0 +1,275 @@
+<html devsite>
+  <head>
+    <title>Sensors Off</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+   {% include "_versions.html" %}
+  <body>
+  <!--
+      Copyright 2019 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+
+    <p>
+    When in airplane mode, devices can still access some sensors to enable
+    specific functionality, such as screen rotation and taking pictures. Android
+    {{ androidQVersionNumber }} provides a developer options setting to shut off
+    all sensors in a device. This feature helps developers test their app’s
+    functionality in situations where those sensors become unavailable, and also
+    gives users a way to control the sensors in their device.
+    </p>
+    <p>
+    When a developer or user enables <strong>Sensors off</strong> in developer
+    options (<strong>Settings</strong> &gt; <strong>System</strong> &gt;
+    <strong>Developer options</strong> &gt; <strong>Quick settings developer
+    tiles</strong>), a new tile appears in the quick settings tray. They can use
+    the tile to prevent apps from accessing the camera, microphone, and all sensors
+    managed by the <code>SensorManager</code> class.
+    </p>
+
+
+    <h2 id="implementation">Implementation</h2>
+
+
+    <p>
+    Android {{ androidQVersionNumber }} includes a reference implementation that
+    handles the camera, microphone, and <code>SensorManager</code> sensors. The
+    system service that manages the <strong>Sensors off</strong> state and
+    notifies clients of state changes is located in
+    <code>frameworks/base/services/core/java/com/android/server/SensorPrivacyService.java</code>.
+    The manager that facilitates access to <code>SensorPrivacyService</code>
+    within an application’s context is located in
+    <code>frameworks/base/core/java/android/hardware/SensorPrivacyManager.java</code>.
+    </p>
+
+    <p>
+    If your devices use the default implementation of <code>SensorService</code>,
+    <code>CameraService</code>, and <code>AudioPolicyService</code>, then no
+    additional customization is needed to the reference design. If you have other
+    sensors, see <a href="#customization">Customization</a> for more details
+      about supporting this feature.
+    </p>
+
+
+    <h3 id="common-issues">Common issues</h3>
+
+
+    <p>
+    When implementing this feature, sometimes camera apps don't respond properly
+    to the <code>onError</code> callbacks, both when first attempting to acquire
+    the camera and when the camera is no longer available. This typically results
+    in the app crashing when this tile is enabled, but this can be used as a signal
+    to indicate that the feature is behaving as expected.
+    </p>
+
+    <p>
+    This behavior indicates that the app isn't properly handling the
+    <code>onError</code> callback in
+    <code><a href="https://developer.android.com/reference/android/hardware/camera2/CameraDevice.StateCallback"
+             class="external">CameraDevice.StateCallback</a></code>. When
+    <strong>Sensors off</strong> is enabled, the <code>onError</code> callback
+    is invoked with
+    <code><a href="https://developer.android.com/reference/android/hardware/camera2/CameraDevice.StateCallback.html#ERROR_CAMERA_DISABLED"
+             class="external">CameraDevice.StateCallback.ERROR_CAMERA_DISABLED</a></code>
+    set as the error value. Update any first-party apps to handle the
+    <code>onError</code> callback with this value by not making any subsequent
+    calls against
+    <code><a href="https://developer.android.com/reference/android/hardware/camera2/CameraDevice.html"
+             class="external">CameraDevice</a></code> until a subsequent
+    <code>openCamera</code> call is successful.
+    </p>
+
+    <h2 id="sensor-behavior">Sensor behavior</h2>
+
+
+    <p>
+    When <strong>Sensors off</strong> is enabled, the sensors stop reporting any
+    data to the system or apps. An app can still request a sensor and register a
+    listener when <strong>Sensors off</strong> is enabled, but either silence is
+    returned for the mic or the <code>onSensorChanged</code> callback is never
+    invoked for the sensors. As soon as the tile is disabled, those same listeners
+    start to receive the actual output from the mic or the expected callbacks to
+    <code>onSensorChanged</code> without needing to do any additional work. The
+    default behavior of silenced sensors is as follows.
+    </p>
+
+
+    <h3 id="camera">Camera</h3>
+
+
+    <p>
+    If an app is using the camera when <strong>Sensors off</strong> is enabled,
+    an error is sent to the <code>onError</code> callback method and
+    <code>CameraDevice</code> is closed.
+    </p>
+
+    <p>
+    If an app attempts to access the camera when <strong>Sensors off</strong> is
+    enabled, an error is sent to the <code>onError</code> callback method.
+    </p>
+
+
+    <h3 id="microphone">Microphone</h3>
+
+
+    <p>
+    When <strong>Sensors off</strong> is enabled, access to the microphone is still
+    possible but only silence is returned. If an app is using the microphone when
+    <strong>Sensors off</strong> is enabled, no error is generated, but the
+    recording is silenced and just returns an array of zeros. If <strong>Sensors
+    off</strong> is disabled while the app is still using the microphone, the
+    expected audio data is returned.
+    </p>
+
+    <p>
+    If an app attempts to access the microphone when <strong>Sensors off</strong>
+    is enabled, the microphone returns silence.
+    </p>
+
+
+    <h3 id="sensor">Sensor</h3>
+
+
+    <p>
+    When an app tries to access other sensors when <strong>Sensors off</strong> is
+    enabled, the sensor type influences the default behavior:
+    </p>
+
+    <ul>
+    <li><strong>Continuous sensors:</strong> Sensors in this reporting mode stop
+    dispatching events. If an app is interacting with a continuous sensor when
+    <strong>Sensors off</strong> is enabled, the sensor sends no additional data to
+    the app until the feature is disabled.</li>
+    <li><strong>Flush events:</strong> A sensor flush can be requested when the tile
+    is enabled and the <code>onFlushComplete</code> callback is invoked to
+    indicate that the requested flush completed successfully, but no new events
+    with sensor data are generated and returned to the
+    <code>onSensorChanged</code> callback.</li>
+    <li><strong>On-change events:</strong> When <strong>Sensors off</strong> is
+    enabled, no new change events are reported.</li>
+    <li><strong>Trigger events:</strong> When <strong>Sensors off</strong> is
+    enabled, trigger events stop generating. Any existing events complete.</li>
+    </ul>
+
+
+    <h2 id="customization">Customization</h2>
+
+
+    <p>
+    If your devices use the default implementation of
+    <code>SensorService</code>, <code>CameraService</code>, and
+    <code>AudioPolicyService</code>, then no additional customization is
+    needed to the reference design. However, you can support sensors managed
+    outside of <code>SensorManager</code>, remove <strong>Sensors off</strong>
+    from your devices, or change the System UI for the developer quick settings
+    tiles or the icon for the <strong>Sensors off</strong> tile.
+    </p>
+
+
+    <h3 id="supporting-more-sensors">Supporting more sensors</h3>
+
+
+    <p>
+    If your devices contain sensors managed outside of <code>SensorManager</code>,
+    you should add support for them using <code>SensorPrivacyService</code> and
+    <code>SensorPrivacyManager</code>.
+    </p>
+
+    <p>
+    When the <strong>Sensors off</strong> tile is toggled,
+    <code>SensorPrivacyService</code> invokes a one-way callback for all registered
+    listeners. When this callback is received, the registered listener can take the
+    necessary steps based on the state of the tile. If it's enabled, all
+    existing connections can be terminated and return empty data, and a flag set to
+    prevent new connections. If it's disabled, the flag can be reset to
+    allow new connections. Using the camera service
+    (<code>platform/frameworks/av/services/camera/libcameraservice/</code>)
+    as an example, follow these steps to add support for a new sensor.
+    </p>
+
+    <ol>
+    <li>Implement the <code>BnSensorPrivacyListener</code> interface. For more
+    details, see <code>SensorPrivacyPolicy</code> in
+    <code><a href="https://android.googlesource.com/platform/frameworks/av/+/refs/heads/master/services/camera/libcameraservice/CameraService.h#576"
+             class="external">CameraService.h</a></code>.</li>
+    <li>Register with the <code>SensorPrivacyManager</code> and obtain the state of
+    the tile on startup. For more details, see
+    <code>SensorPrivacyPolicy::registerSelf</code> in
+    <code><a href="https://android.googlesource.com/platform/frameworks/av/+/refs/heads/master/services/camera/libcameraservice/CameraService.cpp#161"
+             class="external">CameraService.cpp</a></code>.</li>
+    <li>Handle <strong>Sensors off</strong> state changes in the callback. For more
+    details, see <code>SensorPrivacyPolicy::onSensorPrivacyChanged</code> and
+    <code>CameraService::blockAllClients</code> in
+    <code><a href="https://android.googlesource.com/platform/frameworks/av/+/refs/heads/master/services/camera/libcameraservice/CameraService.cpp"
+             class="external">CameraService.cpp</a></code>.</li>
+    <li>Prevent access to the sensor data when the tile is enabled. For more
+    details, see the sensor privacy policy check in
+    <code>CameraService::validateClientPermissionsLocked</code> in
+    <code><a href="https://android.googlesource.com/platform/frameworks/av/+/refs/heads/master/services/camera/libcameraservice/CameraService.cpp"
+             class="external">CameraService.cpp</a></code>.</li>
+    </ol>
+
+
+    <h3 id="removing-sensors-off">Removing Sensors off</h3>
+
+
+    <p>
+    As a developer tool for testing, <strong>Sensors off</strong> is hidden because
+    a user must first enable developer mode, then choose to make the tile available
+    in settings.
+    </p>
+    <p>
+    If you don't want to support <strong>Sensors off</strong> on your devices,
+    remove the service tag from
+    <code>packages/apps/Settings/AndroidManifest.xml</code>. If you remove the
+    service tag, the <strong>Sensors off</strong> tile won't be available to enable
+    from the developer quick settings tiles page.
+    </p>
+
+
+    <h3 id="changing-sensors-off-ui">Changing the Sensors off UI</h3>
+
+
+    <p>
+    There are two elements that can be customized for the
+    <strong>Sensors off</strong> UI: the icon displayed for the developer quick
+    settings tile and the icon displayed in the status bar when the tile is enabled.
+    To customize the look of these icons, replace these files:
+    </p>
+
+    <ul>
+    <li>Quick settings tile icon:
+    <code>packages/apps/Settings/res/drawable/tile_icon_sensors_off.xml</code></li>
+    <li>Status bar icon:
+    <code>frameworks/base/packages/SystemUI/res/drawable/stat_sys_sensors_off.xml</code>
+    </li>
+    </ul>
+
+
+    <h2 id="validation">Validation</h2>
+
+
+    <p>
+    As an optional developer tool, there are no CTS tests for this feature.
+    </p>
+    <p>
+    You can test manually by installing an app from Google Play that reads and
+    displays all of the device’s sensors. When you enable the
+    <strong>Sensors off</strong> tile, ensure that none of the values for the sensors
+    change, the microphone audio is silent, and the camera isn't accessible.
+    </p>
+  </body>
+</html>

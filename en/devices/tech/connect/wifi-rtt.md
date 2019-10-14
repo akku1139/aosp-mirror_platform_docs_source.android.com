@@ -81,7 +81,7 @@ with that AP or with other APs.
 Android Compatibility Test Suite (CTS) tests exist for this feature. CTS detects
 when the feature is enabled and automatically includes the associated tests.
 This feature can also be tested using the
-[Vendor Test Suite (VTS)](/devices/tech/test_infra/tradefed/fundamentals/vts)
+[Vendor Test Suite (VTS)](/compatibility/vts)
 and
 [acts/sl4a](https://android.googlesource.com/platform/tools/test/connectivity/+/master/acts/tests/google/wifi/){: .external},
 a test suite that conducts extensive integration testing.

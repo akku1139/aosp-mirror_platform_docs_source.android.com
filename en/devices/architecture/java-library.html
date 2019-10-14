@@ -1,0 +1,223 @@
+<html devsite>
+  <head>
+    <title>Implementing Java SDK Library</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+    {% include "_versions.html" %}
+  <body>
+  <!--
+      Copyright 2019 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+    <p>
+      The Android platform contains a large number of shared Java libraries
+      that can optionally be included in the classpath of apps using
+      the <code>&lt;uses-library&gt;</code> tag in the app manifest. Because
+      apps link against these libraries, they should be treated like the rest
+      of the Android API in terms of compatibility, API review, and tooling
+      support. However, most libraries don't have these features.
+    </p>
+    <p>
+      Android {{ androidQVersionNumber }} introduces
+      <code>java_sdk_library</code>, a new build rule to fix compatibility
+      issues for shared Java libraries. Device manufacturers can use this
+      mechanism for their own shared Java libraries, to maintain backward
+      compatibility for their APIs. If device manufacturers use their own
+      shared Java libraries through the <code>&lt;uses-library&gt;</code> tag
+      instead of the bootclass path, <code>java_sdk_library</code> can
+      verify that those Java libraries are API-stable.
+    </p>
+    <p>
+      The <code>java_sdk_library</code> is a Java library that implements
+      optional SDK APIs to apps. Libraries implemented through
+      <code>java_sdk_library</code> in your make file
+      (<code>Android.bp</code>) perform the following operations:
+    </p>
+    <ul>
+      <li>The stubs libraries are generated to include <code>stubs</code>,
+          <code>stubs.system</code>, and <code>stubs.test</code>. These
+          stubs libraries are created by recognizing <code>@hide</code>,
+          <code>@SystemApi</code>, and <code>@TestApi</code> annotations.
+          At build time, they are automatically referenced when the SDK
+          version is <code>current</code>, <code>system_current</code>,
+          and <code>test_current</code>, respectively.</li>
+      <li>Android gets API lists through stubs files, and verifies that
+          the APIs are maintained in a backward-compatible manner by comparing
+          current APIs lists in master to the APIs lists in the most recent
+          published Android version.</li>
+      <li>If the implementation library for the runtime is installed,
+          an XML file is generated and installed.</li>
+    </ul>
+
+   <figure>
+     <img src="/devices/architecture/images/build-flow-java-lib.png"
+          alt="Build flow with Java SDK library">
+     <figcaption><b>Figure 1.</b> Build flow with Java SDK library</figcaption>
+   </figure>
+
+    <h2 id="examples-and-sources">Examples and sources</h2>
+
+    <p>
+      The minimum component for the stubs libraries are the mandatory
+      <code>srcs</code> and <code>api_packages</code> properties.
+    </p>
+
+
+    <pre class="prettyprint">java_sdk_library {
+        name: "com.android.future.usb.accessory",
+        srcs: ["src/**/*.java"],
+        api_packages: ["com.android.future.usb"],
+    }</pre>
+
+
+    <p>
+      To build the impl library used for runtime, populate all
+      <code>java_library</code> properties, such as <code>hostdex</code>,
+      <code>compile_dex</code>, and <code>errorprone</code>.
+    </p>
+
+
+
+    <pre class="prettyprint">java_sdk_library {
+        name: "android.test.base",
+
+        srcs: ["src/**/*.java"],
+
+        errorprone: {
+          javacflags: ["-Xep:DepAnn:ERROR"],
+        },
+
+        hostdex: true,
+
+        api_packages: [
+            "android.test",
+            "android.test.suitebuilder.annotation",
+            "com.android.internal.util",
+            "junit.framework",
+        ],
+
+        compile_dex: true,
+    }</pre>
+
+
+    <p>
+      To create stubs libraries, populate the <code>droidstubs</code>
+      properties, such as <code>srcs_lib</code>,
+      <code>srcs_lib_whitelist_dirs</code>,
+      <code>srcs_lib_whitelist_pkgs</code>,
+      <code>merge_annotations_dirs</code>, and
+      <code>merge_inclusion_annotations_dirs</code>. You can also use
+      these properties for the stubs library:
+    </p>
+    <ul>
+      <li><code>api_srcs</code>: The list of optional source files that
+          are part of the API but not part of the runtime library.</li>
+      <li><code>stubs_only_libs</code>: The list of Java libraries
+          that are in the classpath when building stubs.</li>
+      <li><code>hidden_api_packages</code>: The list of package names
+          that must be hidden from the API.</li>
+      <li><code>droiddoc_options</code>: Additional argument for metalava.
+
+
+
+      <pre class="prettyprint">java_sdk_library {
+          name: "android.test.mock",
+
+          srcs: ["src/**/*.java"],
+
+          api_packages: [
+              "android.test.mock",
+          ],
+
+          srcs_lib: "framework",
+          srcs_lib_whitelist_dirs: ["core/java"],
+          srcs_lib_whitelist_pkgs: ["android"],
+          compile_dex: true,
+      }</pre>
+
+      </li>
+    </ul>
+
+    <h3 id="maintaining-backward-compatibility">Maintaining backward
+    compatibility</h3>
+
+    <p>
+      The build system checks whether the APIs maintained backwards
+      compatibility by comparing the latest API files with the generated
+      API files at build time. This is accomplished with a new build
+      rule called <code>prebuilt_apis</code>, which creates the prebuilt
+      stubs library modules and API lists modules. All libraries built
+      with <code>java_sdk_library</code> must have API files in the latest
+      version of <code>api_dirs</code> in <code>prebuilt_apis</code>. When
+      you release the version, the API lists files and stubs libraries can
+      be obtained with dist build with <code>PRODUCT-sdk_phone_armv7-sdk</code>.
+    </p>
+    <p>
+      The <code>api_dirs</code> property is list of API version directories
+      in <code>prebuilt_apis</code>. The API version directories should be
+      located at the same directory level with <code>Android.bp</code>.
+    </p>
+
+    <pre class="prettyprint">prebuilt_apis {
+        name: "sdk",
+        api_dirs: [
+            "1",
+            "2",
+              ....
+            "28",
+            "current",
+        ],
+    }</pre>
+
+
+    <p>
+      Configure the directories with the
+      <code><var>version</var>/<var>scope</var>/api/</code>
+      structure under the prebuilts directory. <code><var>version</var></code>
+      corresponds to the API level and <code><var>scope</var></code> determines
+      whether the directory is public, system, or test.
+    </p>
+
+    <ul>
+      <li><code><var>version</var>/<var>scope</var></code> contains Java
+        libraries.</li>
+      <li><code><var>version</var>/<var>scope</var>/api</code> contains API
+        <code>.txt</code> files. Create empty text files named
+        <code><var>module_name</var>.txt</code>
+        and <code><var>module_name</var>-removed.txt</code> here.
+
+      <pre class="prettyprint">├── 28
+      │   ├── public
+      │   │   ├── api
+      │   │   │   ├── android.test.base-removed.txt
+      │   │   │   └── android.test.base.txt
+      │   │   └── android.test.base.jar
+      │   ├── system
+      │   │   ├── api
+      │   │   │   ├── android.test.base-removed.txt
+      │   │   │   └── android.test.base.txt
+      │   │   └── android.test.base.jar
+      │   └── test
+      │       ├── api
+      │       │   ├── android.test.base-removed.txt
+      │       │   └── android.test.base.txt
+      │       └── android.test.base.jar
+      └── Android.bp</pre>
+
+      </li>
+    </ul>
+</body>
+</html>

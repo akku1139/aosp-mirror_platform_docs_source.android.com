@@ -1,0 +1,151 @@
+<html devsite>
+  <head>
+    <title>Networking</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+    {% include "_versions.html" %}
+  <body>
+  <!--
+      Copyright 2019 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>
+  Android {{ androidQVersionNumber }} includes the following networking modules:
+</p>
+
+<ul>
+  <li>The Networking Components module provides common IP services, network
+  connectivity monitoring, and captive login portal detection.</li>
+  <li>The Network Stack Permission Config module defines a permission that
+  enables modules to perform network-related tasks.</li>
+</ul>
+
+<h2 id="networking-components">Networking Components module</h2>
+
+<p>
+  The Networking Components module ensures that Android can adapt to evolving
+  network standards and allows for interoperability with new implementations.
+  For example, updates to captive portal detection and login code allow Android
+  to stay up to date with changing captive portal models, and updates to
+  Advanced Policy Firewall (APF) allow Android to save power on Wi-Fi as new
+  types of packets become common.
+</p>
+
+<h3 id="networking-q">Changes in Android {{ androidQVersionNumber }}</h3>
+
+<p>
+  The Networking Components module contains the following components.
+</p>
+
+<ul>
+  <li><strong>IP services.</strong> The IpClient (formerly IpManager) component
+  handles IP layer provisioning and maintenance. In Android 9, it was used
+  cross-process by components such as Bluetooth, and in-process by components
+  such Wi-Fi. The DhcpClient component obtains IP addresses from DHCP servers so
+  they can be assigned to interfaces.</li>
+  <li><strong>NetworkMonitor.</strong> The NetworkMonitor component tests for
+  internet reachability when connecting to a new network or upon network
+  failures, when detecting captive portals, and when validating networks.</li>
+  <li><strong>Captive portal login app.</strong> The Captive portal login app is
+  a preinstalled app in charge of managing login on captive portals. This has
+  been a separate app since Android 5.0, but it interacts with NetworkMonitor to
+  forward some user choices to the system.</li>
+</ul>
+
+<p>
+  On devices using the Networking Components module, the above services are
+  refactored to a different process and are accessed using a
+  <a href="/devices/bootloader/stable-aidl">stable AIDL interfaces</a>. The
+  refactor paths are shown in the following tables.
+</p>
+
+<h4 id="ipservices-refactor">IP Services refactor paths</h4>
+
+<table>
+  <tr>
+    <th style="width:20%">Android 9 and lower</th>
+    <td>In <code>frameworks/base/services/net/java/android/net/</code>:
+    <ul>
+    <li><code>apf</code></li>
+    <li><code>dhcp</code></li>
+    <li><code>ip</code></li>
+    <li><code>netlink</code></li>
+    <li><code>util</code> (partly)</li>
+    </ul>
+    </td>
+  </tr>
+  <tr>
+    <th>Android {{ androidQVersionNumber }} and higher</th>
+    <td><code>packages/modules/NetworkStack</code></td>
+  </tr>
+</table>
+
+<h4 id="captive-portal-refactor">Captive Portal Login refactor paths</h4>
+
+<table>
+  <tr>
+    <th style="width:20%">Android 9 and lower</th>
+    <td>In <code>frameworks/base/</code>:
+    <ul>
+    <li><code>core/java/android/net/captiveportal/</code></li>
+    <li><code>services/core/java/com/android/server/connectivity/NetworkMonitor.java</code></li>
+    <li><code>packages/CaptivePortalLogin/*</code> (where * = wildcard)</li>
+    </ul>
+    </td>
+  </tr>
+  <tr>
+    <th>Android {{ androidQVersionNumber }} and higher</th>
+    <td><code>packages/modules/CaptivePortalLogin</code> (and some other shared
+  locations)</td>
+  </tr>
+</table>
+
+<h3 id="networking-format">Format and dependencies</h3>
+
+<p>
+  The Networking Components module is delivered as three APKs: one for IP
+  services, one for captive portal login, and one for
+  <a href="#network-stack-permission-config">Network Stack Permission
+  Config</a>.
+</p>
+
+<p>
+  The Networking Components module depends on the following:
+</p>
+
+<ul>
+  <li><strong>Privileged <code>@hide</code> methods in the system
+  server</strong> (for example, in <code>IConnectivityManager.aidl</code>).
+  These APIs have been annotated with <code>@SystemApi</code> and appropriately
+  protected so that they're accessible to the module but not other privileged
+  apps (for example, using a new signature permission).</li>
+  <li><strong>Binder IPCs to <code>netd</code> defined in
+  <code>INetd.aidl</code>.</strong> This interface has been converted to stable
+  AIDL and is subject to conformance tests.</li>
+</ul>
+
+<h2 id="network-stack-permission-config">Network Stack Permission Config
+module</h2>
+
+<p>
+  The Network Stack Permission Config module contains no code but instead
+  defines a permission intended for use by the Network Stack and Captive Portal
+  Login modules. The system allows modules granted this permission to perform
+  related network configuration tasks on the device.
+</p>
+
+</body>
+</html>

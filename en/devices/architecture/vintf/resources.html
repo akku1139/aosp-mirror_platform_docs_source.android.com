@@ -32,7 +32,7 @@ and licensing.</p>
 API</a>).</p>
 
 <h2 id="related-tools">Tools</h2>
-<p>Handwriting manifest files and compatibility matrices can be tough. Use the
+<p>Handwriting manifest files and compatibility matrixes can be tough. Use the
 following tools to generate a boilerplate manifest/compatibility matrix to start
 from.</p>
 
@@ -62,7 +62,7 @@ required to fix inconsistencies between the device manifest and what
 <p><code>assemble_vintf</code> is a host-side tool that:</p>
 <ol>
 <li>Verifies a compatibility matrix or manifest file is valid.</li>
-<li>Injects variables to manifests/compatibility matrices available at build
+<li>Injects variables to manifests/compatibility matrixes available at build
 time and generates a new file that should be installed to the device.</li>
 <li>Checks compatibility between the generated file and its dual.</li>
 <li>If a manifest file is given, optionally generates a boilerplate
@@ -89,67 +89,159 @@ assemble_vintf -m --hals-only \
 </pre>
 <p>Note that all HALs are set to <code>optional="true"</code>.</p>
 
-<h4><strong>Example:</strong> Generate XML files from variables</h4>
+<h4><strong>Example:</strong> Generate device manifest XML files from variables</h4>
 
 <p>At build time, if the following variables are
 defined in <code>device/manufacturer/device_name/BoardConfig.mk</code>:</p>
 
 <pre class="prettyprint">
+# Vendor manifest is named DEVICE_MANIFEST_FILE for legacy reasons.
 DEVICE_MANIFEST_FILE := \
-    device/manufacturer/device_name/manifest.xml
-DEVICE_MATRIX_FILE := \
-    device/manufacturer/device_name/compatibility_matrix.xml
+    device/manufacturer/device_name/vendor_manifest.xml
+ODM_MANIFEST_FILES := \
+    device/manufacturer/device_name/odm_manifest.xml
+ODM_MANIFEST_SKUS := sku1 sku2
+ODM_MANIFEST_SKU1_FILES := \
+    device/manufacturer/device_name/odm_manifest_sku1.xml
+ODM_MANIFEST_SKU2_FILES := \
+    device/manufacturer/device_name/odm_manifest_sku2.xml
 </pre>
 
 <p>Then the following commands are executed (in the build system, modified to omit implementation
-details)  to generate all XML files:</p>
+details) to generate device manifest XML files:</p>
 
 <pre class="prettyprint">
-# device manifest; only when DEVICE_MANIFEST_FILE is set
-BOARD_SEPOLICY_VERS=10000.0 assemble_vintf \
+# vendor manifest; only when DEVICE_MANIFEST_FILE is set
+BOARD_SEPOLICY_VERS=$(BOARD_SEPOLICY_VERS) assemble_vintf \
     $(addprefix,-i ,$(DEVICE_MANIFEST_FILE)) \
     -o $(TARGET_OUT_VENDOR)/etc/vintf/manifest.xml
 
-# device compatibility matrix; only when DEVICE_MATRIX_FILE is set
+# ODM manifests
 assemble_vintf \
-    -i $(DEVICE_MATRIX_FILE) \
+    $(addprefix,-i ,$(ODM_MANIFEST_FILES)) \
+    -o $(TARGET_OUT_ODM)/etc/vintf/manifest.xml
+
+# ODM manifests for each sku
+assemble_vintf \
+    $(addprefix,-i ,$(ODM_MANIFEST_SKU1_FILES)) \
+    -o $(TARGET_OUT_ODM)/etc/vintf/manifest_sku1.xml
+assemble_vintf \
+    $(addprefix,-i ,$(ODM_MANIFEST_SKU2_FILES)) \
+    -o $(TARGET_OUT_ODM)/etc/vintf/manifest_sku2.xml
+</pre>
+
+<p>At runtime, the VINTF object combines vendor manifests and ODM manifests as
+the device manifest. See <a
+href="/devices/architecture/vintf/objects#device-manifest-file">Device
+manifest</a> for details.</p>
+
+<h4><strong>Example:</strong> Generate device compatibility matrix XML files from variables</h4>
+<p>At build time, if the following variables are
+defined in <code>device/manufacturer/device_name/BoardConfig.mk</code>:</p>
+<pre class="prettyprint">
+# vendor compatibility matrix is named DEVICE_MATRIX_FILE for legacy reasons.
+DEVICE_MATRIX_FILE := \
+    device/manufacturer/device_name/vendor_compatibility_matrix.xml \
+    device/manufacturer/device_name/vendor_compatibility_matrix_additional.xml
+</pre>
+<p>Then the following commands are executed (in the build system, modified to omit implementation
+details) to generate device compatibility matrix XML files:</p>
+
+<pre class="prettyprint">
+# vendor compatibility matrix; only when DEVICE_MATRIX_FILE is set
+assemble_vintf \
+    $(addprefix,-i ,$(DEVICE_MATRIX_FILE)) \
     -o $(TARGET_OUT_VENDOR)/etc/vintf/compatibility_matrix.xml
+</pre>
 
-# framework manifest
-assemble_vintf
-    $(addprefix,-i ,system/libhidl/manifest.xml $(DEVICE_FRAMEWORK_MANIFEST_FILE)) \
-    -o $(TARGET_OUT)/manifest.xml \
-    -c $(TARGET_OUT_VENDOR)/etc/vintf/compatibility_matrix.xml
+<p>At runtime, the VINTF object uses the vendor compatibility matrix as the
+device compatibility matrix. See <a
+href="/devices/architecture/vintf/comp-matrices#device-compatibility-matrix">Device
+compatibility matrix</a> for details.</p>
 
-# common framework compatibility matrix for each FCM version
+<h4><strong>Example:</strong> Generate framework manifest XML files from variables</h4>
+<p>The following variables may be defined in
+<code>device/manufacturer/device_name/BoardConfig.mk</code>:</p>
+<pre class="prettyprint">
+# Device-specific system manifest is named DEVICE_FRAMEWORK_MANIFEST_FILE for legacy reasons
+DEVICE_FRAMEWORK_MANIFEST_FILE := \
+    device/manufacturer/device_name/device_system_manifest.xml
+
+# Product manifest
+PRODUCT_MANIFEST_FILES := \
+    device/manufacturer/device_name/product_manifest.xml
+</pre>
+<p>The following commands are executed (in the build system, modified to omit implementation
+details) to generate framework manifest XML files:</p>
+
+<pre class="prettyprint">
+# system manifest
+assemble_vintf \
+    -i system/libhidl/vintfdata/manifest.xml \
+    $(addprefix,-i ,$(DEVICE_FRAMEWORK_MANIFEST_FILE)) \
+    -o $(TARGET_OUT)/etc/vintf/manifest.xml
+
+# product manifest
+assemble_vintf \
+    $(addprefix,-i ,$(PRODUCT_MANIFEST_FILES)) \
+    -o $(TARGET_OUT_PRODUCT)/etc/vintf/manifest.xml
+</pre>
+
+<p>At runtime, the VINTF object combines the system manifest, system manifest
+fragments, product manifest, and product manifest fragments as the framework manifest. See
+<a href="/devices/architecture/vintf/objects#framework-manifest-file">Framework
+manifest</a> for details.</p>
+
+<h4><strong>Example:</strong> Generate framework compatibility matrix XML files from variables</h4>
+
+<p>The following variables may be defined in
+<code>device/manufacturer/device_name/BoardConfig.mk</code>:</p>
+
+<pre class="prettyprint">
+DEVICE_PRODUCT_COMPATIBILITY_MATRIX_FILE := \
+    device/manufacturer/device_name/product_compatibility_matrix.xml
+# Device-specific system compatibility matrix is named
+# DEVICE_FRAMEWORK_COMPATIBILITY_MATRIX_FILE for legacy reasons.
+DEVICE_FRAMEWORK_COMPATIBILITY_MATRIX_FILE := \
+    device/manufacturer/device_name/device_system_compatibility_matrix.xml
+</pre>
+
+<p>The following commands are executed (in the build system, modified to omit implementation
+details) to generate framework compatibility matrix XML files:</p>
+
+<pre class="prettyprint">
+# common system compatibility matrix for each FCM version
 BOARD_SEPOLICY_VERS=$(BOARD_SEPOLICY_VERS) \
 POLICYVERS=$(POLICYVERS) \
 BOARD_AVB_VBMETA_VERSION=$(BOARD_AVB_VBMETA_VERSION)
 assemble_vintf \
-    $(addprefix,-i ,\
-        hardware/interfaces/compatibility_matrices/compatibility_matrix.empty.xml \
-        $(DEVICE_FRAMEWORK_COMPATIBILITY_MATRIX_FILE)) \
-    -o $(TARGET_OUT)/etc/vintf/compatibility_matrix.empty.xml
+    -i hardware/interfaces/compatibility_matrices/compatibility_matrix.empty.xml
+    $(addprefix,-i ,$(DEVICE_FRAMEWORK_COMPATIBILITY_MATRIX_FILE)) \
+    -o $(TARGET_OUT)/etc/vintf/compatibility_matrix.device.xml
 
-# framework compatibility matrices at each FCM version
+# framework compatibility matrixes at each FCM version
 assemble_vintf
     -i hardware/interfaces/compatibility_matrices/compatibility_matrix.{level}.xml \
     -o $(TARGET_OUT)/etc/vintf/compatibility_matrix.{level}.xml \
     --kernel=...
 
-# Final framework compatibility matrix to check with device manifest.
-# Each input matrix should have a unique "level" attribute.
-PRODUCT_ENFORCE_VINTF_MANIFEST=$(PRODUCT_ENFORCE_VINTF_MANIFEST) \
+# product framework compatibility matrix; only when
+# DEVICE_PRODUCT_COMPATIBILITY_MATRIX_FILE is set
 assemble_vintf
-    -i $(TARGET_OUT)/etc/vintf/compatibility_matrix.*.xml
-    -o /tmp/compatibility_matrix.xml
-    -c $(TARGET_OUT_VENDOR)/manifest.xml
+    -i $(DEVICE_PRODUCT_COMPATIBILITY_MATRIX_FILE)
+    -o $(TARGET_OUT_PRODUCT)/etc/vintf/compatibility_matrix.xml
 </pre>
 
-<h4 id=manifest-fragments><strong>Example:</strong>
-Generate device manifest from fragments</h4>
+<p>At runtime, the VINTF object combines a subset of system compatibility
+matrixes and product compatibility matrixes as the framework compatibility
+matrix. See
+<a href="/devices/architecture/vintf/comp-matrices#framework-compatibility-matrix">Framework
+compatibility matrix</a> for details.</p>
 
-<p>Multiple device manifest fragments can be bundled at build time. For example:</p>
+<h4 id=manifest-fragments><strong>Example:</strong>
+Generate the vendor manifest from fragments</h4>
+
+<p>Multiple vendor manifest fragments can be bundled at build time. For example:</p>
 
 <pre class="prettyprint">
 &lt;!-- device/manufacturer/device_name/manifest_common.xml -->
@@ -177,9 +269,10 @@ ifdef BOARD_ENABLE_IR
 endif
 </pre>
 
-<p>Then, <code>assemble_vintf</code> adds Ir HAL to device manifest if <code>BOARD_ENABLE_IR</code>
-is defined, and omits it if <code>BOARD_ENABLE_IR</code> is not defined. The following commands
-(modified to omit implementation details) are executed to generate the device manifest:</p>
+<p>Then, <code>assemble_vintf</code> adds the IR HAL to the vendor manifest if
+<code>BOARD_ENABLE_IR</code> is defined, and omits it if
+<code>BOARD_ENABLE_IR</code> is not defined. The following commands
+(modified to omit implementation details) are executed to generate the vendor manifest:</p>
 
 <pre class="prettyprint">
 # if BOARD_ENABLE_IR is defined

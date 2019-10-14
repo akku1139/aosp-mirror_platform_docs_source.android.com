@@ -1,0 +1,134 @@
+<html devsite><head>
+
+  <meta name="book_path" value="/_book.yaml"/>
+
+  <meta name="project_path" value="/_project.yaml"/>
+</head>
+<body>
+<!--
+  Copyright 2019 The Android Open Source Project
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+<h1 id="set_up_suite" class="page-title">设置套件</h1>
+
+<p>Tradefed 中的套件是指在驱动整体执行的通用测试运行程序下运行多项测试的设置。</p>
+
+<p>在 Tradefed 中，套件通过 <a href="https://android.googlesource.com/platform/tools/tradefederation/+/refs/heads/master/src/com/android/tradefed/testtype/suite/ITestSuite.java">ITestSuite</a> 类驱动，该类允许添加和移除测试，不受测试运行方式的限制。</p>
+
+<h2 id="definitions">定义</h2>
+
+<ul>
+<li>套件：一组测试模块，配置为在类似的顶级设置下运行，以在单次调用下报告其结果。<em></em><em></em></li>
+<li>顶级设置：在运行任何测试模块之前应用于设备的设置。</li>
+<li>主要配置：套件级 Tradefed XML 配置，描述应运行的模块以及应使用的顶级设置。<em></em></li>
+<li>模块级设置：在运行相应模块之前应用于设备的设置。这些也称为“模块专用设置”。<em></em></li>
+<li>模块配置：是指 <code>AndroidTest.xml</code> Tradefed XML 配置，描述相应模块以及应执行的模块级设置。<em></em></li>
+<li><p>模块：测试单元，由设置步骤（模块级设置）、测试执行步骤和拆解步骤组成。<em></em></p></li>
+<li><p>模块内重试：由自动化测试框架在模块内完成的自动重试。</p></li>
+<li><p>套件重试：完全重新运行套件以前失败的测试。</p></li>
+</ul>
+
+<h2 id="itestsuite_structure">ITestSuite 结构</h2>
+
+<p>Tradefed 中的 <a href="https://android.googlesource.com/platform/tools/tradefederation/+/refs/heads/master/src/com/android/tradefed/testtype/suite/ITestSuite.java">ITestSuite</a> 是指驱动套件执行的通用基类。它由所有主要测试套件（CTS、GTS 等）共享，并确保在所有套件中获得一致的执行体验。</p>
+
+<p>我们有时会将 ITestSuite 称为“套件运行程序”。<em></em><em></em></p>
+
+<p>套件运行程序按照以下步骤来执行：</p>
+
+<ol>
+<li>加载模块的配置并确定应运行的集。</li>
+<li>运行每个模块：
+a. 运行模块级设置
+b. 运行模块测试
+c. 运行模块级拆解</li>
+<li>报告结果</li>
+</ol>
+
+<h2 id="top-level_setup">顶级设置</h2>
+
+<p>从 Tradefed 的角度来看，ITestSuite 只不过是另一个测试而已。它比较复杂，但仍只是一个测试，就像其他任何 <code>IRemoteTest</code> 一样。因此，在 Tradefed 配置中指定套件运行程序时，Tradefed 将遵循通常的配置模式：运行 <code>build_provider</code>、<code>target_preparer</code>、测试（在这种情况下，为我们的套件）和 <code>target_cleaner</code>。</p>
+
+<p>包含 ITestSuite 的 Tradefed 配置中的此序列就是顶级设置。</p>
+
+<p>示例：</p>
+<pre class="prettyprint lang-xml"><code>&lt;configuration description="Common config for Compatibility suites"&gt;
+
+    &lt;build_provider class="com.android.compatibility.common.tradefed.build.CompatibilityBuildProvider" /&gt;
+    &lt;!-- Setup applied before the suite: so everything running in the suite will
+    have this setup beforehand --&gt;
+    &lt;target_preparer class="com.android.tradefed.targetprep.RunCommandTargetPreparer"&gt;
+        &lt;option name="run-command" value="settings put global package_verifier_enable 0" /&gt;
+        &lt;option name="teardown-command" value="settings put global package_verifier_enable 1"/&gt;
+    &lt;/target_preparer&gt;
+
+    &lt;!-- Our ITestSuite implementation --&gt;
+    &lt;test class="com.android.compatibility.common.tradefed.testtype.suite.CompatibilityTestSuite" /&gt;
+
+    &lt;result_reporter class="com.android.compatibility.common.tradefed.result.ConsoleReporter" /&gt;
+&lt;/configuration&gt;
+</code></pre>
+<h2 id="module_metadata">模块元数据</h2>
+
+<p>我们将在测试模块 <code>AndroidTest.xml</code> 中指定的额外信息称为“模块元数据”。<em></em>利用这些元数据，您可以指定有关模块的附加信息，还可以对模块进行过滤。</p>
+
+<p>元数据示例：</p>
+<pre class="prettyprint lang-xml"><code>&lt;option name="config-descriptor:metadata" key="component" value="framework" /&gt;
+&lt;option name="config-descriptor:metadata" key="parameter" value="instant_app" /&gt;
+</code></pre>
+<p>元数据的过滤器示例：</p>
+<pre class="prettyprint lang-shell"><code>--module-metadata-include-filter component=framework
+</code></pre>
+<p>以上代码将运行包含框架作为组件元数据的所有模块。<em></em><em></em></p>
+
+<p>完整的 <code>AndroidTest.xml</code> 示例：</p>
+<pre class="prettyprint lang-xml"><code>&lt;configuration description="Config for CTS Gesture test cases"&gt;
+    &lt;option name="test-suite-tag" value="cts" /&gt;
+    &lt;!-- Metadata --&gt;
+    &lt;option name="config-descriptor:metadata" key="component" value="framework" /&gt;
+    &lt;option name="config-descriptor:metadata" key="parameter" value="instant_app" /&gt;
+    &lt;!-- End: metadata --&gt;
+    &lt;target_preparer class="com.android.tradefed.targetprep.suite.SuiteApkInstaller"&gt;
+        &lt;option name="cleanup-apks" value="true" /&gt;
+        &lt;option name="test-file-name" value="CtsGestureTestCases.apk" /&gt;
+    &lt;/target_preparer&gt;
+    &lt;test class="com.android.tradefed.testtype.AndroidJUnitTest" &gt;
+        &lt;option name="package" value="android.gesture.cts" /&gt;
+        &lt;option name="runtime-hint" value="10m50s" /&gt;
+    &lt;/test&gt;
+&lt;/configuration&gt;
+</code></pre>
+<h2 id="parameterized_module">参数化模块</h2>
+
+<p>一种特殊的元数据类型是 <code>parameter</code>。</p>
+<pre class="prettyprint lang-xml"><code>&lt;option name="config-descriptor:metadata" key="parameter" value="instant_app" /&gt;
+</code></pre>
+<p>此元数据指定相应模块需要在不同的模式下执行，例如作为免安装应用，而不是标准应用模式。<em></em></p>
+
+<p>所有可能的模式或参数都由 <a href="https://android.googlesource.com/platform/tools/tradefederation/+/refs/heads/master/src/com/android/tradefed/testtype/suite/params/ModuleParameters.java">ModuleParameters</a> 进行描述，并在 <a href="https://android.googlesource.com/platform/tools/tradefederation/+/refs/heads/master/src/com/android/tradefed/testtype/suite/params/ModuleParametersHelper.java">ModuleParametersHelper</a> 中具有关联的处理程序，允许您更改模块设置以在特定模式下执行。</p>
+
+<p>例如，免安装应用模式将强制在免安装模式下安装 APK。</p>
+
+<p>为了实现参数化，命令行需要通过以下命令启用它：</p>
+<pre class="prettyprint lang-shell"><code>--enable-parameterized-modules
+</code></pre>
+<p>也可以通过以下命令运行单个给定模式：</p>
+<pre class="prettyprint lang-shell"><code>--enable-parameterized-modules --module-parameter &lt;Mode&gt;
+
+--enable-parameterized-modules --module-parameter INSTANT_APP
+</code></pre>
+<p>当模块的参数化版本运行时，它将在参数化模块名称下报告其结果，例如 CtsGestureTestCases[instant] 与 base CtsGestureTestCases。</p>
+
+</body></html>

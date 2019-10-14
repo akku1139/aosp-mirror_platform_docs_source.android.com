@@ -1,0 +1,52 @@
+<html devsite><head>
+
+  <meta name="book_path" value="/_book.yaml"/>
+
+  <meta name="project_path" value="/_project.yaml"/>
+</head>
+<body>
+
+<!--
+  Copyright 2019 The Android Open Source Project
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+<h1 id="wi-fi_preferred_network_offload_scanning" class="page-title">WLAN 首选分流网络扫描</h1>
+
+<p>WLAN 首选分流网络 (PNO) 扫描是在设备与 WLAN 断开连接且屏幕关闭后定期发生的低电耗 WLAN 扫描。PNO 扫描用于查找并连接到已保存的网络。框架使用 <code>NL80211_CMD_START_SCHED_SCAN</code> 命令调度这些扫描。有关详情，请参阅 <a href="https://git.kernel.org/pub/scm/linux/kernel/git/linville/wireless.git/tree/include/uapi/linux/nl80211.h" class="external">nl80211.h</a>。</p>
+
+<h2 id="optimizing_power_usage_with_device_mobility_information">利用设备移动信息减少耗电量</h2>
+
+<p>在搭载 Android 9 或更低版本的设备上，当设备与 WLAN 断开连接且屏幕关闭后，PNO 扫描将以 20 秒为间隔执行前三次扫描，并以 60 秒为间隔执行所有后续扫描。找到已保存的网络或屏幕开启时，PNO 扫描会停止。</p>
+
+<p>Android 10 在 <code>WifiManager</code> 中引入了一个名为 <a href="https://android.googlesource.com/platform/frameworks/base/+/refs/heads/master/wifi/java/android/net/wifi/WifiManager.java#4656" class="external"><code>setDeviceMobilityState()</code></a> 的可选 API 方法，该方法可根据设备的移动状态增加 PNO 扫描的间隔时长，从而减少耗电量。</p>
+
+<p>可能显示的移动状态如下：</p>
+
+<ul>
+<li><a href="https://android.googlesource.com/platform/frameworks/base/+/refs/heads/master/wifi/java/android/net/wifi/WifiManager.java#4612" class="external"><code>DEVICE_MOBILITY_STATE_UNKNOWN</code></a>：移动性未知</li>
+<li><a href="https://android.googlesource.com/platform/frameworks/base/+/refs/heads/master/wifi/java/android/net/wifi/WifiManager.java#4623" class="external"><code>DEVICE_MOBILITY_STATE_HIGH_MVMT</code></a>：在自行车或机动车上</li>
+<li><a href="https://android.googlesource.com/platform/frameworks/base/+/refs/heads/master/wifi/java/android/net/wifi/WifiManager.java#4634" class="external"><code>DEVICE_MOBILITY_STATE_LOW_MVMT</code></a>：步行或跑步</li>
+<li><a href="https://android.googlesource.com/platform/frameworks/base/+/refs/heads/master/wifi/java/android/net/wifi/WifiManager.java#4644" class="external"><code>DEVICE_MOBILITY_STATE_STATIONARY</code></a>：没有移动</li>
+</ul>
+
+<p>如果设备处于静止状态，Android 框架会将 PNO 扫描的间隔时长从 60 秒增加到 180 秒，以减少耗电量。这种优化基于以下假设：在设备没有移动时，设备不可能通过 PNO 扫描找到任何新网络。</p>
+
+<p>如果设备处于任何其他移动状态或者该方法未经调用，则设备将采用默认的 PNO 扫描行为。</p>
+
+<h3 id="implementation">实现</h3>
+
+<p>要在搭载 Android 10 或更高版本的设备上实现此电耗优化功能，请推导出设备移动信息并从自定义系统应用中调用 <code>setDeviceMobilityState()</code> 方法。</p>
+
+</body></html>

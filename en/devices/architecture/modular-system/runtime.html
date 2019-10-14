@@ -1,0 +1,438 @@
+<html devsite>
+  <head>
+    <title>Runtime</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+    {% include "_versions.html" %}
+  <body>
+  <!--
+      Copyright 2019 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>
+  The Runtime module (<code>com.android.runtime.release.apex</code>) is an APEX
+  module for native and managed Android runtimes. The module includes the
+  following components:
+</p>
+
+<ul>
+  <li>ART</li>
+  <li>Bionic</li>
+  <li>Managed Core Library (new in Android {{ androidQVersionNumber }})</li>
+  <li>ICU libraries</li>
+  <li><code>libnativebridge</code></li>
+  <li><code>libnativehelper</code></li>
+  <li><code>libnativeloader</code></li>
+</ul>
+
+<p>
+  The Runtime module is generated when building Android and contains the build
+  artifacts of its constituent projects. It's closely coupled with both the
+  <a href="/devices/architecture/modular-system/conscrypt">Conscrypt module</a>
+  (<code>com.android.conscrypt.apex</code>) and the
+  <a href="/devices/architecture/modular-system/timezone">Time Zone Data
+  module</a> (<code>com.android.tzdata.apex</code>), also new in Android
+  {{ androidQVersionNumber }}.
+</p>
+
+<aside class="note">
+  <strong>Note:</strong> The Runtime module isn't updatable in Android
+  {{ androidQVersionNumber }}.
+</aside>
+
+<h2 id="android-runtime-art-changes">Android Runtime (ART) changes</h2>
+
+<p>
+  In Android {{ androidQVersionNumber }}, the ART build system creates the
+  Runtime module in two variants: <em>release</em> and <em>debug</em> (contains
+  additional diagnostic and debugging tools). The release version is installed
+  on <code>user</code> builds and the debug version is installed on
+  <code>userdebug</code> and <code>eng</code> builds. When a device boots,
+  <code>apexd</code> mounts the Runtime module under
+  <code>/apex/com.android.runtime</code>.
+</p>
+
+<p>
+  In the module, the boot class path is split between classes such as Managed
+  Core Library, classes in other modules (such as Conscrypt and Media), and
+  classes in the system partition (such as <code>framework.jar</code>). If a
+  module is updated, dex2oat JIT compiles boot classes in modules.
+</p>
+
+<p>
+  Android {{ androidQVersionNumber }} includes the following API changes:
+</p>
+
+<ul>
+  <li>A new API for DEX file support provides a stable interface between system
+  code (such as the stack unwinder) and ART.</li>
+  <li>A new API is used as an ART-specific platform abstraction layer (PAL) with
+  the system. The system element (<code>libartpalette-system.so</code>) exposes
+  system functionality depended on by ART and is accessible through a client
+  library (<code>libartpalette.so</code>), that loads the system library
+  installed on device.</li>
+</ul>
+
+<p>
+  Android {{ androidQVersionNumber }} also refactors paths for some ART
+  binaries, moving the following binaries from <code>/system/bin</code> to the
+  Runtime module: <code>dalvikvm</code>, <code>dalvikvm32</code>,
+  <code>dalvikvm64</code>, <code>dex2oat</code>, <code>dexdiag</code>,
+  <code>dexdump</code>, <code>dexlist</code>, <code>dexoptanalyzer</code>,
+  <code>oatdump</code>, and <code>profman</code>. For compatibility, the
+  refactor includes symlinks in <code>/system/bin</code>.
+</p>
+
+<h2 id="bionic-changes">Bionic changes</h2>
+
+<p>
+  <code>libc</code>'s <code>tzcode</code> uses time zone data provided by the
+  Runtime module (<code>/apex/com.android.runtime/etc/tz/</code>) and the Time
+  Zone Data module (<code>/apex/com.android.tzdata/etc/tz/</code>).
+  <code>tzcode</code> prioritizes data from
+  <a href="/devices/tech/config/timezone-rules">APK-based time zone updates</a>
+  over APEX-based time zone updates (provided by the Time Zone Data module) and
+  falls back to <code>/system</code> data.
+</p>
+
+<p>
+  <code>libc</code> uses a new library (<code>libandroidicu</code>) instead of
+  <code>libicuuc</code>/<code>libicui18n</code>. For details, see
+  <a href="#managed-core-library">Managed Core Library</a>.
+</p>
+
+<p>
+  Finally, Bionic-shared libraries and dynamic linker paths are now symlinks
+  (applies to 64-bit variants as well). Specifically:
+</p>
+<ul>
+  <li><code>/system/lib/libc.so</code> -&gt;
+  <code>/apex/com.android.runtime/lib/bionic/libc.so</code></li>
+  <li><code>/system/lib/libm.so</code> -&gt;
+  <code>/apex/com.android.runtime/lib/bionic/libm.so</code></li>
+  <li><code>/system/lib/libdl.so</code> -&gt;
+  <code>/apex/com.android.runtime/lib/bionic/libdl.so</code></li>
+  <li><code>/system/bin/linker</code> -&gt;
+  <code>/apex/com.android.runtime/bin/linker</code></li>
+</ul>
+
+<h2 id="boot-sequence-changes">Boot sequence changes</h2>
+
+<p>
+  To support the Runtime module, Android {{ androidQVersionNumber }} updates the
+  boot sequence to the following:
+</p>
+
+<ol>
+  <li><code>init</code> prepares the bootstrap and default
+  <a href="http://man7.org/linux/man-pages/man7/mount_namespaces.7.html"
+  class="external">mount namespaces</a>. A <code>tmpfs</code> is mounted on
+  <code>/apex</code> and the propagation type of the mount point is set to
+  <code>private</code>.</li>
+  <li><code>apexd</code> starts in bootstrap mode, before any other process. It
+  activates the APEX files in <code>/system/apex</code> and mounts them in the
+  bootstrap mount namespace.</li>
+  <li>Other pre-<code>apexd</code> processes start. These processes are in the
+  bootstrap mount namespace and are provided with libraries from system APEX
+  files.</li>
+  <li><code>/data</code> mounts. <code>init</code> switches into the default
+  mount namespace and starts <code>apexd</code> as a daemon.</li>
+  <li><code>apexd</code> scans both /<code>data/apex</code> and
+  <code>/system/apex</code> and activates the most recent APEX files in those
+  directories. APEX files activated in this phase are mounted in the default
+  namespaces only and aren't visible to the pre-<code>apexd</code> processes.
+  </li>
+</ol>
+
+<h2 id="managed-core-library">Managed Core Library</h2>
+
+<p>
+  The Managed Core Library is a collection of low-level, updatable, managed
+  (<code>dex</code> executed by Android Runtime) code that was previously known
+  as <em>libcore</em>. In Android {{ androidQVersionNumber }}, the Managed Core
+  Library includes multiple Git projects (in addition to
+  <code>platform/libcore/</code>), and the new term refers to the collection
+  of code.
+</p>
+
+<p>
+  The Managed Core Library is provided by the Runtime, Time Zone Data, and
+  Conscrypt modules and relies on native libraries present in the Runtime
+  module, such as <code>libjavacore</code> and <code>libandroidicu</code>.
+  Collected code comes from multiple Git projects such as <code>libcore</code>,
+  <code>apache-xml</code>, <code>boringssl</code>, <code>bouncycastle</code>,
+  <code>conscrypt</code>, <code>expat</code>, <code>fdlibm</code>,
+  <code>icu</code>, <code>okhttp</code>, <code>ziparchive</code>, and
+  <code>zlib</code>. The library is split between multiple <code>.jar</code>
+  files on the boot classpath (for example <code>core-oj.jar</code>,
+  <code>core-libart.jar</code>, <code>conscrypt.jar</code>,
+  <code>okhttp.jar</code>, <code>bouncycastle.jar</code>, and
+  <code>apache-xml.jar</code>); however, it doesn't include
+  <code>framework.jar</code> or <code>ext.jar</code>.
+</p>
+
+<h3 id="component-repackaging">Component repackaging</h3>
+
+<p>
+  Android {{ androidQVersionNumber }} repackages several components
+  (<code>bouncycastle/</code>, <code>conscrypt/</code>, <code>okhttp/</code>)
+  that were previously packaged under <code>android.*</code> and
+  <code>com.android.*</code> using bytecode manipulation. These components are
+  repackaged using source code transformation to enable Java annotations to be
+  used for API metadata.
+</p>
+
+<aside class="note">
+  <strong>Note:</strong> <code>icu/</code> was also repackaged and transformed
+  in a previous Android release.
+</aside>
+
+<h3 id="core-platform-api">Core Platform API</h3>
+
+<p>
+  The Core Platform API provides a stable, managed-code API for use by the
+  Android framework, enabling the Managed Core Library to be updated by ensuring
+  that all framework dependencies are clearly understood. The Core Platform API:
+</p>
+
+<ul>
+  <li>Indicates dependencies in addition to the public SDK APIs. For API
+  content, refer to <code>libcore/mmodules/core_platform_api/</code>.</li>
+  <li>Explicitly annotates managed code with
+  <code>@libcore.api.CorePlatformApi</code>. For code in
+  l<code>ibcore/ojluni/src/</code>, refer to the annotations in
+  <code>libcore/ojluni/annotations/mmodule/</code>; for all other projects,
+  refer to the main source files.</li>
+</ul>
+
+<p>
+  The build system defaults to using the Core Platform API when building Java
+  source platform targets (that is, in the absence of
+  <code>"sdk_version:"</code> in <code>.bp</code> files or
+  <code>"LOCAL_SDK_VERSION="</code> in <code>.mk</code> files). This default
+  ensures that Android framework code is restricted to using public APIs and
+  the Core Platform API only (no implementation classes). Other
+  <code>sdk_version</code> values such as <code>"core_current"</code> and
+  <code>"current"</code> work as they always have (they allow use of public SDK
+  APIs only). The build system also reports changes to the Core Platform API
+  surface and prevents targets (outside of a small set of exceptions) from
+  depending on Managed Core Library internals.
+</p>
+
+<p>
+  The Runtime module performs access checks for fields and methods covered by
+  the Core Platform API. The checks are performed when platform code accesses
+  methods in the Core Platform API. The system property
+  <code>persist.debug.dalvik.vm.core_platform_api_policy</code> controls the
+  policy around these checks. Valid policy values are <code>enabled</code>,
+  <code>disabled</code>, and <code>just-warn</code>. For debug and eng builds,
+  the standard policy is <code>just-warn</code>, which logs a warning when a
+  policy violation is detected. For user builds, the default policy is
+  <code>disabled</code> and no action is taken. The Runtime module also performs
+  Core Platform API checks when native code resolves fields and methods through
+  the Java Native Interface (JNI).
+</p>
+
+<p>
+  Android {{ androidQVersionNumber }} also includes numerous changes to
+  simplify the APIs, runtime dependencies, and build-time dependencies between
+  the Android framework and Managed Core Library.
+</p>
+
+<p>
+  Android {{ androidQVersionNumber }} repackages the <code>org.kxml2</code>
+  parser under <code>com.android.org.kxml2</code>.
+</p>
+
+<h3 id="native-libraries">Native libraries</h3>
+
+<p>
+  Android {{ androidQVersionNumber }} refactors native libraries that support
+  the Managed Core Library. Several dynamically linked libraries (for example,
+  <code>libcrypto</code>, <code>libexpat</code>, and <code>zlib</code>) that
+  were previously shared with other parts of the platform are now duplicated so
+  that the Runtime module has its own copies loaded into the runtime linker
+  namespace. Dynamically linked native libraries provided by the Runtime module
+  are in <code>/apex/com.android.runtime/{lib,lib64}</code>.
+</p>
+
+<h3 id="icu-libraries">ICU libraries</h3>
+
+<p>
+  The Runtime module includes ICU libraries (ICU4C and ICU4J) and associated
+  data.
+</p>
+
+<p>
+  Android {{ androidQVersionNumber }} includes <code>libandroidicu</code>, a new
+  dynamic library that makes a subset of ICU4C functions available to framework
+  code. The linker symbols for <code>libandroidicu</code> are stable across ICU
+  releases (the symbols end with <code>_android</code> rather than
+  <code>_icu-version-number</code> used in <code>libicuuc</code> and
+  <code>libicui18n</code>). However, for app compatibility,
+  <code>libicuuc</code> and <code>libicui18n</code> symbols remain available.
+  Also for app compatibility, the linker redirects absolute paths to ICU
+  libraries in dlopen() calls, i.e. <code>dlopen("/system/lib/libicuuc.so", ...)</code>
+  and <code>dlopen("/system/lib/libicui18n.so", ...)</code>, redirect to the
+  corresponding libraries in <code>/apex/com.android.runtime/lib/</code> for
+  apps with <code>targetSdkVersion < 29</code>.
+</p>
+
+<p>
+  At runtime, the ICU data file installs to
+  <code>/apex/com.android.runtime/etc/icu/</code>. For app compatibility,
+  Android {{ androidQVersionNumber }} includes a symlink from the previous ICU
+  data file location (<code>/system/usr/icu/</code>) to
+  <code>/apex/com.android.runtime/etc/icu</code>.
+</p>
+
+<h3 id="conscrypt-interactions">Conscrypt interactions</h3>
+
+<p>
+  Android {{ androidQVersionNumber }} moves Conscrypt, which is logically part
+  of the Managed Core Library, to its own independently
+  <a href="/devices/architecture/modular-system/conscrypt">updatable APEX
+  module</a>. Between the Conscrypt and Runtime modules, a new bi-directional
+  API surface indicates dependencies in addition to the public SDK APIs (for
+  details, refer to <code>libcore/mmodules/intracoreapi/</code>). API elements
+  are explicitly annotated with <code>@libcore.api.IntraCoreApi</code>.
+</p>
+
+<p>
+  The build system verifies that Conscrypt code is restricted to public APIs and
+  the intra-core API. Other Managed Core Library dependencies on Conscrypt are
+  reflection based; the build system records such dependencies where possible
+  and reports all changes to the API surface.
+</p>
+
+<h3 id="time-zone-data-interactions">Time Zone Data interactions</h3>
+
+<p>
+  In Android {{ androidQVersionNumber }}, architecture libcore, Runtime libcore,
+  and ICU4J/ICU4C use time zone data provided by the Runtime module
+  (<code>/apex/com.android.runtime/etc/tz/</code>) and the Time Zone Data module
+  (<code>/apex/com.android.tzdata/etc/tz/</code>). These libraries:
+</p>
+
+<ul>
+  <li>Fall back to <code>/system</code> data.</li>
+  <li>Prioritize data from
+  <a href="/devices/tech/config/timezone-rules">APK-based time zone updates</a>
+  over APEX-based time zone updates (provided by the
+  <a href="/devices/architecture/modular-system/timezone">Time Zone Data
+  module</a>).</li>
+</ul>
+
+<h3 id="miscellaneous-changes">Miscellaneous changes</h3>
+
+<p>
+  Android {{ androidQVersionNumber }} moves the
+  <code>AsynchronousCloseMonitor</code> API from <code>libnativehelper.so</code>
+  to <code>libandroidio.so</code>. The API is exposed by
+  <code>AsynchronousCloseMonitor.h</code>.
+</p>
+
+<h2 id="libnativebridge-changes">libnativebridge changes</h2>
+
+<p>
+  Android {{ androidQVersionNumber }} moves the <code>libnativebridge</code>
+  library to the Runtime module as this library is tightly coupled with
+  <code>libnativeloader</code> and the Bionic C libraries that are part of the
+  Runtime module.
+</p>
+
+<h2 id="libnativehelper-changes">libnativehelper changes</h2>
+
+<p>
+  In Android {{ androidQVersionNumber }}, the Runtime module makes
+  <code>libnativehelper</code> available to system and frameworks code, while
+  code outside of the Runtime module links against a stubs API (C only) for
+  <code>libnativehelper</code>. The <code>libnativehelper</code> library
+  includes:
+</p>
+
+<ul>
+  <li>A reduced set of cached JNI classes, methods, and fields.</li>
+  <li>Improved JNI macros in <code>platform_include/jni_macros.h</code>.</li>
+  <li>New JNI helper methods for accessing the internals of
+  <code>java.nio.Buffer</code> classes from native code (see methods starting
+  with <code>jniGetNio</code> in
+  <code>libnativehelper/include/nativehelper/JNIHelp.h</code>). These methods
+  are used by the framework code.</li>
+</ul>
+
+<h2 id="libnativeloader-changes">libnativeloader changes</h2>
+
+<p>
+  In Android {{ androidQVersionNumber }}, the Runtime module includes the
+  <code>libnativeloader</code> library, which is responsible for creating linker
+  namespaces for Java class loaders. The linker namespaces apply to the native
+  libraries loaded by Android apps written in managed code. The library
+  is closely coupled to the Bionic linker, which is also in the module.
+</p>
+
+<h2 id="libpac-changes">libpac changes</h2>
+
+<p>
+  Android {{ androidQVersionNumber }} moves <code>libpac</code>, which provides
+  a C API for PacProcessor, into the Runtime module. The <code>libpac</code>
+  library contains an entire V8 JavaScript engine and should not be used except
+  by PacProcessor (an independent package and process).
+</p>
+
+<h2 id="linker-configuration-changes">Linker configuration changes</h2>
+
+<p>
+  In Android {{ androidQVersionNumber }},
+  <a href="/devices/architecture/vndk/linker-namespace">linker namespaces</a>
+  are used to separate internal dynamic native library dependencies in the
+  Runtime module from the platform and other APEX modules. The
+  <code>runtime</code> linker namespace is set up for Runtime module libraries,
+  with appropriate links to and from other namespaces for external dependencies.
+</p>
+
+<p>
+  The linker configuration resides in <code>/system/etc/ld.config.txt</code> for
+  binaries in <code>/vendor</code> and <code>/system</code>, and in
+  <code>/apex/com.android.runtime/etc/ld.config.txt</code> for binaries in the
+  Runtime module itself (<code>/apex/com.android.runtime/bin</code>).
+</p>
+
+<h2 id="systemserver-framework-changes">SystemServer and framework changes</h2>
+
+<p>
+  In Android {{ androidQVersionNumber }}, the SystemServer hosts a new
+  RuntimeService for reporting information from the Runtime module. To view this
+  information, use the following ADB command:
+</p>
+
+<pre class="prettyprint">adb shell dumpsys runtimeinfo</pre>
+
+<p>
+  The information managed by the RuntimeService is extensible. For service
+  source code, refer to
+  <code>frameworks/base/services/core/java/com/android/server/RuntimeService.java</code>;
+  for example client code, refer to
+  <code>libcore/luni/src/main/java/libcore/util/CoreLibraryDebug.java</code>.
+</p>
+
+<p>
+  Android {{ androidQVersionNumber }} also updates the over-the-air (OTA) update
+  process to use <code>dex2oat</code> and other tools from the Runtime module.
+</p>
+
+</body>
+</html>

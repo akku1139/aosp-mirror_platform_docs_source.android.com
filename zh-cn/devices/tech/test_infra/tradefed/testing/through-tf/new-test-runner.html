@@ -1,0 +1,127 @@
+<html devsite><head>
+
+  <meta name="book_path" value="/_book.yaml"/>
+
+  <meta name="project_path" value="/_project.yaml"/>
+</head>
+<body>
+
+<!--
+  Copyright 2019 The Android Open Source Project
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+<h1 id="write_a_tradefed_test_runner" class="page-title">编写 Tradefed 测试运行程序</h1>
+
+<p>本页介绍如何在 Tradefed 中编写新的测试运行程序。</p>
+
+<h2 id="background">背景</h2>
+
+<p>如果您想知道 Tradefed 架构中测试运行程序的位置，请参阅<a href="/devices/tech/test_infra/tradefed/architecture/advanced/test-runner">测试运行程序的结构</a>。</p>
+
+<p>这不是编写新测试运行程序的先决条件；可以单独编写测试运行程序。</p>
+
+<h2 id="bare_minimum_implementing_the_interface">最低要求：实现接口</h2>
+
+<p>要成为 Tradefed 测试运行程序，需满足的最低要求是实现 <a href="https://android.googlesource.com/platform/tools/tradefederation/+/refs/heads/master/src/com/android/tradefed/testtype/IRemoteTest.java">IRemoteTest 接口</a>，更具体地说，也就是 <code>run(ITestInvocationListener listener)</code> 方法。</p>
+
+<p>这是使用测试运行程序时自动化测试框架所调用的方法，类似于 Java Runnable。</p>
+
+<p>该方法的每一部分都被视为测试运行程序执行的一部分。</p>
+
+<h3 id="reporting_results_from_the_test_runner">报告测试运行程序的结果</h3>
+
+<p>通过基接口中的 <code>run</code> 方法可以访问 <code>ITestInvocationListener</code> 类型的监听器对象。此对象是将测试运行程序的结构化结果报告给自动化测试框架的关键。</p>
+
+<p>通过报告结构化结果，测试运行程序具有以下属性：</p>
+
+<ul>
+<li>报告运行的所有测试（给出正确的列表）、它们花费了多长时间，以及它们分别是通过、失败，还是处于其他某种状态。</li>
+<li>报告与测试关联的指标（如果适用），例如安装时间指标。</li>
+<li>适合大多数基础架构工具，例如显示结果和指标等。</li>
+<li>通常更容易调试，因为有更精细的执行跟踪记录。</li>
+</ul>
+
+<p>不过，报告结构化结果是可选操作；测试运行程序可能只是想将整个运行的状态评估为 PASSED 或 FAILED，而不需要关于实际执行的任何细节。</p>
+
+<p>注意：紧跟在事件序列后面实现运行程序比较困难，但鉴于上面列出的好处，我们建议您这样做。</p>
+
+<p>可以对监听器调用以下事件，以通知自动化测试框架当前的执行进度：</p>
+
+<ul>
+<li>testRunStarted：通知自动化测试框架联系在一起的一组测试用例已开始。
+<ul>
+<li>testStarted：通知自动化测试框架起始测试用例已开始。</li>
+<li>testFailed/testIgnored：通知自动化测试框架正在执行的测试用例的状态发生了变化。如果某个测试用例的状态未发生任何变化，则视为通过。</li>
+<li>testEnded：通知自动化测试框架相应测试用例已结束。</li>
+</ul></li>
+<li>testRunFailed：通知自动化测试框架执行相应的一组测试用例的总体状态为失败。测试运行的状态可以是通过，也可以是失败，<strong>与测试用例结果无关</strong>，具体取决于预期的执行结果。<em></em><em></em><em></em>例如，运行多个测试用例的二进制文件可以报告所有通过的测试用例，但有一个错误退出代码（出于任何原因：泄露文件等）。<em></em></li>
+<li>testRunEnded：通知自动化测试框架相应的一组测试用例已结束。</li>
+</ul>
+
+<p>维护和确保回调的正确顺序由测试运行程序实现者负责，例如确保在出现异常时使用 <code>finally</code> 子句来调用 <code>testRunEnded</code>。</p>
+
+<p>测试用例回调（<code>testStarted</code>、<code>testEnded</code> 等）是可选的。测试运行可能会在没有任何测试用例的情况下发生。</p>
+
+<p>您可能会注意到，这种事件结构的灵感源自<a href="https://junit.org/junit4/javadoc/4.12/org/junit/runner/notification/RunListener.html">典型的 JUnit 结构</a>。这样做是为了让相关内容接近开发者通常所了解的一些基本内容。</p>
+
+<h3 id="reporting_logs_from_the_test_runner">报告测试运行程序的日志</h3>
+
+<p>如果您要编写自己的 Tradefed 测试类或运行程序，那么应实现 <a href="https://android.googlesource.com/platform/tools/tradefederation/+/refs/heads/master/src/com/android/tradefed/testtype/IRemoteTest.java">IRemoteTest</a> 并通过 <code>run()</code> 方法获取 <code>ITestInvocationListener</code>。此监听器可用于记录文件，如下所示：</p>
+<pre class="prettyprint lang-java"><code>    listener.testLog(String dataName, LogDataType type_of_data, InputStreamSource data);
+</code></pre>
+<h2 id="testing_with_a_device">使用一部设备进行测试</h2>
+
+<p>上面的最小接口允许运行非常简单的测试（这些测试是孤立的，且不需要任何特定资源），例如 Java 单元测试。</p>
+
+<p>想要进入下一步（即设备测试）的测试编写者需要实现以下接口：<em></em></p>
+
+<ul>
+<li><a href="https://android.googlesource.com/platform/tools/tradefederation/+/refs/heads/master/src/com/android/tradefed/testtype/IDeviceTest.java">IDeviceTest</a> - 允许接收 <code>ITestDevice</code> 对象，该对象表示被测设备，并提供用来与其交互的 API。</li>
+<li><a href="https://android.googlesource.com/platform/tools/tradefederation/+/refs/heads/master/src/com/android/tradefed/testtype/IBuildReceiver.java">IBuildReceiver</a> - 允许测试获取在<a href="/devices/tech/test_infra/tradefed/architecture/build_provider/">版本提供程序步骤</a>中创建的 <code>IBuildInfo</code> 对象，该对象包含与测试设置相关的所有信息和工件。</li>
+</ul>
+
+<p>测试运行程序通常对这些接口感兴趣，以获取与执行相关的工件（例如额外文件），并获取将在执行期间作为目标的被测设备。</p>
+
+<h3 id="testing_with_multiple_devices">使用多部设备进行测试</h3>
+
+<p>Tradefed 支持同时在多部设备上运行测试。这在测试需要外部交互的组件（如手机与手表配对）时非常有用。</p>
+
+<p>为了编写可以使用多部设备的测试运行程序，您需要实现 <a href="https://android.googlesource.com/platform/tools/tradefederation/+/refs/heads/master/src/com/android/tradefed/testtype/IMultiDeviceTest.java">IMultiDeviceTest</a>，该接口将允许接收 <code>ITestDevice</code> 到 <code>IBuildInfo</code>（其中包含设备表示方式及其关联版本信息的完整列表）的映射。</p>
+
+<p>该接口的 setter 始终在 <code>run</code> 方法之前调用，因此几乎可以断定，在调用 <code>run</code> 时结构可用。</p>
+
+<h3 id="tests_aware_of_their_setups">测试知道它们的设置</h3>
+
+<p>注意：这不是一个很常见的用例。在此提及该用例只是为了本文档的完整性，但您通常不需要它。</p>
+
+<p>某些测试运行程序实现可能需要有关整体设置的信息才能正常工作，例如有关调用的一些元数据或之前运行的 <code>target_preparer</code> 等。</p>
+
+<p>为了做到这一点，测试运行程序可以访问它所属的同时也是它执行时所在的 <code>IConfiguration</code> 对象。如需了解更多详情，请参阅<a href="/devices/tech/test_infra/tradefed/architecture/xml-config/config-object">配置对象</a>说明。</p>
+
+<p>对于测试运行程序实现，您需要实现 <a href="https://android.googlesource.com/platform/tools/tradefederation/+/refs/heads/master/src/com/android/tradefed/config/IConfigurationReceiver.java">IConfigurationReceiver</a> 来接收 <code>IConfiguration</code> 对象。</p>
+
+<h2 id="flexible_test_runner">灵活的测试运行程序</h2>
+
+<p>如果测试运行程序对测试进行精细控制，那么它们可以提供一种灵活的方式来运行这些测试。例如，JUnit 测试运行程序可以单独运行每个单元测试。</p>
+
+<p>这样一来，更大的自动化测试框架和基础架构便可利用这种精细控制，用户也能通过过滤来部分地运行测试运行程序。<em></em></p>
+
+<p><a href="https://android.googlesource.com/platform/tools/tradefederation/+/refs/heads/master/src/com/android/tradefed/testtype/ITestFilterReceiver.java">ITestFilterReceiver 接口</a>中介绍了对过滤的支持，该接口允许接收多组 <code>include</code> 过滤条件和 <code>exclude</code> 过滤条件，用来过滤应运行或不应运行的测试。</p>
+
+<p>我们的惯例是，当且仅当测试与一个或多个包含过滤器匹配且与任何排除过滤器都不匹配时，才会运行该测试。如果没有给出包含过滤器，那么应运行所有测试，只要它们与任何排除过滤器都不匹配。</p>
+
+<p>注意：我们建议您以支持这种过滤的方式来编写测试运行程序，因为这样会在更大的基础架构中提供巨大的附加价值。但我们知道，在某些情况下，没法这样做。</p>
+
+</body></html>

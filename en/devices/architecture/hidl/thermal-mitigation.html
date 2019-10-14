@@ -1,0 +1,282 @@
+<html devsite>
+  <head>
+    <title>Thermal Mitigation</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+<!--
+      Copyright 2019 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>
+Thermal mitigation is needed when a device starts to overheat. As algorithm
+complexity, system core frequencies, and levels of integration continually
+increase, with packaging and form-factor sizes decreasing,
+thermal mitigation has become increasingly important.
+</p>
+
+<p>
+Android&nbsp;10 introduced a thermal system in the Android framework and a
+new version of the HAL that abstracts the interface to the thermal subsystem
+hardware devices. The hardware interface includes temperature sensors and
+thermistors for the skin, battery, GPU, CPU, and USB port. The device skin
+temperature is the most important one to track to keep the device surface
+temperature within specified thermal limits.
+</p>
+
+<p>
+With the Android framework, device manufacturers and app developers can use
+thermal data to ensure a consistent UX if a device begins to overheat. For
+example, when a system undergoes thermal stress, <code>jobscheduler</code> jobs
+get throttled, and if necessary, a framework thermal shutdown is initiated.
+Apps that receive thermal-stress notifications through a registered callback
+(in the <code><a href=
+"https://developer.android.com/reference/android/os/PowerManager" class="external">PowerManager</a></code>
+class) can gracefully adjust their UX.</p>
+
+<h2 id ="thermal-hal">Thermal HAL</h2>
+
+<p>
+Android 9 and lower utilized a polling interface defined in <code>Thermal
+HAL&nbsp;1.0</code> to obtain temperature readings. The legacy Thermal HAL
+allowed the Android framework and other trusted clients (such as a device
+manufacturer's HAL) to read the current temperature and product-policy specific
+throttling and shutdown thresholds for each sensor through the same API.
+</p>
+
+<p>
+<code>Thermal&nbsp;HAL&nbsp;2.0</code>, introduced in Android&nbsp;10,
+provides multiple clients with thermal sensor readings and associated severity
+levels to indicate thermal stress. <strong>Figure 1</strong> shows two warning
+messages from the Android System UI, created based on
+<code>IThermalEventListener</code> for the <strong>USB_PORT</strong> and
+<strong>SKIN</strong> sensors, respectively, when they reach the
+<code>EMERGENCY</code> severity level.
+</p>
+
+<figure id="overheat-warnings"><img src=
+"/devices/architecture/images/thermal_mitigation_warnings.png" width="60%" alt=
+"Two warning messages for thermal events, suggesting actions to take for each. On
+the left is a message about a charging port overheat issue. On the
+right is a message stating that the device is starting to get warm, and that
+the user may either wait for it to cool, or if not, know that the device may run more slowly.">
+<figcaption><strong>Figure 1.</strong> Overheat warnings</figcaption>
+</figure>
+
+<p>
+The current temperatures are retrieved for the different <code><a href=
+"https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/android10-release/thermal/2.0/types.hal#22" class="external">
+types</a></code> of thermal sensors through <a href=
+"https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/android10-release/thermal/2.0/IThermal.hal" class="external">
+IThermal&nbsp;HAL</a>. Each function call returns a status value of either
+<code>SUCCESS</code> or <code>FAILURE</code>. If <code>SUCCESS</code> is
+returned, the process continues. If <code>FAILURE</code> is returned, an error
+message (which must be human-readable) goes to
+<code>status.debugMessage</code>.
+</p>
+
+<p>
+Besides being a polling interface that returns the current temperatures, the
+HIDL callback <code><a href=
+"https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/android10-release/thermal/2.0/IThermalChangedCallback.hal" class="external">
+IThermalChangedCallback</a></code> can be used with the callback interface from
+thermal HAL clients, such as the framework’s thermal service. For example,
+<code>RegisterIThermalChangedCallback</code> and
+<code>UnregisterIThermalChangedCallback</code> register/unregister
+severity-changed events. If the thermal severity of a given sensor has changed,
+<code>notifyThrottling</code> sends a thermal throttling event callback to
+thermal-event listeners.</p>
+
+<p>
+In addition to thermal sensor information, a list of the cooling devices
+that have undergone mitigation is exposed in
+<code>getCurrentCoolingDevices</code>. The list order is persistent, even if a
+cooling device has gone offline. Device manufacturers can use it to collect
+<code>statsd</code> metrics.
+</p>
+
+<p>
+For more information, see the <a href=
+"https://android.googlesource.com/platform/hardware/google/pixel/+/refs/heads/master/thermal/" class="external">
+Reference implementation</a>. While you may add your own extensions, you must
+<em>never disable</em> the thermal mitigation function.
+</p>
+
+<h2 id="thermal-service">Thermal service</h2>
+
+<p>
+In Android&nbsp;10, the thermal service in the framework provides constant
+monitoring using the various mitigation signals from <code>Thermal HAL 2.0</code>, and gives
+throttling severity feedback to its clients. These include internal components
+and Android apps. The service utilizes two binder callback interfaces,
+<code>IThermalEventListener</code> and <code>IThermalStatusListener</code>,
+exposed as callbacks. The former is for internal platform and device
+manufacturer use, and the latter is for Android apps.
+</p>
+
+<p>
+Through the callback interfaces, a device’s
+current thermal status is retrievable as an integer value
+ranging from <code>0x00000000</code> (no throttling) to <code>0x00000006</code>
+(device shutdown). Only a trusted system service, such as an
+Android API or device manufacturer API, can access the detailed
+thermal sensor and thermal event information. <strong>Figure 2</strong>
+provides a model of the thermal mitigation process flow in
+Android&nbsp;10.
+</p>
+
+<figure id="thermal-mitigation-process-flow"><img src="/devices/architecture/images/therm_mitigation_flow.png"
+width="90%" alt="Thermal mitigation process flow for Android 10 and higher. Android 10 employs
+  callback listeners for more granular mitigation responses relative to previous Android levels.">
+<figcaption><strong>Figure 2.</strong> Thermal mitigation process flow in Android
+10</figcaption></figure>
+
+<h2 id="device-manufacturer-guidelines">Device manufacturer guidelines</h2>
+
+<p>
+Device manufacturers must implement the HIDL aspect of
+Thermal&nbsp;HAL&nbsp;2.0 (as provided in <code>IThermal.hal</code>)
+to report device temperature sensor and throttling status.
+If you’re a developer, use this to enhance app UX under thermal stress.
+</p>
+
+<p>
+Anything that throttles device performance, including battery power
+constraints, must be reported through the thermal HAL. To ensure this happens,
+put all sensors that may indicate a need for mitigation (based on status
+changes) into the thermal HAL, and report the severity of any mitigation
+actions taken. The temperature value returned from a sensor reading doesn’t
+have to be the actual temperature, so long as it accurately reflects the
+corresponding severity threshold. For example, you may pass different numerical
+values instead of your actual temperature threshold values, or you may build
+guardbanding into threshold specifications to provide hysteresis. However,
+the <em>severity</em> corresponding to that value must match what’s needed at
+that threshold. (For example, you may decide to return 72°C as your
+critical temperature threshold, when in reality the <em>actual</em>
+<em>temperature</em> is 65°C, and it corresponds to the critical severity
+you specified.) The severity level must <em>always be accurate</em> for best
+thermal framework functionality.
+</p>
+
+<p>
+To read more about the threshold levels in the framework and how they
+correspond to mitigation actions, see the usage suggestions for each <a href=
+"#codes">thermal status code</a>.
+</p>
+
+<h3 id="thermal-api">Thermal API</h3>
+
+<p>
+Apps can add and remove listeners, and access thermal status information
+through the <code><a href=
+"https://android.googlesource.com/platform/frameworks/base/+/refs/heads/android10-release/core/java/android/os/PowerManager.java" class="external">
+PowerManager</a></code> class. The <code>IThermal</code> interface provides all
+the functionality needed, including returning the thermal status values. The
+<code><a href=
+"https://android.googlesource.com/platform/frameworks/base/+/android10-release/core/java/android/os/IThermalService.aidl" class="external">
+IThermal&nbsp;<strong>binder&nbsp;interface</strong></a></code>
+is wrapped as the <code>OnThermalStatusChangedListener</code>
+interface, which apps can use when registering or removing thermal status
+listeners.</p>
+
+<p>
+The Android thermal APIs have both callback and
+polling methods for apps to be notified of the thermal
+severity levels through status codes, which are
+<a href="https://android.googlesource.com/platform/frameworks/base/+/refs/heads/android10-release/core/java/android/os/PowerManager.java#1729" class="external">defined</a>
+  in the <code>PowerManager</code> class. The methods are</p>
+
+<ul>
+<li><code><a href=
+"https://android.googlesource.com/platform/frameworks/base/+/refs/heads/android10-release/core/java/android/os/PowerManager.java#1775" class="external">
+getCurrentThermalStatus()</a></code> returns the current thermal status of the
+device as an integer, unless the device is undergoing throttling.</li>
+<li><code><a href=
+"https://android.googlesource.com/platform/frameworks/base/+/refs/heads/android10-release/core/java/android/os/PowerManager.java#1812" class="external">
+addThermalStatusListener()</a></code> adds a listener.</li>
+<li><code><a href=
+"https://android.googlesource.com/platform/frameworks/base/+/refs/heads/android10-release/core/java/android/os/PowerManager.java#1871" class="external">
+removeThermalStatusListener()</a></code> removes a previously added
+listener.</li>
+</ul>
+
+<p>The status codes translate to specific throttling levels, which can be used
+for gathering data, and for designing an optimal UX. For example, apps may
+receive a status of 0x0 (NONE), which may later change to 0x1 (LIGHT). Marking
+the 0x0 state as t0, then measuring the time lapsed from status NONE to status
+LIGHT (t1) enables device manufacturers to design and test mitigation
+strategies for specific use cases. You may want to use the thermal status codes
+in the ways suggested below.
+</p>
+
+<table>
+<tr>
+<th><a name="codes">Thermal&nbsp;status&nbsp;code&nbsp;</a></th>
+<th>Description and suggested use</th>
+</tr>
+<tr>
+<td>NONE (0x0)</td>
+<td>No throttling.<br>Use this status to implement protective actions, such as
+detecting the start of the time period (t0 to t1) from NONE (0x0) to LIGHT
+(0x1).</td>
+</tr>
+<tr>
+<td>LIGHT (0x1)</td>
+<td>Light throttling. UX isn't impacted.<br>Use gentle device mitigation for this
+stage. For example, skip boosting or using inefficient frequencies, but only on
+big cores.</td>
+</tr>
+<tr>
+<td>MODERATE (0x2)</td>
+<td>Moderate throttling. UX isn't greatly impacted.<br>Thermal mitigation impacts
+foreground activities, so apps should reduce power immediately.</td>
+</tr>
+<tr>
+<td>SEVERE (0x3)</td>
+<td>Severe throttling. UX is largely impacted.<br>In this stage, device thermal
+mitigation should limit the system capacity. This may cause side effects, such
+as display jank and audio jitter.</td>
+</tr>
+<tr>
+<td>CRITICAL (0x4)</td>
+<td>Platform has done everything to reduce power.<br>The device thermal mitigation
+software has placed all components to run at their lowest capacity.</td>
+</tr>
+<tr>
+<td>EMERGENCY (0x5)</td>
+<td>Key components in the platform are shutting down due to thermal conditions.<br>
+Device functionalities are limited. This is the last warning before device
+shutdown. At this stage some functions, such as the modem, cellular data are
+turned off completely.</td>
+</tr>
+<tr>
+<td>SHUTDOWN (0x6)</td>
+<td>Shutdown immediately.<br>Due to the severity of this stage, apps may not be
+able to receive this notification.</td>
+</tr>
+</table>
+
+<h3 id="api-testing">API Testing</h3>
+
+<p>
+Device manufacturers must pass the VTS test for thermal&nbsp;HAL, and may
+use <code>emul_temp</code> from the
+<code><a href="https://www.kernel.org/doc/Documentation/thermal/sysfs-api.txt" class="external">kernel&nbsp;sysfs</a></code>
+interface to simulate temperature changes.
+</p>
+
+</body>
+</html>

@@ -126,14 +126,6 @@ with. To bump the Target FCM Version of a device, vendors need to:</p>
 <li>Modify HAL Versions in the device manifest file.</li>
 <li>Modify the Target FCM Version in the device manifest file.</li>
 <li>Remove deprecated HAL versions.</li>
-<li>For devices launched with Android {{ androidPVersionNumber }} or lower, cherry-pick
-these CLs before generating OTA update packages:
-  <ul>
-    <li><a href="https://android-review.googlesource.com/722283">CL 722283</a></li>
-    <li><a href="https://android-review.googlesource.com/722284">CL 722284</a></li>
-    <li><a href="https://android-review.googlesource.com/722345">CL 722345</a></li>
-  </ul>
-</li>
 </ol>
 
 <p>For example, Google Pixel and Pixel XL devices launched with Android 7.0
@@ -155,6 +147,65 @@ While they do implement some HALs required by
 they do not remove <code>android.hardware.radio.deprecated@1.0</code>, which is
 deprecated at FCM Version 3 (Android {{ androidPVersionNumber }}). Hence, these
 devices cannot upgrade the Target FCM Version to 3.</p>
+
+<h2 id="ota-kernel">Mandating kernel requirements during OTA</h2>
+<h3 id="ota-kernel-p">Updating devices from Android {{ androidPVersionNumber }} or lower</h3>
+  <p>
+  If a device is receiving an Android {{ androidPVersionNumber }} update,
+  cherry-pick these CLs before generating OTA update packages:
+  </p>
+  <ul>
+    <li><a href="https://android-review.googlesource.com/722283" class="external">CL 722283</a></li>
+    <li><a href="https://android-review.googlesource.com/722284" class="external">CL 722284</a></li>
+    <li><a href="https://android-review.googlesource.com/722345" class="external">CL 722345</a></li>
+  </ul>
+  <p>
+    These changes introduce the build flag
+    <code>PRODUCT_OTA_ENFORCE_VINTF_KERNEL_REQUIREMENTS</code> and leave the
+    flag unset for devices launched with Android {{ androidPVersionNumber }} or
+    lower. OTA clients on devices running Android {{ androidPVersionNumber }}
+    or lower don't check kernel requirements in the OTA package correctly.
+    These changes are needed to drop kernel requirements from the generated OTA
+    package. For more information about this build flag, see
+    <a href="#ota-kernel-q">Updating devices from Android
+    {{ androidQVersionNumber }}</a>.
+  </p>
+  <p>
+    These changes are already merged in Android {{ androidQVersionNumber }}, so
+    there is no need to cherry-pick if the device updates to Android
+    {{ androidQVersionNumber }}. However, keep
+    <code>PRODUCT_OTA_ENFORCE_VINTF_KERNEL_REQUIREMENTS</code> unset.
+  </p>
+
+<h3 id=ota-kernel-q>Updating devices from Android {{ androidQVersionNumber }}</h3>
+  <p>
+    Android {{ androidQVersionNumber }} introduces a new build flag,
+    <code>PRODUCT_OTA_ENFORCE_VINTF_KERNEL_REQUIREMENTS</code>. For devices
+    launched with Android {{ androidQVersionNumber }}, this flag is
+    automatically set to <code>true</code>. When the flag is set to
+    <code>true</code>, a script extracts the kernel version and the kernel
+    configurations from the installed kernel image and writes this information
+    to the OTA package metadata. OTA clients on devices running Android
+    {{ androidQVersionNumber }} or higher read this information to check
+    compatibility.
+  </p>
+  <p>If the script fails to extract
+    this information for your kernel image, do <strong>one</strong> of
+    the following:
+  </p>
+  <ul>
+    <li>Set <code>BOARD_KERNEL_VERSION</code> to the kernel version
+      and <code>BOARD_KERNEL_CONFIG_FILE</code> to the path of the built kernel
+      configuration file <code>.config</code>. Both variables must be updated
+      when the kernel image is updated.</li>
+    <li>Alternatively, set
+      <code>PRODUCT_OTA_ENFORCE_VINTF_KERNEL_REQUIREMENTS</code> to
+      <code>false</code> to remove kernel requirements from the OTA package.</li>
+  </ul>
+  <p>
+    You can view the source code of the kernel information extraction script
+    <a href="https://android.googlesource.com/platform/build/+/refs/heads/master/tools/extract_kernel.py" class="external"><code>extract_kernel.py</code></a>.
+  </p>
 
 </body>
 </html>

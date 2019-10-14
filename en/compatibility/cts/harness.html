@@ -1,0 +1,95 @@
+<html devsite>
+<head>
+  <title>Implementing Test Harness Mode</title>
+  <meta name="project_path" value="/_project.yaml" />
+  <meta name="book_path" value="/_book.yaml" />
+</head>
+
+<body>
+  <!--
+      Copyright 2019 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+  {% include "_versions.html" %}
+
+<p>
+Test Harness Mode is a feature added in Android {{ androidQVersionNumber }} for developers that wish
+to automate a device or a fleet of devices. The feature provides a method to wipe <em>all</em>
+user data on an Android device, retain ADB keys, and run a UI test immediately after
+startup without any user interaction.</p>
+
+<aside class="note"><strong>Note:</strong> Test Harness Mode is different from TradeFed Test
+Harness.</aside>
+
+<h2 id="customize">Customization</h2>
+
+<p>
+Test Harness Mode can be customized by checking
+<code>ActivityManager.isRunningInUserTestHarness()</code> although this feature is targeted at
+third-party developers. Aside from skipping
+setup screens (like on the keyboard or setup wizard) that would break UI tests or require manual
+interaction, a little to no work should be done.</p>
+
+<h2 id="implement">Implementation</h2>
+
+<p>
+The default implementation of <code>PersistentDataBlockManagerInternal</code> is in
+<code>PersistentDataBlockService</code>. Test Harness Mode is implemented in
+<code>TestHarnessModeService</code>.
+</p>
+<p>
+The documentation for
+<a class="external" href="https://android.googlesource.com/platform/frameworks/base/+/master/services/core/java/com/android/server/PersistentDataBlockManagerInternal.java">
+PersistentDataBlockManagerInternal</a> and TestHarnessModeService is in the source.
+</p>
+<p>
+The default implementation of Test Harness Mode uses the same storage mechanism as
+Factory Reset Protection to store the ADB keys temporarily in a persistent partition. If a
+persistent partition with Factory Reset Protection is already implemented on the device, a little to no work
+is necessary to support the feature.
+</p>
+<p>
+OEMs that don't have a persistent partition set up need to implement
+<code>PersistentDataBlockManagerInternal</code> for <code>TestHarnessModeService</code> to work.
+</p>
+<p>
+The public method <code>ActivityManager.isRunningInUserTestHarness()</code> tells apps if they're
+being run under Test Harness Mode.
+</p>
+<h2 id="run">Run test harness mode</h2>
+<p>Run the <code>adb</code> command to run the test harness mode.</p>
+
+<pre class="devsite-terminal devsite-click-to-copy">adb shell cmd testharness enable</pre>
+<p>
+The command should be run when the user wants to wipe all of the device data and set it up
+for testing.
+</p>
+<p>
+Enabling Test Harness Mode:
+</p><ul>
+<li>Wipes everything from the device. </li>
+<li>Sets the device up for testing (skips dialogs, etc). </li>
+</ul>
+<p>
+After it's enabled, <code>ActivityManager.isRunningInUserTestHarness()</code> returns true,
+so apps know that they're running in the Test Harness Mode.
+</p>
+<p>
+The command should only be run when the user wants to erase all of the data from their device
+and set it up again. For device farms, this is after every app that they run. It's up to the
+user when they want to wipe all of their data.
+</p>
+
+  </body>
+</html>

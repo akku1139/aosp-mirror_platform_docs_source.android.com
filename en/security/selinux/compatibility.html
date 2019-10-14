@@ -49,6 +49,7 @@ results in a fully-functional policy for a device.
     types may also be used directly in labeling decisions provided by vendor
     contexts files.</li>
 </ul>
+
 <p>
 <strong>Android maintains a mapping between exported concrete types in platform
 policy and the corresponding versioned attributes for each platform
@@ -69,12 +70,14 @@ the vendor labels <code>/dev/foo</code> and the platform then labels
 SELinux, this manifests as a labeling collision. The device node can have only a
 single label which resolves to whichever label is applied last. As a result:
 </p>
+
 <ul>
   <li>Processes that <em>need access</em> to the unsuccessfully applied label will
   lose access to the resource.</li>
   <li>Processes that <em>gain access</em> to the file may break because the wrong
   device node was created.</li>
 </ul>
+
 <p>
 System properties also have potential for naming collisions that could result in
 undefined behavior on the system (as well as for SELinux labeling). Collisions
@@ -86,6 +89,7 @@ these issues, clearly define ownership of these objects.
 In addition to label collisions, SELinux type/attribute names may also collide.
 A type/attribute name collision will always result in a policy compiler error.
 </p>
+
 <h3 id="type-attribute-namespacing">Type/attribute namespacing</h3>
 <p>
 SELinux does not allow multiple declarations of the same type/attribute. Policy
@@ -98,7 +102,7 @@ starting with <code>np_</code>.
 <pre
 class="prettyprint">type foo, domain; → type np_foo, domain;</pre>
 
-<h3 id="system-property-and-process-labeling-ownership">System property and
+<h3 id="system-property-and-ownership">System property and
 process labeling ownership</h3>
 <p>
 Avoiding labeling collisions is best solved using property namespaces. To
@@ -137,6 +141,7 @@ for  services in init rc files of non-system partitions. Similar rules are
 applied to the SELinux labels for the vendor properties (<code>vendor_</code>
 for the vendor properties).
 </p>
+
 <h3 id="file-ownership">File ownership</h3>
 <p>
 Preventing collisions for files is challenging because platform and vendor
@@ -161,6 +166,7 @@ the platform interacts with, which enables writing SELinux rules for platform
 processes to be able to talk and/or access parts of <code>vendor</code>
 partition. Examples:
 </p>
+
 <table>
   <tr>
     <th><code>/vendor</code> path</th>
@@ -200,6 +206,7 @@ partition. Examples:
    </td>
   </tr>
 </table>
+
 <aside class="note">
   <strong>*</strong> For more examples, see
 <a href="https://android.googlesource.com/platform/system/sepolicy/+/master/private/file_contexts" class="external">
@@ -210,17 +217,19 @@ As a result, specific rules must be followed (enforced through
 <code>neverallows</code>) when labelling additional files in <code>vendor</code>
 partition:
 </p>
+
 <ul>
-<li><code>vendor_file </code>must be the default label for all files in
-<code>vendor</code> partition. The platform policy requires this to access
-passthrough HAL implementations.</li>
-<li>All new <code>exec_types</code> added in <code>vendor</code> partition
-through vendor SEPolicy must have <code>vendor_file_type</code> attribute. This
-is enforced through neverallows.</li>
-<li>To avoid conflicts with future platform/framework updates, avoid labelling
-  files other than <code>exec_types</code> in <code>vendor</code> partition.</li>
-<li>All library dependencies for AOSP-identified same process HALs must be
-labelled as <code>same_process_hal_file.</code></li></ul>
+  <li><code>vendor_file </code>must be the default label for all files in
+    <code>vendor</code> partition. The platform policy requires this to access
+    passthrough HAL implementations.</li>
+  <li>All new <code>exec_types</code> added in <code>vendor</code> partition
+    through vendor SEPolicy must have <code>vendor_file_type</code> attribute. This
+    is enforced through neverallows.</li>
+  <li>To avoid conflicts with future platform/framework updates, avoid labelling
+    files other than <code>exec_types</code> in <code>vendor</code> partition.</li>
+  <li>All library dependencies for AOSP-identified same process HALs must be
+    labelled as <code>same_process_hal_file.</code></li>
+</ul>
 
 <h4 id="procfs">Procfs (/proc)</h4>
 <p>
@@ -240,6 +249,7 @@ should not explicitly label them and should instead use the generic
 updates to accommodate future kernel interfaces exposed through
 <code>procfs</code> and label them explicitly as needed.
 </p>
+
 <h4 id="debugfs">Debugfs (/sys/kernel/debug)</h4>
 <p>
 <code>Debugfs</code> can be labeled in both <code>file_contexts</code> and
@@ -260,6 +270,7 @@ updates to accommodate future kernel interfaces exposed through
 <p>
 <strong>Recommendation:</strong> Only platform may label <code>tracefs</code>.
 </p>
+
 <h4 id="sysfs">Sysfs (/sys)</h4>
 <p>
 Files in <code>/sys</code> may be labeled using both <code>file_contexts</code>
@@ -271,6 +282,7 @@ and <code>genfscon</code>. In Android 7.0, both platform and vendor use
 <strong>Recommendation:</strong> The platform may label <code>sysfs</code>
 nodes that are not device-specific. Otherwise, only vendor may label files.
 </p>
+
 <h4 id="tmpfs">tmpfs (/dev)</h4>
 <p>
 Files in <code>/dev</code> may be labeled in <code>file_contexts</code>. In
@@ -281,6 +293,7 @@ Android 7.0, both platform and vendor label files here.
 <code>/dev/vendor</code> (e.g., <code>/dev/vendor/foo</code>,
 <code>/dev/vendor/socket/bar</code>).
 </p>
+
 <h4 id="rootfs">Rootfs (/)</h4>
 <p>
 Files in <code>/</code> may be labeled in <code>file_contexts</code>. In Android
@@ -289,6 +302,7 @@ Files in <code>/</code> may be labeled in <code>file_contexts</code>. In Android
 <p>
 <strong>Recommendation:</strong> Only system may label files in <code>/</code>.
 </p>
+
 <h4 id="data-data">Data (/data)</h4>
 <p>
 Data is labeled through a combination of <code>file_contexts</code> and
@@ -351,15 +365,16 @@ that gets built as part of the vendor policy.
 Defining public policy as versioned attributes satisfies two policy
 compatibility goals:
 </p>
+
 <ul>
- <li><strong>Ensure vendor code continues to work after platform update</strong>.
- Achieved by adding attributes to concrete types for objects corresponding to
- those on which vendor code relied, preserving access.</li>
- <li><strong>Ability to deprecate policy</strong>. Achieved by clearly
- delineating policy sets into attributes that can be removed as soon as the
- version to which they correspond no longer is supported. Development can
- continue in the platform, knowing the old policy is still present in the
- vendor policy and will be automatically removed when/if it upgrades.</li>
+  <li><strong>Ensure vendor code continues to work after platform update</strong>.
+    Achieved by adding attributes to concrete types for objects corresponding to
+    those on which vendor code relied, preserving access.</li>
+  <li><strong>Ability to deprecate policy</strong>. Achieved by clearly
+    delineating policy sets into attributes that can be removed as soon as the
+    version to which they correspond no longer is supported. Development can
+    continue in the platform, knowing the old policy is still present in the
+    vendor policy and will be automatically removed when/if it upgrades.</li>
 </ul>
 
 <h3 id="policy-writability">Policy writability</h3>
@@ -387,6 +402,7 @@ corresponding version) it is transformed into the policy that will go to the
 vendor portion of the device (shown in the transformed Common Intermediate
 Language (CIL)):
 </p>
+
 <pre
 class="prettyprint"> (allow source_foo_vN target_bar_vN (class (perm)))</pre>
 <p>
@@ -463,19 +479,20 @@ In the v2 vendor policy (CIL):
 This scenario occurs when the platform has added a new type, which can happen
 when adding new features or during policy hardening.
 </p>
+
 <ul>
-<li><strong>New feature</strong>. When the type is labeling an object that was
-previously non-existent (such as a new service process), the vendor code did not
-previously interact with it directly so no corresponding policy exists. The new
-attribute corresponding to the type does not have an attribute in the previous
-version, and so would not need an entry in the mapping file targeting that
-version.</li>
-<li><strong>Policy hardening</strong>. When the type represents policy
-hardening, the new type attribute must link back to a chain of attributes
-corresponding to the previous one (similar to the previous example changing
-<code>/sys/A</code> from <code>sysfs</code> to <code>sysfs_A</code>). Vendor
-code relies on a rule enabling access to <code>sysfs</code>, and needs
-to include that rule as an attribute of the new type.</li>
+  <li><strong>New feature</strong>. When the type is labeling an object that was
+    previously non-existent (such as a new service process), the vendor code did not
+    previously interact with it directly so no corresponding policy exists. The new
+    attribute corresponding to the type does not have an attribute in the previous
+    version, and so would not need an entry in the mapping file targeting that
+    version.</li>
+  <li><strong>Policy hardening</strong>. When the type represents policy
+    hardening, the new type attribute must link back to a chain of attributes
+    corresponding to the previous one (similar to the previous example changing
+    <code>/sys/A</code> from <code>sysfs</code> to <code>sysfs_A</code>). Vendor
+    code relies on a rule enabling access to <code>sysfs</code>, and needs
+    to include that rule as an attribute of the new type.</li>
 </ul>
 
 <p>
@@ -517,16 +534,18 @@ In the v2 vendor policy (CIL):
 (allow … sysfs_A_v2 …)
 (typeattribute sysfs_v2)
 (allow … sysfs_v2 …)</pre>
-</li></ul>
+
 <h5 id="removed-types">Removed types</h5>
 <p>
 This (rare) scenario occurs when a type is removed, which can happen when the
 underlying object:
 </p>
+
 <ul>
-<li>Remains but gets a different label.</li>
-<li>Is removed by the platform.</li>
+  <li>Remains but gets a different label.</li>
+  <li>Is removed by the platform.</li>
 </ul>
+
 <p>
 During policy loosening, a type is removed and the object labeled with that type
 is given a different, already-existing label. This represents a merging of
@@ -663,7 +682,8 @@ object manager class and permissions could remain defined in policy until the
 vendor version no longer uses it. This is done by adding the definitions
 to the corresponding mapping file.
 </p>
-<h4 id="vendor-customization-for-new-relabeled-types">Vendor customization for
+
+<h4 id="vendor-customization">Vendor customization for
 new/relabeled types</h4>
 <p>
 New vendor types are at the core of vendor policy development as they are needed
@@ -687,33 +707,35 @@ customizable domains (such as <code>init</code>).
 Devices upgrading to Android 9 can use the following attributes, but devices
 launching with Android 9 must not.
 </p>
+
 <h3 id="violator-attributes">Violator attributes</h3>
 <p>
 Android 9 includes these domain-related attributes:
 </p>
+
 <ul>
-<li><strong><code>data_between_core_and_vendor_violators</code></strong>.
-Attribute for all domains that violate the requirement of not sharing files by
-path between <code>vendor</code> and <code>coredomains</code>. Platform and
-vendor processes shouldn't use on-disk files to communicate (unstable ABI).
-Recommendation:
-<ul>
-  <li>Vendor code should use <code>/data/vendor</code>.</li>
-  <li>System should not use <code>/data/vendor</code>.</li>
-  </ul
-</li>
-<li><strong><code>system_executes_vendor_violators</code></strong>. Attribute
-for all system domains (except <code>init</code> and <code>shell domains</code>)
-that violate the requirement of not executing vendor binaries. Execution of
-vendor binaries has unstable API. Platform shouldn't execute vendor binaries
-directly. Recommendation:
-<ul>
- <li>Such platform dependencies on vendor binaries must be behind HIDL HALs.
-   <p> <strong><em>OR</em></strong></p></li>
- <li><code>coredomains</code> that need access to vendor binaries should be
-moved to the vendor partition and thus, stop being <code>coredomain</code>.</li>
-</ul>
-</li>
+  <li><strong><code>data_between_core_and_vendor_violators</code></strong>.
+    Attribute for all domains that violate the requirement of not sharing files by
+    path between <code>vendor</code> and <code>coredomains</code>. Platform and
+    vendor processes shouldn't use on-disk files to communicate (unstable ABI).
+    Recommendation:
+  <ul>
+    <li>Vendor code should use <code>/data/vendor</code>.</li>
+    <li>System should not use <code>/data/vendor</code>.</li>
+  </ul>
+  </li>
+  <li><strong><code>system_executes_vendor_violators</code></strong>. Attribute
+    for all system domains (except <code>init</code> and <code>shell domains</code>)
+    that violate the requirement of not executing vendor binaries. Execution of
+    vendor binaries has unstable API. Platform shouldn't execute vendor binaries
+    directly. Recommendation:
+  <ul>
+    <li>Such platform dependencies on vendor binaries must be behind HIDL HALs.
+      <p><strong><em>OR</em></strong></p></li>
+      <li><code>coredomains</code> that need access to vendor binaries should be
+        moved to the vendor partition and thus, stop being <code>coredomain</code>.</li>
+  </ul>
+  </li>
 </ul>
 
 <h3 id="untrusted-attributes">Untrusted attributes</h3>
@@ -722,22 +744,25 @@ Untrusted apps that host arbitrary code shouldn't have access to HwBinder
 services, except those considered sufficiently safe for access from such apps
 (see safe services below). The two main reasons for this are:
 </p>
+
 <ol>
-<li>HwBinder servers do not perform client authentication because HIDL currently
-does not expose caller UID information. Even if HIDL did expose such data, many
-HwBinder services either operate at a level below that of apps (such as, HALs) or
-must not rely on app identity for authorization. Thus, to be safe, the default
-assumption is that every HwBinder service treats all its clients as equally
-authorized to perform operations offered by the service.</li>
-<li>HAL servers (a subset of HwBinder services) contain code with higher
-incidence rate of security issues than <code>system/core</code> components and
-have access to the lower layers of the stack (all the way down to hardware) thus
-increasing opportunities for bypassing the Android security model.</li></ol>
+  <li>HwBinder servers do not perform client authentication because HIDL currently
+    does not expose caller UID information. Even if HIDL did expose such data, many
+    HwBinder services either operate at a level below that of apps (such as, HALs) or
+    must not rely on app identity for authorization. Thus, to be safe, the default
+    assumption is that every HwBinder service treats all its clients as equally
+    authorized to perform operations offered by the service.</li>
+  <li>HAL servers (a subset of HwBinder services) contain code with higher
+    incidence rate of security issues than <code>system/core</code> components and
+    have access to the lower layers of the stack (all the way down to hardware) thus
+    increasing opportunities for bypassing the Android security model.</li>
+</ol>
 
 <h4 id="safe-services">Safe services</h4>
 <p>
 Safe services include:
 </p>
+
 <ul>
 <li><code>same_process_hwservice</code>. These services (by definition) run in
 the process of the client and thus have the same access as the client domain in
@@ -765,6 +790,7 @@ with Android P MUST NOT use either <code>untrusted</code> attribute.
 <p>
 Recommendation:
 </p>
+
 <ul>
 <li>Untrusted apps should instead talk to a system service that talks to the
 vendor HIDL HAL. For example, apps can talk to <code><a
@@ -855,6 +881,7 @@ policies running that Android version and still receiving major platform
 updates. If the number is less than a certain threshold, that version is
 deprecated.
 </p>
+
 <h3 id="performance-impact-of-multiple-attributes">Performance impact of
 multiple attributes</h3>
 <p>
@@ -881,6 +908,7 @@ the system builds SELinux context files differently to keep them separate.
 <p>
 Android 8.0 introduced the following changes for <code>file_contexts</code>:
 </p>
+
 <ul>
   <li>To avoid additional compilation overhead on device during boot,
   <code>file_contexts</code> cease to exist in the binary form. Instead, they
@@ -920,6 +948,7 @@ Android 8.0 introduced the following changes for <code>file_contexts</code>:
 <p>
 In Android 8.0, the <code>property_contexts</code> is split between two files:
 </p>
+
 <ul>
   <li><code>plat_property_contexts</code>
     <ul>
@@ -950,6 +979,7 @@ In Android 8.0, the <code>property_contexts</code> is split between two files:
 In Android 8.0, the <code>service_contexts</code> is split between the following
 files:
 </p>
+
 <ul>
   <li><code>plat_service_contexts</code>
     <ul>
@@ -1020,6 +1050,7 @@ files:
 <p>
 In Android 8.0, the <code>seapp_contexts</code> is split between two files:
 </p>
+
 <ul>
   <li><code>plat_seapp_contexts</code>
     <ul>
@@ -1045,6 +1076,7 @@ In Android 8.0, the <code>seapp_contexts</code> is split between two files:
 <p>
 In Android 8.0, the <code>mac_permissions.xml</code> is split between two files:
 </p>
+
 <ul>
   <li>Platform <code>mac_permissions.xml</code>
     <ul>

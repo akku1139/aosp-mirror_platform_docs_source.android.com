@@ -45,7 +45,7 @@ available LPA, and routes all the eUICC operations through an LPA instance.
 
 Mobile network operators interested in creating a _carrier app_ should look at
 the APIs in
-[EuiccManager](https://android.googlesource.com/platform/frameworks/base/+/master/telephony/java/android/telephony/euicc/EuiccManager.java){: .external},
+[EuiccManager](https://developer.android.com/reference/android/telephony/euicc/EuiccManager){: .external},
 which provides high-level profile management operations such as
 `downloadSubscription()`, `switchToSubscription()`, and
 `deleteSubscription()`.
@@ -62,10 +62,14 @@ These functions are used to issue commands to the eUICC chip, such as
 and `resetMemory()`.
 
 The APIs in
-[EuiccManager](https://android.googlesource.com/platform/frameworks/base/+/master/telephony/java/android/telephony/euicc/EuiccManager.java){: .external}
+[EuiccManager](https://developer.android.com/reference/android/telephony/euicc/EuiccManager){: .external}
 require a properly implemented LPA app to function and the caller of
 [EuiccCardManager](https://android.googlesource.com/platform/frameworks/base/+/master/telephony/java/android/telephony/euicc/EuiccCardManager.java){: .external}
 APIs must be an LPA. This is enforced by the Android framework.
+
+Devices running Android {{ androidQVersionNumber }} or higher can support
+devices with multiple eSIMs. For more information, see
+[Supporting multiple eSIMs](#supporting_multiple_esims).
 
 ## Making a carrier app
 
@@ -234,9 +238,9 @@ public static final String ACTION_RESOLVE_DEACTIVATE_SIM =
 public static final String ACTION_RESOLVE_NO_PRIVILEGES =
         "android.service.euicc.action.RESOLVE_NO_PRIVILEGES";
 
-/** Ask the user to input carrier confirmation code. */
-public static final String ACTION_RESOLVE_CONFIRMATION_CODE =
-        "android.service.euicc.action.RESOLVE_CONFIRMATION_CODE";
+/** Ask the user to resolve all the resolvable errors. */
+public static final String ACTION_RESOLVE_RESOLVABLE_ERRORS =
+        "android.service.euicc.action.RESOLVE_RESOLVABLE_ERRORS";
 ```
 
 ### Carrier privileges
@@ -318,14 +322,51 @@ servers that have a matching RSP version. For detailed RSP architecture, see
 In addition, to integrate with the eUICC APIs in Android
 {{ androidPVersionNumber }}, the device modem should send terminal capabilities
 with the support for eUICC capabilities encoded (Local Profile Management and
-Profile Download). It also needs to implement the following APIs:
+Profile Download). It also needs to implement the following methods:
 
 +   IRadio HAL v1.1: setSimPower
 +   IRadio HAL v1.2: getIccCardStatus
+
+    Note: Support for IRadio HAL v1.4 is required for devices launching with
+    Android {{ androidQVersionNumber }} and is recommended for all other
+    Android versions.
+
 +   IRadioConfig HAL v1.0: getSimSlotsStatus
+
+    Note: Support for IRadioConfig HAL v1.2 is required for devices launching
+    with Android {{ androidQVersionNumber }} and is recommended for all other
+    Android versions.
 
 The modem should recognize the eSIM with the default boot profile enabled as a
 valid SIM and keep the SIM power on.
+
+For devices running Android {{ androidQVersionNumber }}, a non-removable eUICC
+slot ID array must be defined. For example, see
+[`arrays.xml`](https://android.googlesource.com/platform/frameworks/base/+/refs/heads/master/core/res/res/values/arrays.xml){: . external}.
+
+```
+<resources>
+   <!-- Device-specific array of SIM slot indexes which are are embedded eUICCs.
+        e.g. If a device has two physical slots with indexes 0, 1, and slot 1 is an
+        eUICC, then the value of this array should be:
+            <integer-array name="non_removable_euicc_slots">
+                <item>1</item>
+            </integer-array>
+        If a device has three physical slots and slot 1 and 2 are eUICCs, then the value of
+        this array should be:
+            <integer-array name="non_removable_euicc_slots">
+               <item>1</item>
+               <item>2</item>
+            </integer-array>
+        This is used to differentiate between removable eUICCs and built in eUICCs, and should
+        be set by OEMs for devices which use eUICCs. -->
+
+   <integer-array name="non_removable_euicc_slots">
+       <item>1</item>
+   </integer-array>
+</resources>
+
+```
 
 For a complete list of modem requirements, see
 [Modem Requirements for eSIM Support](/devices/tech/connect/esim-modem-requirements).
@@ -392,8 +433,7 @@ This implies that the UI implementing these screens can come from a different
 APK from the one that implements
 [`EuiccService`](https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/service/euicc/EuiccService.java){: .external}.
 Whether to have a single APK or multiple APKs (e.g. one that implements
-[`EuiccService`](https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/service/euicc/EuiccService.java){: .external}
-and one that provides LUI activities) is a design choice.
+`EuiccService` and one that provides LUI activities) is a design choice.
 
 ### EuiccCardManager
 
@@ -480,6 +520,105 @@ cardMgr.listNotifications(eid,
         EuiccNotification.Event.INSTALL
               | EuiccNotification.Event.DELETE /* events */,
         AsyncTask.THREAD_POOL_EXECUTOR, callback);
+```
+
+## Supporting multiple eSIMs
+
+For devices running Android {{ androidQVersionNumber }} or higher, the
+EuiccManager class supports devices
+with multiple eSIMs. Devices with a single eSIM that are upgrading to
+Android {{ androidQVersionNumber }}
+don't require any modification to the LPA implementation as the platform
+automatically associates the EuiccManager instance with the default eUICC. The
+default eUICC is determined by the platform for devices with radio HAL version
+1.2 or higher and by the LPA for devices with radio HAL versions lower than
+1.2.
+
+### Requirements
+
+To support multiple eSIMs, the device must have more than one eUICC, which can
+be either a built-in eUICC or a physical SIM slot where removable eUICCs can be
+inserted.
+
+Radio HAL version 1.2 or higher is required to support multiple eSIMs. Radio HAL
+version 1.4 and RadioConfig HAL version 1.2 are recommended.
+
+### Implementation
+
+To support multiple eSIMs (including removable eUICCs or programmable SIMs), the
+LPA must implement
+[`EuiccService`](https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/service/euicc/EuiccService.java){: .external},
+which receives the slot ID corresponding to the caller-provided card ID.
+
+The
+[`non_removable_euicc_slots`](https://android.googlesource.com/platform/frameworks/base/+/refs/heads/master/core/res/res/values/arrays.xml#202){: .external}
+resource specified in
+[`arrays.xml`](https://android.googlesource.com/platform/frameworks/base/+/refs/heads/master/core/res/res/values/arrays.xml){: .external}
+is an array of integers that represent the slot IDs of a device's built-in
+eUICCs. You must specify this resource to allow the platform to determine
+whether an inserted eUICC is removable or not.
+
+### Carrier app for device with multiple eSIMs
+
+When making a carrier app for a device with multiple eSIMs, use the
+[`createForCardId`](https://developer.android.com/reference/android/telephony/euicc/EuiccManager#createForCardId(int)){: .external}
+method in `EuiccManager` to create an `EuiccManager` object that is pinned to a
+given card ID. The card ID is an integer value that uniquely identifies a UICC
+or an eUICC on the device.
+
+To get the card ID for the device's default eUICC, use the
+[`getCardIdForDefaultEuicc`](https://developer.android.com/reference/android/telephony/TelephonyManager#getCardIdForDefaultEuicc()){: .external}
+method in `TelephonyManager`. This method returns
+[`UNSUPPORTED_CARD_ID`](https://developer.android.com/reference/android/telephony/TelephonyManager#UNSUPPORTED_CARD_ID){: .external}
+if the radio HAL version is lower than 1.2 and returns
+[`UNINITIALIZED_CARD_ID`](https://developer.android.com/reference/android/telephony/TelephonyManager#UNINITIALIZED_CARD_ID){: .external}
+if the device hasn't read the eUICC.
+
+You can also get card IDs from
+[`getUiccCardsInfo`](https://developer.android.com/reference/android/telephony/TelephonyManager#getUiccCardsInfo()){: .external}
+and `getUiccSlotsInfo` (system API) in `TelephonyManager`, and
+[`getCardId`](https://developer.android.com/reference/android/telephony/SubscriptionInfo#getCardId()){: .external}
+in `SubscriptionInfo`.
+
+When an `EuiccManager` object has been instantiated with a specific card ID, all
+operations are directed to the eUICC with that card ID. If the eUICC becomes
+unreachable (for example, when it is turned off or removed) `EuiccManager` no
+longer works.
+
+You can use the following code samples to create a carrier app.
+
+Example 1: Get active subscription and instantiate `EuiccManager`
+
+```
+// Get the active subscription and instantiate an EuiccManager for the eUICC which holds
+// that subscription
+SubscriptionManager subMan = (SubscriptionManager)
+        mContext.getSystemService(Context.TELEPHONY_SUBSCRIPTION_SERVICE);
+int cardId = subMan.getActiveSubscriptionInfo().getCardId();
+EuiccManager euiccMan = (EuiccManager) mContext.getSystemService(Context.EUICC_SERVICE)
+            .createForCardId(cardId);
+```
+
+Example 2: Iterate through UICCs and instantiate `EuiccManager` for a
+removable eUICC
+
+```
+// On a device with a built-in eUICC and a removable eUICC, iterate through the UICC cards
+// to instantiate an EuiccManager associated with a removable eUICC
+TelephonyManager telMan = (TelephonyManager)
+        mContext.getSystemService(Context.TELEPHONY_SERVICE);
+List<UiccCardInfo> infos = telMan.getUiccCardsInfo();
+int removableCardId = -1; // valid cardIds are 0 or greater
+for (UiccCardInfo info : infos) {
+    if (info.isRemovable()) {
+        removableCardId = info.getCardId();
+        break;
+    }
+}
+if (removableCardId != -1) {
+    EuiccManager euiccMan = (EuiccManager) mContext.getSystemService(Context.EUICC_SERVICE)
+            .createForCardId(removableCardId);
+}
 ```
 
 ## Validation

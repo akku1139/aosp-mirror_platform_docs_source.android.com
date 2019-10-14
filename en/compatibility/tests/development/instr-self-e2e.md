@@ -50,15 +50,15 @@ This category of instrumentation tests is sometimes referred to as
 self-instrumentation. Here are some examples of self-instrumentation tests in
 the platform source:
 
-*   [frameworks/base/core/tests/](https://android.googlesource.com/platform/frameworks/base/+/master/core/tests/)
-*   [frameworks/base/services/tests/servicestests](https://android.googlesource.com/platform/frameworks/base/+/master/services/tests/servicestests/)
+*   [frameworks/base/core/tests/](https://android.googlesource.com/platform/frameworks/base/+/master/core/tests/){: .external}
+*   [frameworks/base/services/tests/servicestests](https://android.googlesource.com/platform/frameworks/base/+/master/services/tests/servicestests/){: .external}
 
 
 The example covered here is writing a new instrumentation test with target
 package set at its own test application package. This guide uses the following
 test to serve as an example:
 
-*   [Hello World Instrumentation Test](https://android.googlesource.com/platform/platform_testing/+/master/tests/example/instrumentation/)
+*   [Hello World Instrumentation Test](https://android.googlesource.com/platform/platform_testing/+/master/tests/example/instrumentation/){: .external}
 
 It's recommended to browse through the code first to get a rough impression
 before proceeding.
@@ -101,13 +101,13 @@ first.
 
 This gives an overview of basic components of a manifest file and their
 functionalities. See the example at
-[platform_testing/tests/example/instrumentation/AndroidManifest.xml](https://android.googlesource.com/platform/platform_testing/+/master/tests/example/instrumentation/AndroidManifest.xml).
+[platform_testing/tests/example/instrumentation/AndroidManifest.xml](https://android.googlesource.com/platform/platform_testing/+/master/tests/example/instrumentation/AndroidManifest.xml){: .external}.
 
 A snapshot is included here for convenience:
 
 ```xml
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="android.test.example.helloworld"
+    package="android.test.example.helloworld" >
 
     <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="21" />
 
@@ -126,7 +126,7 @@ Some select remarks on the manifest file:
 
 ```xml
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="android.test.example.helloworld"
+    package="android.test.example.helloworld" >
 ```
 
 The `package` attribute is the application package name: this is the unique
@@ -175,7 +175,7 @@ android:targetPackage="android.test.example.helloworld"
 
 You might have noticed that the `targetPackage` here is declared the same as the
 `package` attribute declared in the `manifest` tag of this file. As mentioned in
-[testing basics](../basics/index.md), this category of instrumentation test are
+[testing basics](/compatibility/tests/), this category of instrumentation test are
 typically intended for testing framework APIs, so it's not very meaningful for
 them to have a specific targeted application package, other then itself.
 
@@ -184,23 +184,25 @@ them to have a specific targeted application package, other then itself.
 Each new test module must have a configuration file to direct
 the build system with module metadata, compile-time dependencies and packaging
 instructions. In most cases, the Soong-based, Blueprint file option is
-sufficient. See [Simple Test Configuration](blueprints.md) for details.
+sufficient. For details, see
+[Simple Test Configuration](/compatibility/tests/development/blueprints).
 
 ## Complex configuration file
 
 Important: The instructions in this section are needed only for CTS tests or those
 that require special setup, such as disabling Bluetooth or collecting sample data.
 All other cases can be covered through the
-[Simple Test Configuration](blueprints). See the
-[Complex Test Configuration](test-config) for
-more details applicable to this section.
+[Simple Test Configuration](/compatibility/tests/development/blueprints). See
+the [Complex Test Configuration](/compatibility/tests/development/test-config)
+for more details applicable to this section.
 
 For these more complex cases, you also need to write a test configuration
-file for Android's test harness, [Trade Federation](/devices/tech/test_infra/tradefed/).
+file for Android's test harness,
+[Trade Federation](/devices/tech/test_infra/tradefed/).
 
 The test configuration can specify special device setup options and default
 arguments to supply the test class. See the example at
-[/platform_testing/tests/example/instrumentation/AndroidTest.xml](/platform_testing/+/master/tests/example/instrumentation/AndroidTest.xml).
+[/platform_testing/tests/example/instrumentation/AndroidTest.xml](https://android.googlesource.com/platform/platform_testing/+/refs/heads/master/tests/example/instrumentation/AndroidTest.xml){: .external}.
 
 A snapshot is included here for convenience:
 
@@ -244,14 +246,15 @@ This specifies the Trade Federation test class to use to execute the test and
 passes in the package on the device to be executed and the test runner
 framework which is JUnit in this case.
 
-Look here for more information on [Test Module Configs](test-config.md)
+For more information, see
+[Test Module Configs](/compatibility/tests/development/test-config).
 
 ## JUnit4 features
 
 Using `android-support-test` library as test runner enables adoptation of new
 JUnit4 style test classes, and the sample gerrit change contains some very basic
 use of its features. See the example at
-[/platform_testing/tests/example/instrumentation/src/android/test/example/helloworld/HelloWorldTest.java](https://android.googlesource.com/platform/platform_testing/+/master/tests/example/instrumentation/src/android/test/example/helloworld/HelloWorldTest.java).
+[/platform_testing/tests/example/instrumentation/src/android/test/example/helloworld/HelloWorldTest.java](https://android.googlesource.com/platform/platform_testing/+/master/tests/example/instrumentation/src/android/test/example/helloworld/HelloWorldTest.java){: .external}.
 
 While testing patterns are usually specific to component teams, there are some
 generally useful usage patterns.
@@ -310,7 +313,7 @@ related test APIs and more.
 Because the JUnit4 tests no longer require a common base class, it's no longer
 necessary to obtain `Instrumentation` instance via
 `InstrumentationTestCase#getInstrumentation()`, instead, the new test runner
-manages it via [`InstrumentationRegistry`](https://developer.android.com/reference/android/support/test/InstrumentationRegistry.html)
+manages it via [`InstrumentationRegistry`](https://developer.android.com/reference/android/support/test/InstrumentationRegistry.html){: .external}
 where contextual and environmental setup created by instrumentation framework is
 stored.
 
@@ -327,4 +330,4 @@ For the most common use cases, employ
 [Atest](/compatibility/tests/development/atest).
 
 For more complex cases requiring heavier customization, follow the
-[instrumentation instructions](instrumentation.md).
+[instrumentation instructions](/compatibility/tests/development/instrumentation).

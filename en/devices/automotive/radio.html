@@ -1,0 +1,828 @@
+<html devsite>
+  <head>
+    <title>Implementing Radio with Media</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+  <!--
+      Copyright 2019 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>The Radio control implementation is based on MediaSession and MediaBrowse, which
+together enable Media and Assistant to control the Radio. For details about
+these interfaces, see
+<a href="https://developer.android.com/training/auto/audio/" class="external">Build Android media apps for cars</a>.</p>
+
+<p>See the Media browse tree implementation in the <code>car-broadcastradio-support</code>
+library provided in <code>packages/apps/Car/libs</code>. This library also provides
+extensions of <code>ProgramSelector</code> to convert to and from URI. To implement radio,
+use this library to build a browse tree.</p>
+
+<h2 id=media_source>Media Source Switcher</h2>
+
+<p>To provide a seamless transition between Radio and other apps in Media, the
+<code>car-media-common</code> library contains classes to integrate into the Radio app.
+Include the <code>MediaAppSelectorWidget</code> widget in the XML file of the Radio app
+(the icon or drop-down used in reference Media and Radio apps):</p>
+
+<pre class="prettyprint">
+&lt;com.android.car.media.common.MediaAppSelectorWidget
+    android:id="@+id/app_switch_container"
+    android:layout_width="@dimen/app_switch_widget_width"
+    android:layout_height="wrap_content"
+    android:background="@drawable/app_item_background"
+    android:gravity="center" /&gt;
+</pre>
+
+<p>This widget launches <code>AppSelectionFragment</code>, which displays a list of Media
+sources that can be selected. If you desire a different user interface than that
+provided, create a custom widget to launch the <code>AppSelectionFragment</code> when the
+switcher is to be displayed:</p>
+
+<pre class="prettyprint">
+AppSelectionFragment newFragment = AppSelectionFragment.create(widget,
+            packageName, fullScreen);
+    newFragment.show(mActivity.getSupportFragmentManager(), null);
+</pre>
+
+<p>A sample implementation is provided in the reference Radio app implementation,
+located in <code>packages/apps/Car/Radio</code>.</p>
+
+<h2 id=control_specs>Detailed Control Specifications</h2>
+
+<p>The MediaSession interface (via <code>MediaSession.Callback</code>) provides control
+mechanisms for the currently playing Radio app:</p>
+
+<table>
+<tr>
+  <th>Mechanism</th>
+  <th>Description</th>
+</tr>
+<tr>
+  <td width="20%"><code>onPlay</code><br><code>onStop</code></td>
+  <td>Time-shifted pause, if supported.</td>
+</tr>
+<tr>
+  <td width="20%"><code>onPlayFromMediaId</code><br><code>onPlayFromUri</code></td>
+  <td>Tune to a specific station.</td>
+</tr>
+<tr>
+  <td width="20%"><code>onSkipToNext</code><br><code>onSkipToPrevious</code></td>
+  <td>Tune to the next (or previous) station.</td>
+</tr>
+<tr>
+  <td width="20%"><code>onSetRating</code></td>
+  <td>Add and remove to and from Favorites.</td>
+</tr>
+</table>
+
+<p>The MediaBrowser exposes these MediaItems that can be tuned to over these three
+types of top-level directories:</p>
+
+<ul>
+  <li><b>Programs (stations).</b> Radio programs that are available to listen to and
+    are in range.</li>
+
+  <li><b>Favorites.</b> Radio programs that have been added to Favorites list. Some
+    may be out of range and unavailable.</li>
+
+  <li><b>Band channels.</b> All physically possible channels in the current region
+    (for example, 87.9, 88.1, 88.3, 88.5, 88.7, 88.9, 89.1 and so on). Every
+    band has a separate top-level directory.</li>
+</ul>
+
+<p><img src="/devices/automotive/images/radio_media_01.png" alt="Broadcast radio MediaBrowserService tree structure"></p>
+
+<p><strong>Figure 1</strong>. Broadcast radio MediaBrowserService tree structure</p>
+
+<p>Every element of these lists has a <code>mediaId</code> that can be used with
+<code>MediaSession</code> to tune.</p>
+
+<p>Since the <code>MediaBrowserService</code> implementation is non-trivial, it is highly
+recommended that you use the provided <code>car-broadcastradio-support</code> library to
+delegate implementation details from the OEM Radio app. The OEM may still elect
+to implement these specifications.</p>
+
+<h3 id=media_session>MediaSession</h3>
+
+<p>The Play, Pause, and Stop actions do not perfectly apply to Radio due to the
+fact a broadcast stream cannot be paused. Instead, the Stop action can be
+regarded as *muting* a stream and Play as then *unmuting* the stream.</p>
+
+<p>Some Radio apps simulate the pause of a broadcast stream by caching content and
+then playing it back via the <code>onPause</code> command. Otherwise, do not advertise that
+<code>ACTION_PAUSE</code> is supported.</p>
+
+<p>Playing from <code>mediaId</code> and URI actions is intended to tune to a station fetched
+from the MediaBrowser interface. The <code>mediaId</code> is an arbitrary string provided
+by the Radio app to uniquely (so a given ID points to only one item) and with
+stability (so a given item has the same ID through the whole session) identify a
+given station. In this case, the URI will be of a well-defined schema, a form of
+ProgramSelector made to perform like a URI. The uniquity attribute is preserved
+though it need not be stable. (The attribute may change if the station moves to
+a different frequency).</p>
+
+<p><code>onPlayFromSearch</code> is not used. It is the client's responsibility (Google
+Assistant or companion app) to select a search result from the MediaBrowser
+tree. Shifting that responsibility to the Radio app increases complexity,
+requires formal contracts on the appearance of string queries, and results in an
+unpredictable user experience across different hardware platforms.</p>
+
+<aside class="note">
+  <strong>Note:</strong> The Radio app does not provide any additional information useful for
+  station name searching that's not already exposed to the client via the
+  MediaBrowser interface.
+</aside>
+
+<p>Skipping to the next or previous stations depends on the current context:</p>
+
+<ul>
+  <li>When an application is tuned to a station from the Favorites list, the Radio
+  app can move to the next station from the list of Favorites.</li>
+  <li>Listening to a station from a program list may result in tuning to the next
+  available station, sorted according to station.</li>
+  <li>Listening to a random station may result in tuning to the next physical
+  station, perhaps without detecting a valid broadcast.</li>
+</ul>
+
+<aside class="note">
+  <strong>Note:</strong> The Radio app must handle these scenarios.
+</aside>
+
+<h4 id=errors>Handling errors</h4>
+
+<p>TransportControls actions (Play, Stop, and Next) don't provide any feedback as
+to success or failure. To indicate an error requires that the MediaSession state
+be to <code>STATE_ERROR</code> with an error message.</p>
+
+<p>The Radio app <em>must</em> either execute these actions or set the error state. If
+execution of the Play command is not immediate, change the playback state to
+<code>STATE_CONNECTING</code> (in the case of a direct tune) or
+<code>STATE_SKIPPING_TO_PREVIOUS</code> or <code>STATE_SKIPPING_TO_NEXT</code> while
+the command executes.</p>
+
+<p>To verify that the session changed the current program to what was requested or
+was placed into the error state. the client should watch the PlaybackState.
+While <code>STATE_CONNECTING</code> should require no more than 30 seconds, directly tuning
+to a specific AM/FM frequency should occur much more quickly.</p>
+
+<h4>Adding and removing favorites</h4>
+
+<p>MediaSession has rating support, which can be used to control Favorites.
+<code>onSetRating</code> called with a rating of the type <code>RATING_HEART</code> adds
+or removes the currently tuned station to and from the Favorites list.</p>
+
+<p>This model assumes an unordered and unbounded Favoritea list, contrary to legacy
+<em>presets</em>,in which each saved favorite was allocated to a numerical slot
+(usually 1 through 6). As a result, preset-based systems are incompatible with
+<code>onSetRating</code>.</p>
+
+<p>The MediaSession API is limited in that it can only add and remove the currently
+tuned station. For example, an item can't be removed from the list without it
+first being selected. This is a limitation of the MediaBrowser client (such as
+Assistant or Companion app). The Radio app is not restricted.</p>
+
+<strong>Important:</strong> If an app doesn't support Favorites, the following content is
+optional.
+
+<h3 id=media_browser>MediaBrowser</h3>
+
+<p>To specify what frequencies or physical channel names (when tuning to an
+arbitrary channel is suitable for a given radio technology) are valid for a
+given region, all valid channels (frequencies) are listed for each band. The US
+region provides:</p>
+
+<table>
+<tr>
+  <th>Band</th>
+  <th>Channels</th>
+</tr>
+<tr>
+<td width="30%">FM</td>
+<td>101 channels in the 87.8 to 108.0 MHz range, with 0.2 MHz spacing.</td>
+</tr>
+<tr>
+<td width="30%">AM</td>
+<td>117 channels in the 530 to 1700 kHz range, with 10 kHz spacing.</td>
+</tr>
+</table>
+
+<aside class="note">
+  <strong>Note:</strong> HD radio uses the same channel space and is therefore not presented
+  separately.
+</aside>
+
+<p>The list of currently available radio programs is flat, which doesn't enable
+display schemes such as grouping by Digital Audio Broadcasting (DAB) ensemble.</p>
+
+<p>Entries in a Favorites list may sometimes be out of range. The Radio app may (or
+may not) detect that an entry can be tuned to beforehand. If so, the Radio app
+may not mark the entry as playable.</p>
+
+<p>To identify the top level folders, use the same mechanism as is used by
+Bluetooth.</p>
+
+<p>The Extras bundle of the <code>MediaDescription</code> object will contain a tuner-specific
+field, which is what Bluetooth does with <code>EXTRA_BT_FOLDER_TYPE</code>. In the case of
+broadcast radio, this requires the following new fields be defined in the public
+API.</p>
+
+<p><code>EXTRA_BCRADIO_FOLDER_TYPE</code> = <code>android.media.extra.EXTRA_BCRADIO_FOLDER_TYPE</code>,
+one of the following values:</p>
+
+<table>
+<tr>
+  <th>Field</th>
+  <th>Value</th>
+</tr>
+<tr>
+<td width="20%"><code>BCRADIO_FOLDER_TYPE_PROGRAMS</code></td>
+<td>1. Currently available programs.</td>
+</tr>
+<tr>
+<td width="20%"><code>BCRADIO_FOLDER_TYPE_FAVORITES</code></td>
+<td>2. Favorites.</td>
+</tr>
+<tr>
+<td width="20%"><code>BCRADIO_FOLDER_TYPE_BAND</code></td>
+<td>3. All physical channels for a given band.</td>
+</tr>
+</table>
+
+<p>Radio-specific custom metadata fields need not be set as all relevant data can
+be accommodated in the existing <code>MediaBrowser.MediaItem</code> scheme:</p>
+
+<ul>
+  <li><strong>Program name (RDS PS, DAB service name).</strong> <code>MediaDescription.getTitle</code></li>
+
+  <li><strong>FM frequency.</strong> URI (see ProgramSelector section) or
+  <code>MediaDescription.getTitle</code>. If the <code>BROADCASTRADIO_FOLDER_TYPE_BAND</code>
+    folder contains an entry.</li>
+
+  <li><strong>Radio-specific identifiers (RDS PI, DAB SId).</strong>
+    <code>MediaDescription.getMediaUri</code> parsed to ProgramSelector.</li>
+</ul>
+
+<p>Typically, you need not fetch the FM frequency for the entry on the current
+program or Favorites list (as the client should operate on media IDs). However,
+if such a need exists (perhaps for display purposes), the entry is present in
+the URI, which can be parsed to ProgramSelector.</p>
+
+<p>The use of a URI for item selection within the current session is not
+recommended. For details, see ProgramSelector.</p>
+
+<p>To avoid performance and binder-related issues, the MediaBrowser service must
+support pagination. Use the <code>EXTRA_PAGE</code> and <code>EXTRA_PAGE_SIZE</code> parameters for
+<code>subscribe()</code>.</p>
+
+<aside class="note">
+  <strong>Note:</strong> The <code>onLoadChildren()</code> variant (without options handling)
+  implements pagination by default.
+</aside>
+
+<p>Related entries from all list types (raw channels, programs found, and
+Favorites) may have different media IDs, as determined by the Radio app. The
+support library will differ. The URIs (in <code>ProgramSelector</code> form) differs
+between raw channels and programs found in most cases, except for FM without
+RDS). For the most part, the same is true between programs found and Favorites
+(except, when AF got updated).</p>
+
+<aside class="note">
+<strong>Important:</strong> Entries from the frequency list have <code>AMFM_FREQUENCY</code> as their
+primary identifier, while entries from the program list most likely have
+<code>RDS_PI</code> (or another digital radio identifier type) as the primary identifier.
+</aside>
+
+<p>Having different media IDs for entries from different types of lists makes it
+possible to take different actions on them: traverse either favorites list or
+all programs list on onSkipToNext depending on what was the folder of recently
+selected MediaItem (see MediaSession section). It would also mean that assistant
+will unintentionally switch these contexts depending on where it finds the
+matching entry (in the favorite list or all available programs list). It's up to
+the app how to handle such cases.</p>
+
+<h4 id=tune>Special tune actions</h4>
+
+<p>Program list allows to tune to a specific station, but does not allow to make
+general requests like "tune to FM", which might result in tuning to a recently
+listened station on the FM band.</p>
+
+<p>To support such actions, some top-level directories have the <code>FLAG_PLAYABLE</code>
+flag set, as well as the obligatory <code>FLAG_BROWSABLE</code> for folders.</p>
+
+<table>
+<tr>
+  <th>Action</th>
+  <th>Tunes to</th>
+  <th>How to issue</th>
+</tr>
+<tr>
+<td>Play Radio</td>
+<td>Any</td>
+<td><code>startService(ACTION_PLAY_BROADCASTRADIO)</code> or, <br>
+<code>playFromMediaId(MediaBrowser.getRoot())</code></td>
+</tr>
+<tr>
+<td>Play Favorites</td>
+<td>Any Favorite</td>
+<td>Play from the <code>mediaId</code> in the <code>favorites</code> folder </td>
+</tr>
+<tr>
+<td>Play FM</td>
+<td>Any FM channel</td>
+<td>Play from the <code>mediaId</code> of the FM band</td>
+</tr>
+</table>
+
+<p>The decision as to which exact program to tune to is determined by the
+application. It's usually the recently tuned channel from the given list.</p>
+
+<p>For more details on <code>ACTION_PLAY_BROADCASTRADIO</code>, see the General play intents
+section.</p>
+
+<h4 id=discovery>Discovery and service connection</h4>
+
+<p><code>PackageManager</code> can directly find <code>MediaBrowserService</code> serving the broadcast
+radio tree. Just call <code>resolveService</code> with <code>ACTION_PLAY_BROADCASTRADIO</code> intent
+(see General play intents section) and the <code>MATCH_SYSTEM_ONLY</code> flag. To find all
+services that serve Radio (there may be more than one, for example separate
+AM/FM and satellite), use <code>queryIntentServices</code>. The resolved service will
+handle <code>android.media.browse.MediaBrowserService</code> bind intent, too, as it is
+verified with GTS.</p>
+
+<p>To connect to the selected MediaBrowserService, create MediaBrowser instance for
+a given service component and connect. After establishing the connection, a
+handle to MediaSession can be obtained via <code>getSessionToken</code>.</p>
+
+<p>The Radio app can restrict client packages allowed to connect in onGetRoot
+implementation of their service. The app should allow system apps to connect
+without whitelisting.</p>
+
+<p>If the source-specific application (for example, a Radion app) is installed on a
+device without such source support, it would still advertise itself as handling
+<code>ACTION_PLAY_BROADCASTRADIO</code> intent while the respective MediaBrowser tree would
+not contain radio-specific tags (which could be true should the same system
+image be flashed across different hardware devices).</p>
+
+<p>A client can check that a given source is available on a device as follows:</p>
+
+<ol>
+  <li>To discover the Radio service, call <code>resolveService</code> for
+  <code>ACTION_PLAY_BROADCASTRADIO)</code>.</li>
+
+  <li>Create and connect to a MediaBrowser for the Radio service.</li>
+
+  <li>Confirm any MediaItem with <code>EXTRA_BCRADIO_FOLDER_TYPE</code> extra.</li>
+</ol>
+
+<aside class="note">
+  <strong>Note:</strong> In most cases, the client must review the available MediaBrowser
+  trees to identify all available sources for a given device.
+</aside>
+
+<h4 id=band>Band names</h4>
+
+<p><em>Band list</em> is represented by a set of top-level directories with a folder type
+tag set to <code>BCRADIO_FOLDER_TYPE_BAND</code>. The titles of the respective MediaItem
+are localized strings representing band names. In most cases, the strings are
+the same as for the English translation. However, the client should assume so.</p>
+
+<p>To provide a stable mechanism for looking up specific bands, an extra tag is
+added for band folders. <code>EXTRA_BCRADIO_BAND_NAME_EN</code> is the non-localized name
+of the band, which takes <em>one</em> predefined value:</p>
+
+<li><code>TAM</code></li>
+<li><code>FM</code></li>
+<li><code>DAB</code></li>
+<li><code>SXM</code></li>
+
+<p>If the band is not on this list, it should not have a band name tag set.
+However, if the band is on the list, a tag must be set. HD Radio doesn't
+enumerate separate bands because HD Radio uses the same underlying medium as
+AM/FM.</p>
+
+<h2 id=play_intent>General Play intents</h2>
+
+<p>Each app dedicated to playing a specific source (such as Radio or CD) must
+handle a general play intent to start playing content, possibly from aninactive
+state. For example, after a boot). It's up to the app how to select content to
+play, but it's usually the recently played Radio app or CD track.</p>
+
+<p>A separate intent is defined for each audio source:</p>
+
+<table>
+<tr>
+  <th>Intent</th>
+  <th>Description</th>
+</tr>
+<tr>
+  <td><code>android.car.intent.action.PLAY_BROADCASTRADIO</code></td>
+  <td></td>
+  </tr>
+  <tr>
+  <td><code>android.car.intent.action.PLAY_AUDIOCD</code></td>
+  <td>CD-DA or CD-Text.</td>
+  </tr>
+  <tr>
+  <td><code>android.car.intent.action.PLAY_DATADISC</code></td>
+  <td>Optical data disc such as CD and DVD, but not CD-DA.<br>This may be Mixed Mode CD.</td>
+  <tr>
+  </tr>
+  <tr>
+  <td><code>android.car.intent.action.PLAY_AUX</code></td>
+  <td>Without specifying an AUX port.</td>
+  </tr>
+  <tr>
+  <td><code>android.car.intent.action.PLAY_BLUETOOTH</code></td>
+  <td></td>
+  </tr>
+  <tr>
+  <td><code>android.car.intent.action.PLAY_USB</code></td>
+  <td>Without specifying a USB device.</td>
+  </tr>
+  <tr>
+  <td><code>android.car.intent.action.PLAY_LOCAL</code></td>
+  <td>Local media storage, such as a built-in Flash drive.</td>
+</tr>
+  </table>
+
+<p>Intents were selected for use with the Play command, because intents solve
+performs two purposes:</p>
+
+<h3 id=play_command>Play command Service discovery</h3>
+
+<p>An additional benefit is that an intent can execute a simple action without
+opening a MediaBrowser session. That stated, service discovery is the more
+valuable purpose addressed by intents. The procedure for service discovery thus
+becomes straight-forward and unequivocal. For details, see "Discovery and
+service connection".</p>
+
+<p>To simplify client implementations, an alternative to the issuing of the Play
+command (that also has to be implemented by the Radio app) is to issue
+<code>playFromMediaId1</code> with the<code>rootId</code>of the root node (used as<code>mediaId</code>). While the
+root node is not meant to be playable, its<code>rootId</code>is an arbitrary string that
+can be designated as <i>consumable</i> as a <code>mediaId</code>.</p>
+
+<aside class="note">
+  <strong>Note:</strong> Clients need not understand this nuance.
+</aside>
+
+<h2 id=program_selector>ProgramSelector</h2>
+
+<p>While <code>mediaId</code> is sufficient to select a channel from the MediaBrowserService,
+it's bound to a session and not consistent between providers. In some cases, the
+client may need an absolute pointer (like an absolute frequency) to maintain it
+between sessions and devices.</p>
+
+<p>In this era of DABs, a single frequency is insufficient to tune to a specific
+station. To provide an entity that can be used to tune to either an analog or a
+digital channel, <code>ProgramSelector</code> was designed. (design doc, HAL sources, Java
+sources). This entity consists of two parts:</p>
+
+<ul>
+  <li><strong>Primary identifier.</strong> A unique and stable identifier for a given radio
+    station that doesn't change, but may not be enough to tune to that station.
+    For example, an RDS PI code, which may be translated to the call sign in the
+    US.</li>
+
+  <li><strong>Secondary identifiers.</strong> Any additional identifiers useful for tuning to
+    the station. For example, frequency, possibly including identifiers from
+    other radio technologies. A DAB station may fallback on analog broadcasting.</li>
+</ul>
+
+<p>To make ProgramSelector fit into this MediaBrowser/MediaSession-based solution,
+define a URI schema to serialize it. The schema is defined as follows:</p>
+
+<pre class="prettyprint">
+broadcastradio://program/&lt;primary ID type&gt;/&lt;primary ID&gt;?
+&lt;secondary ID type&gt;=&lt;secondary ID&gt;&lt;secondary ID type&gt;=&lt;secondary ID&gt;
+</pre>
+
+<p>Where the secondary identifiers (which appear after the <code>?</code> character) are
+optional and can be removed to provide a stable identifier for use as a mediaId.
+For example:</p>
+
+<ul>
+<li><code>broadcastradio://program/RDS_PI/1234?<br>AMFM_FREQUENCY=88500&AMFM_FREQUENCY=103300</code></li>
+
+<li><code>broadcastradio://program/AMFM_FREQUENCY/102100</code></li>
+
+<li><code>broadcastradio://program/DAB_SID_EXT/14895264?RDS_PI=1234</code></li>
+</ul>
+
+<p>The authority part (AKA <code>host</code>) of the program provides some room to extend the
+scheme in the future.</p>
+
+<p>Identifier <code>type</code> strings are precisely specified since the names in the HAL 2.x
+definition of <code>IdentifierType</code> and the <code>value</code> format is a decimal or
+hexadecimal (with a 0x prefix) number.</p>
+
+<p>All vendor-specific identifiers are represented with a <code>VENDOR_</code> prefix. For
+example,<code>VENDOR_0</code> for <code>VENDOR_START</code> and <code>VENDOR_1</code> for
+<code>VENDOR_START</code> + 1.</p>
+
+<aside class="note">
+<strong>Important:</strong> Such URIs are specific to the radio hardware on which they are
+generated and cannot be transferred between devices made by different OEMs.
+These URIs must be assigned to each MediaItem under the top-level radio folders
+and the MediaSession must support <code>playFromMediaId</code> and <code>playFromUri</code>.
+However, the URI is primarily intended for radio metadata extraction (such as an FM
+frequency) and persistent storage. There is no guarantee the URI will be
+available for all media items. For example, when the primary ID type is not yet
+supported by the framework. MediaID, on the other hand, is always guaranteed to
+work. It is not recommended that clients use the URI to select items from the
+current MediaBrowser session. Instead, use <code>playFromMediaId</code>. However, it's not
+optional for the serving app and missing URIs are reserved for well justified
+cases.
+</aside>
+
+<p>The initial design used a single colon (:) instead of the <code>://</code> sequence after
+the scheme part. However, the <code>android.net.Uri</code> does not support absolute
+hierarchical URI references.</p>
+
+<h2 id=other_sources>Other source types</h2>
+
+<p>Other audio sources can be managed similarly to radio. For example, auxiliary
+input and Audio CD player.</p>
+
+<p>A single application may serve several types of sources. In such cases, it's
+highly recommended that a separate MediaBrowserService be created for each kind
+of source. Even in a set-up with multiple served sources or
+MediaBrowserServices, it's highly recommended you have a single MediaSession
+within a single application.</p>
+
+<h3 id=audiocd>Audio CD</h3>
+
+<p>The application that serves such disks exposes the MediaBrowser with a single
+browsable entry (or more, if the system has a CD changer), which in turn contains
+all tracks of a given CD. If the system does not have the knowledge about the
+tracks on every CD (for example, when all disks are inserted in a cartridge at one
+time and they have not all been read), then MediaItem for the entire disk is just
+PLAYABLE, and not BROWSABLE and PLAYABLE. If no disk occupies a given slot, the item
+is neither PLAYABLE nor BROWSABLE, although each slot must always be present in
+the tree).</p>
+
+<p><img src="/devices/automotive/images/radio_media_02.png" alt="Audio CD MediaBrowser tree structure"></p>
+
+<p><strong>Figure 2.</strong> Audio CD MediaBrowser tree structure</p>
+
+<p>These entries would be marked in a similar way that broadcast radio folders are
+– they would contain additional extra fields defined in MediaDescription API:</p>
+
+<table>
+<tr>
+  <th>Field</th>
+  <th>Value</th>
+</tr>
+<tr>
+  <td width="30%"><code>EXTRA_CD_TRACK</code></td>
+  <td>For every MediaItem on Audio CD, 1-based track number.</td>
+</tr>
+<tr>
+  <td width="30%"><code>EXTRA_CD_DISK</code></td>
+  <td>1-based disk number.</td>
+</tr>
+</table>
+
+<p>For a CD-Text enabled system and compatible disk, the top-level MediaItem has
+the title of the disk. Similarly, MediaItems for tracks have the title of the
+track.</p>
+
+<h3 id=auxinput>Auxiliary input</h3>
+
+<p>The application that serves auxiliary input exposes a MediaBrowser tree with a
+single entry (or more, if there are multiple ports) to represent the AUX In
+port. The respective MediaSession takes its <code>mediaId</code> and switches to that
+source after receicing a <code>playFromMediaId</code> request.</p>
+
+<p><img src="/devices/automotive/images/radio_media_03.png" alt="AUX MediaBrowser tree structure"></p>
+
+<p><strong>Figure 3.</strong> AUX MediaBrowser tree structure</p>
+
+<p>Each AUX MediaItem entry has an extra field <code>EXTRA_AUX_PORT_NAME</code> set to the
+non-localized name of the port without the "AUX" phrase. For example "AUX 1"
+would be set to "1", "AUX front" to "front", and "AUX" to an empty string. In
+non-English locales, the name tag remains the same as the English string. This
+is unlikely for <code>EXTRA_BCRADIO_BAND_NAME_EN</code>, for which values are OEM-defined
+and not constrained to a predefined list.</p>
+
+<p>If the hardware can check if a device is connected to the AUX port, the hardware
+should mark the MediaItem as <code>PLAYABLE</code> only when an input is connected. The
+hardware must still enumerate (though not <code>PLAYABLE</code>) if nothing sis connected
+to this port. If the hardware has no such capability, the MediaItem must always
+be <code>PLAYABLE</code>.</p>
+
+<h3 id=extra>Extra fields</h3>
+
+<p>The following extra keys can be defined:</p>
+
+<table>
+<tr>
+  <th>Field</th>
+  <th>Value</th>
+</tr>
+<tr>
+  <td width="30%"><code>EXTRA_CD_TRACK</code></td>
+  <td><code>android.media.extra.CD_TRACK</code></td>
+</tr>
+<tr>
+  <td width="30%"><code>EXTRA_CD_DISK</code></td>
+  <td><code>android.media.extra.CD_DISK</code></td>
+</tr>
+<tr>
+  <td width="30%"><code>EXTRA_AUX_PORT_NAME</code></td>
+  <td><code>android.media.extra.AUX_PORT_NAME</code></td>
+</tr>
+</table>
+
+<p>The client must look up the top-level MediaItems for those elements with values
+set for <code>EXTRA_CD_DISK</code> and <code>EXTRA_AUX_PORT_NAME</code>.</p>
+
+<h2 id=examples>Detailed Examples</h2>
+
+<p>The following examples address the MediaBrowser tree structure for those source
+types included in this design.</p>
+
+<p>Broadcast radio <code>MediaBrowserService</code> handles <code>ACTION_PLAY_BROADCASTRADIO</code>.</p>
+
+<table>
+<tr>
+  <th>Stations&nbsp;(<em>browsable</em>)</th>
+  <th>URI</th>
+</tr>
+<tr>
+  <td colspan="2"><code>EXTRA_BCRADIO_FOLDER_TYPE=BCRADIO_FOLDER_TYPE_PROGRAMS</code></td>
+  <td></td>
+</tr>
+<tr>
+  <td width="30%">BBC&nbsp;One&nbsp;(<em>playable</em>)</td>
+  <td><code>broadcastradio://program/RDS_PI/1234?AMFM_FREQUENCY=90500</code></td>
+</tr>
+<tr>
+  <td width="30%">ABC&nbsp;88.1&nbsp;(<em>playable</em>)</td>
+  <td><code>broadcastradio://program/RDS_PI/5678?AMFM_FREQUENCY=88100</code></td>
+</tr>
+<tr>
+  <td width="30%">ABC&nbsp;88.1&nbsp;HD1&nbsp;(<em>playable</em>)</td>
+  <td><code>broadcastradio://program/HD_STATION_ID_EXT/158241DEADBEEF?AMFM_FREQUENCY=88100&RDS_PI=5678</code></td>
+</tr>
+<tr>
+  <td width="30%">ABC&nbsp;88.1&nbsp;HD2&nbsp;(<em>playable</em>)</td>
+  <td><code>broadcastradio://program/HD_STATION_ID_EXT/158242DEADBEFE</code></td>
+</tr>
+<tr>
+  <td width="30%">90.5&nbsp;FM&nbsp;(<em>playable</em>)<br>FM without RDS</td>
+  <td><code>broadcastradio://program/AMFM_FREQUENCY/90500</code></td>
+</tr>
+<tr>
+  <td width="30%">620&nbsp;AM&nbsp;(<em>playable</em>)</td>
+  <td><code>broadcastradio://program/AMFM_FREQUENCY/620</code></td>
+</tr>
+<tr>
+  <td width="30%">BBC&nbsp;One&nbsp;(<em>playable</em>)</td>
+  <td><code>broadcastradio://program/DAB_SID_EXT/1E24102?RDS_PI=1234</code></td>
+</tr>
+</table>
+
+<table>
+<tr>
+  <th>Favorites&nbsp;(<em>browsable</em>, <em>playable</em>)</th>
+  <th>URI</th>
+</tr>
+<tr>
+  <td colspan="2"><code>EXTRA_BCRADIO_FOLDER_TYPE=BCRADIO_FOLDER_TYPE_FAVORITES</code></td>
+  <td></td>
+</tr>
+<tr>
+  <td width="30%">BBC&nbsp;One&nbsp;(<em>playable</em>)</td>
+  <td><code>broadcastradio://program/RDS_PI/1234?AMFM_FREQUENCY=101300</code></td>
+</tr>
+<tr>
+  <td width="30%">BBC&nbsp;Two&nbsp;(<em>not playable</em>)</td>
+  <td><code>broadcastradio://program/RDS_PI/1300?AMFM_FREQUENCY=102100</code></td>
+</tr>
+<tr>
+  <td width="30%">AM&nbsp;(<em>browsable</em>, <em>playable</em>)</td>
+  <td><code>EXTRA_BCRADIO_FOLDER_TYPE=BCRADIO_FOLDER_TYPE_BAND</code></td>
+</tr>
+</table>
+
+<table>
+<tr>
+  <th>AM (<em>browsable</em>, <em>playable</em>)</th>
+  <th>URI</th>
+</tr>
+<tr>
+  <td colspan="2"><code>EXTRA_BCRADIO_FOLDER_TYPE=BCRADIO_FOLDER_TYPE_BAND</code><br><code>EXTRA_BCRADIO_BAND_NAME_EN="AM"</code></td>
+  <td></td>
+</tr>
+<tr>
+  <td width="30%">530&nbsp;AM&nbsp;(<em>playable</em>)</td>
+  <td><code>broadcastradio://program/AMFM_FREQUENCY/530</code></td>
+</tr>
+<tr>
+  <td width="30%">540&nbsp;AM&nbsp;(<em>playable</em>)</td>
+  <td><code>broadcastradio://program/AMFM_FREQUENCY/540</code></td>
+</tr>
+<tr>
+  <td width="30%">550&nbsp;AM&nbsp;(<em>playable</em>)</td>
+  <td><code>broadcastradio://program/AMFM_FREQUENCY/550</code></td>
+</tr>
+</table>
+
+<table>
+<tr>
+  <th>FM&nbsp;(<em>browsable</em>, <em>playable</em>)</th>
+  <th>URI</th>
+</tr>
+<tr>
+  <td colspan="2"><code>EXTRA_BCRADIO_FOLDER_TYPE=BCRADIO_FOLDER_TYPE_BAND</code> <br> <code>EXTRA_BCRADIO_BAND_NAME_EN="FM"</code></td>
+  <td></td>
+</tr>
+<tr>
+  <td width="30%">87.7&nbsp;FM&nbsp;(<em>playable</em>)</td>
+  <td><code>broadcastradio://program/AMFM_FREQUENCY/87700</code></td>
+</tr>
+<tr>
+  <td width="30%">87.9&nbsp;FM&nbsp;(<em>playable</em>)</td>
+  <td><code>broadcastradio://program/AMFM_FREQUENCY/87900</code></td>
+</tr>
+<tr>
+  <td width="30%">88.1&nbsp;FM&nbsp;(<em>playable</em>)</td>
+  <td><code>broadcastradio://program/AMFM_FREQUENCY/88100</code></td>
+</tr>
+<tr>
+  <td width="30%">DAB&nbsp;(<em>playable</em>)</td>
+  <td><code>EXTRA_BCRADIO_FOLDER_TYPE=BCRADIO_FOLDER_TYPE_BAND</code><br>
+  <code>EXTRA_BCRADIO_BAND_NAME_EN="DAB"</code></td>
+</tr>
+</table>
+
+<table>
+<tr>
+  <th>Audio CD MediaBrowserService</th>
+  <th>URI</th>
+</tr>
+<tr>
+  <td width="30%">Handles <code>ACTION_PLAY_AUDIOCD</code></td>
+  <td></td>
+</tr>
+<tr>
+  <td width="30%">Disc&nbsp;1&nbsp;(<em>playable</em>)</td>
+  <td><code>EXTRA_CD_DISK=1</code></td>
+</tr>
+<tr>
+  <td width="30%">Disc&nbsp;2&nbsp;(<em>browsable</em>, <em>playable</em>)</td>
+  <td><code>EXTRA_CD_DISK=2</code><br>
+    <li>Track 1 (<em>playable</em>) <code>EXTRA_CD_TRACK=1</code></li>
+    <li>Track 2 (<em>playable</em>) <code>EXTRA_CD_TRACK=2</code></li>
+  </td>
+</tr>
+<tr>
+  <td width="30%">My&nbsp;music&nbsp;CD&nbsp;(<em>browsable</em>, <em>playable</em>)</td>
+  <td><code>EXTRA_CD_DISK=3</code><br>
+    <li>All By Myself (<em>playable</em>) <code>EXTRA_CD_TRACK=1</code></li>
+    <li>Reise, Reise (<em>playable</em>) <code>EXTRA_CD_TRACK=2</code></li>
+  </td>
+</tr>
+<tr>
+  <td width="30%">Empty&nbsp;slot 4&nbsp;(<em>not playable</em>)</td>
+  <td><code>EXTRA_CD_DISK=4</code></td>
+</tr>
+</table>
+
+<table>
+<tr>
+  <th>AUX&nbsp;MediaBrowserService</th>
+  <th>URI</th>
+</tr>
+<tr>
+  <td width="30%">Handles <code>ACTION_PLAY_AUX</code></td>
+  <td></td>
+</tr>
+<tr>
+  <td width="30%">AUX&nbsp;front&nbsp;(<em>playable</em>)</td>
+  <td><code>EXTRA_AUX_PORT_NAME="front"</code></td>
+</tr>
+<tr>
+  <td width="30%">AUX&nbsp;rear&nbsp;(<em>playable</em>)</td>
+  <td><code>EXTRA_AUX_PORT_NAME="rear"</code></td>
+</tr>
+</table>
+
+</body>
+</html>
+

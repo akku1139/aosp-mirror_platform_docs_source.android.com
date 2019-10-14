@@ -42,10 +42,10 @@ can transform notifications into the app surface.
 
 See the following references for this feature.
 
-+   [`ActivityOptions.makeRemoteAnimation`](https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/app/ActivityOptions.java#844){: .external}  
++   [`ActivityOptions.makeRemoteAnimation`](https://android.googlesource.com/platform/frameworks/base/+/33a701a55c28dd20390acee1ba7881a500830d7d/core/java/android/app/ActivityOptions.java#843){: .external}
 +   [`RemoteAnimationAdapter`](https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/view/RemoteAnimationAdapter.java){: .external}  
 +   [`RemoteAnimationRunner`](https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/view/IRemoteAnimationRunner.aidl){: .external}  
-+   [`Activity.registerRemoteAnimations`](https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/app/Activity.java#7869){: .external}  
++   [`Activity.registerRemoteAnimations`](https://android.googlesource.com/platform/frameworks/base/+/f84e2f60fec6f6d2ecfb3b90ddf075101f4b902f/core/java/android/app/Activity.java#7672){: .external}  
 
 For a reference implementation for the notification launch animation, see
 [`ActivityLaunchAnimator.java`](https://android.googlesource.com/platform/frameworks/base/+/master/packages/SystemUI/src/com/android/systemui/statusbar/notification/ActivityLaunchAnimator.java){: .external}.

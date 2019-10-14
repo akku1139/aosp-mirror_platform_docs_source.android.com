@@ -1,0 +1,133 @@
+<html devsite>
+  <head>
+    <title>SurfaceFlinger and WindowManager</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+    {% include "_versions.html" %}
+  <!--
+      Copyright 2017 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>SurfaceFlinger accepts buffers, composes buffers, and sends buffers to the
+display. WindowManager provides SurfaceFlinger with buffers and  window
+metadata, which SurfaceFlinger uses to composite surfaces to the display.</p>
+
+<h2 id="surfaceflinger">SurfaceFlinger</h2>
+
+<p>SurfaceFlinger can accept buffers in two ways: through BufferQueue and
+SurfaceControl, or through ASurfaceControl.</p>
+
+<p>One way SurfaceFlinger accepts buffers is through BufferQueue and
+SurfaceControl. When an app comes to the foreground, it requests buffers from
+<a href="https://developer.android.com/reference/android/view/WindowManager.html"
+class="external">WindowManager</a>. WindowManager then requests a layer from
+SurfaceFlinger. A layer is a combination of a <a
+href="/devices/graphics/arch-sh">surface</a>, which contains the BufferQueue, and
+a <a href="https://developer.android.com/reference/android/view/SurfaceControl"
+     class="external">SurfaceControl</a>, which contains the layer metadata like the display frame.
+SurfaceFlinger creates the layer and sends it to WindowManager. WindowManager
+then sends the surface to the app, but keeps the SurfaceControl to
+manipulate the appearance of the app on the screen.</p>
+
+<p>Android {{ androidQVersionNumber }} adds ASurfaceControl, which is another
+way that SurfaceFlinger can accept buffers.
+ASurfaceControl combines a surface
+and a SurfaceControl into one transaction package that is sent to
+SurfaceFlinger. An ASurfaceControl is associated with a layer, which apps
+update through ASurfaceTransactions. Apps then get information about
+ASurfaceTransactions through callbacks that pass ASurfaceTransactionStats
+containing information, such as latch time, acquire times, and so on.</p>
+
+<p>The following table includes more details about ASurfaceControl and its
+associated components.</p>
+
+<table>
+  <tr>
+    <th>Component</th>
+    <th>Description</th>
+  </tr>
+  <tr>
+    <td>ASurfaceControl</td>
+    <td>Wraps SurfaceControl and enables an app to create SurfaceControls that
+      correspond to layers on the display.<br /><br />Can be created as a child of
+      ANativeWindow or as a child of another ASurfaceControl.</td>
+  </tr>
+  <tr>
+    <td>ASurfaceTransaction</td>
+    <td>Wraps Transaction to enable the client to edit a layer's descriptive
+      properties, such as geometry, and sends the updated buffers to
+      SurfaceFlinger.</td>
+  </tr>
+  <tr>
+    <td>ASurfaceTransactionStats</td>
+    <td>Sends information about transactions that have been presented, such as
+      latch time, acquire times, and previous release fence, to an app through a
+      preregistered callback.</td>
+  </tr>
+</table>
+
+<p>Though apps can submit buffers at any time, SurfaceFlinger only wakes up to
+accept buffers between display refreshes, which can differ depending on the
+device. This minimizes memory usage and avoids visible tearing on the
+screen, which can occur when updating the display mid-refresh.</p>
+
+<p>When the display is between refreshes, the display sends the <em>VSYNC</em>
+signal to SurfaceFlinger. The VSYNC signal indicates that the display can be
+refreshed without tearing. When SurfaceFlinger receives the VSYNC signal, SurfaceFlinger
+walks through its list of layers looking for new buffers. If SurfaceFlinger finds a
+new buffer, SurfaceFlinger acquires the buffer; if not, SurfaceFlinger continues
+to use the previously acquired buffer. SurfaceFlinger must always display something,
+so it hangs on to one buffer. If no buffers have ever been submitted on a
+layer, the layer is ignored.</p>
+
+<p>After SurfaceFlinger has collected all buffers for visible layers, it asks
+the Hardware Composer (HWC) how composition should be performed. If the HWC
+marks layer composition type as client composition, SurfaceFlinger composites those
+layers. Then, SurfaceFlinger passes the output buffer to the <a
+href="/devices/graphics/implement-hwc">HWC</a>.</p>
+
+<h2 id="windowmanager">WindowManager</h2>
+
+<p>WindowManager controls <a
+href="https://developer.android.com/reference/android/view/Window"
+class="external">window</a> objects, which are containers for <a
+href="https://developer.android.com/reference/android/view/View"
+class="external">view</a> objects. Window objects are always backed by
+surface objects. WindowManager oversees lifecycles, input and focus
+events, screen orientation, transitions, animations, position, transforms,
+z-order, and many other aspects of a window. WindowManager sends all of the
+window metadata to SurfaceFlinger so SurfaceFlinger can use that data to
+composite surfaces on the display.</p>
+
+<h3 id="pre-rotation">Pre-rotation</h3>
+
+<p>Many hardware overlays don't support rotation (and even if they do, it costs
+processing power); the solution is to transform the buffer before it reaches
+SurfaceFlinger. Android supports a query hint
+(<code>NATIVE_WINDOW_TRANSFORM_HINT</code>) in <code>ANativeWindow</code> to
+represent the most likely transform to be applied to the buffer by
+SurfaceFlinger. GL drivers can use this hint to pre-transform the buffer
+before it reaches SurfaceFlinger so that when the buffer arrives, it's correctly
+transformed.</p>
+
+<p>For example, when receiving a hint to rotate 90 degrees, generate and apply a
+matrix to the buffer to prevent it from running off the end of the page. To save
+power, do this pre-rotation. For details, see the <code>ANativeWindow</code>
+interface defined in <code>system/core/include/system/window.h</code>.</p>
+
+  </body>
+</html>

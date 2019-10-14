@@ -1,0 +1,219 @@
+<html devsite>
+  <head>
+    <title>Input Method Editor Support</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+{% include "_versions.html" %}
+
+  <!--
+      Copyright 2019 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>Updates made to these display-specific areas are provided below:</p>
+
+<ul>
+  <li><a href="ime-support#non-default">Apps running on a non-default display</a></li>
+  <li><a href="ime-support#ime-multi">Multi-session Input Method Editor support</a></li>
+</ul>
+
+<p>Android {{ androidQVersionNumber }} supports
+<a
+href="https://developer.android.com/guide/topics/text/creating-input-method" class="external">software keyboard</a>
+for apps running on a non-default display. </p>
+
+<h2 id="non-default">Apps running on a non-default display</h2>
+
+<p>In terms of which display shows the software keyboard of the Input Method Editor
+(IME), there are two different modes. The software keyboard is shown on the:</p>
+
+<ul>
+<li><em>Same</em> display on which the focused app appears.</li>
+<li><em>Default</em> display while the focused app is running on a non-default display.</li>
+</ul>
+
+<p>The system determines which mode to use based on the settings of the display
+on which the focused app appears. For more details, see:
+
+<ul>
+  <li><code>DisplayWindowSettings#shouldShowImeLocked()</code></li>
+  <li><code>DisplayWindowSettings#setShouldShowImeLocked()</code></li>
+</ul>
+
+<p><img src="/devices/tech/display/images/multi_display_09.png"></p>
+
+<p><strong>Figure 1.</strong> IME software keyboard as it appears on secondary display,
+including target app</p>
+
+<p>The system uses a single IME, but can shift between displays to follow
+user focus. Android {{ androidQVersionNumber }} automatically expects all first- and third-party IMEs to
+revise the layout and resize according to the new display size when created.</p>
+
+<p>If there's an active connection on display A, and an input field requests
+input focus on display B, then the following flow occurs:</p>
+
+<ol>
+<li>A new input connection comes from the input field on display B.</li>
+<li><code>InputMethodManagerService</code> checks if the connection should be
+approved.</li>
+<li>A display is selected for the IME. If display B supports showing the IME and
+is allowed to show it, then B is used. Otherwise, the primary device display is
+selected.</li>
+<li>If the selected display is not from display A, then the connection is
+re-established. <code>InputMethodService</code> is destroyed and then created again.</li>
+</ol>
+
+<h3 id="security-ime">Security restriction</h3>
+
+<p>The system won't show an IME on virtual displays that aren't owned by the
+system. This is due to a security concern that a malicious app could create a
+virtual display with enabled
+<a
+href="/devices/tech/display/multi_display/system-decorations">System Decorations Support</a>
+and read user-sensitive information from the surface, such as typing predictions
+and custom backgrounds.</p>
+
+<h3 id="implementation-ime">Implementation</h3>
+
+<p>In Android 9 (and lower), the IME was only available on the default screen, as
+described in <a
+href="https://android-developers.googleblog.com/2009/04/updating-applications-for-on-screen.html" class="external">On-Screen
+Input methods</a>. In Android {{ androidQVersionNumber }} (and higher), a user can switch
+between different input text fields on different displays by switching focus,
+and the IME window moves to the secondary displays.</p>
+
+<p>The implementation in <code>WindowManager</code> tracks the input method
+window (the IME window where the soft keyboard is drawn) and the input method
+target (the window where the IME input goes) to manage the IME state.</p>
+
+<p>For <code>InputMethodManagerService</code> (IMMS), no other built-in mechanism can
+propagate the display change to <code>InputMethodService</code> (IMS) and
+reconfigure the keyboard layout at runtime when moving focus to another display.</p>
+
+<p>To achieve the IME window switch between displays, Android
+{{ androidQVersionNumber }} implements the following:</p>
+
+<ul>
+<li>The IME and input target window are now tracked per display in
+<code>DisplayContent#mInputMethodWindow</code> and
+<code>DisplayContent#mInputMethodTarget</code>, so that the WindowManager (WM) can manage the
+IME focus state independently of each display.</li>
+
+<li>On the IMMS side, when an app client's focus request from the external display
+is received through <code>ViewRootImpl#handleWindowFocusChanged -&gt;
+InputMethodManager#onPostWindowFocus -&gt;
+IMMS#startInputOrWindowGainedFocus</code>, it first unbinds the current input
+method service and then rebinds the service to reattach the new IME window token
+for the external display in <code>onServiceConnected()</code>.</li>
+
+<li>On the IMS side, after the <code>IMS#attachToken</code> is received, the
+following flow occurs:<ul>
+
+<li><code>ContextImpl#updateDisplay</code> is called to update the service
+context's display in <code>InputMethodService#attachToken()</code>. This calls
+<code>ViewGroup#addView()</code> to revise the layout of the keyboard and adapt
+to the target display checking the current context.</li>
+
+<li>After <code>DisplayContent#setInputMethodWindowLocked()</code> is called,
+the implementation sends process-level display configuration changes using the
+<code>WindowProcessController</code> to IME process to override resources and
+display metrics.</li>
+
+<li>The <code>InputMethodService</code> client gets the correct configuration
+with the correct display metrics after <code>onConfigurationChanged()</code> and
+the <code>ViewGroup#addView()</code> call to reinitialize the input view.</li>
+</ul>
+</ul>
+
+<h2 id="ime-multi">Multi-session Input Method Editor support</h2>
+
+<p>Device implementations with multiple displays expected to be simultaneously
+used by multiple users to provide appropriate input sources can be configured
+to simultaneously display multiple input method editors (IME), at most one per
+display. The following two figures show a sample multi-session IME on two displays:</p>
+
+<p><img src="/devices/tech/display/images/multi_display_10a.png"></p>
+
+<p><strong>Figure 2.</strong> Sample multi-session IME</p>
+
+<p><img src="/devices/tech/display/images/multi_display_10b.png"></p>
+
+<p><strong>Figure 3.</strong> Sample multi-session IME</p>
+
+<p>Support for
+<a href="/devices/tech/display/multi_display/displays#focus">Per-display focus</a>
+is a prerequisite for this feature. If not, this feature can't be enabled.
+Due to security restrictions, the per-display focus limitation restricted
+this feature to a small subset of devices.</p>
+
+<p>In Android {{ androidQVersionNumber }}, support for multi-session IMEs
+is implemented with separate system services with a different set of APIs and
+reduced functionality. Multi-session IME isn't compatible with existing IMEs.
+Either multi-session or single-session service can be used, but not both.</p>
+
+<p>It isn't possible to use existing Android IMEs built on top of the
+<code>InputMethodService</code> class because the assumption that a single IME
+client can be focused at the same time was made before Android IME APIs were
+introduced in Android 1.5 and many public APIs in
+<code>InputMethodService</code> have already relied heavily on that assumption.
+However, updating the <code>InputMethodService</code> class to support a
+multi-client scenario is challenging because:</p>
+
+<ol>
+
+<li>Doing so would introduce an unacceptable amount of complexity into
+<code>InputMethodService</code>, which is already hard to maintain.</li>
+
+<li>IME developers still need to update their implementation to be able to
+support parallel requests from multiple focused IME clients, which may require a
+nontrivial redesign on their side (such as input decoder and typing history
+database).</li>
+
+<li>Actual use cases for multi-IME clients are expected to evolve rapidly, so
+the new protocol isn't stable and isn't ready to be exposed as public APIs.</li>
+
+</ol>
+
+<p>As with single-session (regular) IME, control over showing IME on individual
+displays is performed using <code>DisplayWindowSettings</code>.</p>
+
+<p>There is a sample multi-session IME located at
+<code>development/samples/MultiClientInputMethod</code>.</p>
+
+<p>To test multi-session IME:</p>
+
+<ol>
+<li>Set <code>config_perDisplayFocusEnabled</code> to <code>true</code>.</li>
+<li>Run these commands:<ol>
+<li><code>$ make -j MultiClientInputMethod</code></li>
+<li><code>$ adb install -r
+$OUT/system/priv-app/MultiClientInputMethod/MultiClientInputMethod.apk</code></li>
+<li><code>$ adb root</code></li>
+<li><code>$ adb shell setprop persist.debug.multi_client_ime \<br />
+com.example.android.multiclientinputmethod/.MultiClientInputMethod</code></li>
+<li><code>$ adb reboot</code></li>
+</ol>
+<li>Try multiple text input scenarios.</li>
+</ol>
+
+<h3 id="multi-ime">Implementation</h3>
+
+<p>See <code>MultiClientInputMethodManagerService</code> for implementation
+details.</p>
+
+  </body>
+</html>
+

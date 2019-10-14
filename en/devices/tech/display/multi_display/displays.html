@@ -1,0 +1,372 @@
+<html devsite>
+  <head>
+    <title>Display Support</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  <body>
+{% include "_versions.html" %}
+
+  <!--
+      Copyright 2019 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p>Updates made to these display-specific areas are provided below:</p>
+
+<ul>
+  <li><a href="displays#resize">Resizing activities and displays</a></li>
+  <li><a href="displays#aspect">Display sizes and aspect ratios</a></li>
+  <li><a href="displays#policies">Display policies</a></li>
+  <li><a href="displays#windows">Display window settings</a></li>
+  <li><a href="displays#static">Static display identifiers</a></li>
+  <li><a href="displays#focus">Per-display focus</a></li>
+</ul>
+
+<h2 id="resize">Resizing activities and displays</h2>
+
+<p>To indicate that an app may not support multi-window mode or resizing,
+activities use the <code>resizeableActivity=false</code> attribute. Common
+issues encountered by apps when activities are resized include:</p>
+
+<ul>
+<li>An activity can have a different configuration from the app or another
+non-visual component. A common mistake is to read display metrics from the app
+context. The returned values won't be adjusted to the visible area metrics in
+which an activity is displayed.</li>
+<li>An activity may not handle resizing and crash, display a distorted UI,
+or lose state due to relaunch without saving the instance state.</li>
+<li>An app may attempt to use absolute input coordinates (instead of those
+relative to the window position), which may break the input in
+multi-window.</li>
+</ul>
+
+<p>In Android 7 (and higher), an app can be set
+<code>resizeableActivity=false</code> to always run in full screen mode. In
+this case, the platform prevents non-resizable activities from going into split
+screen. If the user tries to invoke a non-resizable activity from the launcher
+while already in a split-screen mode, the platform exits split-screen mode and
+launches the non-resizable activity in full-screen mode.</p>
+
+<p>Apps that explicitly set this attribute to <code>false</code> in the
+manifest must not be launched in multi-window mode, unless the compatibility
+mode is applied:</p>
+
+<ul>
+<li>Same configuration is applied to the process, which contains all activities
+and non-activity components.</li>
+<li>Applied configuration meets the CDD requirements for app-compatible
+displays.</li>
+</ul>
+
+<p>In Android {{ androidQVersionNumber }}, the platform still prevents
+non-resizable activities from going into split-screen mode, but they can be
+temporarily scaled if the activity has declared a fixed orientation or aspect
+ratio. If not, the activity resizes to fill up the entire screen as in Android
+9 and lower.</p>
+
+<p>The default implementation applies the following policy:</p>
+
+<p><em>When an activity declared to be incompatible with multi-window through
+use of the <code>android:resizeableActivity</code> attribute and when that
+activity meets one of the conditions described below, then when the applied
+screen configuration must change, the activity and process are saved with the
+original configuration and the user is provided with an affordance to relaunch
+the app process to use the updated screen configuration.</em></p>
+
+<ul>
+<li><em>Is fixed orientation via the application of
+<code>android:screenOrientation</code></em></li>
+<li><em>App has default maximum or minimum aspect ratio by targeting API level
+or declares the aspect ratio explicitly</em></li>
+</ul>
+
+<p>This figure displays a non-resizable activity with a declared aspect ratio.
+When folding the device, the window is scaled down to fit the area while
+maintaining the aspect ratio using the appropriate letterboxing. In addition, a
+restart activity option is provided to the user each time the display area for
+the activity is changed.</p>
+
+<p>When unfolding the device, the configuration, size, and aspect ratio of the
+activity don't change, but the option to restart the activity is displayed.</p>
+
+<p>When <code>resizeableActivity</code> is not set (or it is set to
+<code>true</code>), the app fully supports resizing.</p>
+
+<h3 id="implementation-resize">Implementation</h3>
+
+<p>A non-resizable activity with fixed orientation or aspect ratio is called
+size compatibility mode (SCM) in code. The condition is defined in
+<code>ActivityRecord#shouldUseSizeCompatMode()</code>. When an SCM activity is
+launched, the screen-related configuration (such as size or density) is fixed
+in the requested override configuration, so the activity is no longer dependent
+on the current display configuration.</p>
+
+<p>If the SCM activity can't fill the entire screen, it is top aligned and
+horizontally centered. The activity bounds are computed by
+<code>AppWindowToken#calculateCompatBoundsTransformation()</code>.</p>
+
+<p>When an SCM activity uses a different screen configuration than its
+container (for example, the display is resized, or activity moved to another
+display), <code>ActivityRecord#inSizeCompatMode()</code> is true and
+<code>SizeCompatModeActivityController</code> (in System UI) receives the
+callback to show the process restart button.</p>
+
+<h2 id="aspect">Display sizes and aspect ratios</h2>
+
+<p>Android {{ androidQVersionNumber }} provides support for new aspect ratios
+from high ratios of long and thin screens to 1:1 ratios. Apps can define
+<code><a
+href="https://developer.android.com/guide/topics/manifest/activity-element#maxaspectratio" class="external">ApplicationInfo#maxAspectRatio</a></code>
+and the <code>ApplicationInfo#minAspectRatio</code> of the screen that they are
+able to handle.</p>
+
+<p><img src="/devices/tech/display/images/multi_display_04.png"></p>
+
+<p><strong>Figure 1.</strong> Example app ratios supported in Android
+{{ androidQVersionNumber }}</p>
+
+<p>Device implementations can have secondary displays with sizes and
+resolutions smaller than those required by Android 9, and lower (minimum of 2.5
+inches width or height, minimum of 320 DP for <code>smallestScreenWidth</code>),
+but only activities that opt in to support these small displays can be placed
+there.</p>
+
+<p>Apps can opt in by declaring a minimum supported size that is smaller than
+oe equal to the target display size. Use the <code>android:minHeight</code> and
+<code>android:minWidth</code> activity layout attributes in the
+AndroidManifest to do so.</p>
+
+<h2 id="policies">Display policies</h2>
+
+<p>Android {{ androidQVersionNumber }} separates and moves certain display
+policies from the default <code>WindowManagerPolicy</code> implementation in
+<code>PhoneWindowManager</code> to per-display classes, such as:</p>
+
+<ul>
+<li>Display state and rotation</li>
+<li>Some keys and motion event tracking</li>
+<li>System UI and decoration windows</li>
+</ul>
+
+<p>In Android 9 (and lower), the <code>PhoneWindowManager</code> class handled
+display policies, state and settings, rotation, decoration window frame
+tracking, and more. Android {{ androidQVersionNumber }} moves most of this to
+the <code>DisplayPolicy</code> class, except for rotation tracking, which has
+been moved to <code>DisplayRotation</code>.</p>
+
+<h2 id="windows">Display window settings</h2>
+
+<p>In Android {{ androidQVersionNumber }}, the configurable per-display
+windowing setting has been expanded to include:</p>
+
+<ul>
+<li>Default display windowing mode</li>
+<li>Overscan values</li>
+<li>User rotation and rotation mode</li>
+<li>Forced size, density, and scaling mode</li>
+<li>Content removal mode (when display is removed)</li>
+<li>Support for system decorations and IME</li>
+</ul>
+
+<p>The <code>DisplayWindowSettings</code> class contains settings for these
+options. They're persisted to disc in <code>/data</code> partition in
+<code>display_settings.xml</code> every time a setting is changed. For
+details, see <code>DisplayWindowSettings.AtomicFileStorage</code> and
+<code>DisplayWindowSettings#writeSettings()</code>. Device manufacturers can
+provide default values in <code>display_settings.xml</code> for their device
+configuration. However, because the file is stored in <code>/data</code>,
+additional logic may be needed to restore the file if erased by a wipe.</p>
+
+<p>By default, Android {{ androidQVersionNumber }} uses
+<code>DisplayInfo#uniqueId</code> as an identifier for a display when persisting
+the settings. <code>uniqueId</code> should be populated for all displays. In
+addition, it's stable for physical and network displays. It's also possible to
+use the port of a physical display as the identifier, which can be set in
+<code>DisplayWindowSettings#mIdentifier</code>. Upon each write, all settings
+are written so it's safe to update the key that's used for a display entry in
+storage. For details, see "Static Display Identifiers" below.</p>
+
+<p>Settings are persisted in the <code>/data</code> directory for historical
+reasons. Originally, they were used to persist user-set settings, such as
+display rotation.</p>
+
+<h2 id="static">Static display identifiers</h2>
+
+<p>Android 9 (and lower) did not provide stable identifiers for displays in the
+framework. When a display was added to the system,
+<code>Display#mDisplayId</code> or <code>DisplayInfo#displayId</code> was
+generated for that display by incrementing a static counter. If the system
+added and removed the same display, a different ID resulted.</p>
+
+<p>If a device had multiple displays available from boot, the displays could be
+assigned different identifiers, depending on the timing. While Android 9 (and
+earlier) included <code>DisplayInfo#uniqueId</code>, it didn't contain enough
+information to differentiate between displays because physical displays were
+identified as either <code>local:0</code> or <code>local:1</code>, to represent
+the built-in and external display.</p>
+
+<p>Android {{ androidQVersionNumber }} changes <code>DisplayInfo#uniqueId</code>
+to add a stable identifier and to differentiate between local, network, and
+virtual displays.</p>
+
+<table>
+<thead>
+<tr>
+<th>Display type</th>
+<th><strong>Format</strong></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Local</td>
+<td><pre class="prettyprint">local:&lt;stable-id&gt;</pre></td>
+</tr>
+<tr>
+<td>Network</td>
+<td><pre class="prettyprint">network:&lt;mac-address&gt;</pre></td>
+</tr>
+<tr>
+<td>Virtual</td>
+<td><pre class="prettyprint">virtual:&lt;package-name-and-name&gt;</pre></td>
+</tr>
+</tbody>
+</table>
+
+<aside class="note"><b>Note. </b>For physical local displays,
+<code>stable-id</code> is a type-long identifier and encodes port information
+in the lower byte and Extended Display Identification Data (EDID) in upper bits
+(such as manufacturer ID and serial number).</aside>
+
+<p>In addition to updates to <code>uniqueId</code>,
+<code>DisplayInfo.address</code> contains <code>DisplayAddress</code>, a
+display identifier that is stable across reboots. In Android
+{{ androidQVersionNumber }}, <code>DisplayAddress</code> supports physical
+and network displays. <code>DisplayAddress.Physical</code> contains a stable
+display ID (same as in <code>uniqueId</code>) and can be created with
+<code>DisplayAddress#fromPhysicalDisplayId()</code>.</p>
+
+<p>Android {{ androidQVersionNumber }} also provides a convenient method to get
+port information (<code>Physical#getPort()</code>). This method can be used in
+the framework to statically identify displays. For example, it's used in
+<code>DisplayWindowSettings</code>). <code>DisplayAddress.Network</code>
+contains the MAC address and can be created with
+<code>DisplayAddress#fromMacAddress()</code>.</p>
+
+<p>These additions allow device manufacturers to identify displays in static
+multi-display set-ups and to configure different system settings and features
+using static display identifiers, such as ports for physical displays. These
+methods are hidden and are intended only to be used within
+<code>system_server</code>.</p>
+
+<aside class="caution"><b>Caution. </b>This feature depends on a Hardware Composer
+API. Device manufacturers must implement the
+<code>getDisplayIdentificationData</code> method of the
+<code>IComposerClient</code> 2.3 HIDL interface
+(<code>android.hardware.graphics.composer@2.3::IComposerClient</code>)
+or the corresponding <code>hardware/hwcomposer2.h</code> function for older
+<code>libhardware</code> implementations.</aside>
+
+<p>Given a HWC display ID (which can be opaque and not always stable), this
+method returns the (platform-specific) 8-bit port number that identifies a
+physical connector for display output, as well as the display's EDID blob.
+SurfaceFlinger extracts manufacturer or model information from the EDID to
+generate the stable 64-bit display IDs exposed to the framework. If this method
+isn't supported or errors out, SurfaceFlinger falls back to the legacy MD mode,
+where <code>DisplayInfo#address</code> is null and
+<code>DisplayInfo#uniqueId</code> is hard-coded, as described above.</p>
+
+<p>To verify that this feature is supported, run:</p>
+
+<pre class="prettyprint">
+$ dumpsys SurfaceFlinger --display-id
+# Example output.
+Display 21691504607621632 (HWC display 0): port=0 pnpId=SHP displayName="LQ123P1JX32"
+Display 9834494747159041 (HWC display 2): port=1 pnpId=HWP displayName="HP Z24i"
+Display 1886279400700944 (HWC display 1): port=2 pnpId=AUS displayName="ASUS MB16AP"
+</pre>
+
+<h2 id="focus">Per-display focus</h2>
+
+<p>To support several input sources that target individual displays at the same
+time, Android {{ androidQVersionNumber }} can be configured to support multiple
+focused windows, at most one per-display. This is intended only for special
+types of devices when multiple users interact with the same device at the same
+time and use different input methods or devices, such as Android
+Automotive.</p>
+
+<p>It is strongly recommended that this feature <em>not</em> be enabled for
+regular devices, including multi-screen devices or those used for desktop-like
+experiences. This is due primarily to a security concern that may cause users
+to wonder which window has input focus.</p>
+
+<p>Imagine the user who enters secure information into a text input field,
+perhaps logging in to a banking app or entering text that contains sensitive
+information. A malicious app could create a virtual off-screen display with
+which to execute an activity, also with a text input field. Legitimate and
+malicious activities have focus and both display an active input indicator
+(blinking cursor).</p>
+
+<p>However, since input from a keyboard (hardware or software) is entered into
+the topmost activity only (that app that was most recently launched). By
+creating a hidden virtual display, a malicious app could grab user input, even
+when using a software keyboard on the primary device display.</p>
+
+<p>Use <code>com.android.internal.R.bool.config_perDisplayFocusEnabled</code>
+to set per-display focus.</p>
+
+<h3 id="compatibility">Compatibility</h3>
+
+<p><strong>Issue:</strong> In Android 9 and lower, at most one window in the
+system has focus at a time.</p>
+
+<p><strong>Solution:</strong> In the rare case when two windows from the
+same process would be focused, the system provides focus only to the window
+that's higher in the Z-order. This restriction is removed for apps that target
+Android {{ androidQVersionNumber }}, at which point it's expected that they can
+support multiple windows being focused on simultaneously.</p>
+
+<h3 id="implementation-per">Implementation</h3>
+
+<p><code>WindowManagerService#mPerDisplayFocusEnabled</code> controls the
+availability of this feature. In <code>ActivityManager</code>,
+<code>ActivityDisplay#getFocusedStack()</code> is now used instead of global
+tracking in a variable. <code>ActivityDisplay#getFocusedStack()</code>
+determines focus based on Z-order instead of caching the value. This is so that
+only one source, WindowManager, need track the Z-order of activities.</p>
+
+<p><code>ActivityStackSupervisor#getTopDisplayFocusedStack()</code> takes a
+similar approach for those cases when the topmost focused stack in the system
+must be identified. The stacks are traversed from top to bottom, searching for
+the first eligible stack.</p>
+
+<p><code>InputDispatcher</code> can now have multiple focused windows
+(one per display). If an input event is display-specific, then it's dispatched
+to the focused window in the corresponding display. Otherwise, it's dispatched
+to the focused window in the focused display, which is the display that the user
+most recently interacted with.</p>
+
+<p>See <code>InputDispatcher::mFocusedWindowHandlesByDisplay</code> and
+<code>InputDispatcher::setFocusedDisplay()</code>. Focused apps are also updated
+separately in InputManagerService through
+<code>NativeInputManager::setFocusedApplication()</code>.</p>
+
+<p>In <code>WindowManager</code>, focused windows are also tracked separately.
+See <code>DisplayContent#mCurrentFocus</code> and
+<code>DisplayContent#mFocusedApp</code> and the respective uses. Related focus
+tracking and updating methods have been moved from
+<code>WindowManagerService</code> to <code>DisplayContent</code>.</p>
+
+  </body>
+</html>

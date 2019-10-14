@@ -1,0 +1,138 @@
+<html devsite><head>
+
+  <meta name="book_path" value="/_book.yaml"/>
+
+  <meta name="project_path" value="/_project.yaml"/>
+</head>
+<body>
+
+<!--
+  Copyright 2019 The Android Open Source Project
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+<h1 id="wi-fi_low-latency_mode" class="page-title">WLAN 低延迟模式</h1>
+
+<p>Android 10 扩展了 WLAN Lock API，以允许容易受到延迟时间影响的应用将 WLAN 配置为<a href="https://developer.android.com/reference/android/net/wifi/WifiManager#WIFI_MODE_FULL_LOW_LATENCY" class="external">低延迟模式</a>。当满足以下所有条件时，低延迟模式便会启动：</p>
+
+<ul>
+<li>已启用 WLAN，设备可以访问互联网。</li>
+<li>应用已创建并获得 WLAN 锁，并且正在前台运行。</li>
+<li>屏幕处于开启状态。</li>
+</ul>
+
+<p>要在设备上支持低延迟模式，设备制造商必须更新 WLAN 驱动程序和供应商 HAL。在低延迟模式下，框架会明确停用节电模式（在 IEEE 802.11 标准中也称为低电耗模式状态）。您可以优化驱动程序层和固件层中的扫描和漫游参数，以进一步降低 WLAN 延迟。确切的优化项目因实现而异。</p>
+
+<p>Android 具有<a href="https://developer.android.com/reference/android/net/wifi/WifiManager#WIFI_MODE_FULL_HIGH_PERF" class="external">高性能 WLAN 锁定模式</a>（在 API 级别 12 中引入），它与低延迟模式相互独立。</p>
+
+<h2 id="implementation">实现</h2>
+
+<p>WLAN 低延迟模式功能位于 <code>android.hardware.wifi@1.3</code> 中。要支持此功能，请在 <code>IWifiChip.hal</code> 中提供以下函数的实现：</p>
+
+<ul>
+<li><code>getCapabilities_1_3() generates (WifiStatus status,
+bitfield&lt;ChipCapabilityMask&gt; capabilities)</code></li>
+<li><code>setLatencyMode(LatencyMode mode) generates (WifiStatus status)</code></li>
+</ul>
+
+<p>参考实现可以在 <code>wifi_legacy_hal.cpp</code> 中找到，其中包含以下函数：</p>
+
+<ul>
+<li><code>wifi_error wifi_get_supported_feature_set(wifi_interface_handle
+iface,  feature_set *set)</code></li>
+<li><code>wifi_error wifi_set_latency_mode(wifi_interface_handle handle,
+wifi_latency_mode mode)</code></li>
+</ul>
+
+<p>在低延迟模式下，Android 框架中的 <a href="https://android.googlesource.com/platform/frameworks/opt/net/wifi/+/refs/heads/master/service/java/com/android/server/wifi/WifiLockManager.java" class="external"><code>WifiLockManager</code></a> 会明确停用节电模式。要支持此行为，WLAN 驱动程序必须支持 NL80211 命令 <code>NL80211_CMD_SET_POWER_SAVE</code>，以启用和停用节电模式。停用 WLAN 节电模式后，WLAN 系统必须保持唤醒状态，并可以开始以最低延迟发送或接收数据包。</p>
+<aside class="note"><strong>注意</strong><span>：低延迟模式在支持 <code>android.hardware.wifi@1.3</code> 的设备上完全受支持。对于搭载 Android 10 但不支持 <code>android.hardware.wifi@1.3</code> 的设备，仅当应用获得低延迟模式 WLAN 锁且该锁处于启用状态时，<code>WifiLockManager</code> 才会停用节电模式。</span></aside>
+<h2 id="disabling_the_feature">停用此功能</h2>
+
+<p>要关闭低延迟模式功能，请更新 <code>getCapabilities_1_3()</code> 的底层代码，使得 <code>capabilities &amp; SET_LATENCY_MODE = 0</code>，其中 <code>SET_LATENCY_MODE</code> 在 <code>IWifiChip.hal</code> 中定义。停用此功能后，仅当低延迟模式处于启用状态时，框架才会停用节电模式。</p>
+
+<h2 id="validation">验证</h2>
+
+<p>要测试低延迟模式在启用状态下的工作情况，请运行以下自动测试和手动 ping 延迟测试。</p>
+
+<h3 id="automated_testing">自动测试</h3>
+
+<p>运行以下 VTS 和 CTS 测试：</p>
+
+<ul>
+<li>VTS：<code>hardware/interfaces/wifi/1.3/vts/functional/wifi_chip_hidl_test.cpp</code></li>
+<li>CTS：<code>cts/tests/tests/net/src/android/net/wifi/cts/WifiLockTest.java</code></li>
+</ul>
+
+<h3 id="manual_testing">手动测试</h3>
+
+<h4 id="required_test_equipment_and_environment">所需的测试设备和环境</h4>
+
+<p>对于手动测试，需要进行以下设置：</p>
+
+<ul>
+<li>WLAN 接入点 (AP)</li>
+<li><p>被测设备 (DUT) 手机和测试计算机</p>
+
+<ul>
+<li>DUT 必须通过 WLAN 连接到接入点。</li>
+<li>测试计算机必须通过 WLAN 或以太网连接到接入点。</li>
+<li>测试计算机必须通过 USB 连接到 DUT。</li>
+</ul></li>
+</ul>
+
+<h4 id="uplink_ping_test">上行链路 ping 测试</h4>
+
+<ol>
+<li><p>启用低延迟模式。</p>
+
+<pre class="prettyprint">
+<code class="devsite-terminal">adb root</code>
+<code class="devsite-terminal">adb shell cmd wifi force-low-latency-mode enabled</code>
+</pre></li>
+<li><p>确保您的计算机通过 ADB 与手机连接。通过 ADB shell，以 1 秒的间隔连续对网关执行 3 小时 ping 操作。</p></li>
+<li><p>将测试输出保存在文本文件中，并使用电子表格或 Python 脚本生成 ping 延迟时间测试结果的直方图。</p></li>
+<li><p>在停用延迟模式的情况下重复执行第 1-3 步。</p>
+
+<pre class="prettyprint">
+<code class="devsite-terminal">adb root</code>
+<code class="devsite-terminal">adb shell cmd wifi force-low-latency-mode disabled</code>
+</pre></li>
+<li><p>比较测试结果，以确保低延迟模式处于启用状态时平均 ping 延迟值有所降低。</p></li>
+</ol>
+<aside class="note"><strong>注意</strong><span>：（可选）要确定端到端延迟总体上是否有所降低，请使用知名的主机地址（如 google.com）重复测试。</span></aside>
+<h4 id="downlink_ping_test">下行链路 ping 测试</h4>
+
+<ol>
+<li><p>启用低延迟模式。</p>
+
+<pre class="prettyprint">
+<code class="devsite-terminal">adb root</code>
+<code class="devsite-terminal">adb shell cmd wifi force-low-latency-mode enabled</code>
+</pre></li>
+<li><p>通过测试计算机的命令行，以 1 秒的间隔连续对手机的 IP 地址执行 3 小时 ping 操作。</p></li>
+<li><p>将测试输出保存在文本文件中，并使用电子表格或 Python 脚本生成 ping 延迟时间测试结果的直方图。</p></li>
+<li><p>在停用延迟模式的情况下重复执行第 1-3 步。</p>
+
+<pre class="prettyprint">
+<code class="devsite-terminal">adb root</code>
+<code class="devsite-terminal">adb shell cmd wifi force-low-latency-mode disabled</code>
+</pre></li>
+<li><p>比较测试结果，以确保低延迟模式处于启用状态时平均 ping 延迟值有所降低。</p></li>
+</ol>
+<aside class="note"><strong>注意</strong><span>：（可选）要确定端到端延迟是否有所降低，请使用知名的主机地址（如 google.com）重复 ping 测试。</span></aside>
+<h4 id="other_tests">其他测试</h4>
+
+<p>在不同的环境中重复上述测试。例如，您可以在家里或办公室进行测试。</p>
+
+</body></html>

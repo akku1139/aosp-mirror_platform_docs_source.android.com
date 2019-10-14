@@ -21,15 +21,27 @@ Book: /_book.yaml
 
 # Carrier Wi-Fi
 
-Carrier Wi-Fi is a feature introduced in Android {{ androidPVersionNumber }}
+Carrier Wi-Fi is an auto-connection feature (using encrypted IMSI) available in Android {{ androidPVersionNumber }}
+and higher
 that allows devices to automatically connect to carrier-implemented Wi-Fi
 networks. In areas of high congestion or with minimal cell coverage such as a
-stadium or an underground train station, Carrier Wi-Fi can be used to improve
+stadium or an underground train station, carrier Wi-Fi can be used to improve
 users' connectivity experience and to offload traffic.
+
+Devices with the carrier Wi-Fi feature automatically connect to
+configured carrier Wi-Fi networks (networks with a public key certificate). When
+a user manually disconnects from a carrier Wi-Fi network, the network is
+blacklisted for 24 hours (no auto-connection). Users can manually connect to
+blacklisted networks at any time.
+
+On devices running Android 9 with carrier Wi-Fi implemented,
+automatic connection through carrier Wi-Fi is off by default. A notification
+is sent to the user when the device attempts to connect to a carrier Wi-Fi
+network for the first time.
 
 ## Implementation
 
-Device manufacturers and carriers must do the following to implement Carrier
+Device manufacturers and carriers must do the following to implement carrier
 Wi-Fi.
 
 ### Manufacturers
@@ -37,10 +49,10 @@ Wi-Fi.
 In the carrier config manager, configure the following parameters for each
 carrier:
 
-+  [`KEY_CARRIER_WIFI_STRING_ARRAY`](https://android.googlesource.com/platform/frameworks/base/+/master/telephony/java/android/telephony/CarrierConfigManager.java#1606){: .external}:
++  `carrier_wifi_string_array`:
     A string array where each string entry is a Base64-encoded Wi-Fi SSID and
     an EAP type separated by a comma, where the EAP type is an integer (refer to
-    [https://www.iana.org/assignments/eap-numbers/eap-numbers.xhtml](https://www.iana.org/assignments/eap-numbers/eap-numbers.xhtml){: .external}).
+    [Extensible Authentication Protocol (EAP) Registry](https://www.iana.org/assignments/eap-numbers/eap-numbers.xhtml){: .external}).
     For example, the following configuration is for *SOME_SSID_NAME* using
     **EAP-AKA** and *Some_Other_SSID* using **EAP-SIM**:
 
@@ -54,7 +66,7 @@ carrier:
     }
     ```
 
-+  [`IMSI_KEY_AVAILABILITY_INT`](https://android.googlesource.com/platform/frameworks/base/+/master/telephony/java/android/telephony/CarrierConfigManager.java#1837){: .external}:
++  `imsi_key_availability_int`:
     Identifies whether the key used for IMSI encryption is available for WLAN
     (bit 1 is set), EPDG (bit 0 is set), or both (both bit 0 and bit 1 are
     set). For example, the following configuration indicates that IMSI
@@ -67,7 +79,7 @@ carrier:
     }
     ```
 
-+  [`IMSI_KEY_DOWNLOAD_URL_STRING`](https://android.googlesource.com/platform/frameworks/base/+/master/telephony/java/android/telephony/CarrierConfigManager.java#1830){: .external}:
++  `imsi_key_download_url_string`:
     URL from which the proto containing the public key of the carrier used for
     IMSI encryption is downloaded. For example, the following configuration
     provides a specific URL:
@@ -81,59 +93,36 @@ carrier:
 
 ### Carriers
 
-To implement Carrier Wi-Fi, the carrier must support encrypted IMSI and provide
+To implement carrier Wi-Fi, the carrier must support encrypted IMSI and provide
 a public key.
 
-#### Support encrypted IMSI
+#### Support IMSI privacy protection
 
-Change the Wi-Fi network configuration to ensure that encrypted IMSI can be
-handled. The format for the identity used in EAP-SIM is:
+Implement support for IMSI privacy protection as specified in section
+*4.1: Encrypting the Identity* of the *Privacy Protection for EAP-AKA* 3GPP
+specification draft (S3-170116). For more information, download
+[*Privacy Protection for EAP-AKA*](http://www.3gpp.org/ftp/TSG_SA/WG3_Security/TSGS3_86_Sophia/Docs/S3-170116.zip){: .external}.
 
-`Prefix | [IMSI || Encrypted IMSI] | @realm | {, Key Identifier AVP}`
+#### Providing the public key
 
-where "|" (single bar) denotes concatenation, "||" (double bar) denotes
-exclusive value, "{}" (curly brackets) denotes optional value, and realm is the
-3GPP network domain name derived from the given MNC/MCC according to the 3GGP
-spec (TS23.003).
+Provide a public URL to a server, preferably using HTTP over TLS, that hosts the
+certificate of the carrier where:
 
-`Prefix` values include:
+1.  The public key (and expiration) can be extracted from the certificate.
+1.  The information from the server is in JSON format as specified in
+    *Server Response* in section *4.3: Mechanism to Configure the Public Key* of
+    the *Privacy Protection or EAP-AKA* 3GPP specification draft (S3-170116).
 
-+   "`\0`": Encrypted Identity
-+   "`0`": EAP-AKA Identity
-+   "`1`": EAP-SIM Identity
-+   "`6`": EAP-AKA' Identity
+    Additionally, the server response may include the following JSON string
+    property: <code>"key-type" : "<var>type</var>"</code>. The value for
+    <var>type</var> must be either `WLAN` or `EPDG`. If the `key-type` property
+    isn't included, then its value defaults to `WLAN`.
 
-The format for an `Encrypted IMSI` is:
-
-`Base64{RSA_Public_Key_Encryption{eapPrefix | IMSI}}`
-
-where "|" denotes concatenation.
-
-`eapPrefix` values include:
-
-+   "`0`" - EAP-AKA Identity
-+   "`1`" - EAP-SIM Identity
-+   "`6`" - EAP-AKA' Identity
-
-#### Provide public key
-
-Provide a public URL that hosts the certificate of the carrier where:
-
-1.  The public key (and expiration) can be extracted from the certificate
-1.  The information is in JSON with the following format:
-
-```
-{
-"carrier-keys" : [ {
-  "key-identifier" : "CertificateSerialNumber=5xxe06d4",
-  "certificate" : "-----BEGIN CERTIFICATE-----\r\nTIIDRTCCAi2gAwIBAgIEVR4G1DANBgkqhkiG9w0BAQsFADBTMQswCQYDVQQGEwJVUzELMAkGA1UE\r\nCBMCTkExCzAJBgNVBAcTAk5BMQswCQYDVQQKEwJOQTELMAkGA1UECxMCTkExEDAOBgNVBAMTB1Rl\r\nc3RiT6N1/w==\r\n-----END CERTIFICATE-----",
-  "key-type" : "WLAN"
-} ]
-}
-```
-
-## Customization
-
-Carrier Wi-Fi is off by default unless configured in the carrier config manager
-for each carrier. If the feature is on, the device attempts to connect to a
-network automatically. A notification is sent on the first attempt.
+    ```
+    {
+    "carrier-keys" : [ {
+      "key-identifier" : "CertificateSerialNumber=5xxe06d4",
+      "public-key" : "-----BEGIN CERTIFICATE-----\r\nTIIDRTCCAi2gAwIBAgIEVR4G1DANBgkqhkiG9w0BAQsFADBTMQswCQYDVQQGEwJVUzELMAkGA1UE\r\nCBMCTkExCzAJBgNVBAcTAk5BMQswCQYDVQQKEwJOQTELMAkGA1UECxMCTkExEDAOBgNVBAMTB1Rl\r\nc3RiT6N1/w==\r\n-----END CERTIFICATE-----"
+    } ]
+    }
+    ```

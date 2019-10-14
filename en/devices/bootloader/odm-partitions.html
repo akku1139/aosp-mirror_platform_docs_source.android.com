@@ -1,0 +1,226 @@
+<html devsite>
+  <head>
+    <title>Building ODM Partitions</title>
+    <meta name="project_path" value="/_project.yaml" />
+    <meta name="book_path" value="/_book.yaml" />
+  </head>
+  {% include "_versions.html" %}
+  <body>
+  <!--
+      Copyright 2019 The Android Open Source Project
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+      Unless required by applicable law or agreed to in writing, software
+      distributed under the License is distributed on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+      See the License for the specific language governing permissions and
+      limitations under the License.
+  -->
+
+<p> Android {{ androidQVersionNumber }} includes support for building <code>/odm</code> partitions
+using the Android build system. </p>
+
+  <h2 id="about-odm-partitions">About ODM partitions</h2>
+
+<p> Original design manufacturers (ODMs) customize system-on-chip (SoC) vendor board-support
+packages (BSPs) to their specific devices (their boards). This enables them to implement kernel modules
+for board-specific components, board-specific daemons, or their own features on hardware abstraction
+layers (HALs). They may also want to replace or customize SoC components.</p>
+
+  <p> In previous Android releases, such customizations prevented the use of a single vendor image
+  for devices with the same SoC (or with different SoCs, but in the same family). In Android {{
+  androidQVersionNumber }}, you can use a separate <code>/odm</code> partition for customizations,
+  which enables you to use a single vendor image for multiple hardware SKUs. </p>
+
+  <h3 id="using-prod-and-ODM-partitions">Using product and ODM partitions</h3>
+
+<p> Android 9 added support for building <a
+href="/devices/bootloader/product-partitions"><code>/product</code> partitions</a>,
+enabling the use of a single system image for multiple software SKUs supplied by different
+<code>product.img</code> images. While the <code>/product</code> partition is intended for software
+  SKUs, the <code>/odm</code> partition is intended for hardware SKUs. </p>
+
+  <p> With dedicated product
+and ODM partitions, you can use the <code>/system</code> partition to host generic code for sharing
+among many software SKUs, and the <code>/vendor</code> partition to host SoC-specific BSP code to
+share among multiple devices based on the given SoC.</p>
+
+  <p> Using separate partitions has
+disadvantages, such as the difficulty in managing disk space (for example, you must reserve a limited amount of space
+for future growth). However, Android {{ androidQVersionNumber }} support for <a
+href="/devices/tech/ota/dynamic_partitions">dynamic partitions</a>
+removes the disk issue, and makes repartitioning a device during an <a
+href="/devices/tech/ota/">over-the-air (OTA)</a> update possible. </p>
+
+  <h3 id="odm-components">/odm components</h3>
+
+<p> The <code>/odm</code> partition contains the following ODM-specific components (similar to the
+<code>/vendor</code> partition), listed in the following table. </p>
+
+    <table>
+      <tr>
+        <th>ODM-specific component</th>
+         <th>Location</th>
+      </tr>
+      <tr>
+        <td>Loadable kernel modules (LKMs)</td>
+        <td><code>/odm/lib/modules/*.ko</code></td>
+      </tr>
+      <tr>
+        <td>Native libraries</td>
+        <td><code>/odm/lib[64]</code></td>
+      </tr>
+      <tr>
+        <td>HALs</td>
+        <td><code>/odm/lib[64]/hw</code></td>
+      </tr>
+      <tr>
+        <td>SEPolicy</td>
+        <td><code>/odm/etc/selinux</code></td>
+      </tr>
+       <tr>
+        <td><a
+href="/devices/architecture/vintf/objects">VINTF object data</a></td>
+        <td><code>/odm/etc/vintf</code></td>
+      </tr>
+      <tr>
+        <td><a
+href="https://android.googlesource.com/platform/system/core/+/master/init/README.md"><code>init.rc</code>
+files</a></td>
+        <td><code>/odm/etc/init</code></td>
+      </tr>
+      <tr>
+        <td>System properties</td>
+        <td><code>/odm/build.prop</code></td>
+      </tr>
+      <tr>
+        <td>Runtime resource overlays (RROs)</td>
+        <td><code>/odm/overlay/*.apk</code></td>
+      </tr>
+      <tr>
+        <td>Apps</td>
+        <td><code>/odm/app/*.apk</code></td>
+      </tr>
+      <tr>
+        <td>Priv-apps</td>
+        <td><code>/odm/priv-app/*.apk</code></td>
+      </tr>
+      <tr>
+        <td>Java libraries</td>
+        <td><code>/odm/framework/*.jar</code></td>
+      </tr>
+       <tr>
+        <td>Android Framework system configs</td>
+        <td><code>/odm/etc/sysconfig/*</code> and <code>/odm/etc/permissions/*</code></td>
+      </tr>
+    </table>
+
+<p>
+</p>
+
+  <h3 id="no-custom_images">No custom_images</h3>
+
+<p> Don't use <a
+href="https://android.googlesource.com/platform/build/+/bc7e3f98f41108c03a06abbf98add08ad4a05040/cor
+e/tasks/build_custom_images.mk#53">custom images</a> because they lack support for the following:
+</p>
+
+<ul>
+
+<li><strong>Installation of a module to a specific target.</strong> <code>custom_images</code>
+supports copying artifacts into an image, but it can’t install a module into a specific partition by
+  specifying its target partition as a part of a build rule.</li>
+    <li><strong>Soong.</strong>
+      <code>custom_images</code> can’t be built using the Soong build system.</li>
+    <li><strong>OTA
+update.</strong> <code>custom_images</code> are used as factory ROM images that can't be OTA-ed.
+</li>
+</ul>
+
+<h3 id="maintain-ABIs">Maintaining ABIs between partitions</h3>
+
+<p> The <code>/odm</code> partition is an extension of the <code>/vendor</code> partition. When
+considering application binary interface (ABI) stability, keep the following architecture in mind:
+</p>
+
+<img src="images/build_sys_to_prod_odm_partitions.png" alt="Maintaining ABI between partitions" />
+
+<figcaption><strong>Figure 1.</strong> Maintaining ABI between partitions</figcaption>
+
+<ul>
+<li>There's no ABI stability between <code>/odm</code> and <code>/vendor</code> partitions.
+Both partitions must be upgraded at the same time.
+<li>The <code>/odm</code> and
+<code>/vendor</code> partitions can depend on each other, but the <code>/vendor</code> partition
+<strong>must</strong> work without an <code>/odm</code> partition.
+<li>The ABI between
+<code>/odm</code> and <code>/system</code> is the same as the ABI between <code>/vendor</code> and
+<code>/system</code>.</li>
+</ul>
+
+<p> Direct interaction between the <code>/product</code> partition and the <code>/vendor</code> or
+<code>/odm</code> partition <strong>isn't allowed</strong>. (This is enforced by SEpolicy.)</p>
+
+<h2 id="implement-ODM">Implementing ODM partitions</h2>
+
+<p> Before implementing a new partition, review the <a href="https://android-
+review.googlesource.com/q/topic:odm_partition_+OR+topic:odm_partition+(status:open+OR+status:merged)
+">related AOSP changes</a>. </p>
+
+<h3 id="set-ODM">Setting up ODM partitions</h3>
+
+<p>
+To set up <code>/odm</code> partitions, include these build flags:
+</p>
+
+<ul>
+
+  <li><code>BOARD_ODMIMAGE_PARTITION_SIZE</code> for a fixed partition size</li>
+<li><code>PRODUCT_USE_DYNAMIC_PARTITIONS</code> and
+  <code>BOARD_ODMIMAGE_PARTITION_RESERVED_SIZE</code> for a <a
+href="/devices/tech/ota/dynamic_partitions">dynamic partition</a>
+  size</li>
+  <li><code>BOARD_ODMIMAGE_FILE_SYSTEM_TYPE</code> file system type used for the ODM image</li>
+  <li><code>PRODUCT_ODM_PROPERTIES</code> for
+<code>/odm/build.prop</code><br>Use this within a <code>$(call inherit-product
+path/to/device.mk)</code>, as in <code>PRODUCT_ODM_PROPERTIES += product.abc=ok</code></li></ul>
+
+<h3 id="install-to-ODM">Installing a module to an ODM partition</h3>
+
+<p>
+Use these build flags to install a module to an <code>/odm</code> partition:
+</p>
+
+<ul>
+  <li><code>device_specific: true</code> in <code>Android.bp</code></li>
+<li><code>LOCAL_ODM_MODULE := true</code> in <code>Android.mk</code></li>
+</ul>
+
+<h3 id="enable-verified-boot">Enabling Verified Boot</h3>
+
+<p> To prevent malicious software from tampering with <code>/odm</code> partitions, enable <a
+href="/security/verifiedboot/avb">Android Verified Boot</a> (AVB) for
+those partitions (just as you do for <code>/vendor</code> and <code>/system</code> partitions).</p>
+
+<p> To enable AVB, include the build flag <code>BOARD_AVB_ODM_ADD_HASHTREE_FOOTER_ARGS</code>. For
+details on configuring AVB on dynamic partitions, see <a
+href="/devices/tech/ota/dynamic_partitions/implement#avb-
+configuration-changes">AVB configuration changes</a>.</p>
+
+<h3 id="treating-odm-as-vendor">Treating /odm as another /vendor partition</h3>
+
+<p> To ensure that the system handles the <code>/odm</code> partition as a <code>/vendor</code>
+partition, replace any hard-coded <code>/vendor</code> references with a set of hardware-oriented
+partitions (currently <code>/odm</code> and <code>/vendor</code>). Notable <code>/vendor</code>
+reference locations in the platform include <a
+href="https://android.googlesource.com/platform/bionic/+/master/linker/">dynamic linker</a>, <a
+href="https://android.googlesource.com/platform/frameworks/base/+/master/services/core/java/com/andr
+oid/server/pm/PackageManagerService.java">package manager</a>, and <code>shell/libc</code>.</p>
+
+  </body>
+</html>
